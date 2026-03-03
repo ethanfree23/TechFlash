@@ -22,8 +22,10 @@ const JobDetail = () => {
   const [technicianProfileId, setTechnicianProfileId] = useState(null);
   const [companyProfileId, setCompanyProfileId] = useState(null);
   const [ratings, setRatings] = useState([]);
+  const [otherPartyHasReviewed, setOtherPartyHasReviewed] = useState(false);
   const [showReviewForm, setShowReviewForm] = useState(false);
-  const [reviewData, setReviewData] = useState({ score: 5, comment: '' });
+  const [reviewCategories, setReviewCategories] = useState({});
+  const [reviewData, setReviewData] = useState({ category_scores: {}, comment: '' });
   const [submittingReview, setSubmittingReview] = useState(false);
 
   useEffect(() => {
@@ -64,14 +66,44 @@ const JobDetail = () => {
   }, [user]);
 
   useEffect(() => {
-    if (job?.status === 'finished' && id) {
+    const jobComplete = job?.status === 'finished' || job?.status === 'filled';
+    if (jobComplete && id) {
       ratingsAPI.getByJob(id)
-        .then(setRatings)
-        .catch(() => setRatings([]));
+        .then((res) => {
+          if (Array.isArray(res)) {
+            setRatings(res);
+            setOtherPartyHasReviewed(false);
+          } else {
+            setRatings(res.ratings || []);
+            setOtherPartyHasReviewed(res.other_party_has_reviewed ?? false);
+          }
+        })
+        .catch(() => {
+          setRatings([]);
+          setOtherPartyHasReviewed(false);
+        });
     } else {
       setRatings([]);
+      setOtherPartyHasReviewed(false);
     }
   }, [job?.status, id]);
+
+  useEffect(() => {
+    const complete = job?.status === 'finished' || job?.status === 'filled';
+    if (showReviewForm && user && complete) {
+      const as = user.role === 'technician' ? 'technician' : 'company';
+      ratingsAPI.getReviewCategories(as)
+        .then(res => {
+          const cats = res.categories || {};
+          setReviewCategories(cats);
+          setReviewData(prev => ({
+            ...prev,
+            category_scores: Object.keys(cats).reduce((acc, k) => ({ ...acc, [k]: 5 }), {}),
+          }));
+        })
+        .catch(() => setReviewCategories({}));
+    }
+  }, [showReviewForm, user, job?.status]);
 
   const fetchJobDetails = async () => {
     try {
@@ -103,7 +135,7 @@ const JobDetail = () => {
   const isJobClaimedByMe = () => {
     if (!technicianProfileId || !job?.job_applications) return false;
     return job.job_applications.some(
-      app => app.technician_profile_id === technicianProfileId && app.status === 'accepted'
+      app => String(app.technician_profile_id) === String(technicianProfileId) && (app.status === 'accepted' || app.status === 1)
     );
   };
 
@@ -173,9 +205,11 @@ const JobDetail = () => {
   };
 
   const canLeaveReview = () => {
-    if (!user || job?.status !== 'finished') return false;
+    if (!user || !job) return false;
+    const jobComplete = job.status === 'finished' || job.status === 'filled';
+    if (!jobComplete) return false;
     if (user.role === 'company' && job.company_profile_id === companyProfileId) return true;
-    if (user.role === 'technician' && isJobClaimedByMe()) return true;
+    if (user.role === 'technician') return true; // Technician dashboard only shows their completed jobs
     return false;
   };
 
@@ -191,18 +225,22 @@ const JobDetail = () => {
 
   const handleReviewSubmit = async (e) => {
     e.preventDefault();
-    const score = reviewData.score;
-    if (!score || score < 1 || score > 5) {
-      alert('Please select a rating (1-5 stars).');
+    const { category_scores } = reviewData;
+    const keys = Object.keys(reviewCategories);
+    if (!keys.length || !keys.every(k => category_scores[k] >= 1 && category_scores[k] <= 5)) {
+      alert('Please rate all categories (1-5 stars each).');
       return;
     }
     try {
       setSubmittingReview(true);
-      await ratingsAPI.create(job.id, { score, comment: reviewData.comment });
+      const payload = { category_scores: { ...category_scores }, comment: reviewData.comment || '' };
+      await ratingsAPI.create(job.id, payload);
       const updated = await ratingsAPI.getByJob(job.id);
-      setRatings(updated);
+      const ratingsList = Array.isArray(updated) ? updated : (updated.ratings || []);
+      setRatings(ratingsList);
+      setOtherPartyHasReviewed(Array.isArray(updated) ? false : (updated.other_party_has_reviewed ?? false));
       setShowReviewForm(false);
-      setReviewData({ score: 5, comment: '' });
+      setReviewData({ category_scores: {}, comment: '' });
     } catch (err) {
       alert(err.message || 'Failed to submit review');
     } finally {
@@ -253,7 +291,17 @@ const JobDetail = () => {
         
         <div className="flex justify-between items-start mb-6">
           <h1 className="text-3xl font-bold text-gray-900">{job.title}</h1>
-          {getStatusBadge(job.status)}
+          <div className="flex items-center gap-3">
+            {canLeaveReview() && !hasAlreadyReviewed() && (
+              <button
+                onClick={() => setShowReviewForm(true)}
+                className="px-5 py-2.5 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700 shadow-sm"
+              >
+                Leave a Review
+              </button>
+            )}
+            {getStatusBadge(job.status)}
+          </div>
         </div>
       </div>
 
@@ -323,34 +371,96 @@ const JobDetail = () => {
               </div>
             )}
 
-            {job.status === 'finished' && ratings?.length > 0 && (
+            {(job.status === 'finished' || job.status === 'filled') && (
               <div className="mt-6 pt-6 border-t border-gray-200">
                 <h3 className="text-xl font-semibold text-gray-900 mb-3">Reviews</h3>
+                {canLeaveReview() && !hasAlreadyReviewed() && (
+                  <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-4">
+                    {otherPartyHasReviewed
+                      ? `${user?.role === 'technician' ? 'Company' : 'Technician'} has left a review. Complete yours to view theirs.`
+                      : 'Reviews are hidden until you submit yours or 7 days have passed—so your feedback stays independent.'}
+                  </p>
+                )}
                 <div className="space-y-4">
-                  {ratings.map((r) => (
+                  {ratings?.map((r) => (
                     <div key={r.id} className="bg-gray-50 rounded-lg p-4">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="text-sm text-gray-500">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="text-sm font-medium text-gray-700">
                           {r.reviewer_type === 'CompanyProfile' ? 'Company' : 'Technician'} review
                         </span>
                         <span className="inline-flex items-center text-amber-600 font-medium">
-                          ★ {r.score != null ? Number(r.score).toFixed(1) : '—'}
+                          ★ {r.score != null ? Number(r.score).toFixed(1) : '—'} overall
                         </span>
                       </div>
-                      {r.category_scores && Object.keys(r.category_scores).length > 0 && r.category_labels && (
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2 text-sm">
+                      {r.category_scores && Object.keys(r.category_scores).length > 0 && r.category_labels ? (
+                        <div className="space-y-2 mb-3">
                           {Object.entries(r.category_scores).map(([k, v]) => (
-                            <div key={k} className="flex justify-between items-center">
+                            <div key={k} className="flex justify-between items-center text-sm">
                               <span className="text-gray-600">{r.category_labels[k] || k}</span>
-                              <span className="text-amber-600 font-medium">{v}/5 ★</span>
+                              <span className="inline-flex items-center text-amber-600 font-medium">
+                                {v}/5 ★
+                              </span>
                             </div>
                           ))}
                         </div>
+                      ) : (
+                        <p className="text-sm text-gray-500 mb-2">Overall rating only (legacy review)</p>
                       )}
-                      {r.comment && <p className="text-gray-700 text-sm">{r.comment}</p>}
+                      {r.comment && <p className="text-gray-700 text-sm border-t border-gray-200 pt-2 mt-2">{r.comment}</p>}
                     </div>
                   ))}
                 </div>
+                {canLeaveReview() && (
+                  <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg">
+                    {hasAlreadyReviewed() ? (
+                      <p className="text-sm text-gray-600">You have already reviewed for this job.</p>
+                    ) : showReviewForm ? (
+                      <form onSubmit={handleReviewSubmit} className="space-y-4">
+                        <h4 className="font-medium text-gray-900">Leave your review for {user?.role === 'company' ? 'the technician' : 'the company'}</h4>
+                        <p className="text-sm text-gray-600">Rate each aspect from 1 to 5 stars.</p>
+                        <div className="space-y-4">
+                          {Object.entries(reviewCategories).map(([key, label]) => (
+                            <div key={key}>
+                              <label className="block text-sm font-medium text-gray-700 mb-2">{label}</label>
+                              <StarRating
+                                value={reviewData.category_scores[key] ?? 5}
+                                onChange={(v) => setReviewData(prev => ({
+                                  ...prev,
+                                  category_scores: { ...prev.category_scores, [key]: v },
+                                }))}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Comment (optional)</label>
+                          <textarea
+                            value={reviewData.comment}
+                            onChange={e => setReviewData(prev => ({ ...prev, comment: e.target.value }))}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md"
+                            rows={3}
+                            placeholder="How did the job go?"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button type="button" onClick={() => setShowReviewForm(false)} className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Cancel</button>
+                          <button type="submit" disabled={submittingReview} className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
+                            {submittingReview ? 'Submitting...' : 'Submit Review'}
+                          </button>
+                        </div>
+                      </form>
+                    ) : (
+                      <>
+                        <p className="text-sm text-gray-600 mb-3">
+                          Rate your experience with {user?.role === 'company' ? 'the technician' : 'the company'}.
+                        </p>
+                        <button onClick={() => setShowReviewForm(true)} className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                          Leave Review
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -382,6 +492,27 @@ const JobDetail = () => {
             </div>
           )}
 
+          {(job.status === 'finished' || job.status === 'filled') && canLeaveReview() && (
+            <div className="bg-white border border-gray-200 rounded-lg p-6 sticky top-6">
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">Leave a Review</h3>
+              {otherPartyHasReviewed && !hasAlreadyReviewed() && (
+                <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-4">
+                  {user?.role === 'technician' ? 'Company' : 'Technician'} has left a review. Complete yours to view theirs.
+                </p>
+              )}
+              {hasAlreadyReviewed() ? (
+                <p className="text-sm text-gray-600">You have already reviewed for this job.</p>
+              ) : (
+                <button
+                  onClick={() => setShowReviewForm(true)}
+                  className="w-full px-4 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
+                >
+                  Leave a Review
+                </button>
+              )}
+            </div>
+          )}
+
           {user && user.role === 'company' && (
             <div className="bg-white border border-gray-200 rounded-lg p-6">
               <h3 className="text-xl font-semibold text-gray-900 mb-4">Company Actions</h3>
@@ -403,49 +534,6 @@ const JobDetail = () => {
             </div>
           )}
 
-          {job.status === 'finished' && canLeaveReview() && (
-            <div className="bg-white border border-gray-200 rounded-lg p-6 sticky top-6">
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">Leave a Review</h3>
-              {hasAlreadyReviewed() ? (
-                <p className="text-sm text-gray-600">You have already reviewed for this job.</p>
-              ) : showReviewForm ? (
-                <form onSubmit={handleReviewSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Rating (1-5 stars)</label>
-                    <StarRating
-                      value={reviewData.score}
-                      onChange={(v) => setReviewData(prev => ({ ...prev, score: v }))}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Comment (optional)</label>
-                    <textarea
-                      value={reviewData.comment}
-                      onChange={e => setReviewData(prev => ({ ...prev, comment: e.target.value }))}
-                      className="w-full px-3 py-2 border border-gray-300 rounded-md"
-                      rows={3}
-                      placeholder="How did the job go?"
-                    />
-                  </div>
-                  <div className="flex space-x-2">
-                    <button type="button" onClick={() => setShowReviewForm(false)} className="px-4 py-2 bg-gray-200 rounded">Cancel</button>
-                    <button type="submit" disabled={submittingReview} className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50">
-                      {submittingReview ? 'Submitting...' : 'Submit Review'}
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <>
-                  <p className="text-sm text-gray-600 mb-3">
-                    Rate your experience with {user?.role === 'company' ? 'the technician' : 'the company'}.
-                  </p>
-                  <button onClick={() => setShowReviewForm(true)} className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
-                    Leave Review
-                  </button>
-                </>
-              )}
-            </div>
-          )}
         </div>
       </div>
       {/* Edit Job Modal */}

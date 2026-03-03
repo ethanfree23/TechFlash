@@ -195,6 +195,7 @@ export const ratingsAPI = {
         job_id: jobId,
         score: data.score,
         comment: data.comment || '',
+        category_scores: data.category_scores || undefined,
       }),
     }),
 };

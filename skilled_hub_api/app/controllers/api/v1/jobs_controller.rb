@@ -27,7 +27,7 @@ module Api
       
       def show
         job = Job.find(params[:id])
-        render json: job, serializer: JobSerializer, status: :ok
+        render json: job, serializer: JobSerializer, include: [:company_profile, :job_applications], status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Job not found" }, status: :not_found
       end
@@ -97,7 +97,7 @@ module Api
       def finish
         job = Job.find(params[:id])
         if @current_user.company? && job.company_profile.user_id == @current_user.id
-          job.update(status: :finished)
+          job.update(status: :finished, finished_at: Time.current)
           render json: job, serializer: JobSerializer, status: :ok
         else
           render json: { error: 'Access denied' }, status: :forbidden
