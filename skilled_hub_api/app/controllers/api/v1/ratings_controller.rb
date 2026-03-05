@@ -89,11 +89,11 @@ module Api
           return render json: { error: "You have already reviewed for this job" }, status: :unprocessable_entity
         end
 
-        category_scores = rp[:category_scores]
+        category_scores = rp[:category_scores].presence || params[:category_scores].presence || params.dig(:rating, :category_scores)
         score = rp[:score]&.to_i
 
-        if category_scores.present? && category_scores.is_a?(Hash)
-          category_scores = category_scores.transform_keys(&:to_s)
+        if category_scores.present? && category_scores.respond_to?(:to_h)
+          category_scores = category_scores.to_h.transform_keys(&:to_s)
           expected_keys = reviewer.is_a?(CompanyProfile) ? Rating::COMPANY_REVIEW_CATEGORIES.keys.map(&:to_s) : Rating::TECH_REVIEW_CATEGORIES.keys.map(&:to_s)
           unless (expected_keys - category_scores.keys).empty?
             return render json: { error: "All category scores are required" }, status: :unprocessable_entity
@@ -122,8 +122,7 @@ module Api
 
       def rating_params
         source = params[:rating].presence || params
-        category_keys = Rating::COMPANY_REVIEW_CATEGORIES.keys.map(&:to_s) + Rating::TECH_REVIEW_CATEGORIES.keys.map(&:to_s)
-        source.permit(:job_id, :score, :comment, category_scores: category_keys)
+        source.permit(:job_id, :score, :comment, category_scores: {})
       end
     end
   end
