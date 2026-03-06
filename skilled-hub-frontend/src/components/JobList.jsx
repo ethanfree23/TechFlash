@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { jobsAPI, profilesAPI } from '../api/api';
+import { jobsAPI, profilesAPI, ratingsAPI } from '../api/api';
 import { auth } from '../auth';
 
 const JobList = () => {
@@ -21,6 +21,7 @@ const JobList = () => {
   const [claimingJobId, setClaimingJobId] = useState(null);
   const [completedJobs, setCompletedJobs] = useState([]);
   const [loadingCompleted, setLoadingCompleted] = useState(false);
+  const [reviewedJobIds, setReviewedJobIds] = useState(new Set());
 
   const user = auth.getUser();
 
@@ -38,6 +39,14 @@ const JobList = () => {
         .then(res => setCompletedJobs(res.completed || []))
         .catch(() => setCompletedJobs([]))
         .finally(() => setLoadingCompleted(false));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (auth.isTechnician()) {
+      ratingsAPI.getReviewedJobIds()
+        .then((res) => setReviewedJobIds(new Set(res.job_ids || [])))
+        .catch(() => setReviewedJobIds(new Set()));
     }
   }, []);
 
@@ -236,7 +245,7 @@ const JobList = () => {
                       to={`/jobs/${job.id}`}
                       className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-center text-sm font-medium"
                     >
-                      View & Leave Review
+                      {reviewedJobIds.has(job.id) ? 'View Past Job' : 'View & Leave Review'}
                     </Link>
                   </div>
                 </div>

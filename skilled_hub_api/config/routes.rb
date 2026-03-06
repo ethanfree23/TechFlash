@@ -30,6 +30,7 @@ Rails.application.routes.draw do
       resources :ratings do
         collection do
           get :review_categories
+          get :reviewed_job_ids
         end
       end
       resources :company_profiles

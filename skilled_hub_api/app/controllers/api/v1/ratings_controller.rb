@@ -9,6 +9,14 @@ module Api
         render json: { categories: categories }
       end
 
+      def reviewed_job_ids
+        reviewer = nil
+        reviewer = @current_user.technician_profile if @current_user.technician?
+        reviewer = @current_user.company_profile if @current_user.company?
+        job_ids = reviewer ? Rating.where(reviewer: reviewer).pluck(:job_id).uniq : []
+        render json: { job_ids: job_ids }
+      end
+
       def index
         ratings = Rating.all
         ratings = ratings.where(job_id: params[:job_id]) if params[:job_id].present?
@@ -44,7 +52,12 @@ module Api
 
         if params[:job_id].present? && other_party_has_reviewed != nil
           serialized = ratings.map { |r| RatingSerializer.new(r).serializable_hash }
-          render json: { ratings: serialized, other_party_has_reviewed: other_party_has_reviewed }, status: :ok
+          current_user_has_reviewed = current_reviewer ? Rating.exists?(job: job, reviewer: current_reviewer) : false
+          render json: {
+            ratings: serialized,
+            other_party_has_reviewed: other_party_has_reviewed,
+            current_user_has_reviewed: current_user_has_reviewed
+          }, status: :ok
         else
           render json: ratings, each_serializer: RatingSerializer, status: :ok
         end

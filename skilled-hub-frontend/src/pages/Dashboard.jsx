@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { jobsAPI } from '../api/api';
+import { jobsAPI, ratingsAPI } from '../api/api';
 import { FaBriefcase, FaCheckSquare, FaWrench } from 'react-icons/fa';
 
 const statusLabel = (status) => {
@@ -83,7 +83,7 @@ const Dashboard = ({ user, onLogout }) => {
             <CompanyDashboardContent jobs={jobs} onFinish={handleFinish} onRefresh={fetchDashboard} navigate={navigate} />
           )}
           {user?.role === 'technician' && (
-            <TechnicianDashboardContent jobs={jobs} navigate={navigate} />
+            <TechnicianDashboardContent jobs={jobs} navigate={navigate} user={user} />
           )}
           {user?.role !== 'company' && user?.role !== 'technician' && (
             <p className="text-gray-500">Dashboard not available for your role.</p>
@@ -209,9 +209,18 @@ const CompanyDashboardContent = ({ jobs, onFinish, onRefresh, navigate }) => {
   );
 };
 
-const TechnicianDashboardContent = ({ jobs, navigate }) => {
+const TechnicianDashboardContent = ({ jobs, navigate, user }) => {
   const inProgress = jobs?.in_progress || [];
   const completed = jobs?.completed || [];
+  const [reviewedJobIds, setReviewedJobIds] = useState(new Set());
+
+  useEffect(() => {
+    if (user?.role === 'technician') {
+      ratingsAPI.getReviewedJobIds()
+        .then((res) => setReviewedJobIds(new Set(res.job_ids || [])))
+        .catch(() => setReviewedJobIds(new Set()));
+    }
+  }, [user?.role]);
 
   return (
     <>
@@ -271,7 +280,7 @@ const TechnicianDashboardContent = ({ jobs, navigate }) => {
                     className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded text-sm"
                     onClick={() => navigate(`/jobs/${job.id}`)}
                   >
-                    View & Leave Review
+                    {reviewedJobIds.has(job.id) ? 'View Past Job' : 'View & Leave Review'}
                   </button>
                 </div>
               ))}

@@ -191,6 +191,9 @@ export const ratingsAPI = {
   getByJob: (jobId) =>
     apiRequest(`/ratings?job_id=${jobId}`),
 
+  getReviewedJobIds: () =>
+    apiRequest('/ratings/reviewed_job_ids'),
+
   getReviewCategories: (as) =>
     apiRequest(`/ratings/review_categories?as=${as || 'company'}`),
 
