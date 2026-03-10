@@ -16,6 +16,7 @@ Rails.application.routes.draw do
           patch :claim
           patch :accept
           patch :finish
+          patch :extend
         end
       end
       resources :job_applications do

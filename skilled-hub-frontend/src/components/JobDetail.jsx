@@ -30,6 +30,7 @@ const JobDetail = () => {
   const [reviewCategories, setReviewCategories] = useState({});
   const [reviewData, setReviewData] = useState({ category_scores: {}, comment: '' });
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [markingComplete, setMarkingComplete] = useState(false);
 
   useEffect(() => {
     // Read user from localStorage on mount
@@ -240,8 +241,15 @@ const JobDetail = () => {
   };
 
   const handleMarkComplete = async () => {
-    await jobsAPI.finish(job.id);
-    await fetchJobDetails();
+    setMarkingComplete(true);
+    try {
+      await jobsAPI.finish(job.id);
+      await fetchJobDetails();
+    } catch (err) {
+      alert(err.message || 'Failed to mark complete');
+    } finally {
+      setMarkingComplete(false);
+    }
   };
 
   const canLeaveReview = () => {
@@ -430,6 +438,32 @@ const JobDetail = () => {
                   </p>
                 </div>
               </div>
+              {(job.scheduled_start_at || job.scheduled_end_at) && (
+                <>
+                  {job.scheduled_start_at && (
+                    <div className="flex items-center">
+                      <svg className="w-5 h-5 text-gray-400 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                      </svg>
+                      <div>
+                        <p className="text-sm text-gray-500">Scheduled Start</p>
+                        <p className="font-medium">{new Date(job.scheduled_start_at).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  )}
+                  {job.scheduled_end_at && (
+                    <div className="flex items-center">
+                      <svg className="w-5 h-5 text-gray-400 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                      </svg>
+                      <div>
+                        <p className="text-sm text-gray-500">Scheduled End</p>
+                        <p className="font-medium">{new Date(job.scheduled_end_at).toLocaleString()}</p>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
             </div>
 
             <div className="mb-6">
@@ -559,9 +593,16 @@ const JobDetail = () => {
           {currentUser?.role === 'technician' && job.status === 'reserved' && isJobClaimedByMe() && (
             <div className="bg-white border border-gray-200 rounded-lg p-6 sticky top-6">
               <h3 className="text-xl font-semibold text-gray-900 mb-4">Your Job</h3>
-              <p className="text-sm text-gray-600">
-                You claimed this job. Complete the work and the company will mark it as finished.
+              <p className="text-sm text-gray-600 mb-4">
+                You claimed this job. When you finish the work, mark it complete below—or the company can mark it.
               </p>
+              <button
+                onClick={handleMarkComplete}
+                disabled={markingComplete}
+                className="w-full px-4 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 font-medium"
+              >
+                {markingComplete ? 'Marking...' : 'Mark Job Complete'}
+              </button>
             </div>
           )}
 
@@ -594,9 +635,15 @@ const JobDetail = () => {
                     <button onClick={openClaimedModal} className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
                       View Claimed By
                     </button>
-                    <button onClick={handleMarkComplete} className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors">
-                      Mark Job Complete
+                    <button onClick={handleMarkComplete} disabled={markingComplete} className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50">
+                      {markingComplete ? 'Marking...' : 'Mark Job Complete'}
                     </button>
+                    <Link
+                      to={`/jobs/${job.id}/edit`}
+                      className="block w-full px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors text-center"
+                    >
+                      Extend Job
+                    </Link>
                   </>
                 )}
               </div>

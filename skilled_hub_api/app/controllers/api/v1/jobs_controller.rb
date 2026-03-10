@@ -5,6 +5,7 @@ module Api
       before_action :require_company, only: [:create, :update, :destroy]
       
       def index
+        Job.auto_complete_expired!
         jobs = Job.all
 
         # Companies only see their own jobs; technicians see all open jobs
@@ -30,6 +31,7 @@ module Api
       end
       
       def show
+        Job.auto_complete_expired!
         job = Job.find(params[:id])
         if @current_user&.company? && job.company_profile.user_id != @current_user.id
           return render json: { error: "You can only view your own jobs" }, status: :forbidden
@@ -68,6 +70,7 @@ module Api
       end
 
       def dashboard_jobs
+        Job.auto_complete_expired!
         unless @current_user&.company?
           return render json: { error: 'Access denied. Company role required.' }, status: :forbidden
         end
@@ -103,7 +106,14 @@ module Api
 
       def finish
         job = Job.find(params[:id])
+        can_finish = false
         if @current_user.company? && job.company_profile.user_id == @current_user.id
+          can_finish = true
+        elsif @current_user.technician? && job.reserved?
+          accepted_app = job.job_applications.find_by(status: :accepted)
+          can_finish = accepted_app&.technician_profile&.user_id == @current_user.id
+        end
+        if can_finish
           job.update(status: :finished, finished_at: Time.current)
           render json: job, serializer: JobSerializer, status: :ok
         else
@@ -113,7 +123,33 @@ module Api
         render json: { error: 'Job not found' }, status: :not_found
       end
 
+      def extend
+        job = Job.find(params[:id])
+        unless @current_user.company? && job.company_profile.user_id == @current_user.id
+          return render json: { error: 'Only the company can extend a job' }, status: :forbidden
+        end
+        unless job.reserved?
+          return render json: { error: 'Can only extend jobs that are in progress' }, status: :unprocessable_entity
+        end
+        new_end_at = params[:scheduled_end_at]
+        if new_end_at.blank?
+          return render json: { error: 'scheduled_end_at is required' }, status: :unprocessable_entity
+        end
+        new_end = Time.zone.parse(new_end_at.to_s)
+        if new_end.nil? || new_end <= Time.current
+          return render json: { error: 'New end time must be in the future' }, status: :unprocessable_entity
+        end
+        if job.scheduled_end_at && new_end <= job.scheduled_end_at
+          return render json: { error: 'New end time must be later than current end time' }, status: :unprocessable_entity
+        end
+        job.update!(scheduled_end_at: new_end)
+        render json: job, serializer: JobSerializer, status: :ok
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: 'Job not found' }, status: :not_found
+      end
+
       def technician_dashboard_jobs
+        Job.auto_complete_expired!
         unless @current_user&.technician?
           return render json: { error: 'Access denied. Technician role required.' }, status: :forbidden
         end
@@ -175,7 +211,8 @@ module Api
       private
 
       def job_params
-        params.permit(:title, :description, :required_documents, :location, :status, :company_profile_id, :timeline)
+        params.permit(:title, :description, :required_documents, :location, :status, :company_profile_id, :timeline,
+                      :scheduled_start_at, :scheduled_end_at)
       end
     end
   end

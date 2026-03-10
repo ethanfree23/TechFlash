@@ -25,7 +25,7 @@ const apiRequest = async (endpoint, options = {}) => {
       } catch {
         // Server returned HTML or non-JSON (e.g. Rails error page)
         if (response.status === 500) {
-          throw new Error('Server error. Check that Rails is running and database is set up (run: rails db:create db:migrate)');
+          throw new Error('Server error. Check Rails server logs for details. Run: cd skilled_hub_api && bundle exec rails db:migrate');
         }
       }
       const msg = errorData.message || errorData.error || `HTTP error! status: ${response.status}`;
@@ -94,6 +94,12 @@ export const jobsAPI = {
   finish: (id) =>
     apiRequest(`/jobs/${id}/finish`, {
       method: 'PATCH',
+    }),
+
+  extend: (id, { scheduled_end_at }) =>
+    apiRequest(`/jobs/${id}/extend`, {
+      method: 'PATCH',
+      body: JSON.stringify({ scheduled_end_at }),
     }),
 
   getDashboard: () =>

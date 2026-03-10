@@ -92,6 +92,8 @@ ActiveRecord::Schema[7.1].define(version: 2025_06_27_012447) do
     t.datetime "updated_at", null: false
     t.text "timeline"
     t.datetime "finished_at"
+    t.datetime "scheduled_start_at"
+    t.datetime "scheduled_end_at"
     t.index ["company_profile_id"], name: "index_jobs_on_company_profile_id"
   end
 

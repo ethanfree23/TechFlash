@@ -2,6 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { jobsAPI } from '../api/api';
 
+const toDatetimeLocal = (d) => {
+  if (!d) return '';
+  const date = new Date(d);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
 const EditJob = () => {
   const { id } = useParams();
   const [job, setJob] = useState(null);
@@ -9,6 +16,8 @@ const EditJob = () => {
   const [error, setError] = useState(null);
   const [form, setForm] = useState({ title: '', description: '', location: '', status: 'open' });
   const [saving, setSaving] = useState(false);
+  const [extendEndAt, setExtendEndAt] = useState('');
+  const [extending, setExtending] = useState(false);
 
   useEffect(() => {
     const fetchJob = async () => {
@@ -22,6 +31,9 @@ const EditJob = () => {
           location: data.location || '',
           status: data.status || 'open',
         });
+        const currentEnd = data.scheduled_end_at;
+        const defaultEnd = currentEnd ? new Date(currentEnd) : new Date(Date.now() + 24 * 60 * 60 * 1000);
+        setExtendEndAt(toDatetimeLocal(currentEnd || defaultEnd));
         setError(null);
       } catch (err) {
         setError('Failed to load job details');
@@ -43,10 +55,32 @@ const EditJob = () => {
     try {
       await jobsAPI.update(id, form);
       alert('Job updated!');
+      const data = await jobsAPI.getById(id);
+      setJob(data);
     } catch (err) {
       alert('Failed to update job');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleExtend = async (e) => {
+    e.preventDefault();
+    if (!extendEndAt) {
+      alert('Please select a new end date and time');
+      return;
+    }
+    setExtending(true);
+    try {
+      await jobsAPI.extend(id, { scheduled_end_at: new Date(extendEndAt).toISOString() });
+      alert('Job extended!');
+      const data = await jobsAPI.getById(id);
+      setJob(data);
+      setExtendEndAt(toDatetimeLocal(data.scheduled_end_at));
+    } catch (err) {
+      alert(err.message || 'Failed to extend job');
+    } finally {
+      setExtending(false);
     }
   };
 
@@ -112,6 +146,31 @@ const EditJob = () => {
           {saving ? 'Saving...' : 'Save Changes'}
         </button>
       </form>
+
+      {job?.status === 'reserved' && (
+        <div className="mt-8 p-6 border border-gray-200 rounded-lg bg-gray-50">
+          <h2 className="text-lg font-semibold mb-4">Extend Job</h2>
+          <p className="text-sm text-gray-600 mb-4">Current end: {job.scheduled_end_at ? new Date(job.scheduled_end_at).toLocaleString() : 'Not set'}</p>
+          <form onSubmit={handleExtend} className="flex gap-4 items-end">
+            <div className="flex-1">
+              <label className="block font-medium mb-1 text-sm">New End Date & Time</label>
+              <input
+                type="datetime-local"
+                className="w-full border px-3 py-2 rounded"
+                value={extendEndAt}
+                onChange={e => setExtendEndAt(e.target.value)}
+              />
+            </div>
+            <button
+              type="submit"
+              className="bg-amber-600 text-white px-6 py-2 rounded hover:bg-amber-700"
+              disabled={extending}
+            >
+              {extending ? 'Extending...' : 'Extend'}
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   );
 };

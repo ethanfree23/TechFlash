@@ -2,11 +2,22 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { jobsAPI, profilesAPI } from '../api/api';
 
+const toDatetimeLocal = (d) => {
+  if (!d) return '';
+  const date = new Date(d);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+};
+
 const CreateJob = () => {
+  const now = new Date();
+  const defaultEnd = new Date(now.getTime() + 24 * 60 * 60 * 1000); // +1 day
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
   const [status, setStatus] = useState("open");
+  const [scheduledStartAt, setScheduledStartAt] = useState(toDatetimeLocal(now));
+  const [scheduledEndAt, setScheduledEndAt] = useState(toDatetimeLocal(defaultEnd));
   const [saving, setSaving] = useState(false);
   const [companyProfileId, setCompanyProfileId] = useState(null);
   const navigate = useNavigate();
@@ -33,6 +44,8 @@ const CreateJob = () => {
         location,
         status,
         company_profile_id: companyProfileId,
+        scheduled_start_at: scheduledStartAt ? new Date(scheduledStartAt).toISOString() : null,
+        scheduled_end_at: scheduledEndAt ? new Date(scheduledEndAt).toISOString() : null,
       });
       alert('Job created!');
       navigate('/dashboard');
@@ -73,6 +86,26 @@ const CreateJob = () => {
             onChange={e => setLocation(e.target.value)}
             required
           />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block font-medium mb-1">Start Date & Time</label>
+            <input
+              type="datetime-local"
+              className="w-full border px-3 py-2 rounded"
+              value={scheduledStartAt}
+              onChange={e => setScheduledStartAt(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block font-medium mb-1">End Date & Time</label>
+            <input
+              type="datetime-local"
+              className="w-full border px-3 py-2 rounded"
+              value={scheduledEndAt}
+              onChange={e => setScheduledEndAt(e.target.value)}
+            />
+          </div>
         </div>
         <div>
           <label className="block font-medium mb-1">Status</label>

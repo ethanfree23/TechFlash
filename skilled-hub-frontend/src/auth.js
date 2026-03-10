@@ -23,9 +23,10 @@ export const auth = {
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) return false;
     
-    // Check if token is expired (basic check)
+    // Check if token is expired (if exp claim exists)
     try {
       const payload = JSON.parse(atob(token.split('.')[1]));
+      if (!payload.exp) return true; // No expiration = token valid
       return payload.exp * 1000 > Date.now();
     } catch (error) {
       console.error('Error parsing token:', error);

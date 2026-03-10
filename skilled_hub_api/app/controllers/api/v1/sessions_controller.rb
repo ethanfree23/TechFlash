@@ -1,8 +1,6 @@
 module Api
   module V1
     class SessionsController < ApplicationController
-      skip_before_action :transform_json_params, only: [:create]
-
       def create
         user = User.find_by(email: params[:email])
         if user&.authenticate(params[:password])
