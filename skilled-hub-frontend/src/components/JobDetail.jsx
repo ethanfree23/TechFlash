@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { jobsAPI, profilesAPI, ratingsAPI } from '../api/api';
+import { jobsAPI, profilesAPI, ratingsAPI, conversationsAPI } from '../api/api';
 import AcceptPaymentModal from './AcceptPaymentModal';
+import MessageModal from './MessageModal';
 import { auth } from '../auth';
 import Modal from 'react-modal';
 import StarRating from './StarRating';
@@ -34,6 +35,8 @@ const JobDetail = () => {
   const [markingComplete, setMarkingComplete] = useState(false);
   const [showAcceptModal, setShowAcceptModal] = useState(false);
   const [accepting, setAccepting] = useState(false);
+  const [showMessageModal, setShowMessageModal] = useState(false);
+  const [messageConversationId, setMessageConversationId] = useState(null);
 
   useEffect(() => {
     // Read user from localStorage on mount
@@ -263,6 +266,18 @@ const JobDetail = () => {
   const handleAcceptSuccess = () => {
     setShowAcceptModal(false);
     fetchJobDetails();
+  };
+
+  const handleMessageCompany = async () => {
+    if (!user || !id) return;
+    try {
+      const techId = user.role === 'company' ? (acceptedApp?.technician_profile_id ?? claimedTechnician?.id) : null;
+      const conv = await conversationsAPI.createForJob(id, techId);
+      setMessageConversationId(conv.id);
+      setShowMessageModal(true);
+    } catch (err) {
+      alert(err.message || 'Failed to start conversation');
+    }
   };
 
   const handleMarkComplete = async () => {
@@ -619,13 +634,21 @@ const JobDetail = () => {
               <p className="text-sm text-gray-600 mb-4">
                 First come, first served. Click below to claim this job—it will be yours immediately.
               </p>
-              <button
-                onClick={handleClaimJob}
-                disabled={claiming}
-                className="w-full px-4 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 font-medium"
-              >
-                {claiming ? 'Claiming...' : 'Claim Job'}
-              </button>
+              <div className="space-y-3">
+                <button
+                  onClick={handleClaimJob}
+                  disabled={claiming}
+                  className="w-full px-4 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 font-medium"
+                >
+                  {claiming ? 'Claiming...' : 'Claim Job'}
+                </button>
+                <button
+                  onClick={handleMessageCompany}
+                  className="w-full px-4 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
+                >
+                  Message Company
+                </button>
+              </div>
             </div>
           )}
 
@@ -635,12 +658,31 @@ const JobDetail = () => {
               <p className="text-sm text-gray-600 mb-4">
                 You claimed this job. When you finish the work, mark it complete below—or the company can mark it.
               </p>
+              <div className="space-y-3">
+                <button
+                  onClick={handleMessageCompany}
+                  className="w-full px-4 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
+                >
+                  Message Company
+                </button>
+                <button
+                  onClick={handleMarkComplete}
+                  disabled={markingComplete}
+                  className="w-full px-4 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 font-medium"
+                >
+                  {markingComplete ? 'Marking...' : 'Mark Job Complete'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {currentUser?.role === 'technician' && (job.status === 'filled' || job.status === 'finished') && isJobClaimedByMe() && (
+            <div className="bg-white border border-gray-200 rounded-lg p-6 sticky top-6">
               <button
-                onClick={handleMarkComplete}
-                disabled={markingComplete}
-                className="w-full px-4 py-3 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 font-medium"
+                onClick={handleMessageCompany}
+                className="w-full px-4 py-3 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
               >
-                {markingComplete ? 'Marking...' : 'Mark Job Complete'}
+                Message Company
               </button>
             </div>
           )}
@@ -666,6 +708,11 @@ const JobDetail = () => {
             <div className="bg-white border border-gray-200 rounded-lg p-6">
               <h3 className="text-xl font-semibold text-gray-900 mb-4">Company Actions</h3>
               <div className="space-y-3">
+                {(job.status === 'reserved' || job.status === 'filled' || job.status === 'finished') && claimedTechnician && (
+                  <button onClick={handleMessageCompany} className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                    Message Technician
+                  </button>
+                )}
                 <button onClick={openEditModal} className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
                   Edit Job
                 </button>
@@ -720,6 +767,13 @@ const JobDetail = () => {
         jobId={job?.id}
         amountCents={job?.company_charge_cents ?? job?.price_cents ?? 0}
         onSuccess={handleAcceptSuccess}
+      />
+      <MessageModal
+        isOpen={showMessageModal}
+        onClose={() => { setShowMessageModal(false); setMessageConversationId(null); }}
+        conversationId={messageConversationId}
+        jobTitle={job?.title}
+        currentUserRole={user?.role}
       />
       {/* View Claimed By Modal */}
       <Modal isOpen={showClaimedModal} onRequestClose={closeClaimedModal} ariaHideApp={false} className="fixed inset-0 flex items-center justify-center z-50">

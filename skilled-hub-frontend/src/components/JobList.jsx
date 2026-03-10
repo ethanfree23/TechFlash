@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { jobsAPI, profilesAPI, ratingsAPI } from '../api/api';
 import { auth } from '../auth';
 
@@ -14,12 +14,14 @@ const haversineMiles = (lat1, lon1, lat2, lon2) => {
 };
 
 const JobList = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const statusFromUrl = searchParams.get('status') || '';
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filters, setFilters] = useState({
     location: '',
-    status: '',
+    status: statusFromUrl,
     keyword: ''
   });
   const [sortBy, setSortBy] = useState('soonest_to_start');
@@ -36,6 +38,11 @@ const JobList = () => {
   const [reviewedJobIds, setReviewedJobIds] = useState(new Set());
 
   const user = auth.getUser();
+
+  useEffect(() => {
+    const status = searchParams.get('status') || '';
+    setFilters(prev => ({ ...prev, status }));
+  }, [searchParams]);
 
   useEffect(() => {
     fetchJobs();
@@ -184,6 +191,7 @@ const JobList = () => {
       keyword: ''
     });
     setSearchInput('');
+    setSearchParams({});
   };
 
   const sortedJobs = sortJobs(jobs);
@@ -232,8 +240,9 @@ const JobList = () => {
   const getStatusBadge = (status) => {
     const statusMap = {
       'open': { label: 'Open', className: 'bg-green-100 text-green-800' },
-      'closed': { label: 'Closed', className: 'bg-red-100 text-red-800' },
-      'reserved': { label: 'Reserved', className: 'bg-yellow-100 text-yellow-800' }
+      'reserved': { label: 'Reserved', className: 'bg-yellow-100 text-yellow-800' },
+      'filled': { label: 'Filled', className: 'bg-yellow-200 text-yellow-800' },
+      'finished': { label: 'Completed', className: 'bg-green-200 text-green-800' }
     };
 
     const statusInfo = statusMap[status] || { label: status, className: 'bg-gray-100 text-gray-800' };
@@ -291,14 +300,32 @@ const JobList = () => {
           <select
             name="status"
             value={filters.status}
-            onChange={handleFilterChange}
+            onChange={(e) => {
+              const status = e.target.value;
+              setFilters(prev => ({ ...prev, status }));
+              setSearchParams(prev => {
+                const next = new URLSearchParams(prev);
+                if (status) next.set('status', status);
+                else next.delete('status');
+                return next;
+              });
+            }}
             className="px-4 py-3 border-2 border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           >
-            <option value="">All Statuses</option>
+            <option value="">All</option>
             <option value="open">Open</option>
-            <option value="reserved">Reserved</option>
+            {auth.isCompany() && (
+              <>
+                <option value="current">Current</option>
+                <option value="reserved">Reserved</option>
+                <option value="completed">Completed</option>
+              </>
+            )}
             {auth.isTechnician() && (
-              <option value="completed">Completed</option>
+              <>
+                <option value="reserved">Reserved</option>
+                <option value="completed">Completed</option>
+              </>
             )}
           </select>
           {auth.isTechnician() && (

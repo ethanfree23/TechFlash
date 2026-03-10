@@ -9,6 +9,7 @@ import EditJob from './pages/EditJob';
 import TechnicianProfilePage from './pages/TechnicianProfilePage';
 import CompanyProfilePage from './pages/CompanyProfilePage';
 import SettingsPage from './pages/SettingsPage';
+import MessagesPage from './pages/MessagesPage';
 import { auth } from './auth';
 
 // Protected Route component
@@ -153,6 +154,15 @@ function App() {
             element={
               <ProtectedRoute isAuthenticated={isAuthenticated}>
                 <SettingsPage user={user} onLogout={handleLogout} />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/messages"
+            element={
+              <ProtectedRoute isAuthenticated={isAuthenticated}>
+                <MessagesPage user={user} onLogout={handleLogout} />
               </ProtectedRoute>
             }
           />

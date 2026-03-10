@@ -18,6 +18,7 @@ module Api
       def create
         user = User.new(user_params)
         if user.save
+          UserMailer.welcome_email(user).deliver_later
           token = JWT.encode({ user_id: user.id }, Rails.application.secret_key_base)
           render json: { token: token, user: UserSerializer.new(user).as_json }, status: :created
         else

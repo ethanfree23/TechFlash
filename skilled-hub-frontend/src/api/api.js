@@ -210,6 +210,29 @@ export const profilesAPI = {
   },
 };
 
+// Conversations and Messages
+export const conversationsAPI = {
+  getAll: () => apiRequest('/conversations'),
+  getById: (id) => apiRequest(`/conversations/${id}`),
+  createForJob: (jobId, technicianProfileId) => {
+    const body = technicianProfileId ? { technician_profile_id: technicianProfileId } : {};
+    return apiRequest(`/jobs/${jobId}/conversations`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    });
+  },
+};
+
+export const messagesAPI = {
+  getByConversation: (conversationId) =>
+    apiRequest(`/conversations/${conversationId}/messages`),
+  create: (conversationId, content) =>
+    apiRequest(`/conversations/${conversationId}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ content }),
+    }),
+};
+
 // Ratings endpoints (reviews after job completion)
 export const ratingsAPI = {
   getAll: (filters = {}) => {

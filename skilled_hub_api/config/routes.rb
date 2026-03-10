@@ -31,8 +31,10 @@ Rails.application.routes.draw do
           patch :deny
         end
       end
-      resources :conversations
-      resources :messages
+      resources :conversations, only: [:index, :show] do
+        resources :messages, only: [:index, :create]
+      end
+      post 'jobs/:job_id/conversations', to: 'conversations#create', as: :job_conversations
       resources :documents
       resources :ratings do
         collection do

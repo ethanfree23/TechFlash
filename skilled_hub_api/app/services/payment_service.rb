@@ -119,6 +119,7 @@ class PaymentService
         stripe_transfer_id: transfer.id,
         released_at: Time.current
       )
+      UserMailer.payment_received_email(job, payment.amount_cents).deliver_later
       { success: true, payment: payment }
     rescue Stripe::StripeError => e
       { error: e.message }

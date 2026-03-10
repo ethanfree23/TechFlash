@@ -1,19 +1,61 @@
 module Api
   module V1
     class MessagesController < ApplicationController
-      before_action :authenticate_user, only: [:index, :show]
-      
+      before_action :authenticate_user
+      before_action :set_conversation
+      before_action :authorize_participant
+
       def index
-        messages = Message.all
+        messages = @conversation.messages.order(created_at: :asc)
         render json: messages, each_serializer: MessageSerializer, status: :ok
       end
-      
-      def show
-        message = Message.find(params[:id])
-        render json: message, serializer: MessageSerializer, status: :ok
+
+      def create
+        message = @conversation.messages.build(message_params)
+        message.sender = current_user_profile
+        if message.save
+          UserMailer.new_message(message).deliver_later
+          render json: message, serializer: MessageSerializer, status: :created
+        else
+          render json: { errors: message.errors.full_messages }, status: :unprocessable_entity
+        end
+      end
+
+      private
+
+      def set_conversation
+        @conversation = Conversation.find(params[:conversation_id])
       rescue ActiveRecord::RecordNotFound
-        render json: { error: "Message not found" }, status: :not_found
+        render json: { error: 'Conversation not found' }, status: :not_found
+      end
+
+      def authorize_participant
+        unless conversation_participant?
+          return render json: { error: 'Access denied' }, status: :forbidden
+        end
+      end
+
+      def conversation_participant?
+        if @current_user.technician?
+          profile = @current_user.technician_profile
+          profile && @conversation.technician_profile_id == profile.id
+        else
+          profile = @current_user.company_profile
+          profile && @conversation.company_profile_id == profile.id
+        end
+      end
+
+      def current_user_profile
+        if @current_user.technician?
+          @current_user.technician_profile
+        else
+          @current_user.company_profile
+        end
+      end
+
+      def message_params
+        params.permit(:content)
       end
     end
   end
-end 
+end

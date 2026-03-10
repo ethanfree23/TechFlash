@@ -1,0 +1,8 @@
+<h1>Your Job Was Claimed</h1>
+<p>Hi,</p>
+<p>A technician has claimed your job "<strong><%= @job.title %></strong>".</p>
+<% if @technician %>
+  <p>Technician: <%= @technician.user&.email || @technician.trade_type %></p>
+<% end %>
+<p>Log in to accept them and complete the hire, or message them with any questions.</p>
+<p>— SkilledHub</p>

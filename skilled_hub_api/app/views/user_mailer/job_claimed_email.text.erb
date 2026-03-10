@@ -1,0 +1,12 @@
+Your Job Was Claimed
+
+Hi,
+
+A technician has claimed your job "<%= @job.title %>".
+<% if @technician %>
+Technician: <%= @technician.user&.email || @technician.trade_type %>
+<% end %>
+
+Log in to accept them and complete the hire, or message them with any questions.
+
+— SkilledHub

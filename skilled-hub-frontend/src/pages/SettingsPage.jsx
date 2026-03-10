@@ -154,6 +154,7 @@ const SettingsPage = ({ user, onLogout }) => {
             <nav className="flex space-x-4">
               <Link to="/dashboard" className="text-gray-600 hover:text-blue-600">Dashboard</Link>
               <Link to="/jobs" className="text-gray-600 hover:text-blue-600">Jobs</Link>
+              <Link to="/messages" className="text-gray-600 hover:text-blue-600">Messages</Link>
               <Link to="/settings" className="text-blue-600 font-medium border-b-2 border-blue-600 pb-1">Settings</Link>
             </nav>
           </div>

@@ -13,17 +13,38 @@ module Api
           company_profile = @current_user.company_profile
           jobs = company_profile ? company_profile.jobs : Job.none
         elsif @current_user&.technician?
-          # Hide filled/finished jobs from technicians
-          jobs = jobs.where.not(status: [:filled, :finished])
-          # Hide past jobs by default (scheduled_start_at in the past)
-          unless params[:include_past] == 'true'
-            jobs = jobs.where('scheduled_start_at IS NULL OR scheduled_start_at >= ?', Time.current)
+          technician_profile = @current_user.technician_profile
+          if params[:status].to_s == 'current' && technician_profile
+            # In-progress: jobs they've claimed (reserved or filled)
+            jobs = Job.joins(:job_applications)
+              .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })
+              .where(status: [:reserved, :filled])
+          elsif params[:status].to_s == 'completed' && technician_profile
+            # Completed: jobs they've done (finished)
+            jobs = Job.joins(:job_applications)
+              .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })
+              .where(status: [:finished])
+          else
+            # Browse: open and reserved (hide filled/finished)
+            jobs = jobs.where.not(status: [:filled, :finished])
+            unless params[:include_past] == 'true'
+              jobs = jobs.where('scheduled_start_at IS NULL OR scheduled_start_at >= ?', Time.current)
+            end
           end
         end
 
         # Apply filters
         jobs = jobs.where(location: params[:location]) if params[:location].present?
-        jobs = jobs.where(status: params[:status]) if params[:status].present?
+        if params[:status].present? && !(@current_user&.technician? && %w[current completed].include?(params[:status].to_s))
+          case params[:status].to_s
+          when 'current'
+            jobs = jobs.where(status: [:reserved, :filled])
+          when 'completed'
+            jobs = jobs.where(status: [:finished])
+          else
+            jobs = jobs.where(status: params[:status])
+          end
+        end
         
         # Apply keyword search in title and description
         if params[:keyword].present?
@@ -60,6 +81,7 @@ module Api
       def create
         job = Job.new(job_params)
         if job.save
+          UserMailer.job_posted_email(job).deliver_later
           render json: job, serializer: JobSerializer, status: :created
         else
           render json: { errors: job.errors.full_messages }, status: :unprocessable_entity
@@ -92,7 +114,7 @@ module Api
         end
 
         company_profile = @current_user.company_profile
-        return render json: { error: 'Company profile not found' }, status: :not_found unless company_profile
+        company_profile ||= CompanyProfile.create!(user_id: @current_user.id)
 
         jobs = company_profile.jobs.includes(:job_applications)
 
@@ -131,6 +153,10 @@ module Api
         end
 
         job.update!(status: :filled)
+        UserMailer.job_accepted_email(job).deliver_later
+        if job.job_amount_cents > 0
+          UserMailer.payment_confirmation_email(job, job.company_charge_cents).deliver_later
+        end
         render json: job, serializer: JobSerializer, status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: 'Job not found' }, status: :not_found
@@ -246,6 +272,7 @@ module Api
           status: :accepted
         )
         job.update!(status: :reserved)
+        UserMailer.job_claimed_email(job).deliver_later
 
         render json: job, serializer: JobSerializer, status: :ok
       rescue ActiveRecord::RecordNotFound

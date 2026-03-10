@@ -105,6 +105,7 @@ const DashboardHeader = ({ user, onLogout }) => (
         <nav className="flex space-x-4">
           <Link to="/dashboard" className="text-blue-600 font-medium border-b-2 border-blue-600 pb-1">Dashboard</Link>
           <Link to="/jobs" className="text-gray-600 hover:text-blue-600">Jobs</Link>
+          <Link to="/messages" className="text-gray-600 hover:text-blue-600">Messages</Link>
           <Link to="/settings" className="text-gray-600 hover:text-blue-600">Profile & Settings</Link>
         </nav>
       </div>
@@ -154,27 +155,36 @@ const CompanyDashboardContent = ({ jobs, onFinish, onRefresh, navigate, user }) 
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <div className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4">
+        <Link
+          to="/jobs"
+          className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4 hover:shadow-md transition-shadow cursor-pointer"
+        >
           <FaBriefcase className="text-2xl text-blue-600" />
           <div>
             <div className="text-gray-500 text-sm font-medium">Total Jobs</div>
             <div className="text-2xl font-bold text-gray-800">{allJobs.length}</div>
           </div>
-        </div>
-        <div className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4">
+        </Link>
+        <Link
+          to="/jobs?status=current"
+          className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4 hover:shadow-md transition-shadow cursor-pointer"
+        >
           <FaWrench className="text-2xl text-yellow-600" />
           <div>
             <div className="text-gray-500 text-sm font-medium">Active</div>
             <div className="text-2xl font-bold text-gray-800">{activeCount}</div>
           </div>
-        </div>
-        <div className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4">
+        </Link>
+        <Link
+          to="/jobs?status=completed"
+          className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4 hover:shadow-md transition-shadow cursor-pointer"
+        >
           <FaCheckSquare className="text-2xl text-green-600" />
           <div>
             <div className="text-gray-500 text-sm font-medium">Completed</div>
             <div className="text-2xl font-bold text-gray-800">{completedCount}</div>
           </div>
-        </div>
+        </Link>
         {companyProfileId != null && (
           <div className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4">
             <div className="text-2xl">★</div>
@@ -259,20 +269,26 @@ const TechnicianDashboardContent = ({ jobs, navigate, user }) => {
   return (
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
-        <div className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4">
+        <Link
+          to="/jobs?status=current"
+          className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4 hover:shadow-md transition-shadow cursor-pointer"
+        >
           <FaWrench className="text-2xl text-yellow-600" />
           <div>
             <div className="text-gray-500 text-sm font-medium">In Progress</div>
             <div className="text-2xl font-bold text-gray-800">{inProgress.length}</div>
           </div>
-        </div>
-        <div className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4">
+        </Link>
+        <Link
+          to="/jobs?status=completed"
+          className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4 hover:shadow-md transition-shadow cursor-pointer"
+        >
           <FaCheckSquare className="text-2xl text-green-600" />
           <div>
             <div className="text-gray-500 text-sm font-medium">Completed</div>
             <div className="text-2xl font-bold text-gray-800">{completed.length}</div>
           </div>
-        </div>
+        </Link>
       </div>
 
       <div className="space-y-8">
