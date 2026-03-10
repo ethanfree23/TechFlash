@@ -6,12 +6,16 @@ module Api
       
       def index
         jobs = Job.all
-        
-        # Hide filled/finished jobs from technicians
-        if @current_user&.technician?
+
+        # Companies only see their own jobs; technicians see all open jobs
+        if @current_user&.company?
+          company_profile = @current_user.company_profile
+          jobs = company_profile ? company_profile.jobs : Job.none
+        elsif @current_user&.technician?
+          # Hide filled/finished jobs from technicians
           jobs = jobs.where.not(status: [:filled, :finished])
         end
-        
+
         # Apply filters
         jobs = jobs.where(location: params[:location]) if params[:location].present?
         jobs = jobs.where(status: params[:status]) if params[:status].present?
@@ -22,12 +26,15 @@ module Api
                            "%#{params[:keyword]}%", "%#{params[:keyword]}%")
         end
         
-        render json: jobs, each_serializer: JobSerializer, include: [:company_profile, :job_applications], status: :ok
+        render json: jobs, each_serializer: JobSerializer, include: [:company_profile, { job_applications: { technician_profile: :user } }], status: :ok
       end
       
       def show
         job = Job.find(params[:id])
-        render json: job, serializer: JobSerializer, include: [:company_profile, :job_applications], status: :ok
+        if @current_user&.company? && job.company_profile.user_id != @current_user.id
+          return render json: { error: "You can only view your own jobs" }, status: :forbidden
+        end
+        render json: job, serializer: JobSerializer, include: [:company_profile, { job_applications: { technician_profile: :user } }], status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Job not found" }, status: :not_found
       end

@@ -11,6 +11,10 @@ module Api
       
       def show
         company_profile = CompanyProfile.find(params[:id])
+        # Companies can only view their own profile (for "My Reviews"); technicians can view any company
+        if @current_user&.company? && company_profile.user_id != @current_user.id
+          return render json: { error: "You can only view your own company profile" }, status: :forbidden
+        end
         render json: company_profile, serializer: CompanyProfileDetailSerializer, status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Company profile not found" }, status: :not_found

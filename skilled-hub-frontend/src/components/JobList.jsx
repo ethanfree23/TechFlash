@@ -256,7 +256,9 @@ const JobList = () => {
       )}
 
       <div className="mb-12">
-        <h2 className="text-3xl font-bold text-gray-900 mb-10">Available Jobs</h2>
+        <h2 className="text-3xl font-bold text-gray-900 mb-10">
+          {auth.isCompany() ? 'My Jobs' : 'Available Jobs'}
+        </h2>
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
           <input

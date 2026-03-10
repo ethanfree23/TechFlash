@@ -1,21 +1,29 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import { profilesAPI } from '../api/api';
 
 const CompanyProfilePage = ({ user, onLogout }) => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (id) {
-      profilesAPI.getCompanyById(id)
-        .then(setProfile)
-        .catch(() => setError('Failed to load company profile'))
-        .finally(() => setLoading(false));
-    }
-  }, [id]);
+    if (!id) return;
+    profilesAPI.getCompanyById(id)
+      .then(setProfile)
+      .catch((err) => {
+        // Backend returns 403 when company tries to view another company's profile
+        const msg = (err?.message || '').toLowerCase();
+        if (msg.includes('own company') || msg.includes('forbidden') || msg.includes('403')) {
+          navigate('/dashboard', { replace: true });
+        } else {
+          setError('Failed to load company profile');
+        }
+      })
+      .finally(() => setLoading(false));
+  }, [id, navigate]);
 
   if (loading) {
     return (

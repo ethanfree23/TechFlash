@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { jobsAPI, ratingsAPI } from '../api/api';
+import { jobsAPI, ratingsAPI, profilesAPI } from '../api/api';
 import { FaBriefcase, FaCheckSquare, FaWrench } from 'react-icons/fa';
 
 const statusLabel = (status) => {
@@ -80,7 +80,7 @@ const Dashboard = ({ user, onLogout }) => {
       <main className="py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {user?.role === 'company' && (
-            <CompanyDashboardContent jobs={jobs} onFinish={handleFinish} onRefresh={fetchDashboard} navigate={navigate} />
+            <CompanyDashboardContent jobs={jobs} onFinish={handleFinish} onRefresh={fetchDashboard} navigate={navigate} user={user} />
           )}
           {user?.role === 'technician' && (
             <TechnicianDashboardContent jobs={jobs} navigate={navigate} user={user} />
@@ -123,7 +123,7 @@ const DashboardHeader = ({ user, onLogout }) => (
   </header>
 );
 
-const CompanyDashboardContent = ({ jobs, onFinish, onRefresh, navigate }) => {
+const CompanyDashboardContent = ({ jobs, onFinish, onRefresh, navigate, user }) => {
   const allJobs = [
     ...(jobs?.requested || []),
     ...(jobs?.unrequested || []),
@@ -131,6 +131,22 @@ const CompanyDashboardContent = ({ jobs, onFinish, onRefresh, navigate }) => {
   ];
   const completedCount = (jobs?.expired || []).length;
   const activeCount = (jobs?.requested || []).length + (jobs?.unrequested || []).length;
+  const [companyProfileId, setCompanyProfileId] = useState(null);
+  const [reviewsCount, setReviewsCount] = useState(0);
+
+  useEffect(() => {
+    if (user?.role === 'company') {
+      profilesAPI.getCompanyProfile()
+        .then((p) => {
+          setCompanyProfileId(p?.id);
+          return p?.id ? profilesAPI.getCompanyById(p.id) : null;
+        })
+        .then((detail) => {
+          if (detail?.ratings_received) setReviewsCount(detail.ratings_received.length);
+        })
+        .catch(() => {});
+    }
+  }, [user?.role]);
 
   return (
     <>
@@ -156,6 +172,21 @@ const CompanyDashboardContent = ({ jobs, onFinish, onRefresh, navigate }) => {
             <div className="text-2xl font-bold text-gray-800">{completedCount}</div>
           </div>
         </div>
+        {companyProfileId != null && (
+          <div className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4">
+            <div className="text-2xl">★</div>
+            <div>
+              <div className="text-gray-500 text-sm font-medium">My Reviews</div>
+              <div className="text-2xl font-bold text-gray-800">{reviewsCount}</div>
+              <button
+                onClick={() => navigate(`/companies/${companyProfileId}`)}
+                className="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
+              >
+                View all reviews →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl shadow p-6">

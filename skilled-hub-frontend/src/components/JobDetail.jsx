@@ -19,6 +19,7 @@ const JobDetail = () => {
   const [savingEdit, setSavingEdit] = useState(false);
   const [claimedBy, setClaimedBy] = useState(null);
   const [loadingClaimed, setLoadingClaimed] = useState(false);
+  const [claimedTechnicianData, setClaimedTechnicianData] = useState(null);
   const [technicianProfileId, setTechnicianProfileId] = useState(null);
   const [companyProfileId, setCompanyProfileId] = useState(null);
   const [ratings, setRatings] = useState([]);
@@ -121,6 +122,21 @@ const JobDetail = () => {
     }
   }, [showReviewForm, user, job?.status]);
 
+  useEffect(() => {
+    const accepted = job?.job_applications?.find(app => app.status === 'accepted' || app.status === 1);
+    const techFromJob = accepted?.technician_profile;
+    const techId = accepted?.technician_profile_id ?? techFromJob?.id;
+    if (techFromJob?.user != null) {
+      setClaimedTechnicianData(techFromJob);
+    } else if (techId && (job?.status === 'reserved' || job?.status === 'finished' || job?.status === 'filled')) {
+      profilesAPI.getTechnicianById(techId)
+        .then((t) => setClaimedTechnicianData(t))
+        .catch(() => setClaimedTechnicianData(null));
+    } else {
+      setClaimedTechnicianData(null);
+    }
+  }, [job?.job_applications, job?.status]);
+
   const fetchJobDetails = async () => {
     try {
       setLoading(true);
@@ -186,8 +202,16 @@ const JobDetail = () => {
     setLoadingClaimed(true);
     try {
       const apps = job?.job_applications || [];
-      const accepted = apps.find(app => app.status === 'accepted');
-      setClaimedBy(accepted?.technician_profile || null);
+      const accepted = apps.find(app => app.status === 'accepted' || app.status === 1);
+      let tech = accepted?.technician_profile || null;
+      if (!tech && accepted?.technician_profile_id) {
+        try {
+          tech = await profilesAPI.getTechnicianById(accepted.technician_profile_id);
+        } catch {
+          tech = null;
+        }
+      }
+      setClaimedBy(tech);
     } catch {
       setClaimedBy(null);
     } finally {
@@ -295,6 +319,9 @@ const JobDetail = () => {
   }
 
   const currentUser = user || auth.getUser();
+  const acceptedApp = job?.job_applications?.find(app => app.status === 'accepted' || app.status === 1);
+  const claimedTechnician = claimedTechnicianData || acceptedApp?.technician_profile;
+  const isCompanyViewingOwnClaimedJob = currentUser?.role === 'company' && job?.company_profile_id === companyProfileId && (job?.status === 'reserved' || job?.status === 'finished' || job?.status === 'filled') && (claimedTechnician || acceptedApp?.technician_profile_id);
 
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -340,21 +367,45 @@ const JobDetail = () => {
                   <path fillRule="evenodd" d="M4 4a2 2 0 00-2 2v4a2 2 0 002 2V6h10a2 2 0 00-2-2H4zm2 6a2 2 0 012-2h8a2 2 0 012 2v4a2 2 0 01-2 2H8a2 2 0 01-2-2v-4zm6 4a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
                 </svg>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-gray-500">Company</p>
-                  <p className="font-medium flex items-center gap-2">
-                    {job.company_profile?.company_name || 'Company'}
-                    {job.company_profile?.average_rating != null && (
-                      <span className="inline-flex items-center text-amber-600 text-sm">
-                        ★ {Number(job.company_profile.average_rating).toFixed(1)}
-                      </span>
-                    )}
-                  </p>
-                  <Link
-                    to={`/companies/${job.company_profile_id ?? job.company_profile?.id ?? ''}`}
-                    className="inline-block mt-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors"
-                  >
-                    View Company Profile
-                  </Link>
+                  {isCompanyViewingOwnClaimedJob && claimedTechnician ? (
+                    <>
+                      <p className="text-sm text-gray-500">Technician</p>
+                      <p className="font-medium flex items-center gap-2">
+                        {claimedTechnician.user?.email || claimedTechnician.trade_type || 'Technician'}
+                        {claimedTechnician.average_rating != null && (
+                          <span className="inline-flex items-center text-amber-600 text-sm">
+                            ★ {Number(claimedTechnician.average_rating).toFixed(1)}
+                          </span>
+                        )}
+                      </p>
+                      <Link
+                        to={`/technicians/${claimedTechnician.id}`}
+                        className="inline-block mt-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors"
+                      >
+                        View Technician Profile
+                      </Link>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm text-gray-500">Company</p>
+                      <p className="font-medium flex items-center gap-2">
+                        {job.company_profile?.company_name || 'Company'}
+                        {job.company_profile?.average_rating != null && (
+                          <span className="inline-flex items-center text-amber-600 text-sm">
+                            ★ {Number(job.company_profile.average_rating).toFixed(1)}
+                          </span>
+                        )}
+                      </p>
+                      {currentUser?.role === 'technician' && (
+                        <Link
+                          to={`/companies/${job.company_profile_id ?? job.company_profile?.id ?? ''}`}
+                          className="inline-block mt-2 px-4 py-2 bg-blue-600 text-white text-sm font-semibold rounded-md hover:bg-blue-700 transition-colors"
+                        >
+                          View Company Profile
+                        </Link>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
               

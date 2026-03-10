@@ -2,7 +2,7 @@ module Api
   module V1
     class TechniciansController < ApplicationController
       before_action :authenticate_user
-      before_action :require_technician, only: [:profile, :update_profile]
+      before_action :require_technician, only: [:profile]
       
       def index
         technicians = TechnicianProfile.all
@@ -11,7 +11,7 @@ module Api
       
       def show
         technician = TechnicianProfile.find(params[:id])
-        render json: technician, serializer: TechnicianProfileDetailSerializer, status: :ok
+        render json: technician, serializer: TechnicianProfileDetailSerializer, include: [:user, :ratings_received], status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Technician not found" }, status: :not_found
       end
