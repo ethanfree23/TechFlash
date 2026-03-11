@@ -316,6 +316,7 @@ const JobList = () => {
             <option value="open">Open</option>
             {auth.isCompany() && (
               <>
+                <option value="active">Active</option>
                 <option value="current">Current</option>
                 <option value="reserved">Reserved</option>
                 <option value="completed">Completed</option>

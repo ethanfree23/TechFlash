@@ -42,21 +42,27 @@ const apiRequest = async (endpoint, options = {}) => {
 
 // Authentication endpoints
 export const authAPI = {
-  login: (email, password) => 
+  login: (email, password) =>
     apiRequest('/sessions', {
       method: 'POST',
       body: JSON.stringify({ email, password }),
     }),
-  
-  register: (userData) => 
+
+  register: (userData) =>
     apiRequest('/users', {
       method: 'POST',
       body: JSON.stringify(userData),
     }),
-  
-  logout: () => 
+
+  logout: () =>
     apiRequest('/auth/logout', {
       method: 'DELETE',
+    }),
+
+  updateMe: (data) =>
+    apiRequest('/users/me', {
+      method: 'PATCH',
+      body: JSON.stringify(data),
     }),
 };
 

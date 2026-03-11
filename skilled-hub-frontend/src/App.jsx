@@ -59,6 +59,10 @@ function App() {
     setUser(null);
   };
 
+  const handleUserUpdate = (updatedUser) => {
+    setUser(updatedUser);
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -153,7 +157,7 @@ function App() {
             path="/settings"
             element={
               <ProtectedRoute isAuthenticated={isAuthenticated}>
-                <SettingsPage user={user} onLogout={handleLogout} />
+                <SettingsPage user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
               </ProtectedRoute>
             }
           />

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { jobsAPI, ratingsAPI, profilesAPI } from '../api/api';
-import { FaBriefcase, FaCheckSquare, FaWrench } from 'react-icons/fa';
+import { jobsAPI, ratingsAPI } from '../api/api';
+import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen } from 'react-icons/fa';
 
 const statusLabel = (status) => {
   const map = {
@@ -133,24 +133,9 @@ const CompanyDashboardContent = ({ jobs, onFinish, onRefresh, navigate, user }) 
     ...(jobs?.unrequested || []),
     ...(jobs?.expired || []),
   ];
-  const completedCount = (jobs?.expired || []).length;
-  const activeCount = (jobs?.requested || []).length + (jobs?.unrequested || []).length;
-  const [companyProfileId, setCompanyProfileId] = useState(null);
-  const [reviewsCount, setReviewsCount] = useState(0);
-
-  useEffect(() => {
-    if (user?.role === 'company') {
-      profilesAPI.getCompanyProfile()
-        .then((p) => {
-          setCompanyProfileId(p?.id);
-          return p?.id ? profilesAPI.getCompanyById(p.id) : null;
-        })
-        .then((detail) => {
-          if (detail?.ratings_received) setReviewsCount(detail.ratings_received.length);
-        })
-        .catch(() => {});
-    }
-  }, [user?.role]);
+  const openCount = (jobs?.unrequested || []).length;
+  const activeCount = (jobs?.requested || []).length + (jobs?.expired || []).filter(j => j.status === 'filled').length;
+  const completedCount = (jobs?.expired || []).filter(j => j.status === 'finished').length;
 
   return (
     <>
@@ -166,13 +151,23 @@ const CompanyDashboardContent = ({ jobs, onFinish, onRefresh, navigate, user }) 
           </div>
         </Link>
         <Link
-          to="/jobs?status=current"
+          to="/jobs?status=active"
           className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4 hover:shadow-md transition-shadow cursor-pointer"
         >
           <FaWrench className="text-2xl text-yellow-600" />
           <div>
             <div className="text-gray-500 text-sm font-medium">Active</div>
             <div className="text-2xl font-bold text-gray-800">{activeCount}</div>
+          </div>
+        </Link>
+        <Link
+          to="/jobs?status=open"
+          className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4 hover:shadow-md transition-shadow cursor-pointer"
+        >
+          <FaFolderOpen className="text-2xl text-blue-500" />
+          <div>
+            <div className="text-gray-500 text-sm font-medium">Open</div>
+            <div className="text-2xl font-bold text-gray-800">{openCount}</div>
           </div>
         </Link>
         <Link
@@ -185,21 +180,6 @@ const CompanyDashboardContent = ({ jobs, onFinish, onRefresh, navigate, user }) 
             <div className="text-2xl font-bold text-gray-800">{completedCount}</div>
           </div>
         </Link>
-        {companyProfileId != null && (
-          <div className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4">
-            <div className="text-2xl">★</div>
-            <div>
-              <div className="text-gray-500 text-sm font-medium">My Reviews</div>
-              <div className="text-2xl font-bold text-gray-800">{reviewsCount}</div>
-              <button
-                onClick={() => navigate(`/companies/${companyProfileId}`)}
-                className="mt-2 text-sm text-blue-600 hover:text-blue-800 font-medium"
-              >
-                View all reviews →
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       <div className="bg-white rounded-2xl shadow p-6">

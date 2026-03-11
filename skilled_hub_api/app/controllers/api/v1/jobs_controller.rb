@@ -37,7 +37,11 @@ module Api
         jobs = jobs.where(location: params[:location]) if params[:location].present?
         if params[:status].present? && !(@current_user&.technician? && %w[current completed].include?(params[:status].to_s))
           case params[:status].to_s
+          when 'active'
+            # Active = claimed and in progress (reserved + filled)
+            jobs = jobs.where(status: [:reserved, :filled])
           when 'current'
+            # Current = in progress (reserved + filled)
             jobs = jobs.where(status: [:reserved, :filled])
           when 'completed'
             jobs = jobs.where(status: [:finished])

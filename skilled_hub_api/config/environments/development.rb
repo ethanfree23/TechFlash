@@ -35,8 +35,20 @@ Rails.application.configure do
 
   # Don't care if the mailer can't send.
   config.action_mailer.raise_delivery_errors = false
-
   config.action_mailer.perform_caching = false
+
+  # SMTP: set SMTP_ADDRESS, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD in .env (see EMAIL_SETUP.md)
+  if ENV['SMTP_ADDRESS'].present?
+    config.action_mailer.delivery_method = :smtp
+    config.action_mailer.smtp_settings = {
+      address:              ENV['SMTP_ADDRESS'],
+      port:                 (ENV['SMTP_PORT'] || 587).to_i,
+      user_name:            ENV['SMTP_USERNAME'],
+      password:             ENV['SMTP_PASSWORD'],
+      authentication:       :plain,
+      enable_starttls_auto:  true
+    }
+  end
 
   # Print deprecation notices to the Rails logger.
   config.active_support.deprecation = :log

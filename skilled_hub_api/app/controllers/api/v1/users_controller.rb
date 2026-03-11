@@ -1,7 +1,15 @@
 module Api
   module V1
     class UsersController < ApplicationController
-      before_action :authenticate_user, only: [:show]
+      before_action :authenticate_user, only: [:show, :update_me]
+
+      def update_me
+        if @current_user.update(update_me_params)
+          render json: { user: UserSerializer.new(@current_user).as_json }, status: :ok
+        else
+          render json: { errors: @current_user.errors.full_messages }, status: :unprocessable_entity
+        end
+      end
       
       def index
         users = User.all
@@ -30,6 +38,12 @@ module Api
 
       def user_params
         params.permit(:email, :password, :password_confirmation, :role)
+      end
+
+      def update_me_params
+        p = params.permit(:email, :password, :password_confirmation).to_h
+        p.except!(:password, :password_confirmation) if p[:password].blank?
+        p
       end
     end
   end

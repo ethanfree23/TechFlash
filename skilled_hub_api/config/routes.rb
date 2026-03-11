@@ -10,6 +10,7 @@ Rails.application.routes.draw do
       post "auth/register", to: "users#create"
       get 'technicians/profile', to: 'technicians#profile'
       get 'company_profiles/profile', to: 'company_profiles#profile'
+      patch 'users/me', to: 'users#update_me'
       resources :users
       resources :jobs do
         collection do

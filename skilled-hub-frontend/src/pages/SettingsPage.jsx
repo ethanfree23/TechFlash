@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { profilesAPI, settingsAPI } from '../api/api';
+import { profilesAPI, settingsAPI, authAPI } from '../api/api';
+import { auth } from '../auth';
 import CardPaymentForm from '../components/CardPaymentForm';
 import CountryStateSelect from '../components/CountryStateSelect';
 
-const SettingsPage = ({ user, onLogout }) => {
+const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -12,6 +13,11 @@ const SettingsPage = ({ user, onLogout }) => {
   const [form, setForm] = useState({});
   const [paymentError, setPaymentError] = useState(null);
   const [paymentSuccess, setPaymentSuccess] = useState(null);
+  const [accountEmail, setAccountEmail] = useState('');
+  const [accountPassword, setAccountPassword] = useState('');
+  const [accountPasswordConfirm, setAccountPasswordConfirm] = useState('');
+  const [savingAccount, setSavingAccount] = useState(false);
+  const [accountError, setAccountError] = useState(null);
   const publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder';
 
   const isCompany = user?.role === 'company';
@@ -20,6 +26,10 @@ const SettingsPage = ({ user, onLogout }) => {
   useEffect(() => {
     fetchProfile();
   }, [user?.role]);
+
+  useEffect(() => {
+    setAccountEmail(user?.email || auth.getUser()?.email || '');
+  }, [user?.email]);
 
   const fetchProfile = async () => {
     setLoading(true);
@@ -84,6 +94,35 @@ const SettingsPage = ({ user, onLogout }) => {
       setError(err.message || 'Failed to save profile');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleAccountSubmit = async (e) => {
+    e.preventDefault();
+    const email = accountEmail.trim();
+    if (!email) return;
+    if (accountPassword && accountPassword !== accountPasswordConfirm) {
+      setAccountError('Passwords do not match');
+      return;
+    }
+    setSavingAccount(true);
+    setAccountError(null);
+    try {
+      const payload = { email };
+      if (accountPassword) {
+        payload.password = accountPassword;
+        payload.password_confirmation = accountPasswordConfirm;
+      }
+      const res = await authAPI.updateMe(payload);
+      auth.setUser(res.user);
+      onUserUpdate?.(res.user);
+      setAccountPassword('');
+      setAccountPasswordConfirm('');
+      alert(email !== (user?.email || auth.getUser()?.email) ? 'Email updated. Use your new email to log in next time.' : 'Account updated.');
+    } catch (err) {
+      setAccountError(err.message || 'Failed to update account');
+    } finally {
+      setSavingAccount(false);
     }
   };
 
@@ -171,6 +210,51 @@ const SettingsPage = ({ user, onLogout }) => {
         {error && (
           <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>
         )}
+
+        {/* Account section - Email (username) & Password */}
+        <section className="bg-white rounded-2xl shadow p-6 mb-8 border-2 border-blue-100">
+          <h2 className="text-lg font-semibold text-gray-900 mb-2">Account</h2>
+          <p className="text-sm text-gray-600 mb-4">Your email is your username. Change it here along with your password.</p>
+          {accountError && (
+            <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{accountError}</div>
+          )}
+          <form onSubmit={handleAccountSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Email (username)</label>
+              <input
+                type="email"
+                value={accountEmail}
+                onChange={(e) => setAccountEmail(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2"
+                placeholder="you@example.com"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">New password (leave blank to keep current)</label>
+              <input
+                type="password"
+                value={accountPassword}
+                onChange={(e) => setAccountPassword(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2"
+                placeholder="••••••••"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Confirm new password</label>
+              <input
+                type="password"
+                value={accountPasswordConfirm}
+                onChange={(e) => setAccountPasswordConfirm(e.target.value)}
+                className="w-full border rounded-lg px-3 py-2"
+                placeholder="••••••••"
+              />
+            </div>
+            <button type="submit" disabled={savingAccount} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              {savingAccount ? 'Saving...' : 'Update Account'}
+            </button>
+          </form>
+        </section>
 
         {/* Profile section */}
         <section className="bg-white rounded-2xl shadow p-6 mb-8">
