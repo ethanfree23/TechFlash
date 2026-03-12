@@ -98,10 +98,9 @@ export const jobsAPI = {
       method: 'PATCH',
     }),
 
-  accept: (id, { payment_intent_id } = {}) =>
-    apiRequest(`/jobs/${id}/accept`, {
+  deny: (id) =>
+    apiRequest(`/jobs/${id}/deny`, {
       method: 'PATCH',
-      body: JSON.stringify({ payment_intent_id }),
     }),
 
   finish: (id) =>

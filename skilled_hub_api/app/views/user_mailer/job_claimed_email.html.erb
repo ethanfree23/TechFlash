@@ -1,8 +1,11 @@
 <h1>Your Job Was Claimed</h1>
 <p>Hi,</p>
-<p>A technician has claimed your job "<strong><%= @job.title %></strong>".</p>
+<p>A technician has claimed your job "<strong><%= @job.title %></strong>". The job is theirs—no action needed from you.</p>
 <% if @technician %>
   <p>Technician: <%= @technician.user&.email || @technician.trade_type %></p>
 <% end %>
-<p>Log in to accept them and complete the hire, or message them with any questions.</p>
+<% if @job.job_amount_cents.to_i > 0 %>
+  <p>Your card was charged the job amount + 5% platform fee. Funds are held until the job is complete.</p>
+<% end %>
+<p>You can message them with questions, or deny them from the job page if needed (this will reopen the job and refund any payment).</p>
 <p>— SkilledHub</p>

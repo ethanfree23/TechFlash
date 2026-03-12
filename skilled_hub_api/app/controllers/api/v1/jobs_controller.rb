@@ -14,11 +14,21 @@ module Api
           jobs = company_profile ? company_profile.jobs : Job.none
         elsif @current_user&.technician?
           technician_profile = @current_user.technician_profile
-          if params[:status].to_s == 'current' && technician_profile
-            # In-progress: jobs they've claimed (reserved or filled)
-            jobs = Job.joins(:job_applications)
+          if %w[active reserved].include?(params[:status].to_s) && technician_profile
+            # Claimed jobs (reserved or filled) - filter by start time for active vs reserved
+            base_claimed = Job.joins(:job_applications)
               .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })
               .where(status: [:reserved, :filled])
+            case params[:status].to_s
+            when 'active'
+              # Active = in progress (started)
+              jobs = base_claimed.where('scheduled_start_at IS NOT NULL AND scheduled_start_at <= ?', Time.current)
+            when 'reserved'
+              # Reserved/Claimed = claimed but not yet started
+              jobs = base_claimed.where('scheduled_start_at IS NULL OR scheduled_start_at > ?', Time.current)
+            else
+              jobs = base_claimed
+            end
           elsif params[:status].to_s == 'completed' && technician_profile
             # Completed: jobs they've done (finished)
             jobs = Job.joins(:job_applications)
@@ -35,14 +45,16 @@ module Api
 
         # Apply filters
         jobs = jobs.where(location: params[:location]) if params[:location].present?
-        if params[:status].present? && !(@current_user&.technician? && %w[current completed].include?(params[:status].to_s))
+        if params[:status].present? && !(@current_user&.technician? && %w[active reserved completed].include?(params[:status].to_s))
           case params[:status].to_s
           when 'active'
-            # Active = claimed and in progress (reserved + filled)
+            # Active = claimed and in progress (started)
             jobs = jobs.where(status: [:reserved, :filled])
-          when 'current'
-            # Current = in progress (reserved + filled)
+              .where('scheduled_start_at IS NOT NULL AND scheduled_start_at <= ?', Time.current)
+          when 'reserved'
+            # Reserved/Claimed = claimed but not yet started
             jobs = jobs.where(status: [:reserved, :filled])
+              .where('scheduled_start_at IS NULL OR scheduled_start_at > ?', Time.current)
           when 'completed'
             jobs = jobs.where(status: [:finished])
           else
@@ -83,6 +95,10 @@ module Api
       end
 
       def create
+        unless PaymentService.company_has_payment_method?(@current_user)
+          return render json: { error: 'Add a valid credit or debit card in Profile & Settings → Payment before posting a job.' }, status: :unprocessable_entity
+        end
+
         job = Job.new(job_params)
         if job.save
           UserMailer.job_posted_email(job).deliver_later
@@ -122,10 +138,10 @@ module Api
 
         jobs = company_profile.jobs.includes(:job_applications)
 
-        # claimed = technician has claimed (reserved); unclaimed = open, no claim; completed = finished/filled
-        claimed = jobs.select { |job| job.reserved? }
+        # claimed = technician has claimed (reserved or filled); unclaimed = open; completed = finished
+        claimed = jobs.select { |job| job.reserved? || job.filled? }
         unclaimed = jobs.select { |job| job.open? }
-        completed = jobs.select { |job| job.finished? || job.filled? }
+        completed = jobs.select { |job| job.finished? }
 
         render json: {
           requested: ActiveModel::Serializer::CollectionSerializer.new(claimed, serializer: JobSerializer),
@@ -134,33 +150,29 @@ module Api
         }, status: :ok
       end
 
-      def accept
+      # Company denies the claimed technician (refunds if already charged)
+      def deny
         job = Job.find(params[:id])
         unless @current_user.company? && job.company_profile.user_id == @current_user.id
           return render json: { error: 'Access denied' }, status: :forbidden
         end
-        unless job.reserved?
-          return render json: { error: 'Job must be claimed before accepting' }, status: :unprocessable_entity
+        unless job.filled?
+          return render json: { error: 'Can only deny a claimed job' }, status: :unprocessable_entity
         end
 
-        # If job has a price, require successful payment before accepting
-        if job.job_amount_cents > 0
-          payment_intent_id = params[:payment_intent_id]
-          if payment_intent_id.blank?
-            return render json: { error: 'Payment required. Call create_payment_intent first, then confirm with Stripe.' }, status: :unprocessable_entity
-          end
-
-          result = capture_payment_and_hold(job, payment_intent_id)
-          if result[:error]
-            return render json: { error: result[:error] }, status: :unprocessable_entity
-          end
+        accepted_app = job.job_applications.find_by(status: :accepted)
+        unless accepted_app
+          return render json: { error: 'No technician to deny' }, status: :unprocessable_entity
         end
 
-        job.update!(status: :filled)
-        UserMailer.job_accepted_email(job).deliver_later
-        if job.job_amount_cents > 0
-          UserMailer.payment_confirmation_email(job, job.company_charge_cents).deliver_later
+        # Refund if we charged the company
+        if job.payments.held.any?
+          result = PaymentService.refund_payment(job)
+          return render json: { error: result[:error] }, status: :unprocessable_entity if result[:error]
         end
+
+        accepted_app.update!(status: :rejected)
+        job.update!(status: :open)
         render json: job, serializer: JobSerializer, status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: 'Job not found' }, status: :not_found
@@ -171,7 +183,7 @@ module Api
         can_finish = false
         if @current_user.company? && job.company_profile.user_id == @current_user.id
           can_finish = true
-        elsif @current_user.technician? && job.reserved?
+        elsif @current_user.technician? && (job.reserved? || job.filled?)
           accepted_app = job.job_applications.find_by(status: :accepted)
           can_finish = accepted_app&.technician_profile&.user_id == @current_user.id
         end
@@ -191,7 +203,7 @@ module Api
         unless @current_user.company? && job.company_profile.user_id == @current_user.id
           return render json: { error: 'Only the company can extend a job' }, status: :forbidden
         end
-        unless job.reserved?
+        unless job.reserved? || job.filled?
           return render json: { error: 'Can only extend jobs that are in progress' }, status: :unprocessable_entity
         end
         new_end_at = params[:scheduled_end_at]
@@ -225,8 +237,8 @@ module Api
           .distinct
           .includes(:company_profile, :job_applications)
 
-        in_progress = base.where(status: :reserved)
-        completed = base.where(status: [:finished, :filled])
+        in_progress = base.where(status: [:reserved, :filled])
+        completed = base.where(status: :finished)
 
         render json: {
           in_progress: ActiveModel::Serializer::CollectionSerializer.new(in_progress, serializer: JobSerializer),
@@ -245,6 +257,10 @@ module Api
           return render json: { error: 'Job is no longer available' }, status: :unprocessable_entity
         end
 
+        if job.scheduled_start_at.blank? || job.scheduled_end_at.blank?
+          return render json: { error: 'This job has no scheduled times. The company must set start and end times before technicians can claim it.' }, status: :unprocessable_entity
+        end
+
         if job.job_applications.accepted.any?
           return render json: { error: 'Job has already been claimed' }, status: :unprocessable_entity
         end
@@ -258,7 +274,7 @@ module Api
             .where.not(jobs: { id: job.id })
             .select { |app| jobs_overlap?(app.job, job) }
           if overlapping.any?
-            return render json: { error: 'You cannot claim this job because it overlaps with another job you have reserved.' }, status: :unprocessable_entity
+            return render json: { error: "You cannot claim this job because its scheduled time overlaps with another job you've already claimed." }, status: :unprocessable_entity
           end
         end
         if technician_profile.nil?
@@ -275,8 +291,22 @@ module Api
           technician_profile: technician_profile,
           status: :accepted
         )
-        job.update!(status: :reserved)
-        UserMailer.job_claimed_email(job).deliver_later
+
+        # For paid jobs: charge company immediately (tech claims = job is theirs)
+        if job.job_amount_cents > 0
+          result = PaymentService.charge_company_on_claim(job)
+          if result[:error]
+            job_application.destroy!
+            job.reload
+            return render json: { error: result[:error] }, status: :unprocessable_entity
+          end
+          job.update!(status: :filled)
+          UserMailer.job_claimed_email(job).deliver_later
+          UserMailer.payment_confirmation_email(job, job.company_charge_cents).deliver_later
+        else
+          job.update!(status: :filled)
+          UserMailer.job_claimed_email(job).deliver_later
+        end
 
         render json: job, serializer: JobSerializer, status: :ok
       rescue ActiveRecord::RecordNotFound
@@ -292,7 +322,8 @@ module Api
       end
 
       def jobs_overlap?(job_a, job_b)
-        return false unless job_a.scheduled_start_at && job_a.scheduled_end_at && job_b.scheduled_start_at && job_b.scheduled_end_at
+        # If either job has missing times, we cannot verify no overlap - treat as overlapping to prevent double-booking
+        return true if job_a.scheduled_start_at.blank? || job_a.scheduled_end_at.blank? || job_b.scheduled_start_at.blank? || job_b.scheduled_end_at.blank?
         start_a = job_a.scheduled_start_at
         end_a = job_a.scheduled_end_at
         start_b = job_b.scheduled_start_at

@@ -16,6 +16,7 @@ Access via the "Profile & Settings" link in the nav, or by clicking your avatar 
 ## Overview
 
 - **Job posting**: Companies set a price (USD) when creating or editing a job.
+- **Fees**: Company pays **price + 5%**; technician receives **price - 5%**; SkilledHub earns 10% total.
 - **When job is accepted**: Company pays via Stripe. Funds are held in escrow.
 - **Release conditions**: Money is released to the technician when:
   1. Both parties have left a review, **OR**
@@ -98,13 +99,13 @@ npm install
 
 ## Flow Summary
 
-1. **Create job** → Company adds price (optional; leave blank for unpaid jobs).
-2. **Technician claims** → Job status: reserved.
-3. **Company accepts** → If job has price: payment modal opens; company enters card details; funds are charged and held.
+1. **Create job** → Company adds price (optional; leave blank for unpaid jobs). Company must add a card in Settings before posting paid jobs.
+2. **Technician claims** → Job is theirs immediately. If job has price: company's card is charged (price + 5%) and funds are held.
+3. **Company can deny** (optional) → Refunds payment and reopens the job.
 4. **Mark complete** → Company or technician marks job finished.
 5. **Release** → When both have reviewed OR 72h passed → funds transfer to technician's Stripe account.
 
 ## API Endpoints
 
-- `POST /api/v1/jobs/:job_id/create_payment_intent` – Creates PaymentIntent, returns `client_secret` for Stripe Elements.
-- `PATCH /api/v1/jobs/:id/accept` – Accepts technician. Body: `{ "payment_intent_id": "pi_xxx" }` when job has price.
+- `PATCH /api/v1/jobs/:id/claim` – Technician claims job. Charges company's card if job has price.
+- `PATCH /api/v1/jobs/:id/deny` – Company denies claimed technician (refunds and reopens job).

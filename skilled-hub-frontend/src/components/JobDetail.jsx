@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { jobsAPI, profilesAPI, ratingsAPI, conversationsAPI } from '../api/api';
-import AcceptPaymentModal from './AcceptPaymentModal';
 import MessageModal from './MessageModal';
 import { auth } from '../auth';
 import Modal from 'react-modal';
@@ -33,8 +32,7 @@ const JobDetail = () => {
   const [reviewData, setReviewData] = useState({ category_scores: {}, comment: '' });
   const [submittingReview, setSubmittingReview] = useState(false);
   const [markingComplete, setMarkingComplete] = useState(false);
-  const [showAcceptModal, setShowAcceptModal] = useState(false);
-  const [accepting, setAccepting] = useState(false);
+  const [denying, setDenying] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [messageConversationId, setMessageConversationId] = useState(null);
 
@@ -182,20 +180,19 @@ const JobDetail = () => {
     navigate('/jobs');
   };
 
-  const getStatusBadge = (status) => {
-    const statusMap = {
-      'open': { label: 'Open', className: 'bg-green-100 text-green-800' },
-      'reserved': { label: 'Claimed', className: 'bg-yellow-100 text-yellow-800' },
-      'finished': { label: 'Complete', className: 'bg-blue-100 text-blue-800' },
-      'filled': { label: 'Filled', className: 'bg-gray-100 text-gray-800' }
-    };
-    
-    const statusInfo = statusMap[status] || { label: status, className: 'bg-gray-100 text-gray-800' };
-    return (
-      <span className={`px-3 py-1 text-sm font-medium rounded-full ${statusInfo.className}`}>
-        {statusInfo.label}
-      </span>
-    );
+  const getStatusBadge = (job) => {
+    const status = job?.status;
+    if (status === 'open') return <span className="px-3 py-1 text-sm font-medium rounded-full bg-blue-100 text-blue-800">Open</span>;
+    if (status === 'finished') return <span className="px-3 py-1 text-sm font-medium rounded-full bg-green-200 text-green-800">Completed</span>;
+    if (status === 'reserved' || status === 'filled') {
+      const startAt = job?.scheduled_start_at ? new Date(job.scheduled_start_at).getTime() : null;
+      const now = Date.now();
+      if (startAt === null || startAt > now) {
+        return <span className="px-3 py-1 text-sm font-medium rounded-full bg-yellow-100 text-yellow-800">Claimed</span>;
+      }
+      return <span className="px-3 py-1 text-sm font-medium rounded-full bg-green-100 text-green-800">Active</span>;
+    }
+    return <span className="px-3 py-1 text-sm font-medium rounded-full bg-gray-100 text-gray-800">{status || '—'}</span>;
   };
 
   const openEditModal = () => {
@@ -246,26 +243,17 @@ const JobDetail = () => {
     }
   };
 
-  const handleAcceptTechnician = async () => {
-    const hasPrice = (job?.job_amount_cents ?? job?.price_cents ?? 0) > 0;
-    if (!hasPrice) {
-      setAccepting(true);
-      try {
-        await jobsAPI.accept(job.id);
-        await fetchJobDetails();
-      } catch (err) {
-        alert(err.message || 'Failed to accept');
-      } finally {
-        setAccepting(false);
-      }
-    } else {
-      setShowAcceptModal(true);
+  const handleDenyTechnician = async () => {
+    if (!confirm('Are you sure you want to deny this technician? The job will be reopened and any payment will be refunded.')) return;
+    setDenying(true);
+    try {
+      await jobsAPI.deny(job.id);
+      await fetchJobDetails();
+    } catch (err) {
+      alert(err.message || 'Failed to deny');
+    } finally {
+      setDenying(false);
     }
-  };
-
-  const handleAcceptSuccess = () => {
-    setShowAcceptModal(false);
-    fetchJobDetails();
   };
 
   const handleMessageCompany = async () => {
@@ -391,7 +379,7 @@ const JobDetail = () => {
         <div className="flex justify-between items-start mb-6">
           <h1 className="text-3xl font-bold text-gray-900">{job.title}</h1>
           <div className="flex items-center gap-3 flex-wrap">
-            {getStatusBadge(job.status)}
+            {getStatusBadge(job)}
           </div>
         </div>
       </div>
@@ -492,32 +480,32 @@ const JobDetail = () => {
                   </p>
                 </div>
               </div>
-              {(job.scheduled_start_at || job.scheduled_end_at) && (
-                <>
-                  {job.scheduled_start_at && (
-                    <div className="flex items-center">
-                      <svg className="w-5 h-5 text-gray-400 mr-3" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-                      </svg>
-                      <div>
-                        <p className="text-sm text-gray-500">Scheduled Start</p>
-                        <p className="font-medium">{new Date(job.scheduled_start_at).toLocaleString()}</p>
-                      </div>
-                    </div>
-                  )}
-                  {job.scheduled_end_at && (
-                    <div className="flex items-center">
-                      <svg className="w-5 h-5 text-gray-400 mr-3" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
-                      </svg>
-                      <div>
-                        <p className="text-sm text-gray-500">Scheduled End</p>
-                        <p className="font-medium">{new Date(job.scheduled_end_at).toLocaleString()}</p>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
+              <div className="flex items-center">
+                <svg className="w-5 h-5 text-gray-400 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  <p className="text-sm text-gray-500">Start</p>
+                  <p className="font-medium">
+                    {job.scheduled_start_at
+                      ? new Date(job.scheduled_start_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+                      : 'Not scheduled'}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center">
+                <svg className="w-5 h-5 text-gray-400 mr-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-12a1 1 0 10-2 0v4a1 1 0 00.293.707l2.828 2.829a1 1 0 101.415-1.415L11 9.586V6z" clipRule="evenodd" />
+                </svg>
+                <div>
+                  <p className="text-sm text-gray-500">Finish</p>
+                  <p className="font-medium">
+                    {job.scheduled_end_at
+                      ? new Date(job.scheduled_end_at).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' })
+                      : 'Not scheduled'}
+                  </p>
+                </div>
+              </div>
             </div>
 
             <div className="mb-6">
@@ -652,7 +640,7 @@ const JobDetail = () => {
             </div>
           )}
 
-          {currentUser?.role === 'technician' && job.status === 'reserved' && isJobClaimedByMe() && (
+          {currentUser?.role === 'technician' && (job.status === 'reserved' || job.status === 'filled') && isJobClaimedByMe() && (
             <div className="bg-white border border-gray-200 rounded-lg p-6 sticky top-6">
               <h3 className="text-xl font-semibold text-gray-900 mb-4">Your Job</h3>
               <p className="text-sm text-gray-600 mb-4">
@@ -676,7 +664,7 @@ const JobDetail = () => {
             </div>
           )}
 
-          {currentUser?.role === 'technician' && (job.status === 'filled' || job.status === 'finished') && isJobClaimedByMe() && (
+          {currentUser?.role === 'technician' && job.status === 'finished' && isJobClaimedByMe() && (
             <div className="bg-white border border-gray-200 rounded-lg p-6 sticky top-6">
               <button
                 onClick={handleMessageCompany}
@@ -709,32 +697,34 @@ const JobDetail = () => {
               <h3 className="text-xl font-semibold text-gray-900 mb-4">Company Actions</h3>
               <div className="space-y-3">
                 {(job.status === 'reserved' || job.status === 'filled' || job.status === 'finished') && claimedTechnician && (
-                  <button onClick={handleMessageCompany} className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
-                    Message Technician
-                  </button>
+                  <>
+                    <button onClick={handleMessageCompany} className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
+                      Message Technician
+                    </button>
+                    <button onClick={openClaimedModal} className="w-full px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors">
+                      View Claimed By
+                    </button>
+                    {job.status !== 'finished' && (
+                      <>
+                        <button onClick={handleDenyTechnician} disabled={denying} className="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50">
+                          {denying ? 'Denying...' : 'Deny Technician'}
+                        </button>
+                        <button onClick={handleMarkComplete} disabled={markingComplete} className="w-full px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors disabled:opacity-50">
+                          {markingComplete ? 'Marking...' : 'Mark Job Complete'}
+                        </button>
+                        <Link
+                          to={`/jobs/${job.id}/edit`}
+                          className="block w-full px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors text-center"
+                        >
+                          Extend Job
+                        </Link>
+                      </>
+                    )}
+                  </>
                 )}
                 <button onClick={openEditModal} className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
                   Edit Job
                 </button>
-                {job.status === 'reserved' && (
-                  <>
-                    <button onClick={openClaimedModal} className="w-full px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors">
-                      View Claimed By
-                    </button>
-                    <button onClick={handleAcceptTechnician} disabled={accepting} className="w-full px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50">
-                      {accepting ? 'Accepting...' : ((job?.job_amount_cents ?? job?.price_cents ?? 0) > 0 ? 'Accept & Pay' : 'Accept Technician')}
-                    </button>
-                    <button onClick={handleMarkComplete} disabled={markingComplete} className="w-full px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors disabled:opacity-50">
-                      {markingComplete ? 'Marking...' : 'Mark Job Complete'}
-                    </button>
-                    <Link
-                      to={`/jobs/${job.id}/edit`}
-                      className="block w-full px-4 py-2 bg-amber-600 text-white rounded-md hover:bg-amber-700 transition-colors text-center"
-                    >
-                      Extend Job
-                    </Link>
-                  </>
-                )}
               </div>
             </div>
           )}
@@ -761,13 +751,6 @@ const JobDetail = () => {
           </form>
         </div>
       </Modal>
-      <AcceptPaymentModal
-        isOpen={showAcceptModal}
-        onClose={() => setShowAcceptModal(false)}
-        jobId={job?.id}
-        amountCents={job?.company_charge_cents ?? job?.price_cents ?? 0}
-        onSuccess={handleAcceptSuccess}
-      />
       <MessageModal
         isOpen={showMessageModal}
         onClose={() => { setShowMessageModal(false); setMessageConversationId(null); }}

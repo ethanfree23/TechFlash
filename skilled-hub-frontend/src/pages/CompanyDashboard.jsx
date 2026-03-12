@@ -3,15 +3,21 @@ import apiRequest from '../api/api';
 import { FaBriefcase, FaUser, FaCalendarAlt, FaCheckSquare } from 'react-icons/fa';
 import { useNavigate } from 'react-router-dom';
 
-const statusLabel = (status) => {
-  const map = {
-    open: { label: 'Open', className: 'bg-blue-100 text-blue-800' },
-    reserved: { label: 'Claimed', className: 'bg-yellow-100 text-yellow-800' },
-    filled: { label: 'Filled', className: 'bg-yellow-200 text-yellow-800' },
-    finished: { label: 'Complete', className: 'bg-green-200 text-green-800' },
-  };
-  const s = map[status];
-  return s ? <span className={`px-2 py-1 text-xs rounded ${s.className}`}>{s.label}</span> : null;
+// open, claimed (filled but not started), active (in progress), completed
+const statusLabel = (job) => {
+  if (!job) return null;
+  const status = job.status;
+  if (status === 'open') return <span className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-800">Open</span>;
+  if (status === 'finished') return <span className="px-2 py-1 text-xs rounded bg-green-200 text-green-800">Completed</span>;
+  if (status === 'reserved' || status === 'filled') {
+    const startAt = job.scheduled_start_at ? new Date(job.scheduled_start_at).getTime() : null;
+    const now = Date.now();
+    if (startAt === null || startAt > now) {
+      return <span className="px-2 py-1 text-xs rounded bg-yellow-100 text-yellow-800">Claimed</span>;
+    }
+    return <span className="px-2 py-1 text-xs rounded bg-green-100 text-green-800">Active</span>;
+  }
+  return <span className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-800 capitalize">{status}</span>;
 };
 
 const summaryCards = [
@@ -171,14 +177,13 @@ const CompanyDashboard = ({ user, onLogout }) => {
                       <tr key={job.id}>
                         <td className="px-4 py-2 font-medium text-gray-800">{job.title}</td>
                         <td className="px-4 py-2">
-                          {statusLabel(job.status)}
-                          {!statusLabel(job.status) && <span className="capitalize">{job.status}</span>}
+                          {statusLabel(job)}
                         </td>
                         <td className="px-4 py-2">{new Date(job.created_at).toLocaleDateString()}</td>
                         <td className="px-4 py-2 flex space-x-2">
                           <button className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-3 py-1 rounded" onClick={() => navigate(`/jobs/${job.id}/edit`)}>Edit</button>
                           <button className="bg-blue-100 hover:bg-blue-200 text-blue-700 px-3 py-1 rounded" onClick={() => navigate(`/jobs/${job.id}`)}>View</button>
-                          {job.status === 'reserved' && (
+                          {(job.status === 'reserved' || job.status === 'filled') && (
                             <button className="bg-green-200 hover:bg-green-300 text-green-800 px-3 py-1 rounded" onClick={() => handleFinish(job.id)}>Mark Complete</button>
                           )}
                         </td>

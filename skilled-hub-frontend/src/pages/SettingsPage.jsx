@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { profilesAPI, settingsAPI, authAPI } from '../api/api';
 import { auth } from '../auth';
@@ -19,6 +19,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [savingAccount, setSavingAccount] = useState(false);
   const [accountError, setAccountError] = useState(null);
   const publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder';
+  const stripe = useMemo(() => {
+    if (window.Stripe && publishableKey && publishableKey !== 'pk_test_placeholder') {
+      return window.Stripe(publishableKey);
+    }
+    return null;
+  }, [publishableKey]);
 
   const isCompany = user?.role === 'company';
   const isTechnician = user?.role === 'technician';
@@ -154,7 +160,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     const res = await settingsAPI.createSetupIntent();
     const client_secret = res?.client_secret;
     if (!client_secret) throw new Error(res?.error || 'Could not create setup');
-    const stripe = window.Stripe(publishableKey);
+    if (!stripe) throw new Error('Payment form not ready');
     const { error: confirmError } = await stripe.confirmCardSetup(client_secret, {
       payment_method: { card, billing_details },
     });
@@ -356,6 +362,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               <h3 className="text-base font-medium text-gray-900 mb-2">Credit card</h3>
               <p className="text-gray-600 mb-4">Add a credit or debit card to pay for jobs when you accept technicians.</p>
               <CardPaymentForm
+                stripe={stripe}
                 publishableKey={publishableKey}
                 onConfirm={handleAddCardConfirm}
                 submitLabel="Add Card"

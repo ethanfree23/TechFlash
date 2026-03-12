@@ -37,7 +37,7 @@ class Job < ApplicationRecord
 
   # Auto-complete jobs past their scheduled end time
   def self.auto_complete_expired!
-    where(status: :reserved)
+    where(status: [:reserved, :filled])
       .where('scheduled_end_at IS NOT NULL AND scheduled_end_at <= ?', Time.current)
       .update_all(status: Job.statuses[:finished], finished_at: Time.current)
   end

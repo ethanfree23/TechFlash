@@ -15,6 +15,7 @@ const AcceptPaymentModal = ({ isOpen, onClose, jobId, amountCents, onSuccess }) 
   const cardExpiryRef = useRef(null);
   const cardCvcRef = useRef(null);
   const cardNumberElRef = useRef(null);
+  const stripeRef = useRef(null);
 
   const publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder';
 
@@ -23,6 +24,7 @@ const AcceptPaymentModal = ({ isOpen, onClose, jobId, amountCents, onSuccess }) 
     setCardReady(false);
     try {
       const stripe = window.Stripe(publishableKey);
+      stripeRef.current = stripe;
       const elements = stripe.elements();
       const cardNumber = elements.create('cardNumber', { style: cardStyle });
       const cardExpiry = elements.create('cardExpiry', { style: cardStyle });
@@ -37,6 +39,7 @@ const AcceptPaymentModal = ({ isOpen, onClose, jobId, amountCents, onSuccess }) 
         cardExpiry.unmount();
         cardCvc.unmount();
         cardNumberElRef.current = null;
+        stripeRef.current = null;
         setCardReady(false);
       };
     } catch {
@@ -53,7 +56,8 @@ const AcceptPaymentModal = ({ isOpen, onClose, jobId, amountCents, onSuccess }) 
       const res = await paymentsAPI.createIntent(jobId);
       const clientSecret = res?.client_secret;
       if (!clientSecret) throw new Error('Could not create payment');
-      const stripe = window.Stripe(publishableKey);
+      const stripe = stripeRef.current;
+      if (!stripe) throw new Error('Payment form not ready');
       const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
         payment_method: {
           card: cardNumberElRef.current,

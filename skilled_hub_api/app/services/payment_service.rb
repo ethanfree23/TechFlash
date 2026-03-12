@@ -5,7 +5,91 @@ class PaymentService
 
   class PaymentError < StandardError; end
 
-  # Charge company when they accept the tech (job -> filled)
+  # Check if company has a valid card on file (for posting jobs)
+  def self.company_has_payment_method?(user)
+    return false if user.blank? || user.stripe_customer_id.blank?
+    return false if Stripe.api_key.blank?
+
+    customer = Stripe::Customer.retrieve(user.stripe_customer_id, expand: ['invoice_settings.default_payment_method'])
+    pm_id = customer.invoice_settings&.default_payment_method
+    pm_id ||= Stripe::PaymentMethod.list(customer: user.stripe_customer_id, type: 'card').data.first&.id
+    pm_id.present?
+  rescue Stripe::StripeError
+    false
+  end
+
+  # Charge company when tech claims a paid job (off-session, using saved card)
+  def self.charge_company_on_claim(job)
+    return { error: 'Job has no price' } if job.job_amount_cents.blank? || job.job_amount_cents <= 0
+    return { error: 'Job already has a payment' } if job.payments.held.any? || job.payments.released.any?
+
+    company_user = job.company_profile.user
+    stripe_customer_id = company_user.stripe_customer_id
+    return { error: 'Company must add a payment method in Settings before technicians can claim this job' } if stripe_customer_id.blank?
+
+    payment = job.payments.create!(
+      amount_cents: job.tech_payout_cents,
+      status: 'pending'
+    )
+
+    begin
+      return { error: 'Stripe not configured' } if Stripe.api_key.blank?
+
+      # Get customer's default payment method or first available
+      customer = Stripe::Customer.retrieve(stripe_customer_id, expand: ['invoice_settings.default_payment_method'])
+      pm_id = customer.invoice_settings&.default_payment_method
+      pm_id ||= Stripe::PaymentMethod.list(customer: stripe_customer_id, type: 'card').data.first&.id
+      return { error: 'Company has no payment method on file. Ask them to add a card in Settings.' } if pm_id.blank?
+
+      intent = Stripe::PaymentIntent.create(
+        amount: job.company_charge_cents,
+        currency: 'usd',
+        customer: stripe_customer_id,
+        payment_method: pm_id,
+        off_session: true,
+        confirm: true,
+        metadata: { job_id: job.id.to_s, payment_id: payment.id.to_s },
+        automatic_payment_methods: { enabled: true }
+      )
+
+      if intent.status == 'succeeded'
+        payment.update!(
+          status: 'held',
+          stripe_payment_intent_id: intent.id,
+          held_at: Time.current
+        )
+        { success: true, payment: payment }
+      elsif intent.status == 'requires_action'
+        payment.update!(status: 'failed')
+        { error: 'Payment requires authentication. Company should use a different card in Settings.' }
+      else
+        payment.update!(status: 'failed')
+        { error: intent.last_payment_error&.message || 'Payment failed' }
+      end
+    rescue Stripe::StripeError => e
+      payment.update!(status: 'failed') if payment.persisted?
+      { error: e.message }
+    end
+  end
+
+  # Refund payment when company denies the claimed tech
+  def self.refund_payment(job)
+    payment = job.payments.held.first
+    return { error: 'No held payment to refund' } unless payment
+    return { error: 'No Stripe payment to refund' } if payment.stripe_payment_intent_id.blank?
+
+    return { error: 'Stripe not configured' } if Stripe.api_key.blank?
+
+    begin
+      Stripe::Refund.create(payment_intent: payment.stripe_payment_intent_id)
+      payment.update!(status: 'refunded')
+      { success: true }
+    rescue Stripe::StripeError => e
+      { error: e.message }
+    end
+  end
+
+  # Charge company when they accept the tech (job -> filled) - legacy, kept for reference
   def self.charge_and_hold(job:, payment_method_id:)
     return { error: 'Job has no price' } if job.price_cents.blank? || job.price_cents <= 0
     return { error: 'Job already has a payment' } if job.payments.held.any? || job.payments.released.any?

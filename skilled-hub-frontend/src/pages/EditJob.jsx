@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { jobsAPI } from '../api/api';
 import CountryStateSelect from '../components/CountryStateSelect';
 
@@ -12,6 +12,7 @@ const toDatetimeLocal = (d) => {
 
 const EditJob = () => {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -20,6 +21,7 @@ const EditJob = () => {
     hourly_rate_cents: '', hours_per_day: '8', days: '',
   });
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [extendEndAt, setExtendEndAt] = useState('');
   const [extending, setExtending] = useState(false);
 
@@ -118,6 +120,20 @@ const EditJob = () => {
       alert(err.message || 'Failed to extend job');
     } finally {
       setExtending(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm('Are you sure you want to delete this job? This cannot be undone.')) return;
+    setDeleting(true);
+    try {
+      await jobsAPI.delete(id);
+      alert('Job deleted.');
+      navigate('/dashboard');
+    } catch (err) {
+      alert(err.message || 'Failed to delete job');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -237,13 +253,23 @@ const EditJob = () => {
             <option value="expired">Expired</option>
           </select>
         </div>
-        <button
-          type="submit"
-          className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
-          disabled={saving}
-        >
-          {saving ? 'Saving...' : 'Save Changes'}
-        </button>
+        <div className="flex gap-4 items-center">
+          <button
+            type="submit"
+            className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+            disabled={saving}
+          >
+            {saving ? 'Saving...' : 'Save Changes'}
+          </button>
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={deleting}
+            className="bg-red-600 text-white px-6 py-2 rounded hover:bg-red-700 disabled:opacity-50"
+          >
+            {deleting ? 'Deleting...' : 'Delete Job'}
+          </button>
+        </div>
       </form>
 
       {job?.status === 'reserved' && (

@@ -80,7 +80,7 @@ const JobList = () => {
     try {
       setLoading(true);
       const apiFilters = { location: filters.location, keyword: filters.keyword };
-      if (filters.status && filters.status !== 'completed') {
+      if (filters.status) {
         apiFilters.status = filters.status;
       }
       const data = await jobsAPI.getAll(apiFilters);
@@ -237,20 +237,19 @@ const JobList = () => {
     return pageNumbers;
   };
 
-  const getStatusBadge = (status) => {
-    const statusMap = {
-      'open': { label: 'Open', className: 'bg-green-100 text-green-800' },
-      'reserved': { label: 'Reserved', className: 'bg-yellow-100 text-yellow-800' },
-      'filled': { label: 'Filled', className: 'bg-yellow-200 text-yellow-800' },
-      'finished': { label: 'Completed', className: 'bg-green-200 text-green-800' }
-    };
-
-    const statusInfo = statusMap[status] || { label: status, className: 'bg-gray-100 text-gray-800' };
-    return (
-      <span className={`px-2 py-1 text-xs font-medium rounded-full ${statusInfo.className}`}>
-        {statusInfo.label}
-      </span>
-    );
+  const getStatusBadge = (job) => {
+    const status = job?.status;
+    if (status === 'open') return <span className="px-2 py-1 text-xs font-medium rounded-full bg-blue-100 text-blue-800">Open</span>;
+    if (status === 'finished') return <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-200 text-green-800">Completed</span>;
+    if (status === 'reserved' || status === 'filled') {
+      const startAt = job?.scheduled_start_at ? new Date(job.scheduled_start_at).getTime() : null;
+      const now = Date.now();
+      if (startAt === null || startAt > now) {
+        return <span className="px-2 py-1 text-xs font-medium rounded-full bg-yellow-100 text-yellow-800">Claimed</span>;
+      }
+      return <span className="px-2 py-1 text-xs font-medium rounded-full bg-green-100 text-green-800">Active</span>;
+    }
+    return <span className="px-2 py-1 text-xs font-medium rounded-full bg-gray-100 text-gray-800">{status || '—'}</span>;
   };
 
   if (loading) {
@@ -317,14 +316,14 @@ const JobList = () => {
             {auth.isCompany() && (
               <>
                 <option value="active">Active</option>
-                <option value="current">Current</option>
-                <option value="reserved">Reserved</option>
+                <option value="reserved">Claimed</option>
                 <option value="completed">Completed</option>
               </>
             )}
             {auth.isTechnician() && (
               <>
-                <option value="reserved">Reserved</option>
+                <option value="active">Active</option>
+                <option value="reserved">Claimed</option>
                 <option value="completed">Completed</option>
               </>
             )}
@@ -377,7 +376,7 @@ const JobList = () => {
                     <h3 className="text-lg font-semibold text-gray-900 line-clamp-2">
                       {job.title}
                     </h3>
-                    {getStatusBadge(job.status)}
+                    {getStatusBadge(job)}
                   </div>
                   
                   <p className="text-gray-600 line-clamp-3 text-sm">
@@ -447,7 +446,7 @@ const JobList = () => {
                         {claimingJobId === job.id ? 'Claiming...' : 'Claim Job'}
                       </button>
                     )}
-                    {auth.isTechnician() && job.status === 'reserved' && isJobClaimedByMe(job) && (
+                    {auth.isTechnician() && (job.status === 'reserved' || job.status === 'filled') && isJobClaimedByMe(job) && (
                       <span className="px-4 py-2 bg-green-100 text-green-800 rounded-lg text-center text-sm font-medium">
                         Claimed by you
                       </span>

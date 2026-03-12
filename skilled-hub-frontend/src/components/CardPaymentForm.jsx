@@ -11,6 +11,7 @@ const cardStyle = {
  * Uses Stripe Elements (cardNumber, cardExpiry, cardCvc)
  */
 const CardPaymentForm = ({
+  stripe: stripeProp,
   publishableKey,
   onConfirm,
   submitLabel = 'Add Card',
@@ -27,15 +28,17 @@ const CardPaymentForm = ({
   const cardNumberElRef = useRef(null);
   const cardExpiryElRef = useRef(null);
   const cardCvcElRef = useRef(null);
+  const stripeRef = useRef(null);
 
   useEffect(() => {
-    if (!cardNumberRef.current || !window.Stripe || !publishableKey || publishableKey === 'pk_test_placeholder') return;
+    const stripeInstance = stripeProp || (window.Stripe && publishableKey && publishableKey !== 'pk_test_placeholder' ? window.Stripe(publishableKey) : null);
+    if (!cardNumberRef.current || !stripeInstance) return;
     setCardReady(false);
     let mounted = true;
     const mount = () => {
       try {
-        const stripe = window.Stripe(publishableKey);
-        const elements = stripe.elements();
+        stripeRef.current = stripeInstance;
+        const elements = stripeInstance.elements();
         const cardNumber = elements.create('cardNumber', { style: cardStyle });
         const cardExpiry = elements.create('cardExpiry', { style: cardStyle });
         const cardCvc = elements.create('cardCvc', { style: cardStyle });
@@ -59,6 +62,7 @@ const CardPaymentForm = ({
           cardNumberElRef.current = null;
           cardExpiryElRef.current = null;
           cardCvcElRef.current = null;
+          stripeRef.current = null;
           setCardReady(false);
         };
       } catch (err) {
@@ -71,12 +75,12 @@ const CardPaymentForm = ({
       mounted = false;
       cleanup?.();
     };
-  }, [publishableKey]);
+  }, [stripeProp, publishableKey]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
-    if (!cardNumberElRef.current || !cardReady) {
+    if (!cardNumberElRef.current || !cardReady || !stripeRef.current) {
       setError('Card form is not ready.');
       return;
     }

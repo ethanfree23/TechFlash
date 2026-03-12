@@ -18,7 +18,7 @@ Rails.application.routes.draw do
         end
         member do
           patch :claim
-          patch :accept
+          patch :deny
           patch :finish
           patch :extend
         end

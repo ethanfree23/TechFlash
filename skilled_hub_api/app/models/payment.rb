@@ -9,5 +9,6 @@ class Payment < ApplicationRecord
   validates :status, inclusion: { in: STATUSES }
 
   scope :held, -> { where(status: 'held') }
+  scope :released, -> { where(status: 'released') }
   scope :releasable, -> { held }
 end
