@@ -43,6 +43,7 @@ const CreateJob = () => {
   const defaultStart = getDefaultStart();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [requiredCertifications, setRequiredCertifications] = useState([""]);
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("Texas");
@@ -92,6 +93,9 @@ const CreateJob = () => {
       const payload = {
         title,
         description,
+        required_certifications: requiredCertifications.filter((c) => c.trim()).length
+          ? requiredCertifications.filter((c) => c.trim()).join(", ")
+          : null,
         address,
         city,
         state,
@@ -138,6 +142,41 @@ const CreateJob = () => {
             onChange={e => setDescription(e.target.value)}
             required
           />
+        </div>
+        <div>
+          <label className="block font-medium mb-1">Required Certifications</label>
+          <p className="text-xs text-gray-500 mb-2">List certifications the tech must have. Techs upload certificate images; you verify they match.</p>
+          <div className="space-y-2">
+            {requiredCertifications.map((cert, idx) => (
+              <div key={idx} className="flex gap-2">
+                <input
+                  className="flex-1 border px-3 py-2 rounded"
+                  value={cert}
+                  onChange={(e) => {
+                    const next = [...requiredCertifications];
+                    next[idx] = e.target.value;
+                    setRequiredCertifications(next);
+                  }}
+                  placeholder="e.g. OSHA 10, EPA 608"
+                />
+                <button
+                  type="button"
+                  onClick={() => setRequiredCertifications((prev) => prev.filter((_, i) => i !== idx))}
+                  className="px-3 py-2 text-red-600 hover:bg-red-50 rounded border border-red-200"
+                  title="Remove"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={() => setRequiredCertifications((prev) => [...prev, ""])}
+              className="flex items-center gap-2 px-4 py-2 text-blue-600 hover:bg-blue-50 rounded border border-blue-200 font-medium"
+            >
+              + Add certification
+            </button>
+          </div>
         </div>
         <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-4">
           <h3 className="font-medium text-gray-900">Job Location</h3>

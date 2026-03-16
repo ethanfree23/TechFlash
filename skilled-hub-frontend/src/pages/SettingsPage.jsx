@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { profilesAPI, settingsAPI, authAPI } from '../api/api';
+import { profilesAPI, settingsAPI, authAPI, documentsAPI } from '../api/api';
 import { auth } from '../auth';
 import CardPaymentForm from '../components/CardPaymentForm';
 import CountryStateSelect from '../components/CountryStateSelect';
@@ -18,6 +18,9 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [accountPasswordConfirm, setAccountPasswordConfirm] = useState('');
   const [savingAccount, setSavingAccount] = useState(false);
   const [accountError, setAccountError] = useState(null);
+  const [certificates, setCertificates] = useState([]);
+  const [uploadingCert, setUploadingCert] = useState(false);
+  const [deletingCertId, setDeletingCertId] = useState(null);
   const publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder';
   const stripe = useMemo(() => {
     if (window.Stripe && publishableKey && publishableKey !== 'pk_test_placeholder') {
@@ -33,6 +36,21 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   useEffect(() => {
     fetchProfile();
   }, [user?.role]);
+
+  useEffect(() => {
+    if (isTechnician && profile?.id) {
+      documentsAPI.getAll()
+        .then((docs) => {
+          const certs = (docs || []).filter(
+            (d) => d.doc_type === 'certificate' && d.uploadable_type === 'TechnicianProfile' && d.uploadable_id === profile.id
+          );
+          setCertificates(certs);
+        })
+        .catch(() => setCertificates([]));
+    } else {
+      setCertificates([]);
+    }
+  }, [isTechnician, profile?.id]);
 
   useEffect(() => {
     setAccountEmail(user?.email || auth.getUser()?.email || '');
@@ -132,6 +150,43 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       setAccountError(err.message || 'Failed to update account');
     } finally {
       setSavingAccount(false);
+    }
+  };
+
+  const handleCertificateUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file || !profile?.id) return;
+    setUploadingCert(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('uploadable_type', 'TechnicianProfile');
+      fd.append('uploadable_id', profile.id);
+      fd.append('doc_type', 'certificate');
+      await documentsAPI.upload(fd);
+      const docs = await documentsAPI.getAll();
+      setCertificates((docs || []).filter(
+        (d) => d.doc_type === 'certificate' && d.uploadable_type === 'TechnicianProfile' && d.uploadable_id === profile.id
+      ));
+      alert('Certificate uploaded!');
+    } catch (err) {
+      alert(err.message || 'Failed to upload certificate');
+    } finally {
+      setUploadingCert(false);
+      e.target.value = '';
+    }
+  };
+
+  const handleCertificateDelete = async (docId) => {
+    if (!confirm('Remove this certificate?')) return;
+    setDeletingCertId(docId);
+    try {
+      await documentsAPI.delete(docId);
+      setCertificates((prev) => prev.filter((d) => d.id !== docId));
+    } catch (err) {
+      alert(err.message || 'Failed to remove certificate');
+    } finally {
+      setDeletingCertId(null);
     }
   };
 
@@ -319,6 +374,38 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Availability</label>
                   <input name="availability" value={form.availability} onChange={handleChange} className="w-full border rounded-lg px-3 py-2" placeholder="e.g. Full-time, Part-time" />
+                </div>
+                <div className="border-t border-gray-200 pt-4 mt-4">
+                  <h4 className="font-medium text-gray-900 mb-2">Certificates</h4>
+                  <p className="text-sm text-gray-600 mb-3">
+                    Upload images of your certifications (e.g. OSHA, EPA, trade licenses). Companies will verify these match their job requirements.
+                  </p>
+                  <div className="flex flex-wrap gap-4 mb-4">
+                    {certificates.map((doc) => (
+                      <div key={doc.id} className="relative group border rounded-lg overflow-hidden bg-gray-50 w-32 h-32">
+                        {doc.file_url && (
+                          <img src={doc.file_url} alt="Certificate" className="w-full h-full object-cover" />
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => handleCertificateDelete(doc.id)}
+                          disabled={deletingCertId === doc.id}
+                          className="absolute top-1 right-1 bg-red-600 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                          title="Remove"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                        </button>
+                      </div>
+                    ))}
+                    <label className="w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors">
+                      <input type="file" accept="image/*" className="hidden" onChange={handleCertificateUpload} disabled={uploadingCert} />
+                      {uploadingCert ? (
+                        <span className="text-sm text-gray-500">Uploading...</span>
+                      ) : (
+                        <span className="text-3xl text-gray-400">+</span>
+                      )}
+                    </label>
+                  </div>
                 </div>
                 <div className="border-t border-gray-200 pt-4 mt-4">
                   <h4 className="font-medium text-gray-900 mb-2">Your Address</h4>

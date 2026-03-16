@@ -3,6 +3,7 @@ class TechnicianProfileDetailSerializer < ActiveModel::Serializer
              :address, :city, :state, :zip_code, :country
 
   belongs_to :user
+  has_many :documents
   has_many :ratings_received, serializer: RatingSerializer
 
   def avatar_url

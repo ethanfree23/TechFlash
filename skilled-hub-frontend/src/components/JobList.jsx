@@ -80,12 +80,6 @@ const JobList = () => {
   }, []);
 
   const fetchJobs = async () => {
-    if (auth.isTechnician() && filters.status === 'completed') {
-      setLoading(false);
-      setJobs([]);
-      setError(null);
-      return;
-    }
     try {
       setLoading(true);
       const apiFilters = { location: filters.location || undefined, keyword: filters.keyword || undefined };
@@ -388,8 +382,7 @@ const JobList = () => {
         </div>
       </div>
 
-      {!(auth.isTechnician() && filters.status === 'completed') && (
-        sortedJobs.length === 0 ? (
+      {sortedJobs.length === 0 ? (
           <div className="text-center py-20">
             <p className="text-gray-500 text-lg">No jobs found matching your criteria.</p>
           </div>
@@ -532,10 +525,9 @@ const JobList = () => {
             </div>
           )}
         </>
-        )
       )}
 
-      {auth.isTechnician() && filters.status === 'completed' && (
+      {auth.isTechnician() && filters.status !== 'completed' && (
         <div className="mt-16 pt-12 border-t border-gray-200">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">My Completed Jobs</h2>
           <p className="text-gray-600 mb-4">Jobs you've completed. Leave a review for the company.</p>

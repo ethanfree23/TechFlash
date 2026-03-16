@@ -110,6 +110,22 @@ const TechnicianProfilePage = ({ user, onLogout }) => {
             </div>
           )}
 
+          {profile.documents && profile.documents.filter((d) => d.doc_type === 'certificate').length > 0 && (
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">Certificates</h2>
+              <p className="text-sm text-gray-500 mb-4">Certificate images. Companies verify these match their job requirements.</p>
+              <div className="flex flex-wrap gap-4">
+                {profile.documents.filter((d) => d.doc_type === 'certificate').map((doc) => (
+                  <a key={doc.id} href={doc.file_url} target="_blank" rel="noopener noreferrer" className="block w-40 h-40 border rounded-lg overflow-hidden bg-gray-50 hover:ring-2 hover:ring-blue-500 transition-shadow">
+                    {doc.file_url && (
+                      <img src={doc.file_url} alt="Certificate" className="w-full h-full object-cover" />
+                    )}
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="p-6">
             <h2 className="text-lg font-semibold text-gray-900 mb-4">Past Reviews</h2>
             {ratings.length === 0 ? (

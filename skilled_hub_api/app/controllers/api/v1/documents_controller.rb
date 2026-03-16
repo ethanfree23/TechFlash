@@ -109,7 +109,7 @@ module Api
       private
 
       def document_params
-        params.permit(:uploadable_id, :uploadable_type)
+        params.permit(:uploadable_id, :uploadable_type, :doc_type)
       end
       
       def can_access_document?(document)

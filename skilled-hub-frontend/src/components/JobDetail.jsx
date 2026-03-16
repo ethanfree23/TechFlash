@@ -25,6 +25,7 @@ const JobDetail = () => {
   const [showClaimedModal, setShowClaimedModal] = useState(false);
   const [editData, setEditData] = useState({
     description: '',
+    required_certifications: [''],
     location: '',
     hourly_rate_cents: '',
     hours_per_day: '8',
@@ -214,6 +215,11 @@ const JobDetail = () => {
     const hasNewPricing = job.hourly_rate_cents != null && job.days != null;
     setEditData({
       description: job.description || '',
+      required_certifications: (() => {
+        const raw = job.required_certifications?.trim();
+        const arr = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+        return arr.length ? arr : [''];
+      })(),
       location: job.location || '',
       hourly_rate_cents: hasNewPricing ? (job.hourly_rate_cents / 100).toFixed(2) : '',
       hours_per_day: String(job.hours_per_day ?? 8),
@@ -253,6 +259,28 @@ const JobDetail = () => {
     setEditData(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleEditCertChange = (idx, value) => {
+    setEditData(prev => {
+      const next = [...(prev.required_certifications || [''])];
+      next[idx] = value;
+      return { ...prev, required_certifications: next };
+    });
+  };
+
+  const handleEditCertRemove = (idx) => {
+    setEditData(prev => ({
+      ...prev,
+      required_certifications: (prev.required_certifications || ['']).filter((_, i) => i !== idx),
+    }));
+  };
+
+  const handleEditCertAdd = () => {
+    setEditData(prev => ({
+      ...prev,
+      required_certifications: [...(prev.required_certifications || ['']), ''],
+    }));
+  };
+
   const handleEditSubmit = async (e) => {
     e.preventDefault();
     setSavingEdit(true);
@@ -264,6 +292,9 @@ const JobDetail = () => {
 
       const payload = {
         description: editData.description,
+        required_certifications: Array.isArray(editData.required_certifications) && editData.required_certifications.filter((c) => c?.trim()).length
+          ? editData.required_certifications.filter((c) => c?.trim()).join(", ")
+          : null,
         location: editData.location,
         scheduled_start_at: editData.scheduled_start_at ? new Date(editData.scheduled_start_at).toISOString() : null,
         scheduled_end_at: editData.scheduled_end_at ? new Date(editData.scheduled_end_at).toISOString() : null,
@@ -558,9 +589,17 @@ const JobDetail = () => {
             </div>
 
             {job.required_documents && (
-              <div>
+              <div className="mb-6">
                 <h3 className="text-xl font-semibold text-gray-900 mb-3">Required Documents</h3>
                 <p className="text-gray-700">{job.required_documents}</p>
+              </div>
+            )}
+
+            {job.required_certifications && (
+              <div className="mb-6">
+                <h3 className="text-xl font-semibold text-gray-900 mb-3">Required Certifications</h3>
+                <p className="text-gray-700">{job.required_certifications}</p>
+                <p className="text-sm text-gray-500 mt-1">Techs must have certificate images posted. Companies verify they match job requirements.</p>
               </div>
             )}
 
@@ -783,6 +822,35 @@ const JobDetail = () => {
             <div>
               <label className="block text-sm font-medium mb-1">Description</label>
               <textarea name="description" value={editData.description} onChange={handleEditChange} className="w-full border rounded p-2" rows={4} required />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Required Certifications</label>
+              <div className="space-y-2">
+                {(editData.required_certifications || ['']).map((cert, idx) => (
+                  <div key={idx} className="flex gap-2">
+                    <input
+                      className="flex-1 border rounded p-2"
+                      value={cert}
+                      onChange={(e) => handleEditCertChange(idx, e.target.value)}
+                      placeholder="e.g. OSHA 10, EPA 608"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => handleEditCertRemove(idx)}
+                      className="px-3 py-2 text-red-600 hover:bg-red-50 rounded border border-red-200 text-sm"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={handleEditCertAdd}
+                  className="flex items-center gap-2 px-4 py-2 text-blue-600 hover:bg-blue-50 rounded border border-blue-200 font-medium text-sm"
+                >
+                  + Add certification
+                </button>
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Location</label>

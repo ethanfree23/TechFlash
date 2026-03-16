@@ -11,7 +11,7 @@ module Api
       
       def show
         technician = TechnicianProfile.find(params[:id])
-        render json: technician, serializer: TechnicianProfileDetailSerializer, include: [:user, :ratings_received], status: :ok
+        render json: technician, serializer: TechnicianProfileDetailSerializer, include: [:user, :documents, :ratings_received], status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Technician not found" }, status: :not_found
       end

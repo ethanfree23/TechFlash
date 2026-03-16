@@ -344,7 +344,7 @@ module Api
       private
 
       def job_params
-        params.permit(:title, :description, :required_documents, :location, :status, :company_profile_id, :timeline,
+        params.permit(:title, :description, :required_documents, :required_certifications, :location, :status, :company_profile_id, :timeline,
                       :scheduled_start_at, :scheduled_end_at, :price_cents, :hourly_rate_cents, :hours_per_day, :days,
                       :address, :city, :state, :zip_code, :country)
       end

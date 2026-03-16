@@ -17,7 +17,7 @@ const EditJob = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [form, setForm] = useState({
-    title: '', description: '', address: '', city: '', state: '', zip_code: '', country: '', status: 'open',
+    title: '', description: '', required_certifications: [''], address: '', city: '', state: '', zip_code: '', country: '', status: 'open',
     hourly_rate_cents: '', hours_per_day: '8', days: '',
   });
   const [saving, setSaving] = useState(false);
@@ -35,6 +35,11 @@ const EditJob = () => {
         setForm({
           title: data.title || '',
           description: data.description || '',
+          required_certifications: (() => {
+            const raw = data.required_certifications?.trim();
+            const arr = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : [];
+            return arr.length ? arr : [''];
+          })(),
           address: data.address || '',
           city: data.city || '',
           state: data.state || 'Texas',
@@ -63,6 +68,28 @@ const EditJob = () => {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleCertChange = (idx, value) => {
+    setForm((prev) => {
+      const next = [...(prev.required_certifications || [''])];
+      next[idx] = value;
+      return { ...prev, required_certifications: next };
+    });
+  };
+
+  const handleCertRemove = (idx) => {
+    setForm((prev) => ({
+      ...prev,
+      required_certifications: (prev.required_certifications || ['']).filter((_, i) => i !== idx),
+    }));
+  };
+
+  const handleCertAdd = () => {
+    setForm((prev) => ({
+      ...prev,
+      required_certifications: [...(prev.required_certifications || ['']), ''],
+    }));
+  };
+
   const hr = parseFloat(form.hourly_rate_cents) || 0;
   const hpd = parseInt(form.hours_per_day, 10) || 8;
   const d = parseInt(form.days, 10) || 0;
@@ -76,6 +103,9 @@ const EditJob = () => {
       const payload = {
         title: form.title,
         description: form.description,
+        required_certifications: Array.isArray(form.required_certifications) && form.required_certifications.filter((c) => c?.trim()).length
+          ? form.required_certifications.filter((c) => c?.trim()).join(", ")
+          : null,
         address: form.address,
         city: form.city,
         state: form.state,
@@ -164,6 +194,37 @@ const EditJob = () => {
             onChange={handleChange}
             required
           />
+        </div>
+        <div>
+          <label className="block font-medium mb-1">Required Certifications</label>
+          <p className="text-xs text-gray-500 mb-2">List certifications the tech must have. Techs upload certificate images; you verify they match.</p>
+          <div className="space-y-2">
+            {(form.required_certifications || ['']).map((cert, idx) => (
+              <div key={idx} className="flex gap-2">
+                <input
+                  className="flex-1 border px-3 py-2 rounded"
+                  value={cert}
+                  onChange={(e) => handleCertChange(idx, e.target.value)}
+                  placeholder="e.g. OSHA 10, EPA 608"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleCertRemove(idx)}
+                  className="px-3 py-2 text-red-600 hover:bg-red-50 rounded border border-red-200"
+                  title="Remove"
+                >
+                  Remove
+                </button>
+              </div>
+            ))}
+            <button
+              type="button"
+              onClick={handleCertAdd}
+              className="flex items-center gap-2 px-4 py-2 text-blue-600 hover:bg-blue-50 rounded border border-blue-200 font-medium"
+            >
+              + Add certification
+            </button>
+          </div>
         </div>
         <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-4">
           <h3 className="font-medium text-gray-900">Job Location</h3>
