@@ -68,7 +68,7 @@ function App() {
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-lg text-gray-600">Loading SkilledHub...</p>
+          <p className="text-lg text-gray-600">Loading TechFlash...</p>
         </div>
       </div>
     );
@@ -186,7 +186,7 @@ const JobDetailWrapper = ({ user, onLogout }) => {
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
-            <h1 className="text-2xl font-bold text-blue-600">SkilledHub</h1>
+            <h1 className="text-2xl font-bold text-[#1e3a5f]">TechFlash</h1>
             <div className="flex items-center space-x-4">
               <div className="text-sm text-gray-600">
                 Welcome, <span className="font-medium">{user?.email}</span>

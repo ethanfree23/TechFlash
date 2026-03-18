@@ -93,8 +93,8 @@ const LoginPage = ({ onLoginSuccess }) => {
     <div className="min-h-screen bg-[#F7F7F7] flex flex-col justify-center px-4 py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="text-center">
-          <h1 className="text-4xl font-bold text-[#2E2E2E]">SkilledHub</h1>
-          <p className="mt-2 text-gray-600">Connect technicians with companies</p>
+          <img src="/techflash-logo.png" alt="TechFlash" className="h-16 mx-auto object-contain" />
+          <p className="mt-3 text-gray-600">Let's get the job done.</p>
         </div>
       </div>
 

@@ -1,12 +1,12 @@
 # frozen_string_literal: true
 
 class UserMailer < ApplicationMailer
-  default from: ENV.fetch('MAILER_FROM', 'noreply@skilledhub.example.com')
+  default from: ENV.fetch('MAILER_FROM', 'noreply@techflash.example.com')
 
   def welcome_email(user)
     @user = user
     @email = user.email
-    mail(to: @email, subject: 'Welcome to SkilledHub!')
+    mail(to: @email, subject: 'Welcome to TechFlash!')
   end
 
   def job_posted_email(job)

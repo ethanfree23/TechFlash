@@ -124,8 +124,7 @@ const EditJob = () => {
       }
       await jobsAPI.update(id, payload);
       alert('Job updated!');
-      const data = await jobsAPI.getById(id);
-      setJob(data);
+      navigate('/dashboard');
     } catch (err) {
       alert('Failed to update job');
     } finally {

@@ -1,6 +1,6 @@
 # Payment Setup Guide
 
-This document describes how to configure and use the payment system for Skilled Hub.
+This document describes how to configure and use the payment system for TechFlash.
 
 ## Profile & Settings
 
@@ -16,7 +16,7 @@ Access via the "Profile & Settings" link in the nav, or by clicking your avatar 
 ## Overview
 
 - **Job posting**: Companies set a price (USD) when creating or editing a job.
-- **Fees**: Company pays **price + 5%**; technician receives **price - 5%**; SkilledHub earns 10% total.
+- **Fees**: Company pays **price + 5%**; technician receives **price - 5%**; TechFlash earns 10% total.
 - **When job is accepted**: Company pays via Stripe. Funds are held in escrow.
 - **Release conditions**: Money is released to the technician when:
   1. Both parties have left a review, **OR**

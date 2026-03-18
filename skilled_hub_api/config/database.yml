@@ -15,6 +15,6 @@ production:
   adapter: postgresql
   encoding: unicode
   host: localhost
-  database: techneuber_production
+  database: techflash_production
   username: ethanfree23
-  password: <%= ENV['TECHNEUBER_DATABASE_PASSWORD'] %>
+  password: <%= ENV['TECHFLASH_DATABASE_PASSWORD'] %>

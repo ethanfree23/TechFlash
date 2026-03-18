@@ -10,7 +10,7 @@ This guide walks you through testing the full payment flow: **charge company (pr
 |-------|--------|--------------------|
 | **Company pays** | Job price + 5% | $105.00 |
 | **Tech receives** | Job price - 5% | $95.00 |
-| **SkilledHub revenue** | 10% total (5% from each side) | $10.00 |
+| **TechFlash revenue** | 10% total (5% from each side) | $10.00 |
 
 ## Prerequisites
 

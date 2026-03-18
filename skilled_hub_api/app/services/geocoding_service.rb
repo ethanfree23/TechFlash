@@ -5,7 +5,7 @@ require 'json'
 
 class GeocodingService
   NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
-  USER_AGENT = 'Techneuber/1.0 (contact@techneuber.com)'
+  USER_AGENT = 'TechFlash/1.0 (contact@techflash.com)'
 
   class GeocodingError < StandardError; end
 

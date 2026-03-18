@@ -1,5 +1,5 @@
 class Job < ApplicationRecord
-  PLATFORM_FEE_PERCENT = 5 # Company pays +5%, tech receives -5% (Techneuber earns 10% total)
+  PLATFORM_FEE_PERCENT = 5 # Company pays +5%, tech receives -5% (TechFlash earns 10% total)
 
   enum status: { open: 0, reserved: 1, accepted: 2, completed: 3, filled: 4, finished: 5 }
 

@@ -1,6 +1,6 @@
 # Email Setup Guide
 
-SkilledHub sends automated emails for key events. Configure your mailer to deliver them.
+TechFlash sends automated emails for key events. Configure your mailer to deliver them.
 
 ## Email Events
 
@@ -27,7 +27,7 @@ SkilledHub sends automated emails for key events. Configure your mailer to deliv
 3. Add to `skilled_hub_api/.env`:
 
 ```
-MAILER_FROM=noreply@skilledhub.local
+MAILER_FROM=noreply@techflash.local
 SMTP_ADDRESS=sandbox.smtp.mailtrap.io
 SMTP_PORT=2525
 SMTP_USERNAME=your_mailtrap_username

@@ -140,8 +140,7 @@ const DashboardHeader = ({ user, onLogout }) => (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
       <div className="flex items-center space-x-6">
         <Link to="/dashboard" className="flex items-center space-x-2">
-          <span className="bg-blue-100 p-2 rounded-full"><FaBriefcase className="text-blue-600 text-xl" /></span>
-          <span className="text-2xl font-bold text-blue-600">SkilledHub</span>
+          <img src="/techflash-logo.png" alt="TechFlash" className="h-9 object-contain" />
         </Link>
         <nav className="flex space-x-4">
           <Link to="/dashboard" className="text-blue-600 font-medium border-b-2 border-blue-600 pb-1">Dashboard</Link>
