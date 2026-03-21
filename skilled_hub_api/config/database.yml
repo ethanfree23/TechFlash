@@ -12,9 +12,5 @@ test:
   database: db/test.sqlite3
 
 production:
-  adapter: postgresql
-  encoding: unicode
-  host: localhost
-  database: techflash_production
-  username: ethanfree23
-  password: <%= ENV['TECHFLASH_DATABASE_PASSWORD'] %>
+  <<: *default
+  url: <%= ENV['DATABASE_URL'] %>
