@@ -1,0 +1,6 @@
+{
+  "$schema": "https://railway.app/railway.schema.json",
+  "deploy": {
+    "startCommand": "bin/rails db:prepare && bin/rails server -b 0.0.0.0 -p ${PORT:-3000}"
+  }
+}
