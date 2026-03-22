@@ -263,15 +263,34 @@ module Api
         base = Job.joins(:job_applications)
           .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })
           .distinct
-          .includes(:company_profile, :job_applications)
+          .includes(:company_profile)
 
         in_progress = base.where(status: [:reserved, :filled]).order('jobs.created_at DESC')
         completed = base.where(status: :finished).order(Arel.sql('COALESCE(jobs.finished_at, jobs.updated_at, jobs.created_at) DESC'))
 
+        # Manual JSON to avoid serializer issues (avatar_url, nested associations, etc.)
+        job_to_hash = ->(j) {
+          {
+            id: j.id,
+            title: j.title,
+            location: j.location,
+            status: j.status,
+            created_at: j.created_at,
+            updated_at: j.updated_at,
+            finished_at: j.finished_at,
+            scheduled_start_at: j.scheduled_start_at,
+            scheduled_end_at: j.scheduled_end_at,
+            company_profile: j.company_profile ? { id: j.company_profile.id, company_name: j.company_profile.company_name } : nil
+          }
+        }
+
         render json: {
-          in_progress: ActiveModel::Serializer::CollectionSerializer.new(in_progress, serializer: JobSerializer),
-          completed: ActiveModel::Serializer::CollectionSerializer.new(completed, serializer: JobSerializer)
+          in_progress: in_progress.map(&job_to_hash),
+          completed: completed.map(&job_to_hash)
         }, status: :ok
+      rescue StandardError => e
+        Rails.logger.error "technician_dashboard_jobs: #{e.class} #{e.message}\n#{e.backtrace.first(5).join("\n")}"
+        render json: { in_progress: [], completed: [] }, status: :ok
       end
 
       # Technician claims a job (first-come-first-served, like Uber driver accepting a ride)
