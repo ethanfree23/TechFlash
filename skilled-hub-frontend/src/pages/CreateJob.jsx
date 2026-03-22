@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { jobsAPI, profilesAPI } from '../api/api';
 import DateTimeInput from '../components/DateTimeInput';
 import CountryStateSelect from '../components/CountryStateSelect';
+import AlertModal from '../components/AlertModal';
 
 const toDatetimeLocal = (d) => {
   if (!d) return '';
@@ -59,6 +60,7 @@ const CreateJob = () => {
   );
   const [saving, setSaving] = useState(false);
   const [companyProfileId, setCompanyProfileId] = useState(null);
+  const [successModal, setSuccessModal] = useState(false);
   const [errorModal, setErrorModal] = useState(null);
   const navigate = useNavigate();
 
@@ -112,8 +114,7 @@ const CreateJob = () => {
         payload.days = d;
       }
       await jobsAPI.create(payload);
-      alert('Job created!');
-      navigate('/dashboard');
+      setSuccessModal(true);
     } catch (err) {
       setErrorModal(err.message || 'Failed to create job');
     } finally {
@@ -305,24 +306,24 @@ const CreateJob = () => {
         </button>
       </form>
 
-      {/* Error modal - matches app design */}
-      {errorModal && (
-        <div className="fixed inset-0 flex items-center justify-center z-50 bg-black/50">
-          <div className="bg-white p-8 rounded-lg shadow-xl max-w-md w-full mx-4">
-            <h2 className="text-xl font-bold mb-4 text-gray-900">Unable to create job</h2>
-            <p className="text-gray-700 mb-6">{errorModal}</p>
-            <div className="flex justify-end">
-              <button
-                type="button"
-                onClick={() => setErrorModal(null)}
-                className="px-6 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
-              >
-                OK
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <AlertModal
+        isOpen={successModal}
+        onClose={() => {
+          setSuccessModal(false);
+          navigate('/dashboard');
+        }}
+        title="Job created!"
+        message="Your job has been posted. Technicians can now discover and claim it."
+        variant="success"
+      />
+
+      <AlertModal
+        isOpen={!!errorModal}
+        onClose={() => setErrorModal(null)}
+        title="Unable to create job"
+        message={errorModal || ''}
+        variant="error"
+      />
     </div>
   );
 };

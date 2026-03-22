@@ -1,6 +1,13 @@
-<h1>New Message</h1>
-<p>Hi,</p>
-<p>You have a new message about "<strong><%= @job.title %></strong>":</p>
-<blockquote><%= @message.content %></blockquote>
-<p>Log in to reply.</p>
-<p>— TechFlash</p>
+<h1 style="margin: 0 0 24px 0; font-size: 28px; font-weight: 800; color: #1a1a1a; line-height: 1.2;">New message 💬</h1>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">Hi,</p>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">You have a new message about <strong style="color: #FE6711;">"<%= @job.title %>"</strong>:</p>
+
+<div style="margin: 16px 0; padding: 16px; background-color: #F7F7F7; border-radius: 12px; border-left: 4px solid #FE6711;">
+  <p style="margin: 0; font-size: 16px; color: #374151; line-height: 1.6;"><%= @message.content %></p>
+</div>
+
+<p style="margin: 0 0 24px 0; font-size: 16px; color: #374151; line-height: 1.6;">Log in to reply.</p>
+
+<%= render partial: 'user_mailer/cta_button', locals: { text: 'Reply Now', url: frontend_url("/messages") } %>

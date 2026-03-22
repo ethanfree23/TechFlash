@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { jobsAPI, ratingsAPI } from '../api/api';
+import AlertModal from '../components/AlertModal';
 import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen, FaDollarSign, FaStar, FaChartLine, FaUsers, FaUserCog, FaBuilding } from 'react-icons/fa';
 
 // open, claimed (filled but not started), active (in progress), completed, expired
@@ -42,6 +43,7 @@ const Dashboard = ({ user, onLogout }) => {
   const [error, setError] = useState(null);
   const [jobs, setJobs] = useState(null);
   const [analytics, setAnalytics] = useState(null);
+  const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'error' });
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -87,7 +89,7 @@ const Dashboard = ({ user, onLogout }) => {
       fetchDashboard();
       window.open(`/jobs/${jobId}`, '_blank', 'noopener,noreferrer');
     } catch (err) {
-      alert('Failed to mark job as finished');
+      setAlertModal({ isOpen: true, title: 'Unable to complete', message: 'Failed to mark job as finished', variant: 'error' });
     }
   };
 
@@ -131,6 +133,14 @@ const Dashboard = ({ user, onLogout }) => {
           )}
         </div>
       </main>
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal((p) => ({ ...p, isOpen: false }))}
+        title={alertModal.title}
+        message={alertModal.message}
+        variant={alertModal.variant}
+      />
     </div>
   );
 };

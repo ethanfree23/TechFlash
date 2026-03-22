@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { jobsAPI, profilesAPI, ratingsAPI } from '../api/api';
 import { auth } from '../auth';
+import AlertModal from './AlertModal';
 
 const haversineMiles = (lat1, lon1, lat2, lon2) => {
   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return Infinity;
@@ -34,6 +35,7 @@ const JobList = () => {
   const [technicianProfile, setTechnicianProfile] = useState(null);
   const [claimingJobId, setClaimingJobId] = useState(null);
   const [completedJobs, setCompletedJobs] = useState([]);
+  const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'error' });
   const [loadingCompleted, setLoadingCompleted] = useState(false);
   const [reviewedJobIds, setReviewedJobIds] = useState(new Set());
 
@@ -156,7 +158,7 @@ const JobList = () => {
       await jobsAPI.claim(jobId);
       await fetchJobs();
     } catch (err) {
-      alert(err.message || 'Failed to claim job');
+      setAlertModal({ isOpen: true, title: 'Unable to claim job', message: err.message || 'Failed to claim job', variant: 'error' });
     } finally {
       setClaimingJobId(null);
     }
@@ -580,6 +582,14 @@ const JobList = () => {
           )}
         </div>
       )}
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal((p) => ({ ...p, isOpen: false }))}
+        title={alertModal.title}
+        message={alertModal.message}
+        variant={alertModal.variant}
+      />
     </div>
   );
 };

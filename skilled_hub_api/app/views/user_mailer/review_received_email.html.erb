@@ -1,5 +1,9 @@
-<h1>You Received a Review</h1>
-<p>Hi,</p>
-<p>Someone left you a review for "<strong><%= @job.title %></strong>".</p>
-<p>Log in to read it and leave a review in return if you haven't already.</p>
-<p>— TechFlash</p>
+<h1 style="margin: 0 0 24px 0; font-size: 28px; font-weight: 800; color: #1a1a1a; line-height: 1.2;">You received a review ⭐</h1>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">Hi,</p>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">Someone left you a review for <strong style="color: #FE6711;">"<%= @job.title %>"</strong>.</p>
+
+<p style="margin: 0 0 24px 0; font-size: 16px; color: #374151; line-height: 1.6;">Log in to read it and leave a review in return if you haven't already.</p>
+
+<%= render partial: 'user_mailer/cta_button', locals: { text: 'View Review', url: frontend_url("/jobs/#{@job.id}") } %>

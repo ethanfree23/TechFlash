@@ -1,5 +1,9 @@
-<h1>You Were Paid!</h1>
-<p>Hi,</p>
-<p>You received <strong>$<%= format('%.2f', @amount) %></strong> for "<%= @job.title %>".</p>
-<p>The funds have been transferred to your connected account.</p>
-<p>— TechFlash</p>
+<h1 style="margin: 0 0 24px 0; font-size: 28px; font-weight: 800; color: #1a1a1a; line-height: 1.2;">You were paid! 💰</h1>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">Hi,</p>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">You received <strong style="color: #FE6711;">$<%= format('%.2f', @amount) %></strong> for "<%= @job.title %>".</p>
+
+<p style="margin: 0 0 24px 0; font-size: 16px; color: #374151; line-height: 1.6;">The funds have been transferred to your connected account.</p>
+
+<%= render partial: 'user_mailer/cta_button', locals: { text: 'View Dashboard', url: frontend_url('/dashboard') } %>

@@ -1,5 +1,9 @@
-<h1>Payment Confirmation</h1>
-<p>Hi,</p>
-<p>Your payment of <strong>$<%= format('%.2f', @amount) %></strong> for "<%= @job.title %>" has been received.</p>
-<p>The funds will be released to the technician when the job is complete and reviews are done.</p>
-<p>— TechFlash</p>
+<h1 style="margin: 0 0 24px 0; font-size: 28px; font-weight: 800; color: #1a1a1a; line-height: 1.2;">Payment confirmed ✓</h1>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">Hi,</p>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">Your payment of <strong style="color: #FE6711;">$<%= format('%.2f', @amount) %></strong> for "<%= @job.title %>" has been received.</p>
+
+<p style="margin: 0 0 24px 0; font-size: 16px; color: #374151; line-height: 1.6;">The funds will be released to the technician when the job is complete and reviews are done.</p>
+
+<%= render partial: 'user_mailer/cta_button', locals: { text: 'View Job', url: frontend_url("/jobs/#{@job.id}") } %>

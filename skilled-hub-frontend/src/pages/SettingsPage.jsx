@@ -4,6 +4,8 @@ import { profilesAPI, settingsAPI, authAPI, documentsAPI } from '../api/api';
 import { auth } from '../auth';
 import CardPaymentForm from '../components/CardPaymentForm';
 import CountryStateSelect from '../components/CountryStateSelect';
+import AlertModal from '../components/AlertModal';
+import ConfirmModal from '../components/ConfirmModal';
 
 const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [profile, setProfile] = useState(null);
@@ -21,6 +23,8 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [certificates, setCertificates] = useState([]);
   const [uploadingCert, setUploadingCert] = useState(false);
   const [deletingCertId, setDeletingCertId] = useState(null);
+  const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'success' });
+  const [confirmCertId, setConfirmCertId] = useState(null);
   const publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder';
   const stripe = useMemo(() => {
     if (window.Stripe && publishableKey && publishableKey !== 'pk_test_placeholder') {
@@ -116,7 +120,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         });
       }
       await fetchProfile();
-      alert('Profile saved!');
+      setAlertModal({ isOpen: true, title: 'Profile saved!', message: 'Your profile has been updated.', variant: 'success' });
     } catch (err) {
       setError(err.message || 'Failed to save profile');
     } finally {
@@ -145,7 +149,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       onUserUpdate?.(res.user);
       setAccountPassword('');
       setAccountPasswordConfirm('');
-      alert(email !== (user?.email || auth.getUser()?.email) ? 'Email updated. Use your new email to log in next time.' : 'Account updated.');
+      setAlertModal({
+        isOpen: true,
+        title: 'Account updated',
+        message: email !== (user?.email || auth.getUser()?.email) ? 'Email updated. Use your new email to log in next time.' : 'Your account has been updated.',
+        variant: 'success',
+      });
     } catch (err) {
       setAccountError(err.message || 'Failed to update account');
     } finally {
@@ -168,23 +177,30 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       setCertificates((docs || []).filter(
         (d) => d.doc_type === 'certificate' && d.uploadable_type === 'TechnicianProfile' && d.uploadable_id === profile.id
       ));
-      alert('Certificate uploaded!');
+      setAlertModal({ isOpen: true, title: 'Certificate uploaded!', message: 'Your certificate has been added.', variant: 'success' });
     } catch (err) {
-      alert(err.message || 'Failed to upload certificate');
+      setAlertModal({ isOpen: true, title: 'Upload failed', message: err.message || 'Failed to upload certificate', variant: 'error' });
     } finally {
       setUploadingCert(false);
       e.target.value = '';
     }
   };
 
-  const handleCertificateDelete = async (docId) => {
-    if (!confirm('Remove this certificate?')) return;
+  const handleCertificateDelete = (docId) => {
+    setConfirmCertId(docId);
+  };
+
+  const confirmCertificateDelete = async () => {
+    const docId = confirmCertId;
+    setConfirmCertId(null);
+    if (!docId) return;
     setDeletingCertId(docId);
     try {
       await documentsAPI.delete(docId);
       setCertificates((prev) => prev.filter((d) => d.id !== docId));
+      setAlertModal({ isOpen: true, title: 'Certificate removed', message: 'The certificate has been deleted.', variant: 'success' });
     } catch (err) {
-      alert(err.message || 'Failed to remove certificate');
+      setAlertModal({ isOpen: true, title: 'Remove failed', message: err.message || 'Failed to remove certificate', variant: 'error' });
     } finally {
       setDeletingCertId(null);
     }
@@ -204,7 +220,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         await profilesAPI.updateTechnicianProfile(profile.id, fd);
       }
       await fetchProfile();
-      alert('Photo updated!');
+      setAlertModal({ isOpen: true, title: 'Photo updated!', message: 'Your profile photo has been updated.', variant: 'success' });
     } catch (err) {
       setError(err.message || 'Failed to upload photo');
     } finally {
@@ -484,6 +500,25 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           )}
         </section>
       </main>
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal((p) => ({ ...p, isOpen: false }))}
+        title={alertModal.title}
+        message={alertModal.message}
+        variant={alertModal.variant}
+      />
+
+      <ConfirmModal
+        isOpen={!!confirmCertId}
+        onClose={() => setConfirmCertId(null)}
+        onConfirm={confirmCertificateDelete}
+        title="Remove certificate?"
+        message="Are you sure you want to remove this certificate?"
+        confirmLabel="Remove"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 };

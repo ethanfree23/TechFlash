@@ -1,5 +1,9 @@
-<h1>You Were Accepted!</h1>
-<p>Hi,</p>
-<p>The company has accepted you for the job "<strong><%= @job.title %></strong>".</p>
-<p>Log in to view details and message the company.</p>
-<p>— TechFlash</p>
+<h1 style="margin: 0 0 24px 0; font-size: 28px; font-weight: 800; color: #1a1a1a; line-height: 1.2;">You were accepted! ✨</h1>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">Hi,</p>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">The company has accepted you for the job <strong style="color: #FE6711;">"<%= @job.title %>"</strong>.</p>
+
+<p style="margin: 0 0 24px 0; font-size: 16px; color: #374151; line-height: 1.6;">Log in to view details and message the company.</p>
+
+<%= render partial: 'user_mailer/cta_button', locals: { text: 'View Job & Message', url: frontend_url("/jobs/#{@job.id}") } %>

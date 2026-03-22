@@ -1,5 +1,9 @@
-<h1>Welcome to TechFlash!</h1>
-<p>Hi,</p>
-<p>Thanks for signing up. You're all set to <%= @user.technician? ? 'find jobs' : 'post jobs and hire technicians' %>.</p>
-<p>Log in at your dashboard to get started.</p>
-<p>— The TechFlash Team</p>
+<h1 style="margin: 0 0 24px 0; font-size: 28px; font-weight: 800; color: #1a1a1a; line-height: 1.2;">Welcome to TechFlash! 🎉</h1>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">Hi,</p>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">Thanks for signing up. You're all set to <%= @user.technician? ? 'find jobs' : 'post jobs and hire technicians' %>.</p>
+
+<p style="margin: 0 0 24px 0; font-size: 16px; color: #374151; line-height: 1.6;">Log in at your dashboard to get started.</p>
+
+<%= render partial: 'user_mailer/cta_button', locals: { text: 'Go to Dashboard', url: frontend_url('/login') } %>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import Modal from 'react-modal';
 import { conversationsAPI, messagesAPI } from '../api/api';
+import AlertModal from './AlertModal';
 
 const MessageModal = ({ isOpen, onClose, conversationId, jobTitle, currentUserRole }) => {
   const [conversation, setConversation] = useState(null);
@@ -8,6 +9,7 @@ const MessageModal = ({ isOpen, onClose, conversationId, jobTitle, currentUserRo
   const [newMessage, setNewMessage] = useState('');
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'error' });
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -42,7 +44,7 @@ const MessageModal = ({ isOpen, onClose, conversationId, jobTitle, currentUserRo
       setMessages((prev) => [...prev, msg]);
       setNewMessage('');
     } catch (err) {
-      alert(err.message || 'Failed to send message');
+      setAlertModal({ isOpen: true, title: 'Send failed', message: err.message || 'Failed to send message', variant: 'error' });
     } finally {
       setSending(false);
     }
@@ -65,6 +67,7 @@ const MessageModal = ({ isOpen, onClose, conversationId, jobTitle, currentUserRo
   };
 
   return (
+    <>
     <Modal
       isOpen={isOpen}
       onRequestClose={onClose}
@@ -137,6 +140,15 @@ const MessageModal = ({ isOpen, onClose, conversationId, jobTitle, currentUserRo
         </form>
       </div>
     </Modal>
+
+    <AlertModal
+      isOpen={alertModal.isOpen}
+      onClose={() => setAlertModal((p) => ({ ...p, isOpen: false }))}
+      title={alertModal.title}
+      message={alertModal.message}
+      variant={alertModal.variant}
+    />
+  </>
   );
 };
 

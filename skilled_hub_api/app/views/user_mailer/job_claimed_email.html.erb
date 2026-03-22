@@ -1,11 +1,17 @@
-<h1>Your Job Was Claimed</h1>
-<p>Hi,</p>
-<p>A technician has claimed your job "<strong><%= @job.title %></strong>". The job is theirs—no action needed from you.</p>
+<h1 style="margin: 0 0 24px 0; font-size: 28px; font-weight: 800; color: #1a1a1a; line-height: 1.2;">Your job was claimed! 🎉</h1>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">Hi,</p>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">A technician has claimed your job <strong style="color: #FE6711;">"<%= @job.title %>"</strong>. The job is theirs—no action needed from you.</p>
+
 <% if @technician %>
-  <p>Technician: <%= @technician.user&.email || @technician.trade_type %></p>
+  <p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">Technician: <%= @technician.user&.email || @technician.trade_type %></p>
 <% end %>
+
 <% if @job.job_amount_cents.to_i > 0 %>
-  <p>Your card was charged the job amount + 5% platform fee. Funds are held until the job is complete.</p>
+  <p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">Your card was charged the job amount + 5% platform fee. Funds are held until the job is complete.</p>
 <% end %>
-<p>You can message them with questions, or deny them from the job page if needed (this will reopen the job and refund any payment).</p>
-<p>— TechFlash</p>
+
+<p style="margin: 0 0 24px 0; font-size: 16px; color: #374151; line-height: 1.6;">You can message them with questions, or deny them from the job page if needed (this will reopen the job and refund any payment).</p>
+
+<%= render partial: 'user_mailer/cta_button', locals: { text: 'View Job', url: frontend_url("/jobs/#{@job.id}") } %>

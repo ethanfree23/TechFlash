@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { jobsAPI } from '../api/api';
 import CountryStateSelect from '../components/CountryStateSelect';
+import AlertModal from '../components/AlertModal';
+import ConfirmModal from '../components/ConfirmModal';
 
 const toDatetimeLocal = (d) => {
   if (!d) return '';
@@ -24,6 +26,8 @@ const EditJob = () => {
   const [deleting, setDeleting] = useState(false);
   const [extendEndAt, setExtendEndAt] = useState('');
   const [extending, setExtending] = useState(false);
+  const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'success', onCloseAction: null });
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   useEffect(() => {
     const fetchJob = async () => {
@@ -123,10 +127,12 @@ const EditJob = () => {
         payload.days = null;
       }
       await jobsAPI.update(id, payload);
-      alert('Job updated!');
-      navigate('/dashboard');
+      setAlertModal({
+        isOpen: true, title: 'Job updated!', message: 'Your changes have been saved.', variant: 'success',
+        onCloseAction: () => navigate('/dashboard'),
+      });
     } catch (err) {
-      alert('Failed to update job');
+      setAlertModal({ isOpen: true, title: 'Unable to update job', message: err.message || 'Failed to update job', variant: 'error' });
     } finally {
       setSaving(false);
     }
@@ -135,32 +141,38 @@ const EditJob = () => {
   const handleExtend = async (e) => {
     e.preventDefault();
     if (!extendEndAt) {
-      alert('Please select a new end date and time');
+      setAlertModal({ isOpen: true, title: 'Select date and time', message: 'Please select a new end date and time.', variant: 'error' });
       return;
     }
     setExtending(true);
     try {
       await jobsAPI.extend(id, { scheduled_end_at: new Date(extendEndAt).toISOString() });
-      alert('Job extended!');
+      setAlertModal({ isOpen: true, title: 'Job extended!', message: 'The end date has been updated.', variant: 'success' });
       const data = await jobsAPI.getById(id);
       setJob(data);
       setExtendEndAt(toDatetimeLocal(data.scheduled_end_at));
     } catch (err) {
-      alert(err.message || 'Failed to extend job');
+      setAlertModal({ isOpen: true, title: 'Unable to extend job', message: err.message || 'Failed to extend job', variant: 'error' });
     } finally {
       setExtending(false);
     }
   };
 
-  const handleDelete = async () => {
-    if (!window.confirm('Are you sure you want to delete this job? This cannot be undone.')) return;
+  const handleDelete = () => {
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    setShowDeleteConfirm(false);
     setDeleting(true);
     try {
       await jobsAPI.delete(id);
-      alert('Job deleted.');
-      navigate('/dashboard');
+      setAlertModal({
+        isOpen: true, title: 'Job deleted', message: 'The job has been removed.', variant: 'success',
+        onCloseAction: () => navigate('/dashboard'),
+      });
     } catch (err) {
-      alert(err.message || 'Failed to delete job');
+      setAlertModal({ isOpen: true, title: 'Unable to delete job', message: err.message || 'Failed to delete job', variant: 'error' });
     } finally {
       setDeleting(false);
     }
@@ -356,6 +368,28 @@ const EditJob = () => {
           </form>
         </div>
       )}
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => {
+          setAlertModal((p) => ({ ...p, isOpen: false }));
+          alertModal.onCloseAction?.();
+        }}
+        title={alertModal.title}
+        message={alertModal.message}
+        variant={alertModal.variant}
+      />
+
+      <ConfirmModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={confirmDelete}
+        title="Delete job?"
+        message="Are you sure you want to delete this job? This cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 };

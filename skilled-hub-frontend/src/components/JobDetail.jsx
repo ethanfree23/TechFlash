@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { jobsAPI, profilesAPI, ratingsAPI, conversationsAPI } from '../api/api';
 import MessageModal from './MessageModal';
+import AlertModal from './AlertModal';
+import ConfirmModal from './ConfirmModal';
 import { auth } from '../auth';
 import Modal from 'react-modal';
 import StarRating from './StarRating';
@@ -51,6 +53,8 @@ const JobDetail = () => {
   const [denying, setDenying] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
   const [messageConversationId, setMessageConversationId] = useState(null);
+  const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'error' });
+  const [showDenyConfirm, setShowDenyConfirm] = useState(false);
 
   useEffect(() => {
     // Read user from localStorage on mount
@@ -179,7 +183,7 @@ const JobDetail = () => {
       await jobsAPI.claim(id);
       await fetchJobDetails();
     } catch (err) {
-      alert(err.message || 'Failed to claim job');
+      setAlertModal({ isOpen: true, title: 'Unable to claim job', message: err.message || 'Failed to claim job', variant: 'error' });
     } finally {
       setClaiming(false);
     }
@@ -312,20 +316,24 @@ const JobDetail = () => {
       await fetchJobDetails();
       closeEditModal();
     } catch {
-      alert('Failed to update job');
+      setAlertModal({ isOpen: true, title: 'Unable to update job', message: 'Failed to update job', variant: 'error' });
     } finally {
       setSavingEdit(false);
     }
   };
 
-  const handleDenyTechnician = async () => {
-    if (!confirm('Are you sure you want to deny this technician? The job will be reopened and any payment will be refunded.')) return;
+  const handleDenyTechnician = () => {
+    setShowDenyConfirm(true);
+  };
+
+  const confirmDenyTechnician = async () => {
+    setShowDenyConfirm(false);
     setDenying(true);
     try {
       await jobsAPI.deny(job.id);
       await fetchJobDetails();
     } catch (err) {
-      alert(err.message || 'Failed to deny');
+      setAlertModal({ isOpen: true, title: 'Unable to deny', message: err.message || 'Failed to deny', variant: 'error' });
     } finally {
       setDenying(false);
     }
@@ -339,7 +347,7 @@ const JobDetail = () => {
       setMessageConversationId(conv.id);
       setShowMessageModal(true);
     } catch (err) {
-      alert(err.message || 'Failed to start conversation');
+      setAlertModal({ isOpen: true, title: 'Unable to start conversation', message: err.message || 'Failed to start conversation', variant: 'error' });
     }
   };
 
@@ -349,7 +357,7 @@ const JobDetail = () => {
       await jobsAPI.finish(job.id);
       await fetchJobDetails();
     } catch (err) {
-      alert(err.message || 'Failed to mark complete');
+      setAlertModal({ isOpen: true, title: 'Unable to complete', message: err.message || 'Failed to mark complete', variant: 'error' });
     } finally {
       setMarkingComplete(false);
     }
@@ -382,7 +390,7 @@ const JobDetail = () => {
     const { category_scores } = reviewData;
     const keys = Object.keys(reviewCategories);
     if (!keys.length || !keys.every(k => category_scores[k] >= 1 && category_scores[k] <= 5)) {
-      alert('Please rate all categories (1-5 stars each).');
+      setAlertModal({ isOpen: true, title: 'Complete your rating', message: 'Please rate all categories (1-5 stars each).', variant: 'error' });
       return;
     }
     try {
@@ -399,7 +407,7 @@ const JobDetail = () => {
       setShowReviewForm(false);
       setReviewData({ category_scores: {}, comment: '' });
     } catch (err) {
-      alert(err.message || 'Failed to submit review');
+      setAlertModal({ isOpen: true, title: 'Unable to submit review', message: err.message || 'Failed to submit review', variant: 'error' });
     } finally {
       setSubmittingReview(false);
     }
@@ -942,6 +950,25 @@ const JobDetail = () => {
           </div>
         </div>
       </Modal>
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal((p) => ({ ...p, isOpen: false }))}
+        title={alertModal.title}
+        message={alertModal.message}
+        variant={alertModal.variant}
+      />
+
+      <ConfirmModal
+        isOpen={showDenyConfirm}
+        onClose={() => setShowDenyConfirm(false)}
+        onConfirm={confirmDenyTechnician}
+        title="Deny technician?"
+        message="Are you sure you want to deny this technician? The job will be reopened and any payment will be refunded."
+        confirmLabel="Yes, deny"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
     </div>
   );
 };
