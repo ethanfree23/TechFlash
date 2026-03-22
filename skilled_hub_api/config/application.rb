@@ -40,8 +40,5 @@ module SkilledHubApi
     # Middleware like session, flash, cookies can be added back manually.
     # Skip views, helpers and assets when generating a new resource.
     config.api_only = true
-
-    # Explicit CORS middleware - must run first to handle preflight OPTIONS
-    config.middleware.insert_before 0, CorsMiddleware
   end
 end
