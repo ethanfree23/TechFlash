@@ -1,0 +1,10 @@
+<% kind_label = @submission.kind == 'problem' ? 'Problem report' : 'Suggestion' %>
+<%= kind_label %>
+
+From: <%= @sender.email %> (<%= @sender.role %>)
+<% if @submission.page_path.present? %>Page: <%= @submission.page_path %>
+<% end %>
+
+<%= @submission.body %>
+
+Open app: <%= frontend_url('/') %>

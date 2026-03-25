@@ -1,0 +1,13 @@
+<% kind_label = @submission.kind == 'problem' ? 'Problem report' : 'Suggestion' %>
+<h1 style="margin: 0 0 24px 0; font-size: 28px; font-weight: 800; color: #1a1a1a; line-height: 1.2;"><%= kind_label %></h1>
+
+<p style="margin: 0 0 8px 0; font-size: 16px; color: #374151; line-height: 1.6;"><strong>From:</strong> <%= @sender.email %> (<%= @sender.role %>)</p>
+<% if @submission.page_path.present? %>
+  <p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;"><strong>Page:</strong> <%= @submission.page_path %></p>
+<% end %>
+
+<div style="margin: 16px 0; padding: 16px; background-color: #F7F7F7; border-radius: 12px; border-left: 4px solid #FE6711;">
+  <p style="margin: 0; font-size: 16px; color: #374151; line-height: 1.6; white-space: pre-wrap;"><%= @submission.body %></p>
+</div>
+
+<%= render partial: 'user_mailer/cta_button', locals: { text: 'Open TechFlash', url: frontend_url('/') } %>

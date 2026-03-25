@@ -67,6 +67,15 @@ export const authAPI = {
     }),
 };
 
+// Feedback / support (emails all admin users)
+export const feedbackAPI = {
+  create: ({ kind, body, page_path: pagePath }) =>
+    apiRequest('/feedback', {
+      method: 'POST',
+      body: JSON.stringify({ kind, body, page_path: pagePath }),
+    }),
+};
+
 // Jobs endpoints
 export const jobsAPI = {
   getAll: (filters = {}) => {

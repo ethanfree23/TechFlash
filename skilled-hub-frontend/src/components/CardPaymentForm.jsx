@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { isValidStripePublishableKey } from '../stripeConfig';
 
 const cardStyle = {
   base: { fontSize: '16px', color: '#424770', '::placeholder': { color: '#aab7c4' } },
@@ -31,7 +32,9 @@ const CardPaymentForm = ({
   const stripeRef = useRef(null);
 
   useEffect(() => {
-    const stripeInstance = stripeProp || (window.Stripe && publishableKey && publishableKey !== 'pk_test_placeholder' ? window.Stripe(publishableKey) : null);
+    const stripeInstance =
+      stripeProp ||
+      (window.Stripe && isValidStripePublishableKey(publishableKey) ? window.Stripe(publishableKey) : null);
     if (!cardNumberRef.current || !stripeInstance) return;
     setCardReady(false);
     let mounted = true;

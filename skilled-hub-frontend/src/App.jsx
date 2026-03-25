@@ -11,6 +11,7 @@ import TechnicianProfilePage from './pages/TechnicianProfilePage';
 import CompanyProfilePage from './pages/CompanyProfilePage';
 import SettingsPage from './pages/SettingsPage';
 import MessagesPage from './pages/MessagesPage';
+import FeedbackWidget from './components/FeedbackWidget';
 import { auth } from './auth';
 
 // Protected Route component
@@ -71,6 +72,7 @@ function App() {
   return (
     <Router>
       <div className="App">
+        <FeedbackWidget user={user} />
         <Routes>
           {/* Marketing landing page */}
           <Route 

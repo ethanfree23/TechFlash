@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2025_06_27_012447) do
+ActiveRecord::Schema[7.1].define(version: 2025_06_28_000001) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -69,6 +69,16 @@ ActiveRecord::Schema[7.1].define(version: 2025_06_27_012447) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["uploadable_type", "uploadable_id"], name: "index_documents_on_uploadable"
+  end
+
+  create_table "feedback_submissions", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.string "kind", null: false
+    t.text "body", null: false
+    t.string "page_path"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id"], name: "index_feedback_submissions_on_user_id"
   end
 
   create_table "job_applications", force: :cascade do |t|
@@ -187,6 +197,7 @@ ActiveRecord::Schema[7.1].define(version: 2025_06_27_012447) do
   add_foreign_key "conversations", "company_profiles"
   add_foreign_key "conversations", "jobs"
   add_foreign_key "conversations", "technician_profiles"
+  add_foreign_key "feedback_submissions", "users"
   add_foreign_key "job_applications", "jobs"
   add_foreign_key "job_applications", "technician_profiles"
   add_foreign_key "jobs", "company_profiles"

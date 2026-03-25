@@ -6,7 +6,7 @@ namespace :payments do
     amount_cents = (ENV['AMOUNT'] || 800_000).to_i # default $8000 (covers Job #18's $7600)
 
     if Stripe.api_key.blank?
-      puts "ERROR: Stripe not configured (STRIPE_SECRET_KEY)"
+      puts "ERROR: Stripe not configured (set STRIPE_SECRET_KEY_TEST or STRIPE_SECRET_KEY in dev)"
       next
     end
 

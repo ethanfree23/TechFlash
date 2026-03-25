@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { profilesAPI, settingsAPI, authAPI, documentsAPI } from '../api/api';
 import { auth } from '../auth';
 import CardPaymentForm from '../components/CardPaymentForm';
+import { getStripePublishableKey, isValidStripePublishableKey } from '../stripeConfig';
 import CountryStateSelect from '../components/CountryStateSelect';
 import AlertModal from '../components/AlertModal';
 import ConfirmModal from '../components/ConfirmModal';
@@ -25,9 +26,9 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [deletingCertId, setDeletingCertId] = useState(null);
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'success' });
   const [confirmCertId, setConfirmCertId] = useState(null);
-  const publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder';
+  const publishableKey = getStripePublishableKey();
   const stripe = useMemo(() => {
-    if (window.Stripe && publishableKey && publishableKey !== 'pk_test_placeholder') {
+    if (window.Stripe && isValidStripePublishableKey(publishableKey)) {
       return window.Stripe(publishableKey);
     }
     return null;

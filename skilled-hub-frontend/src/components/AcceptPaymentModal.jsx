@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { paymentsAPI, jobsAPI } from '../api/api';
+import { getStripePublishableKey, isValidStripePublishableKey } from '../stripeConfig';
 
 const cardStyle = {
   base: { fontSize: '16px', color: '#424770', '::placeholder': { color: '#aab7c4' } },
@@ -17,10 +18,10 @@ const AcceptPaymentModal = ({ isOpen, onClose, jobId, amountCents, onSuccess }) 
   const cardNumberElRef = useRef(null);
   const stripeRef = useRef(null);
 
-  const publishableKey = import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder';
+  const publishableKey = getStripePublishableKey();
 
   useEffect(() => {
-    if (!isOpen || !cardNumberRef.current || !window.Stripe || !publishableKey) return;
+    if (!isOpen || !cardNumberRef.current || !window.Stripe || !isValidStripePublishableKey(publishableKey)) return;
     setCardReady(false);
     try {
       const stripe = window.Stripe(publishableKey);

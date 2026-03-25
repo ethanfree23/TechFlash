@@ -11,6 +11,7 @@ Rails.application.routes.draw do
       get 'technicians/profile', to: 'technicians#profile'
       get 'company_profiles/profile', to: 'company_profiles#profile'
       patch 'users/me', to: 'users#update_me'
+      post 'feedback', to: 'feedback_submissions#create'
       resources :users
       resources :jobs do
         collection do

@@ -82,6 +82,19 @@ class UserMailer < ApplicationMailer
     mail(to: user.email, subject: "Reminder: Leave a review for #{job.title}")
   end
 
+  def admin_feedback(submission)
+    @submission = submission
+    @sender = submission.user
+    admin_emails = User.where(role: :admin).pluck(:email).compact.uniq
+    return if admin_emails.empty?
+
+    kind_label = submission.kind == 'problem' ? 'Problem report' : 'Suggestion'
+    mail(
+      to: admin_emails,
+      subject: "[TechFlash] #{kind_label} from #{@sender.email}"
+    )
+  end
+
   private
 
   def recipient_for_message(message)

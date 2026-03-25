@@ -34,23 +34,25 @@ bundle exec rails db:migrate
 
 ### 2. Configure Stripe credentials
 
-**Option A: Use .env (easiest for development)**
+**Production (Railway / live):** set `STRIPE_SECRET_KEY` to your **live** secret key (`sk_live_...`) from https://dashboard.stripe.com/apikeys — see `RAILWAY_SETUP.md`.
 
-Edit `skilled_hub_api/.env` and replace the placeholder with your secret key:
+**Local development (sandbox):** use a separate variable so live keys are never loaded in dev:
 
 ```
-STRIPE_SECRET_KEY=sk_test_your_actual_key_here
+STRIPE_SECRET_KEY_TEST=sk_test_your_actual_key_here
 ```
 
-Get your keys at https://dashboard.stripe.com/test/apikeys
+If `STRIPE_SECRET_KEY_TEST` is unset, dev falls back to `STRIPE_SECRET_KEY` or credentials (legacy).
 
-**Option B: Rails credentials**
+Get test keys at https://dashboard.stripe.com/test/apikeys
+
+**Rails credentials (optional)**
 
 ```bash
 EDITOR=code bundle exec rails credentials:edit
 ```
 
-Add under the `stripe` key:
+Add under the `stripe` key (often used for one environment only):
 
 ```yaml
 stripe:
@@ -80,15 +82,12 @@ Or add to crontab:
 
 ## Frontend Setup
 
-### 1. Stripe publishable key
+### 1. Stripe publishable keys (sandbox vs live)
 
-Edit `skilled-hub-frontend/.env` and replace the placeholder with your publishable key:
+- **Production build / deploy:** set `VITE_STRIPE_PUBLISHABLE_KEY` to your **live** publishable key (`pk_live_...`) from https://dashboard.stripe.com/apikeys (CI or hosting env vars).
+- **Local `npm run dev`:** set `VITE_STRIPE_PUBLISHABLE_KEY_TEST` to `pk_test_...` (https://dashboard.stripe.com/test/apikeys). If unset, dev uses `VITE_STRIPE_PUBLISHABLE_KEY`.
 
-```
-VITE_STRIPE_PUBLISHABLE_KEY=pk_test_your_actual_key_here
-```
-
-Get your keys at https://dashboard.stripe.com/test/apikeys
+See `.env.example` in the frontend folder for a template.
 
 ### 2. Install dependencies
 
