@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { jobsAPI, profilesAPI, ratingsAPI } from '../api/api';
 import { auth } from '../auth';
 import AlertModal from './AlertModal';
+import { formatExperienceShort } from '../constants/experienceSelect';
 
 const haversineMiles = (lat1, lon1, lat2, lon2) => {
   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return Infinity;
@@ -405,11 +406,34 @@ const JobList = () => {
                   </div>
                   
                   <p className="text-gray-600 line-clamp-3 text-sm">
-                    {job.description.length > 80 
-                      ? `${job.description.substring(0, 80)}...` 
-                      : job.description
-                    }
+                    {(job.description || '').length > 80
+                      ? `${(job.description || '').substring(0, 80)}...`
+                      : (job.description || '—')}
                   </p>
+
+                  {(job.skill_class || job.minimum_years_experience != null) && (
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-gray-700">
+                      {job.skill_class && (
+                        <span>
+                          <span className="font-semibold uppercase tracking-wide text-gray-500">Class: </span>
+                          {job.skill_class}
+                        </span>
+                      )}
+                      {job.minimum_years_experience != null && (
+                        <span>
+                          <span className="font-semibold uppercase tracking-wide text-gray-500">Exp: </span>
+                          {formatExperienceShort(job.minimum_years_experience)} yrs
+                        </span>
+                      )}
+                    </div>
+                  )}
+
+                  {job.notes && (
+                    <div className="mt-2 pt-3 border-t border-gray-200">
+                      <p className="text-xs font-bold uppercase tracking-wide text-gray-700 mb-1">Notes and conditions</p>
+                      <p className="text-sm text-gray-700 line-clamp-4 whitespace-pre-wrap">{job.notes}</p>
+                    </div>
+                  )}
                   
                   <div className="space-y-2">
                     {job.scheduled_start_at && (

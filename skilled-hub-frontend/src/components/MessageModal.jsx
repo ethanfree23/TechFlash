@@ -3,7 +3,14 @@ import Modal from 'react-modal';
 import { conversationsAPI, messagesAPI } from '../api/api';
 import AlertModal from './AlertModal';
 
-const MessageModal = ({ isOpen, onClose, conversationId, jobTitle, currentUserRole }) => {
+const MessageModal = ({
+  isOpen,
+  onClose,
+  conversationId,
+  jobTitle,
+  currentUserRole,
+  isFeedbackThread = false,
+}) => {
   const [conversation, setConversation] = useState(null);
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
@@ -52,6 +59,13 @@ const MessageModal = ({ isOpen, onClose, conversationId, jobTitle, currentUserRo
 
   const otherPartyName = () => {
     if (!conversation) return '...';
+    if (currentUserRole === 'admin') {
+      return (
+        conversation.technician_profile?.user?.email ||
+        conversation.company_profile?.company_name ||
+        'User'
+      );
+    }
     if (currentUserRole === 'technician') {
       return conversation.company_profile?.company_name || 'Company';
     }
@@ -60,6 +74,7 @@ const MessageModal = ({ isOpen, onClose, conversationId, jobTitle, currentUserRo
 
   const isFromMe = (msg) => {
     if (!conversation) return false;
+    if (isFeedbackThread) return false;
     if (currentUserRole === 'technician') {
       return msg.sender_type === 'TechnicianProfile' && String(msg.sender_id) === String(conversation.technician_profile_id);
     }
@@ -76,9 +91,16 @@ const MessageModal = ({ isOpen, onClose, conversationId, jobTitle, currentUserRo
     >
       <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
         <div className="flex items-center justify-between p-4 border-b border-gray-200">
-          <h2 className="text-xl font-semibold text-gray-900">
-            Messages: {jobTitle || 'Job'}
-          </h2>
+          <div>
+            {isFeedbackThread && (
+              <span className="inline-block mb-1 px-2 py-0.5 text-xs font-semibold rounded bg-orange-100 text-orange-800">
+                Feedback
+              </span>
+            )}
+            <h2 className="text-xl font-semibold text-gray-900">
+              {isFeedbackThread ? 'Notification' : 'Messages'}: {jobTitle || (isFeedbackThread ? 'Feedback' : 'Job')}
+            </h2>
+          </div>
           <button
             onClick={onClose}
             className="text-gray-500 hover:text-gray-700 text-2xl leading-none"
@@ -87,29 +109,43 @@ const MessageModal = ({ isOpen, onClose, conversationId, jobTitle, currentUserRo
           </button>
         </div>
         <p className="px-4 py-1 text-sm text-gray-500">
-          Chat with {otherPartyName()}
+          {isFeedbackThread ? 'From ' : currentUserRole === 'admin' ? 'From ' : 'Chat with '}
+          {otherPartyName()}
         </p>
+        {isFeedbackThread && (
+          <p className="px-4 pb-2 text-xs text-gray-400">
+            Read-only notification. Replies are not sent.
+          </p>
+        )}
         <div className="flex-1 overflow-y-auto p-4 min-h-[200px] max-h-[400px] bg-gray-50">
           {loading ? (
             <div className="text-center text-gray-500 py-8">Loading messages...</div>
           ) : messages.length === 0 ? (
-            <div className="text-center text-gray-500 py-8">No messages yet. Start the conversation!</div>
+            <div className="text-center text-gray-500 py-8">
+              {isFeedbackThread ? 'No notification content.' : 'No messages yet. Start the conversation!'}
+            </div>
           ) : (
             <div className="space-y-3">
               {messages.map((msg) => (
                 <div
                   key={msg.id}
-                  className={`flex ${isFromMe(msg) ? 'justify-end' : 'justify-start'}`}
+                  className={`flex ${isFeedbackThread ? 'justify-start' : isFromMe(msg) ? 'justify-end' : 'justify-start'}`}
                 >
                   <div
                     className={`max-w-[80%] rounded-lg px-4 py-2 ${
-                      isFromMe(msg)
-                        ? 'bg-blue-600 text-white'
-                        : 'bg-white border border-gray-200 text-gray-900'
+                      isFeedbackThread
+                        ? 'bg-white border border-orange-100 text-gray-900 shadow-sm'
+                        : isFromMe(msg)
+                          ? 'bg-blue-600 text-white'
+                          : 'bg-white border border-gray-200 text-gray-900'
                     }`}
                   >
                     <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                    <p className={`text-xs mt-1 ${isFromMe(msg) ? 'text-blue-100' : 'text-gray-400'}`}>
+                    <p
+                      className={`text-xs mt-1 ${
+                        isFeedbackThread ? 'text-gray-400' : isFromMe(msg) ? 'text-blue-100' : 'text-gray-400'
+                      }`}
+                    >
                       {new Date(msg.created_at).toLocaleString()}
                     </p>
                   </div>
@@ -119,6 +155,7 @@ const MessageModal = ({ isOpen, onClose, conversationId, jobTitle, currentUserRo
             </div>
           )}
         </div>
+        {!isFeedbackThread && (
         <form onSubmit={handleSend} className="p-4 border-t border-gray-200">
           <div className="flex gap-2">
             <textarea
@@ -138,6 +175,7 @@ const MessageModal = ({ isOpen, onClose, conversationId, jobTitle, currentUserRo
             </button>
           </div>
         </form>
+        )}
       </div>
     </Modal>
 

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2025_06_28_000001) do
+ActiveRecord::Schema[7.1].define(version: 2026_03_30_160000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -51,12 +51,16 @@ ActiveRecord::Schema[7.1].define(version: 2025_06_28_000001) do
   end
 
   create_table "conversations", force: :cascade do |t|
-    t.integer "job_id", null: false
-    t.integer "technician_profile_id", null: false
-    t.integer "company_profile_id", null: false
+    t.integer "job_id"
+    t.integer "technician_profile_id"
+    t.integer "company_profile_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "conversation_type", default: "job", null: false
+    t.integer "feedback_submission_id"
     t.index ["company_profile_id"], name: "index_conversations_on_company_profile_id"
+    t.index ["conversation_type"], name: "index_conversations_on_conversation_type"
+    t.index ["feedback_submission_id"], name: "index_conversations_on_feedback_submission_id", unique: true
     t.index ["job_id"], name: "index_conversations_on_job_id"
     t.index ["technician_profile_id"], name: "index_conversations_on_technician_profile_id"
   end
@@ -117,6 +121,9 @@ ActiveRecord::Schema[7.1].define(version: 2025_06_28_000001) do
     t.decimal "latitude", precision: 10, scale: 7
     t.decimal "longitude", precision: 10, scale: 7
     t.text "required_certifications"
+    t.string "skill_class"
+    t.integer "minimum_years_experience"
+    t.text "notes"
     t.index ["company_profile_id"], name: "index_jobs_on_company_profile_id"
   end
 
@@ -195,6 +202,7 @@ ActiveRecord::Schema[7.1].define(version: 2025_06_28_000001) do
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "company_profiles", "users"
   add_foreign_key "conversations", "company_profiles"
+  add_foreign_key "conversations", "feedback_submissions"
   add_foreign_key "conversations", "jobs"
   add_foreign_key "conversations", "technician_profiles"
   add_foreign_key "feedback_submissions", "users"

@@ -16,7 +16,7 @@ import { auth } from './auth';
 
 // Protected Route component
 const ProtectedRoute = ({ children, isAuthenticated }) => {
-  return isAuthenticated ? children : <Navigate to="/" replace />;
+  return isAuthenticated ? children : <Navigate to="/login" replace />;
 };
 
 // Public Route component (redirects to dashboard if already authenticated)
@@ -79,7 +79,7 @@ function App() {
             path="/" 
             element={
               <PublicRoute isAuthenticated={isAuthenticated}>
-                <MarketingPage />
+                <MarketingPage onLoginSuccess={handleLoginSuccess} />
               </PublicRoute>
             } 
           />

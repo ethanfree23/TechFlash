@@ -43,24 +43,38 @@ module Api
       end
 
       def conversations_for_current_user
+        if @current_user.admin?
+          return Conversation.feedback_threads
+            .includes(:job, :technician_profile, :company_profile, :messages, :feedback_submission)
+            .order(updated_at: :desc)
+        end
+
         if @current_user.technician?
           profile = @current_user.technician_profile
           return Conversation.none unless profile
-          Conversation.where(technician_profile_id: profile.id)
-        else
+
+          Conversation.job_threads.where(technician_profile_id: profile.id)
+        elsif @current_user.company?
           profile = @current_user.company_profile
           return Conversation.none unless profile
-          Conversation.where(company_profile_id: profile.id)
+
+          Conversation.job_threads.where(company_profile_id: profile.id)
+        else
+          Conversation.none
         end.includes(:job, :technician_profile, :company_profile, :messages)
       end
 
       def conversation_participant?(conv)
+        return true if conv.feedback? && @current_user.admin?
+
         if @current_user.technician?
           profile = @current_user.technician_profile
-          profile && conv.technician_profile_id == profile.id
-        else
+          profile && conv.technician_profile_id == profile.id && conv.job_thread?
+        elsif @current_user.company?
           profile = @current_user.company_profile
-          profile && conv.company_profile_id == profile.id
+          profile && conv.company_profile_id == profile.id && conv.job_thread?
+        else
+          false
         end
       end
 
@@ -84,6 +98,7 @@ module Api
             company_profile_id: job.company_profile_id
           )
         end
+        conv.conversation_type = Conversation::TYPE_JOB if conv.new_record?
         conv.save ? conv : nil
       end
 

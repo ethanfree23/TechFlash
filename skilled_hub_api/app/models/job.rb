@@ -28,9 +28,13 @@ class Job < ApplicationRecord
     (job_amount_cents * 0.95).round
   end
 
+  before_validation :normalize_job_display_fields
+
   before_save :sync_price_cents
   before_save :sync_location_from_address
   before_save :geocode_address
+
+  validates :minimum_years_experience, numericality: { only_integer: true, greater_than_or_equal_to: 0, allow_nil: true }
 
   has_many :conversations, dependent: :destroy
   has_many :ratings, dependent: :destroy
@@ -43,6 +47,16 @@ class Job < ApplicationRecord
   end
 
   private
+
+  def normalize_job_display_fields
+    self.skill_class = skill_class.to_s.strip.presence
+    self.notes = notes.to_s.strip.presence
+    if minimum_years_experience.to_s.strip.blank?
+      self.minimum_years_experience = nil
+    elsif minimum_years_experience.is_a?(String)
+      self.minimum_years_experience = minimum_years_experience.to_i
+    end
+  end
 
   def sync_price_cents
     return unless hourly_rate_cents.present? && hours_per_day.present? && days.present?

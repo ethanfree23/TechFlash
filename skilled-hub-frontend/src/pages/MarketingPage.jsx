@@ -1,8 +1,9 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { FaWrench, FaBuilding, FaBolt, FaHandshake, FaShieldAlt, FaCheckSquare } from 'react-icons/fa';
+import RegisterForm from '../components/RegisterForm';
 
-const MarketingPage = () => {
+const MarketingPage = ({ onLoginSuccess }) => {
   return (
     <div 
       className="min-h-screen text-gray-800"
@@ -144,22 +145,31 @@ const MarketingPage = () => {
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="py-24 px-4 sm:px-6 lg:px-8 relative">
+      {/* Sign up — inline form */}
+      <section className="py-24 px-4 sm:px-6 lg:px-8 relative" id="signup">
         <div className="absolute inset-0 bg-[#FE6711]/10 rounded-[3rem] mx-4 sm:mx-8" />
-        <div className="max-w-3xl mx-auto text-center relative">
-          <h2 className="text-2xl sm:text-4xl font-black text-gray-800 mb-4">
-            Ready to get started?
-          </h2>
-          <p className="text-gray-600 mb-8 text-lg">
-            Join TechFlash today. Create your account in under a minute.
+        <div className="max-w-lg mx-auto relative">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl sm:text-4xl font-black text-gray-800 mb-4">
+              Ready to get started?
+            </h2>
+            <p className="text-gray-600 text-lg">
+              Join TechFlash today—fill in your details below. No extra clicks.
+            </p>
+          </div>
+          <div className="rounded-3xl bg-white/95 border-2 border-orange-100 shadow-xl shadow-orange-100/40 p-8 sm:p-10 backdrop-blur-sm">
+            <RegisterForm
+              onLoginSuccess={onLoginSuccess}
+              variant="marketing"
+              idPrefix="marketing-signup"
+            />
+          </div>
+          <p className="mt-6 text-center text-sm text-gray-600">
+            Already have an account?{' '}
+            <Link to="/login" className="font-semibold text-[#FE6711] hover:underline">
+              Log in
+            </Link>
           </p>
-          <Link
-            to="/login?tab=signup"
-            className="inline-flex items-center justify-center px-10 py-4 text-base font-bold bg-[#FE6711] text-white rounded-2xl hover:bg-[#e55a0a] transition shadow-xl shadow-orange-300/40 hover:shadow-orange-400/50 hover:scale-105"
-          >
-            Sign up free 🚀
-          </Link>
         </div>
       </section>
 

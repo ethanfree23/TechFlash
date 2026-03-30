@@ -5,6 +5,7 @@ import MessageModal from './MessageModal';
 import AlertModal from './AlertModal';
 import ConfirmModal from './ConfirmModal';
 import { auth } from '../auth';
+import { EXPERIENCE_YEAR_OPTIONS, formatExperienceLong } from '../constants/experienceSelect';
 import Modal from 'react-modal';
 import StarRating from './StarRating';
 
@@ -27,6 +28,9 @@ const JobDetail = () => {
   const [showClaimedModal, setShowClaimedModal] = useState(false);
   const [editData, setEditData] = useState({
     description: '',
+    skill_class: '',
+    minimum_years_experience: '',
+    notes: '',
     required_certifications: [''],
     location: '',
     hourly_rate_cents: '',
@@ -219,6 +223,9 @@ const JobDetail = () => {
     const hasNewPricing = job.hourly_rate_cents != null && job.days != null;
     setEditData({
       description: job.description || '',
+      skill_class: job.skill_class || '',
+      minimum_years_experience: job.minimum_years_experience != null ? String(job.minimum_years_experience) : '',
+      notes: job.notes || '',
       required_certifications: (() => {
         const raw = job.required_certifications?.trim();
         const arr = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : [];
@@ -294,8 +301,14 @@ const JobDetail = () => {
       const d = parseInt(editData.days, 10) || 0;
       const jobAmount = hr * hpd * d;
 
+      const years = (editData.minimum_years_experience || '').toString().trim() === ''
+        ? null
+        : parseInt(editData.minimum_years_experience, 10);
       const payload = {
         description: editData.description,
+        skill_class: (editData.skill_class || '').trim() || null,
+        minimum_years_experience: years != null && !Number.isNaN(years) ? years : null,
+        notes: (editData.notes || '').trim() || null,
         required_certifications: Array.isArray(editData.required_certifications) && editData.required_certifications.filter((c) => c?.trim()).length
           ? editData.required_certifications.filter((c) => c?.trim()).join(", ")
           : null,
@@ -596,6 +609,30 @@ const JobDetail = () => {
               <p className="text-gray-700 leading-relaxed">{job.description}</p>
             </div>
 
+            {(job.skill_class || job.minimum_years_experience != null) && (
+              <div className="mb-6 flex flex-wrap gap-6 text-sm">
+                {job.skill_class && (
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Class</p>
+                    <p className="font-medium text-gray-900">{job.skill_class}</p>
+                  </div>
+                )}
+                {job.minimum_years_experience != null && (
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Experience</p>
+                    <p className="font-medium text-gray-900">{formatExperienceLong(job.minimum_years_experience)}</p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {job.notes && (
+              <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                <h3 className="text-sm font-bold uppercase tracking-wide text-gray-800 mb-2">Notes and conditions</h3>
+                <p className="text-gray-800 whitespace-pre-wrap leading-relaxed">{job.notes}</p>
+              </div>
+            )}
+
             {job.required_documents && (
               <div className="mb-6">
                 <h3 className="text-xl font-semibold text-gray-900 mb-3">Required Documents</h3>
@@ -830,6 +867,31 @@ const JobDetail = () => {
             <div>
               <label className="block text-sm font-medium mb-1">Description</label>
               <textarea name="description" value={editData.description} onChange={handleEditChange} className="w-full border rounded p-2" rows={4} required />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">Class</label>
+                <input name="skill_class" value={editData.skill_class} onChange={handleEditChange} className="w-full border rounded p-2" placeholder="e.g. Journeyman" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-1">Experience</label>
+                <select
+                  name="minimum_years_experience"
+                  value={editData.minimum_years_experience}
+                  onChange={handleEditChange}
+                  className="w-full border rounded p-2 bg-white"
+                >
+                  {EXPERIENCE_YEAR_OPTIONS.map(({ value, label }) => (
+                    <option key={value === '' ? 'any' : value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Notes and conditions</label>
+              <textarea name="notes" value={editData.notes} onChange={handleEditChange} className="w-full border rounded p-2 min-h-[80px]" rows={4} placeholder="Safety, site requirements, etc." />
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Required Certifications</label>

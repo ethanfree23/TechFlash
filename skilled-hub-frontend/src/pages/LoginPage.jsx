@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { authAPI } from '../api/api';
 import { auth } from '../auth';
+import RegisterForm from '../components/RegisterForm';
 
 const LoginPage = ({ onLoginSuccess }) => {
   const [searchParams] = useSearchParams();
@@ -16,12 +17,6 @@ const LoginPage = ({ onLoginSuccess }) => {
   const [error, setError] = useState('');
 
   const [loginData, setLoginData] = useState({ email: '', password: '' });
-  const [registerData, setRegisterData] = useState({
-    email: '',
-    password: '',
-    password_confirmation: '',
-    role: 'technician',
-  });
   const navigate = useNavigate();
 
   const handleLoginSubmit = async (e) => {
@@ -42,35 +37,9 @@ const LoginPage = ({ onLoginSuccess }) => {
     }
   };
 
-  const handleRegisterSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-    if (registerData.password !== registerData.password_confirmation) {
-      setError('Passwords do not match');
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const response = await authAPI.register(registerData);
-      auth.setToken(response.token);
-      auth.setUser(response.user);
-      onLoginSuccess(response.user);
-      setTimeout(() => navigate('/dashboard'), 100);
-    } catch (err) {
-      console.error('Registration error:', err);
-      setError(err.message || 'Registration failed');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleInputChange = (e, formType) => {
+  const handleInputChange = (e) => {
     const { name, value } = e.target;
-    formType === 'login'
-      ? setLoginData((prev) => ({ ...prev, [name]: value }))
-      : setRegisterData((prev) => ({ ...prev, [name]: value }));
+    setLoginData((prev) => ({ ...prev, [name]: value }));
   };
 
   return (
@@ -124,7 +93,7 @@ const LoginPage = ({ onLoginSuccess }) => {
                   id="login-email"
                   name="email"
                   value={loginData.email}
-                  onChange={(e) => handleInputChange(e, 'login')}
+                  onChange={handleInputChange}
                   required
                   placeholder="you@example.com"
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-[#3A7CA5] focus:border-[#3A7CA5] text-[#2E2E2E]"
@@ -140,7 +109,7 @@ const LoginPage = ({ onLoginSuccess }) => {
                   id="login-password"
                   name="password"
                   value={loginData.password}
-                  onChange={(e) => handleInputChange(e, 'login')}
+                  onChange={handleInputChange}
                   required
                   placeholder="••••••••"
                   className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-[#3A7CA5] focus:border-[#3A7CA5] text-[#2E2E2E]"
@@ -156,79 +125,7 @@ const LoginPage = ({ onLoginSuccess }) => {
               </button>
             </form>
           ) : (
-            <form onSubmit={handleRegisterSubmit} className="space-y-6">
-              <div>
-                <label htmlFor="register-email" className="block text-sm font-medium text-[#2E2E2E]">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  id="register-email"
-                  name="email"
-                  value={registerData.email}
-                  onChange={(e) => handleInputChange(e, 'register')}
-                  required
-                  placeholder="you@example.com"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-[#3A7CA5] focus:border-[#3A7CA5] text-[#2E2E2E]"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="register-password" className="block text-sm font-medium text-[#2E2E2E]">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  id="register-password"
-                  name="password"
-                  value={registerData.password}
-                  onChange={(e) => handleInputChange(e, 'register')}
-                  required
-                  placeholder="••••••••"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-[#3A7CA5] focus:border-[#3A7CA5] text-[#2E2E2E]"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="register-password-confirmation" className="block text-sm font-medium text-[#2E2E2E]">
-                  Confirm Password
-                </label>
-                <input
-                  type="password"
-                  id="register-password-confirmation"
-                  name="password_confirmation"
-                  value={registerData.password_confirmation}
-                  onChange={(e) => handleInputChange(e, 'register')}
-                  required
-                  placeholder="Re-enter password"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-[#3A7CA5] focus:border-[#3A7CA5] text-[#2E2E2E]"
-                />
-              </div>
-
-              <div>
-                <label htmlFor="register-role" className="block text-sm font-medium text-[#2E2E2E]">
-                  I am a:
-                </label>
-                <select
-                  id="register-role"
-                  name="role"
-                  value={registerData.role}
-                  onChange={(e) => handleInputChange(e, 'register')}
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm text-[#2E2E2E] focus:ring-[#3A7CA5] focus:border-[#3A7CA5]"
-                >
-                  <option value="technician">Technician (Job Seeker)</option>
-                  <option value="company">Company (Hiring)</option>
-                </select>
-              </div>
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full flex justify-center py-2 px-4 rounded-md text-sm font-medium text-white bg-[#3A7CA5] hover:bg-[#2F5D7C] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#3A7CA5] disabled:opacity-50"
-              >
-                {loading ? 'Creating account...' : 'Create Account'}
-              </button>
-            </form>
+            <RegisterForm onLoginSuccess={onLoginSuccess} />
           )}
 
           <div className="mt-6 text-center">

@@ -4,11 +4,13 @@ class MessageSerializer < ActiveModel::Serializer
   attribute :sender_display_name do
     case object.sender
     when TechnicianProfile
-      object.sender.user&.email || object.sender.trade_type || 'Technician'
+      object.sender.user&.email || object.sender.trade_type || "Technician"
     when CompanyProfile
-      object.sender.company_name || object.sender.user&.email || 'Company'
+      object.sender.company_name || object.sender.user&.email || "Company"
+    when User
+      object.sender.email || "Admin"
     else
-      object.sender&.try(:email) || 'Unknown'
+      object.sender&.try(:email) || "Unknown"
     end
   end
 

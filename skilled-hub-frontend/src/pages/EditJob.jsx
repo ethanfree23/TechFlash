@@ -4,6 +4,7 @@ import { jobsAPI } from '../api/api';
 import CountryStateSelect from '../components/CountryStateSelect';
 import AlertModal from '../components/AlertModal';
 import ConfirmModal from '../components/ConfirmModal';
+import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
 
 const toDatetimeLocal = (d) => {
   if (!d) return '';
@@ -19,7 +20,7 @@ const EditJob = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [form, setForm] = useState({
-    title: '', description: '', required_certifications: [''], address: '', city: '', state: '', zip_code: '', country: '', status: 'open',
+    title: '', description: '', skill_class: '', minimum_years_experience: '', notes: '', required_certifications: [''], address: '', city: '', state: '', zip_code: '', country: '', status: 'open',
     hourly_rate_cents: '', hours_per_day: '8', days: '',
   });
   const [saving, setSaving] = useState(false);
@@ -39,6 +40,9 @@ const EditJob = () => {
         setForm({
           title: data.title || '',
           description: data.description || '',
+          skill_class: data.skill_class || '',
+          minimum_years_experience: data.minimum_years_experience != null ? String(data.minimum_years_experience) : '',
+          notes: data.notes || '',
           required_certifications: (() => {
             const raw = data.required_certifications?.trim();
             const arr = raw ? raw.split(",").map((s) => s.trim()).filter(Boolean) : [];
@@ -104,9 +108,15 @@ const EditJob = () => {
     e.preventDefault();
     setSaving(true);
     try {
+      const years = (form.minimum_years_experience || '').toString().trim() === ''
+        ? null
+        : parseInt(form.minimum_years_experience, 10);
       const payload = {
         title: form.title,
         description: form.description,
+        skill_class: (form.skill_class || '').trim() || null,
+        minimum_years_experience: years != null && !Number.isNaN(years) ? years : null,
+        notes: (form.notes || '').trim() || null,
         required_certifications: Array.isArray(form.required_certifications) && form.required_certifications.filter((c) => c?.trim()).length
           ? form.required_certifications.filter((c) => c?.trim()).join(", ")
           : null,
@@ -204,6 +214,44 @@ const EditJob = () => {
             value={form.description}
             onChange={handleChange}
             required
+          />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block font-medium mb-1">Class</label>
+            <input
+              className="w-full border px-3 py-2 rounded"
+              name="skill_class"
+              value={form.skill_class}
+              onChange={handleChange}
+              placeholder="e.g. Journeyman, Residential"
+            />
+          </div>
+          <div>
+            <label className="block font-medium mb-1">Experience</label>
+            <select
+              name="minimum_years_experience"
+              className="w-full border px-3 py-2 rounded bg-white"
+              value={form.minimum_years_experience}
+              onChange={handleChange}
+            >
+              {EXPERIENCE_YEAR_OPTIONS.map(({ value, label }) => (
+                <option key={value === '' ? 'any' : value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="block font-medium mb-1">Notes and conditions</label>
+          <p className="text-xs text-gray-500 mb-2">Shown on the job listing for technicians.</p>
+          <textarea
+            className="w-full border px-3 py-2 rounded min-h-[100px]"
+            name="notes"
+            value={form.notes}
+            onChange={handleChange}
+            placeholder="Safety, site conditions, or other requirements"
           />
         </div>
         <div>

@@ -4,6 +4,7 @@ import { jobsAPI, profilesAPI } from '../api/api';
 import DateTimeInput from '../components/DateTimeInput';
 import CountryStateSelect from '../components/CountryStateSelect';
 import AlertModal from '../components/AlertModal';
+import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
 
 const toDatetimeLocal = (d) => {
   if (!d) return '';
@@ -44,6 +45,9 @@ const CreateJob = () => {
   const defaultStart = getDefaultStart();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
+  const [skillClass, setSkillClass] = useState("");
+  const [minimumYearsExperience, setMinimumYearsExperience] = useState("");
+  const [notes, setNotes] = useState("");
   const [requiredCertifications, setRequiredCertifications] = useState([""]);
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
@@ -92,9 +96,13 @@ const CreateJob = () => {
     e.preventDefault();
     setSaving(true);
     try {
+      const years = minimumYearsExperience.trim() === '' ? null : parseInt(minimumYearsExperience, 10);
       const payload = {
         title,
         description,
+        skill_class: skillClass.trim() || null,
+        minimum_years_experience: years != null && !Number.isNaN(years) ? years : null,
+        notes: notes.trim() || null,
         required_certifications: requiredCertifications.filter((c) => c.trim()).length
           ? requiredCertifications.filter((c) => c.trim()).join(", ")
           : null,
@@ -124,6 +132,13 @@ const CreateJob = () => {
 
   return (
     <div className="max-w-xl mx-auto mt-10 bg-white p-8 rounded shadow">
+      <button
+        type="button"
+        onClick={() => navigate(-1)}
+        className="mb-4 text-blue-600 hover:text-blue-800 text-sm font-medium"
+      >
+        ← Back
+      </button>
       <h1 className="text-2xl font-bold mb-6">Create New Job</h1>
       <form onSubmit={handleSubmit} className="space-y-4">
         <div>
@@ -142,6 +157,43 @@ const CreateJob = () => {
             value={description}
             onChange={e => setDescription(e.target.value)}
             required
+          />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block font-medium mb-1">Class</label>
+            <input
+              className="w-full border px-3 py-2 rounded"
+              value={skillClass}
+              onChange={(e) => setSkillClass(e.target.value)}
+              placeholder="e.g. Journeyman, Residential"
+            />
+          </div>
+          <div>
+            <label className="block font-medium mb-1">Experience</label>
+            <select
+              className="w-full border px-3 py-2 rounded bg-white"
+              value={minimumYearsExperience}
+              onChange={(e) => setMinimumYearsExperience(e.target.value)}
+            >
+              {EXPERIENCE_YEAR_OPTIONS.map(({ value, label }) => (
+                <option key={value === '' ? 'any' : value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div>
+          <label className="block font-medium mb-1">Notes and conditions</label>
+          <p className="text-xs text-gray-500 mb-2">
+            Safety, certifications, site conditions, or other requirements—shown on the job listing like a referral sheet.
+          </p>
+          <textarea
+            className="w-full border px-3 py-2 rounded min-h-[100px]"
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="e.g. OSHA 30 required, drug screening, crawl spaces, etc."
           />
         </div>
         <div>

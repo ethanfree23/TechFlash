@@ -11,10 +11,16 @@ module Api
       end
 
       def create
+        if @conversation.feedback?
+          return render json: {
+            error: 'Feedback inbox items are notifications only; replies are not supported.'
+          }, status: :forbidden
+        end
+
         message = @conversation.messages.build(message_params)
         message.sender = current_user_profile
         if message.save
-          UserMailer.new_message(message).deliver_later
+          UserMailer.new_message(message).deliver_later if @conversation.job_thread?
           render json: message, serializer: MessageSerializer, status: :created
         else
           render json: { errors: message.errors.full_messages }, status: :unprocessable_entity
@@ -36,12 +42,16 @@ module Api
       end
 
       def conversation_participant?
+        return true if @current_user.admin? && @conversation.feedback?
+
         if @current_user.technician?
           profile = @current_user.technician_profile
-          profile && @conversation.technician_profile_id == profile.id
-        else
+          profile && @conversation.technician_profile_id == profile.id && @conversation.job_thread?
+        elsif @current_user.company?
           profile = @current_user.company_profile
-          profile && @conversation.company_profile_id == profile.id
+          profile && @conversation.company_profile_id == profile.id && @conversation.job_thread?
+        else
+          false
         end
       end
 

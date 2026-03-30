@@ -2,8 +2,12 @@ module Api
   module V1
     class SessionsController < ApplicationController
       def create
-        user = User.find_by(email: params[:email])
-        if user&.authenticate(params[:password])
+        email = params[:email].to_s.strip
+        password = params[:password].to_s
+        user = if email.present?
+                 User.where("LOWER(email) = ?", email.downcase).first
+               end
+        if user&.authenticate(password)
           token = JWT.encode({ user_id: user.id }, Rails.application.secret_key_base)
           user_json = UserSerializer.new(user).as_json
           render json: { token: token, user: user_json }, status: :ok

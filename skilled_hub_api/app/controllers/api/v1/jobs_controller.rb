@@ -86,8 +86,11 @@ module Api
         
         # Apply keyword search in title and description
         if params[:keyword].present?
-          jobs = jobs.where("title ILIKE ? OR description ILIKE ?", 
-                           "%#{params[:keyword]}%", "%#{params[:keyword]}%")
+          kw = "%#{params[:keyword]}%"
+          jobs = jobs.where(
+            "title ILIKE ? OR description ILIKE ? OR skill_class ILIKE ? OR notes ILIKE ?",
+            kw, kw, kw, kw
+          )
         end
         
         render json: jobs, each_serializer: JobSerializer, include: [:company_profile, { job_applications: { technician_profile: :user } }], status: :ok
@@ -365,7 +368,8 @@ module Api
       def job_params
         params.permit(:title, :description, :required_documents, :required_certifications, :location, :status, :company_profile_id, :timeline,
                       :scheduled_start_at, :scheduled_end_at, :price_cents, :hourly_rate_cents, :hours_per_day, :days,
-                      :address, :city, :state, :zip_code, :country)
+                      :address, :city, :state, :zip_code, :country,
+                      :skill_class, :minimum_years_experience, :notes)
       end
 
       def jobs_overlap?(job_a, job_b)

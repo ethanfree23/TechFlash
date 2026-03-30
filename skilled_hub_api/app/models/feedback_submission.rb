@@ -2,6 +2,7 @@ class FeedbackSubmission < ApplicationRecord
   KINDS = %w[problem suggestion].freeze
 
   belongs_to :user
+  has_one :conversation, dependent: :destroy
 
   validates :kind, presence: true, inclusion: { in: KINDS }
   validates :body, presence: true, length: { maximum: 10_000 }

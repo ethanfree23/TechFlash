@@ -67,8 +67,9 @@ export const authAPI = {
     }),
 };
 
-// Feedback / support (emails all admin users)
+// Feedback: POST stores + emails admins; GET lists all (admin only)
 export const feedbackAPI = {
+  list: () => apiRequest('/feedback'),
   create: ({ kind, body, page_path: pagePath }) =>
     apiRequest('/feedback', {
       method: 'POST',
@@ -232,8 +233,18 @@ export const profilesAPI = {
 };
 
 // Conversations and Messages
+function normalizeConversationsPayload(data) {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.conversations)) return data.conversations;
+  if (data && Array.isArray(data.data)) return data.data;
+  return [];
+}
+
 export const conversationsAPI = {
-  getAll: () => apiRequest('/conversations'),
+  getAll: async () => {
+    const data = await apiRequest('/conversations');
+    return normalizeConversationsPayload(data);
+  },
   getById: (id) => apiRequest(`/conversations/${id}`),
   createForJob: (jobId, technicianProfileId) => {
     const body = technicianProfileId ? { technician_profile_id: technicianProfileId } : {};

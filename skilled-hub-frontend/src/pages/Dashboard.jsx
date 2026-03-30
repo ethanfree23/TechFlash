@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { jobsAPI, ratingsAPI } from '../api/api';
+import { jobsAPI, ratingsAPI, feedbackAPI } from '../api/api';
 import AlertModal from '../components/AlertModal';
-import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen, FaDollarSign, FaStar, FaChartLine, FaUsers, FaUserCog, FaBuilding } from 'react-icons/fa';
+import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen, FaDollarSign, FaStar, FaChartLine, FaUsers, FaUserCog, FaBuilding, FaCommentDots } from 'react-icons/fa';
 
 // open, claimed (filled but not started), active (in progress), completed, expired
 const statusLabel = (job) => {
@@ -43,6 +43,7 @@ const Dashboard = ({ user, onLogout }) => {
   const [error, setError] = useState(null);
   const [jobs, setJobs] = useState(null);
   const [analytics, setAnalytics] = useState(null);
+  const [feedbackList, setFeedbackList] = useState(null);
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'error' });
   const navigate = useNavigate();
 
@@ -55,6 +56,7 @@ const Dashboard = ({ user, onLogout }) => {
     setError(null);
     try {
       if (user?.role === 'company') {
+        setFeedbackList(null);
         const [jobsRes, analyticsRes] = await Promise.all([
           jobsAPI.getDashboard(),
           jobsAPI.getAnalytics().catch(() => null),
@@ -62,6 +64,7 @@ const Dashboard = ({ user, onLogout }) => {
         setJobs(jobsRes);
         setAnalytics(analyticsRes);
       } else if (user?.role === 'technician') {
+        setFeedbackList(null);
         const [jobsRes, analyticsRes] = await Promise.all([
           jobsAPI.getTechnicianDashboard(),
           jobsAPI.getAnalytics().catch(() => null),
@@ -69,10 +72,15 @@ const Dashboard = ({ user, onLogout }) => {
         setJobs(jobsRes);
         setAnalytics(analyticsRes);
       } else if (user?.role === 'admin') {
-        const analyticsRes = await jobsAPI.getAnalytics().catch(() => null);
+        const [analyticsRes, feedbackRes] = await Promise.all([
+          jobsAPI.getAnalytics().catch(() => null),
+          feedbackAPI.list().catch(() => null),
+        ]);
         setJobs(null);
         setAnalytics(analyticsRes);
+          setFeedbackList(feedbackRes?.feedback_submissions ?? []);
       } else {
+        setFeedbackList(null);
         setJobs(null);
         setAnalytics(null);
       }
@@ -126,7 +134,7 @@ const Dashboard = ({ user, onLogout }) => {
             <TechnicianDashboardContent jobs={jobs} analytics={analytics} navigate={navigate} user={user} />
           )}
           {user?.role === 'admin' && (
-            <AdminDashboardContent analytics={analytics} navigate={navigate} user={user} />
+            <AdminDashboardContent analytics={analytics} feedbackList={feedbackList} navigate={navigate} />
           )}
           {user?.role !== 'company' && user?.role !== 'technician' && user?.role !== 'admin' && (
             <p className="text-gray-500">Dashboard not available for your role.</p>
@@ -177,7 +185,7 @@ const DashboardHeader = ({ user, onLogout }) => (
   </header>
 );
 
-const AdminDashboardContent = ({ analytics, navigate, user }) => (
+const AdminDashboardContent = ({ analytics, feedbackList, navigate }) => (
   <>
     <h2 className="text-xl font-semibold text-gray-800 mb-6">Platform Overview</h2>
     {analytics && (
@@ -241,6 +249,56 @@ const AdminDashboardContent = ({ analytics, navigate, user }) => (
         <FaBriefcase /> View All Jobs
       </Link>
     </div>
+
+    <section className="mt-12 border-t border-gray-200 pt-10">
+      <h2 className="text-xl font-semibold text-gray-800 mb-2 flex items-center gap-2">
+        <FaCommentDots className="text-orange-500" /> User feedback
+      </h2>
+      <p className="text-sm text-gray-500 mb-4">
+        Messages sent from the Feedback button (logged-in technicians and companies). Submissions are also emailed to admin accounts when mail is configured.
+      </p>
+      {feedbackList === null ? (
+        <p className="text-gray-500 text-sm">Loading feedback…</p>
+      ) : feedbackList.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-8 text-center text-gray-500">
+          No feedback yet.
+        </div>
+      ) : (
+        <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
+          <div className="overflow-x-auto max-h-[min(70vh,32rem)] overflow-y-auto">
+            <table className="min-w-full divide-y divide-gray-200 text-sm">
+              <thead className="bg-gray-50 sticky top-0 z-10">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">When</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">From</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Page</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Message</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {feedbackList.map((row) => (
+                  <tr key={row.id} className="align-top hover:bg-gray-50/80">
+                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
+                      {row.created_at ? new Date(row.created_at).toLocaleString() : '—'}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-gray-800">{row.user_email || '—'}</div>
+                      <div className="text-xs text-gray-500 capitalize">{row.user_role || '-'}</div>
+                    </td>
+                    <td className="px-4 py-3 capitalize text-gray-700">{row.kind || '—'}</td>
+                    <td className="px-4 py-3 text-gray-600 max-w-[12rem] truncate" title={row.page_path || ''}>
+                      {row.page_path || '—'}
+                    </td>
+                    <td className="px-4 py-3 text-gray-800 whitespace-pre-wrap max-w-xl">{row.body}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </section>
   </>
 );
 
