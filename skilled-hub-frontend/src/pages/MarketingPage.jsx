@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { TECHFLASH_LOGO_NAV } from '../constants/branding';
 import { FaWrench, FaBuilding, FaBolt, FaHandshake, FaShieldAlt, FaCheckSquare } from 'react-icons/fa';
 import RegisterForm from '../components/RegisterForm';
 
@@ -16,7 +17,7 @@ const MarketingPage = ({ onLoginSuccess }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-16">
             <Link to="/" className="flex items-center gap-2 group">
-              <img src="/techflash-logo.png" alt="TechFlash" className="h-9 group-hover:scale-105 transition-transform" />
+              <img src={TECHFLASH_LOGO_NAV} alt="TechFlash" className="h-9 group-hover:scale-105 transition-transform" />
               <span className="text-xl font-bold text-gray-800 tracking-tight">TechFlash</span>
             </Link>
             <div className="flex items-center gap-2">
@@ -177,7 +178,7 @@ const MarketingPage = ({ onLoginSuccess }) => {
       <footer className="py-10 px-4 border-t border-orange-200/50 bg-white/50">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-center gap-4">
           <Link to="/" className="flex items-center gap-2 text-gray-600 hover:text-[#FE6711] transition">
-            <img src="/techflash-logo.png" alt="TechFlash" className="h-6" />
+            <img src={TECHFLASH_LOGO_NAV} alt="TechFlash" className="h-6" />
             <span className="font-semibold">TechFlash</span>
           </Link>
           <div className="flex gap-8">

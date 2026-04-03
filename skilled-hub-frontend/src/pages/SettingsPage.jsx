@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { TECHFLASH_LOGO_NAV } from '../constants/branding';
 import { profilesAPI, settingsAPI, authAPI, documentsAPI } from '../api/api';
 import { auth } from '../auth';
 import CardPaymentForm from '../components/CardPaymentForm';
@@ -269,7 +270,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
           <div className="flex items-center gap-6">
             <Link to="/dashboard" className="flex items-center space-x-2">
-              <img src="/techflash-logo.png" alt="TechFlash" className="h-9 object-contain" />
+              <img src={TECHFLASH_LOGO_NAV} alt="TechFlash" className="h-9 object-contain" />
             </Link>
             <nav className="flex space-x-4">
               <Link to="/dashboard" className="text-gray-600 hover:text-blue-600">Dashboard</Link>

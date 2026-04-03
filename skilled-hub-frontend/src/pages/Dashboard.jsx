@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { TECHFLASH_LOGO_NAV } from '../constants/branding';
 import { jobsAPI, ratingsAPI, feedbackAPI } from '../api/api';
 import AlertModal from '../components/AlertModal';
 import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen, FaDollarSign, FaStar, FaChartLine, FaUsers, FaUserCog, FaBuilding, FaCommentDots } from 'react-icons/fa';
@@ -158,7 +159,7 @@ const DashboardHeader = ({ user, onLogout }) => (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
       <div className="flex items-center space-x-6">
         <Link to="/dashboard" className="flex items-center space-x-2">
-          <img src="/techflash-logo.png" alt="TechFlash" className="h-9 object-contain" />
+          <img src={TECHFLASH_LOGO_NAV} alt="TechFlash" className="h-9 object-contain" />
         </Link>
         <nav className="flex space-x-4">
           <Link to="/dashboard" className="text-blue-600 font-medium border-b-2 border-blue-600 pb-1">Dashboard</Link>

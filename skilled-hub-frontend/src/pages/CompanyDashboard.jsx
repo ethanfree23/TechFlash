@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { TECHFLASH_LOGO_NAV } from '../constants/branding';
 import apiRequest from '../api/api';
 import AlertModal from '../components/AlertModal';
 import { FaBriefcase, FaUser, FaCalendarAlt, FaCheckSquare } from 'react-icons/fa';
@@ -105,7 +106,7 @@ const CompanyDashboard = ({ user, onLogout }) => {
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
           <div className="flex items-center space-x-2">
-            <img src="/techflash-logo.png" alt="TechFlash" className="h-9 object-contain" />
+            <img src={TECHFLASH_LOGO_NAV} alt="TechFlash" className="h-9 object-contain" />
           </div>
           <div className="flex items-center space-x-4">
             <button className="relative focus:outline-none">

@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { TECHFLASH_LOGO_LOGIN } from '../constants/branding';
 import { authAPI } from '../api/api';
 import { auth } from '../auth';
 import RegisterForm from '../components/RegisterForm';
@@ -46,7 +47,7 @@ const LoginPage = ({ onLoginSuccess }) => {
     <div className="min-h-screen bg-[#F7F7F7] flex flex-col justify-center px-4 py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="text-center">
-          <img src="/techflash-logo-login.png" alt="TechFlash" className="h-16 mx-auto object-contain" />
+          <img src={TECHFLASH_LOGO_LOGIN} alt="TechFlash" className="h-16 mx-auto object-contain" />
           <p className="mt-3 text-gray-600">Let's get the job done.</p>
         </div>
       </div>

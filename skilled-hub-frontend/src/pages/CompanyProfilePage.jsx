@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
+import { TECHFLASH_LOGO_NAV } from '../constants/branding';
 import { profilesAPI } from '../api/api';
 
 const CompanyProfilePage = ({ user, onLogout }) => {
@@ -54,7 +55,7 @@ const CompanyProfilePage = ({ user, onLogout }) => {
       <header className="bg-white shadow-sm border-b border-gray-200">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex justify-between items-center h-16">
           <div className="flex items-center gap-6">
-            <Link to="/dashboard"><img src="/techflash-logo.png" alt="TechFlash" className="h-9 object-contain" /></Link>
+            <Link to="/dashboard"><img src={TECHFLASH_LOGO_NAV} alt="TechFlash" className="h-9 object-contain" /></Link>
             <nav className="flex items-center gap-4">
               <Link to="/dashboard" className="px-3 py-2 font-medium text-gray-700 hover:text-blue-600">Dashboard</Link>
               <Link to="/jobs" className="px-3 py-2 font-medium text-gray-700 hover:text-blue-600">Jobs</Link>

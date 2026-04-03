@@ -126,6 +126,7 @@ module Api
 
         job = Job.new(job_params)
         if job.save
+          Rails.logger.info("[mail] job_posted_email job_id=#{job.id}") # confirm this code path + deploy hit Mailtrap
           MailDelivery.safe_deliver { UserMailer.job_posted_email(job).deliver_now }
           render json: job, serializer: JobSerializer, status: :created
         else

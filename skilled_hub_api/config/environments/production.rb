@@ -113,8 +113,14 @@ Rails.application.configure do
   # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
 
   config.after_initialize do
-    if ENV['SMTP_ADDRESS'].blank?
-      Rails.logger.warn('[mail] SMTP_ADDRESS is unset — ActionMailer is not using Mailtrap SMTP.')
+    # One line per deploy — search Deploy Logs for "[mail] boot" to confirm env + code are live.
+    Rails.logger.warn(
+      '[mail] boot: smtp_configured=' \
+      "#{ENV['SMTP_ADDRESS'].present? && ENV['SMTP_PASSWORD'].present? && ENV['SMTP_USERNAME'].present?} " \
+      "MAILER_FROM=#{ENV['MAILER_FROM'].present?}"
+    )
+    if ENV['SMTP_ADDRESS'].blank? || ENV['SMTP_PASSWORD'].blank?
+      Rails.logger.error('[mail] SMTP_ADDRESS or SMTP_PASSWORD missing — app cannot send mail (Mailtrap SMTP).')
     end
   end
 end
