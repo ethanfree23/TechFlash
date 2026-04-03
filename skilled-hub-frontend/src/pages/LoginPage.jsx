@@ -46,7 +46,7 @@ const LoginPage = ({ onLoginSuccess }) => {
     <div className="min-h-screen bg-[#F7F7F7] flex flex-col justify-center px-4 py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="text-center">
-          <img src="/techflash-logo.png" alt="TechFlash" className="h-16 mx-auto object-contain" />
+          <img src="/techflash-logo-login.png" alt="TechFlash" className="h-16 mx-auto object-contain" />
           <p className="mt-3 text-gray-600">Let's get the job done.</p>
         </div>
       </div>

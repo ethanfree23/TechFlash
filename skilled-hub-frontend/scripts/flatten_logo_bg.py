@@ -1,29 +1,20 @@
-"""Normalize logo PNG backgrounds to exact hex (navbar: white, login: #F7F7F7)."""
+"""Regenerate techflash-logo.png (white bar) from techflash-logo-login.png (#F7F7F7)."""
 from PIL import Image
 
 
-def flatten_background(im: Image.Image, target_rgb: tuple[int, int, int]) -> Image.Image:
-    im = im.copy().convert("RGBA")
+def login_to_navbar(src: Image.Image) -> Image.Image:
+    im = src.copy().convert("RGBA")
     w, h = im.size
     px = im.load()
-    tr, tg, tb = target_rgb
     for y in range(h):
         for x in range(w):
             r, g, b, a = px[x, y]
-            if a == 0:
-                continue
-            mx, mn = max(r, g, b), min(r, g, b)
-            if mn >= 220 and (mx - mn) <= 28:
-                px[x, y] = (tr, tg, tb, a)
+            if (r, g, b) == (247, 247, 247):
+                px[x, y] = (255, 255, 255, a)
     return im
 
 
 if __name__ == "__main__":
-    base = Image.open("public/techflash-logo.png")
-    flatten_background(base, (247, 247, 247)).save(
-        "public/techflash-logo-login.png", optimize=True
-    )
-    flatten_background(base, (255, 255, 255)).save(
-        "public/techflash-logo.png", optimize=True
-    )
-    print("Wrote public/techflash-logo-login.png and public/techflash-logo.png")
+    base = Image.open("public/techflash-logo-login.png")
+    login_to_navbar(base).save("public/techflash-logo.png", optimize=True)
+    print("Wrote public/techflash-logo.png from public/techflash-logo-login.png")
