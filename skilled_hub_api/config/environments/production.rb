@@ -66,8 +66,10 @@ Rails.application.configure do
   # Use a different cache store in production.
   # config.cache_store = :mem_cache_store
 
-  # Use a real queuing backend for Active Job (and separate queues per environment).
-  # config.active_job.queue_adapter = :resque
+  # No Redis/Sidekiq on Railway yet: :async can drop or skip mail jobs in-process.
+  # Inline runs deliver_later mail during the HTTP request (OK until a real queue is added).
+  config.active_job.queue_adapter = :inline
+
   # config.active_job.queue_name_prefix = "skilled_hub_api_production"
 
   config.action_mailer.perform_caching = false
