@@ -25,14 +25,14 @@ module Api
           return render json: { error: 'Payments not configured' }, status: :service_unavailable
         end
 
-        customer_id = @current_user.stripe_customer_id
+        customer_id = StripeCustomerService.ensure_customer_id!(@current_user)
         intent_params = {
           amount: job.company_charge_cents,
           currency: 'usd',
+          customer: customer_id,
           metadata: { job_id: job.id.to_s },
           automatic_payment_methods: { enabled: true }
         }
-        intent_params[:customer] = customer_id if customer_id.present?
 
         intent = Stripe::PaymentIntent.create(intent_params)
         render json: { client_secret: intent.client_secret, payment_intent_id: intent.id }, status: :ok

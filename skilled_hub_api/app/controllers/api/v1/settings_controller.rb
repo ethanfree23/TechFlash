@@ -15,12 +15,7 @@ module Api
           return render json: { error: 'Payments not configured' }, status: :service_unavailable
         end
 
-        customer_id = @current_user.stripe_customer_id
-        unless customer_id
-          customer = Stripe::Customer.create(email: @current_user.email)
-          customer_id = customer.id
-          @current_user.update!(stripe_customer_id: customer_id)
-        end
+        customer_id = StripeCustomerService.ensure_customer_id!(@current_user)
 
         intent = Stripe::SetupIntent.create(
           customer: customer_id,

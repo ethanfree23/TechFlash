@@ -7,12 +7,15 @@ class PaymentService
 
   # Check if company has a valid card on file (for posting jobs)
   def self.company_has_payment_method?(user)
-    return false if user.blank? || user.stripe_customer_id.blank?
+    return false if user.blank?
     return false if Stripe.api_key.blank?
 
-    customer = Stripe::Customer.retrieve(user.stripe_customer_id, expand: ['invoice_settings.default_payment_method'])
+    customer_id = StripeCustomerService.validate_or_clear_customer_id!(user)
+    return false if customer_id.blank?
+
+    customer = Stripe::Customer.retrieve(customer_id, expand: ['invoice_settings.default_payment_method'])
     pm_id = customer.invoice_settings&.default_payment_method
-    pm_id ||= Stripe::PaymentMethod.list(customer: user.stripe_customer_id, type: 'card').data.first&.id
+    pm_id ||= Stripe::PaymentMethod.list(customer: customer_id, type: 'card').data.first&.id
     pm_id.present?
   rescue Stripe::StripeError
     false
@@ -24,7 +27,7 @@ class PaymentService
     return { error: 'Job already has a payment' } if job.payments.held.any? || job.payments.released.any?
 
     company_user = job.company_profile.user
-    stripe_customer_id = company_user.stripe_customer_id
+    stripe_customer_id = StripeCustomerService.validate_or_clear_customer_id!(company_user)
     return { error: 'Company must add a payment method in Settings before technicians can claim this job' } if stripe_customer_id.blank?
 
     payment = job.payments.create!(
