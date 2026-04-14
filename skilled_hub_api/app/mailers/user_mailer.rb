@@ -82,6 +82,43 @@ class UserMailer < ApplicationMailer
     mail(to: user.email, subject: "Reminder: Leave a review for #{job.title}")
   end
 
+  def job_completed_for_company(job)
+    @job = job
+    @company_user = job.company_profile.user
+    mail(to: @company_user.email, subject: "Job marked complete: #{job.title}")
+  end
+
+  def job_completed_for_technician(job)
+    @job = job
+    accepted_app = job.job_applications.find_by(status: :accepted)
+    @technician_user = accepted_app&.technician_profile&.user
+    return if @technician_user.blank?
+
+    mail(to: @technician_user.email, subject: "Job marked complete: #{job.title}")
+  end
+
+  def technician_claimed_job_email(job)
+    @job = job
+    accepted_app = job.job_applications.find_by(status: :accepted)
+    @technician_user = accepted_app&.technician_profile&.user
+    return if @technician_user.blank?
+
+    mail(to: @technician_user.email, subject: "You claimed: #{job.title}")
+  end
+
+  def job_issue_report(report)
+    @report = report
+    @job = report.job
+    @reporter = report.user
+    admin_emails = User.where(role: :admin).pluck(:email).compact.uniq
+    return if admin_emails.empty?
+
+    mail(
+      to: admin_emails,
+      subject: "[TechFlash] Job issue — Job ##{@job.id} (#{@job.title})"
+    )
+  end
+
   def admin_feedback(submission)
     @submission = submission
     @sender = submission.user

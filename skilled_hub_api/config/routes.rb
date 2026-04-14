@@ -53,6 +53,13 @@ Rails.application.routes.draw do
       get 'dashboard/technician_jobs', to: 'jobs#technician_dashboard_jobs'
       get 'dashboard/analytics', to: 'analytics#show'
 
+      post 'jobs/:job_id/issue_reports', to: 'job_issue_reports#create'
+      resources :saved_job_searches, only: %i[index create destroy]
+      get 'favorite_technicians', to: 'favorite_technicians#index'
+      post 'favorite_technicians', to: 'favorite_technicians#create'
+      delete 'favorite_technicians/:id', to: 'favorite_technicians#destroy'
+      post 'stripe/webhook', to: 'stripe_webhooks#create'
+
       namespace :admin do
         get "company_accounts/search", to: "company_accounts#search"
         get "platform_insights", to: "platform_insights#show"

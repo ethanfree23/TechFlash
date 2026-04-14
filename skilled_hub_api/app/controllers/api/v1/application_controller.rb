@@ -3,8 +3,14 @@ module Api
     class ApplicationController < ActionController::API
       include ActionController::HttpAuthentication::Token::ControllerMethods
 
+      serialization_scope :current_user
+
       before_action :transform_json_params
       rescue_from StandardError, with: :handle_server_error
+
+      def current_user
+        @current_user
+      end
 
       private
 

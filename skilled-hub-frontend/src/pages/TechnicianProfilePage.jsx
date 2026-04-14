@@ -1,13 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
-import { profilesAPI } from '../api/api';
+import { profilesAPI, favoriteTechniciansAPI } from '../api/api';
 
 const TechnicianProfilePage = ({ user, onLogout }) => {
   const { id } = useParams();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [favoriteIds, setFavoriteIds] = useState([]);
+  const [favBusy, setFavBusy] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -17,6 +19,34 @@ const TechnicianProfilePage = ({ user, onLogout }) => {
         .finally(() => setLoading(false));
     }
   }, [id]);
+
+  useEffect(() => {
+    if (user?.role === 'company') {
+      favoriteTechniciansAPI
+        .list()
+        .then((res) => setFavoriteIds(res.technician_profile_ids || []))
+        .catch(() => setFavoriteIds([]));
+    }
+  }, [user?.role, id]);
+
+  const toggleFavorite = async () => {
+    if (user?.role !== 'company' || !profile?.id) return;
+    setFavBusy(true);
+    try {
+      const pid = Number(profile.id);
+      if (favoriteIds.map(Number).includes(pid)) {
+        await favoriteTechniciansAPI.remove(profile.id);
+        setFavoriteIds((prev) => prev.filter((x) => Number(x) !== pid));
+      } else {
+        await favoriteTechniciansAPI.add(profile.id);
+        setFavoriteIds((prev) => [...prev, profile.id]);
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setFavBusy(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -62,10 +92,23 @@ const TechnicianProfilePage = ({ user, onLogout }) => {
                   {(profile.user?.email || 'T')[0].toUpperCase()}
                 </div>
               )}
-              <div>
-                <h1 className="text-2xl font-bold text-gray-900">
-                  {profile.user?.email || 'Technician'}
-                </h1>
+              <div className="flex-1 min-w-0">
+                <div className="flex flex-wrap items-center gap-3">
+                  <h1 className="text-2xl font-bold text-gray-900">
+                    {profile.user?.email || 'Technician'}
+                  </h1>
+                  {user?.role === 'company' && (
+                    <button
+                      type="button"
+                      onClick={toggleFavorite}
+                      disabled={favBusy}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                      title={favoriteIds.map(Number).includes(Number(profile.id)) ? 'Remove from favorites' : 'Save for repeat hire'}
+                    >
+                      {favoriteIds.map(Number).includes(Number(profile.id)) ? '★ Saved' : '☆ Save technician'}
+                    </button>
+                  )}
+                </div>
             <div className="mt-2 flex flex-wrap gap-4 text-gray-600">
               <span className="flex items-center">
                 <svg className="w-5 h-5 text-gray-400 mr-2" fill="currentColor" viewBox="0 0 20 20">

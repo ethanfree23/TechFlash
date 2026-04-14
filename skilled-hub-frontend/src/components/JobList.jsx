@@ -1,9 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { jobsAPI, profilesAPI, ratingsAPI } from '../api/api';
+import { jobsAPI, profilesAPI, ratingsAPI, savedJobSearchesAPI } from '../api/api';
 import { auth } from '../auth';
 import AlertModal from './AlertModal';
 import { formatExperienceShort } from '../constants/experienceSelect';
+
+const matchesSavedSearch = (job, saved) => {
+  if (!saved || !job) return false;
+  const kw = (saved.keyword || '').toLowerCase().trim();
+  const loc = (saved.location || '').toLowerCase().trim();
+  const sk = (saved.skill_class || '').toLowerCase().trim();
+  const title = (job.title || '').toLowerCase();
+  const desc = (job.description || '').toLowerCase();
+  const jobLoc = (job.location || '').toLowerCase();
+  const jobSk = (job.skill_class || '').toLowerCase();
+  if (kw && !title.includes(kw) && !desc.includes(kw)) return false;
+  if (loc && !jobLoc.includes(loc)) return false;
+  if (sk && !jobSk.includes(sk)) return false;
+  return !!(kw || loc || sk);
+};
 
 const haversineMiles = (lat1, lon1, lat2, lon2) => {
   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return Infinity;
@@ -39,6 +54,8 @@ const JobList = () => {
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'error' });
   const [loadingCompleted, setLoadingCompleted] = useState(false);
   const [reviewedJobIds, setReviewedJobIds] = useState(new Set());
+  const [savedSearches, setSavedSearches] = useState([]);
+  const [saveSearchBusy, setSaveSearchBusy] = useState(false);
 
   const user = auth.getUser();
 
@@ -79,6 +96,15 @@ const JobList = () => {
       ratingsAPI.getReviewedJobIds()
         .then((res) => setReviewedJobIds(new Set(res.job_ids || [])))
         .catch(() => setReviewedJobIds(new Set()));
+    }
+  }, []);
+
+  useEffect(() => {
+    if (auth.isTechnician()) {
+      savedJobSearchesAPI
+        .list()
+        .then((data) => setSavedSearches(Array.isArray(data) ? data : []))
+        .catch(() => setSavedSearches([]));
     }
   }, []);
 
@@ -204,6 +230,35 @@ const JobList = () => {
     setSearchParams({});
   };
 
+  const saveCurrentSearch = async () => {
+    if (!auth.isTechnician()) return;
+    setSaveSearchBusy(true);
+    try {
+      await savedJobSearchesAPI.create({
+        keyword: filters.keyword || null,
+        location: filters.location || null,
+        skill_class: null,
+      });
+      const data = await savedJobSearchesAPI.list();
+      setSavedSearches(Array.isArray(data) ? data : []);
+      setAlertModal({
+        isOpen: true,
+        title: 'Search saved',
+        message: 'We will highlight jobs that match these filters when you browse.',
+        variant: 'success',
+      });
+    } catch (err) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not save',
+        message: err.message || 'Try again.',
+        variant: 'error',
+      });
+    } finally {
+      setSaveSearchBusy(false);
+    }
+  };
+
   const sortedJobs = sortJobs(jobs);
   const indexOfLastJob = currentPage * jobsPerPage;
   const indexOfFirstJob = indexOfLastJob - jobsPerPage;
@@ -271,8 +326,9 @@ const JobList = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-lg text-gray-600">Loading jobs...</div>
+      <div className="flex flex-col items-center justify-center h-64 gap-3">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-600" />
+        <div className="text-lg text-gray-600">Loading jobs…</div>
       </div>
     );
   }
@@ -288,9 +344,14 @@ const JobList = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 py-12">
       <div className="mb-12">
-        <h2 className="text-3xl font-bold text-gray-900 mb-10">
+        <h2 className="text-3xl font-bold text-gray-900 mb-4">
           {auth.isCompany() ? 'My Jobs' : auth.isAdmin() ? 'All Jobs' : 'Available Jobs'}
         </h2>
+        {auth.isTechnician() && (
+          <p className="text-sm text-gray-600 mb-8 max-w-3xl leading-relaxed">
+            Open roles are often claimed within a day or two when the schedule works for nearby techs. Save your filters to spot matching posts faster.
+          </p>
+        )}
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-10">
           <input
@@ -383,11 +444,36 @@ const JobList = () => {
             </button>
           </div>
         </div>
+        {auth.isTechnician() && (
+          <div className="mb-8 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={saveCurrentSearch}
+              disabled={saveSearchBusy}
+              className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 disabled:opacity-50 shadow-sm"
+            >
+              {saveSearchBusy ? 'Saving…' : 'Save this search'}
+            </button>
+            {savedSearches.length > 0 && (
+              <span className="text-xs text-gray-500">{savedSearches.length} saved search{savedSearches.length !== 1 ? 'es' : ''}</span>
+            )}
+          </div>
+        )}
       </div>
 
       {sortedJobs.length === 0 ? (
-          <div className="text-center py-20">
-            <p className="text-gray-500 text-lg">No jobs found matching your criteria.</p>
+          <div className="text-center py-20 px-4 max-w-lg mx-auto">
+            <p className="text-gray-700 text-lg font-medium mb-2">No jobs match right now</p>
+            <p className="text-gray-500 text-sm mb-4">
+              Try clearing filters, widening location, or checking back later — new jobs are added regularly.
+            </p>
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="inline-flex px-4 py-2 rounded-lg bg-blue-600 text-white text-sm hover:bg-blue-700"
+            >
+              Clear filters
+            </button>
           </div>
         ) : (
           <>
@@ -398,11 +484,18 @@ const JobList = () => {
                 className={`h-full bg-white border-2 border-gray-300 rounded-xl shadow-lg hover:shadow-xl transition-all duration-300 p-8 flex flex-col${idx !== arr.length - 1 ? ' mb-8' : ''}`}
               >
                 <div className="space-y-4">
-                  <div className="flex justify-between items-start">
+                  <div className="flex justify-between items-start gap-2">
                     <h3 className="text-lg font-semibold text-gray-900 line-clamp-2">
                       {job.title}
                     </h3>
-                    {getStatusBadge(job)}
+                    <div className="flex flex-col items-end gap-1 shrink-0">
+                      {getStatusBadge(job)}
+                      {auth.isTechnician() && savedSearches.some((s) => matchesSavedSearch(job, s)) && (
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-900 bg-amber-100 px-2 py-0.5 rounded">
+                          Saved search
+                        </span>
+                      )}
+                    </div>
                   </div>
                   
                   <p className="text-gray-600 line-clamp-3 text-sm">

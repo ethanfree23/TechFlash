@@ -217,6 +217,13 @@ GEM
     reline (0.6.1)
       io-console (~> 0.5)
     securerandom (0.3.2)
+    sentry-rails (6.5.0)
+      railties (>= 5.2.0)
+      sentry-ruby (~> 6.5.0)
+    sentry-ruby (6.5.0)
+      bigdecimal
+      concurrent-ruby (~> 1.0, >= 1.0.2)
+      logger
     sqlite3 (1.7.3)
       mini_portile2 (~> 2.8.0)
     sqlite3 (1.7.3-arm64-darwin)
@@ -252,6 +259,8 @@ DEPENDENCIES
   puma (>= 5.0)
   rack-cors
   rails (~> 7.1.4, >= 7.1.4.2)
+  sentry-rails
+  sentry-ruby
   sqlite3 (~> 1.4)
   stripe
   tzinfo-data

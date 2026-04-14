@@ -1,0 +1,7 @@
+<h1 style="margin: 0 0 24px 0; font-size: 28px; font-weight: 800; color: #1a1a1a; line-height: 1.2;">Job marked complete</h1>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">Hi,</p>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">You marked <strong style="color: #FE6711;">"<%= @job.title %>"</strong> as complete. Reviews and payout release follow your usual rules (both reviews or 72 hours after completion).</p>
+
+<%= render partial: 'user_mailer/cta_button', locals: { text: 'View Job', url: frontend_url("/jobs/#{@job.id}") } %>

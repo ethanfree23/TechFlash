@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { jobsAPI, profilesAPI, ratingsAPI, conversationsAPI } from '../api/api';
+import { jobsAPI, profilesAPI, ratingsAPI, conversationsAPI, jobIssueReportsAPI } from '../api/api';
 import MessageModal from './MessageModal';
 import AlertModal from './AlertModal';
 import ConfirmModal from './ConfirmModal';
@@ -59,6 +59,9 @@ const JobDetail = () => {
   const [messageConversationId, setMessageConversationId] = useState(null);
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'error' });
   const [showDenyConfirm, setShowDenyConfirm] = useState(false);
+  const [showReportModal, setShowReportModal] = useState(false);
+  const [reportBody, setReportBody] = useState('');
+  const [reportSubmitting, setReportSubmitting] = useState(false);
 
   useEffect(() => {
     // Read user from localStorage on mount
@@ -376,6 +379,25 @@ const JobDetail = () => {
     }
   };
 
+  const submitJobIssueReport = async (e) => {
+    e.preventDefault();
+    if (!reportBody.trim()) {
+      setAlertModal({ isOpen: true, title: 'Describe the issue', message: 'Please enter a short description.', variant: 'error' });
+      return;
+    }
+    setReportSubmitting(true);
+    try {
+      await jobIssueReportsAPI.create(job.id, { body: reportBody.trim(), category: 'job_issue' });
+      setShowReportModal(false);
+      setReportBody('');
+      setAlertModal({ isOpen: true, title: 'Report sent', message: 'Thanks — we will review this and follow up if needed.', variant: 'success' });
+    } catch (err) {
+      setAlertModal({ isOpen: true, title: 'Could not send report', message: err.message || 'Try again later.', variant: 'error' });
+    } finally {
+      setReportSubmitting(false);
+    }
+  };
+
   const canLeaveReview = () => {
     if (!user || !job) return false;
     const jobComplete = job.status === 'finished' || job.status === 'filled';
@@ -455,6 +477,12 @@ const JobDetail = () => {
   const claimedTechnician = claimedTechnicianData || acceptedApp?.technician_profile;
   const isCompanyViewingOwnClaimedJob = currentUser?.role === 'company' && job?.company_profile_id === companyProfileId && (job?.status === 'reserved' || job?.status === 'finished' || job?.status === 'filled') && (claimedTechnician || acceptedApp?.technician_profile_id);
 
+  const canReportIssue =
+    currentUser &&
+    (currentUser.role === 'admin' ||
+      (currentUser.role === 'company' && companyProfileId && job.company_profile_id === companyProfileId) ||
+      (currentUser.role === 'technician' && isJobClaimedByMe()));
+
   return (
     <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
       <div className="mb-6">
@@ -479,6 +507,63 @@ const JobDetail = () => {
           </div>
         </div>
       </div>
+
+      {Array.isArray(job.timeline_events) && job.timeline_events.length > 0 && (
+        <div className="mb-6 bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-gray-800 mb-3">Job and payment timeline</h2>
+          <div className="flex gap-2 overflow-x-auto pb-1 snap-x">
+            {job.timeline_events.map((ev) => (
+              <div
+                key={`${ev.key}-${ev.at || ''}`}
+                className="min-w-[148px] snap-start rounded-lg bg-gray-50 border border-gray-100 px-3 py-2"
+              >
+                <p className="text-xs font-medium text-blue-900">{ev.label}</p>
+                <p className="text-xs text-gray-500 mt-1">
+                  {ev.at
+                    ? new Date(ev.at).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : '—'}
+                </p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {job.certification_match && currentUser?.role === 'technician' && (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm font-semibold text-amber-900">Certificate match (estimate)</p>
+          <p className="text-2xl font-bold text-amber-800 mt-1">{job.certification_match.percent}%</p>
+          <p className="text-xs text-amber-900/80 mt-1">
+            {job.certification_match.total === 0
+              ? 'No certifications required for this job.'
+              : `${job.certification_match.matched} of ${job.certification_match.total} required items matched from your uploaded certificates.`}
+          </p>
+          {job.certification_match.missing_labels?.length > 0 && (
+            <p className="text-xs text-amber-900 mt-2">Not clearly matched: {job.certification_match.missing_labels.join(', ')}</p>
+          )}
+        </div>
+      )}
+
+      {job.payment_summary && (
+        <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
+          <span className="font-medium">Payment status: </span>
+          {job.payment_summary.state === 'released' && 'Released to technician.'}
+          {job.payment_summary.state === 'held' && 'Held in escrow until completion rules are met.'}
+          {job.payment_summary.state === 'none' && 'No card charge on file for this job.'}
+        </div>
+      )}
+
+      {canReportIssue && (
+        <div className="mb-4">
+          <button
+            type="button"
+            onClick={() => setShowReportModal(true)}
+            className="text-sm font-medium text-orange-700 hover:text-orange-900 underline"
+          >
+            Report an issue with this job
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2">
@@ -1011,6 +1096,44 @@ const JobDetail = () => {
             <button onClick={closeClaimedModal} className="px-4 py-2 bg-gray-200 rounded">Close</button>
           </div>
         </div>
+      </Modal>
+
+      <Modal
+        isOpen={showReportModal}
+        onRequestClose={() => { setShowReportModal(false); setReportBody(''); }}
+        ariaHideApp={false}
+        className="fixed inset-0 flex items-center justify-center z-50 px-4"
+        overlayClassName="fixed inset-0 bg-black/40 z-40"
+      >
+        <form
+          onSubmit={submitJobIssueReport}
+          className="bg-white rounded-lg shadow-xl max-w-lg w-full p-6 border border-gray-200"
+        >
+          <h3 className="text-lg font-semibold text-gray-900 mb-2">Report an issue</h3>
+          <p className="text-sm text-gray-600 mb-3">Describe what went wrong. Our team is notified by email.</p>
+          <textarea
+            value={reportBody}
+            onChange={(e) => setReportBody(e.target.value)}
+            className="w-full border border-gray-300 rounded-md p-3 text-sm min-h-[120px]"
+            placeholder="What should we know?"
+          />
+          <div className="flex justify-end gap-2 mt-4">
+            <button
+              type="button"
+              className="px-4 py-2 rounded-md bg-gray-100 text-gray-800"
+              onClick={() => { setShowReportModal(false); setReportBody(''); }}
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={reportSubmitting}
+              className="px-4 py-2 rounded-md bg-orange-600 text-white disabled:opacity-50"
+            >
+              {reportSubmitting ? 'Sending…' : 'Submit'}
+            </button>
+          </div>
+        </form>
       </Modal>
 
       <AlertModal

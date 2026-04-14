@@ -813,7 +813,7 @@ const TechnicianDashboardContent = ({ jobs, analytics, navigate, user }) => {
           <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
             <FaChartLine className="text-blue-600" /> Analytics
           </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
             <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl shadow-lg p-5 text-white">
               <div className="flex items-center justify-between">
                 <div>
@@ -826,6 +826,10 @@ const TechnicianDashboardContent = ({ jobs, analytics, navigate, user }) => {
             <div className="bg-white rounded-2xl shadow flex flex-col justify-center p-5 border-l-4 border-amber-500">
               <p className="text-gray-500 text-sm font-medium">Pending Earnings</p>
               <p className="text-2xl font-bold text-gray-800 mt-1">{formatCurrency(analytics.pending_earned_cents)}</p>
+            </div>
+            <div className="bg-white rounded-2xl shadow flex flex-col justify-center p-5 border-l-4 border-cyan-500">
+              <p className="text-gray-500 text-sm font-medium">Earned (7 days)</p>
+              <p className="text-2xl font-bold text-gray-800 mt-1">{formatCurrency(analytics.earned_this_week_cents)}</p>
             </div>
             <div className="bg-white rounded-2xl shadow flex flex-col justify-center p-5 border-l-4 border-blue-500">
               <p className="text-gray-500 text-sm font-medium">Jobs Completed</p>

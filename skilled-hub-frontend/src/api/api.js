@@ -171,6 +171,40 @@ export const jobsAPI = {
     apiRequest('/jobs/locations'),
 };
 
+export const jobIssueReportsAPI = {
+  create: (jobId, { body, category }) =>
+    apiRequest(`/jobs/${jobId}/issue_reports`, {
+      method: 'POST',
+      body: JSON.stringify({ body, category: category || 'general' }),
+    }),
+};
+
+export const savedJobSearchesAPI = {
+  list: () => apiRequest('/saved_job_searches'),
+  create: (data) =>
+    apiRequest('/saved_job_searches', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  remove: (id) =>
+    apiRequest(`/saved_job_searches/${id}`, {
+      method: 'DELETE',
+    }),
+};
+
+export const favoriteTechniciansAPI = {
+  list: () => apiRequest('/favorite_technicians'),
+  add: (technicianProfileId) =>
+    apiRequest('/favorite_technicians', {
+      method: 'POST',
+      body: JSON.stringify({ technician_profile_id: technicianProfileId }),
+    }),
+  remove: (technicianProfileId) =>
+    apiRequest(`/favorite_technicians/${technicianProfileId}`, {
+      method: 'DELETE',
+    }),
+};
+
 // Payments (Stripe)
 export const paymentsAPI = {
   createIntent: (jobId) =>

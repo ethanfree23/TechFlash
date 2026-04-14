@@ -38,6 +38,7 @@ class Job < ApplicationRecord
 
   has_many :conversations, dependent: :destroy
   has_many :ratings, dependent: :destroy
+  has_many :job_issue_reports, dependent: :destroy
 
   # Auto-complete jobs past their scheduled end time
   def self.auto_complete_expired!

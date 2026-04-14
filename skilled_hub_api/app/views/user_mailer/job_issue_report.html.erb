@@ -1,0 +1,9 @@
+<h2 style="margin: 0 0 16px 0; font-size: 20px;">Job issue report</h2>
+
+<p><strong>Job:</strong> #<%= @job.id %> — <%= @job.title %></p>
+<p><strong>Reporter:</strong> <%= @reporter.email %> (user #<%= @reporter.id %>)</p>
+<p><strong>Category:</strong> <%= @report.category %></p>
+
+<p style="white-space: pre-wrap;"><%= @report.body %></p>
+
+<p><a href="<%= frontend_url("/jobs/#{@job.id}") %>">Open job in app</a></p>

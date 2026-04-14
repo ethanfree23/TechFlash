@@ -10,6 +10,9 @@ class TechnicianProfile < ApplicationRecord
   has_many :messages, through: :conversations
   has_many :documents, as: :uploadable, dependent: :destroy
   has_many :ratings_received, -> { order(created_at: :desc) }, class_name: 'Rating', as: :reviewee, dependent: :destroy
+  has_many :saved_job_searches, dependent: :destroy
+  has_many :favorite_technician_entries, class_name: 'FavoriteTechnician', dependent: :destroy
+  has_many :companies_that_favorited, through: :favorite_technician_entries, source: :company_profile
 
   def average_rating
     Rating.average_for(self)

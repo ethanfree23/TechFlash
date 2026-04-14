@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_04_07_130000) do
+ActiveRecord::Schema[7.1].define(version: 2026_04_13_120000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -90,6 +90,16 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_07_130000) do
     t.index ["uploadable_type", "uploadable_id"], name: "index_documents_on_uploadable"
   end
 
+  create_table "favorite_technicians", force: :cascade do |t|
+    t.integer "company_profile_id", null: false
+    t.integer "technician_profile_id", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["company_profile_id", "technician_profile_id"], name: "index_favorites_company_tech_unique", unique: true
+    t.index ["company_profile_id"], name: "index_favorite_technicians_on_company_profile_id"
+    t.index ["technician_profile_id"], name: "index_favorite_technicians_on_technician_profile_id"
+  end
+
   create_table "feedback_submissions", force: :cascade do |t|
     t.integer "user_id", null: false
     t.string "kind", null: false
@@ -109,6 +119,17 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_07_130000) do
     t.datetime "updated_at", null: false
     t.index ["job_id"], name: "index_job_applications_on_job_id"
     t.index ["technician_profile_id"], name: "index_job_applications_on_technician_profile_id"
+  end
+
+  create_table "job_issue_reports", force: :cascade do |t|
+    t.integer "job_id", null: false
+    t.integer "user_id", null: false
+    t.string "category", default: "general"
+    t.text "body", null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["job_id"], name: "index_job_issue_reports_on_job_id"
+    t.index ["user_id"], name: "index_job_issue_reports_on_user_id"
   end
 
   create_table "jobs", force: :cascade do |t|
@@ -184,6 +205,27 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_07_130000) do
     t.index ["reviewer_type", "reviewer_id"], name: "index_ratings_on_reviewer"
   end
 
+  create_table "saved_job_searches", force: :cascade do |t|
+    t.integer "technician_profile_id", null: false
+    t.string "keyword"
+    t.string "location"
+    t.string "skill_class"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["technician_profile_id", "keyword", "location", "skill_class"], name: "index_saved_searches_on_tech_and_criteria", unique: true
+    t.index ["technician_profile_id"], name: "index_saved_job_searches_on_technician_profile_id"
+  end
+
+  create_table "stripe_webhook_events", force: :cascade do |t|
+    t.string "stripe_event_id", null: false
+    t.string "event_type"
+    t.text "payload"
+    t.datetime "processed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["stripe_event_id"], name: "index_stripe_webhook_events_on_stripe_event_id", unique: true
+  end
+
   create_table "technician_profiles", force: :cascade do |t|
     t.integer "user_id", null: false
     t.string "trade_type"
@@ -229,13 +271,18 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_07_130000) do
   add_foreign_key "conversations", "jobs"
   add_foreign_key "conversations", "technician_profiles"
   add_foreign_key "crm_leads", "users", column: "linked_user_id"
+  add_foreign_key "favorite_technicians", "company_profiles"
+  add_foreign_key "favorite_technicians", "technician_profiles"
   add_foreign_key "feedback_submissions", "users"
   add_foreign_key "job_applications", "jobs"
   add_foreign_key "job_applications", "technician_profiles"
+  add_foreign_key "job_issue_reports", "jobs"
+  add_foreign_key "job_issue_reports", "users"
   add_foreign_key "jobs", "company_profiles"
   add_foreign_key "messages", "conversations"
   add_foreign_key "payments", "jobs"
   add_foreign_key "ratings", "jobs"
+  add_foreign_key "saved_job_searches", "technician_profiles"
   add_foreign_key "technician_profiles", "users"
   add_foreign_key "user_login_events", "users"
 end

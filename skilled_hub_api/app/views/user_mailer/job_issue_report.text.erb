@@ -1,0 +1,9 @@
+Job issue report
+
+Job: #<%= @job.id %> — <%= @job.title %>
+Reporter: <%= @reporter.email %>
+Category: <%= @report.category %>
+
+<%= @report.body %>
+
+<%= frontend_url("/jobs/#{@job.id}") %>

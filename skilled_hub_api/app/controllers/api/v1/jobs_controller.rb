@@ -92,8 +92,13 @@ module Api
             kw, kw, kw, kw
           )
         end
+
+        jobs = jobs.includes(:company_profile, :payments, job_applications: { technician_profile: :user })
         
-        render json: jobs, each_serializer: JobSerializer, include: [:company_profile, { job_applications: { technician_profile: :user } }], status: :ok
+        render json: jobs,
+               each_serializer: JobSerializer,
+               include: [:company_profile, { job_applications: { technician_profile: :user } }],
+               status: :ok
       end
 
       def locations
@@ -110,11 +115,18 @@ module Api
       
       def show
         Job.auto_complete_expired!
-        job = Job.find(params[:id])
+        job = Job.includes(:company_profile, :payments, job_applications: { technician_profile: :user }).find(params[:id])
+        if @current_user&.technician? && (tp = @current_user.technician_profile)
+          ActiveRecord::Associations::Preloader.new(records: [tp], associations: [:documents]).call
+        end
         if @current_user&.company? && job.company_profile.user_id != @current_user.id
           return render json: { error: "You can only view your own jobs" }, status: :forbidden
         end
-        render json: job, serializer: JobSerializer, include: [:company_profile, { job_applications: { technician_profile: :user } }], status: :ok
+        render json: job,
+               serializer: JobSerializer,
+               include: [:company_profile, { job_applications: { technician_profile: :user } }],
+               include_certification_match: true,
+               status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Job not found" }, status: :not_found
       end
@@ -222,7 +234,11 @@ module Api
         if can_finish
           job.update!(status: :finished, finished_at: Time.current)
           PaymentService.release_if_eligible(job)
-          render json: job, serializer: JobSerializer, status: :ok
+          MailDelivery.safe_deliver do
+            UserMailer.job_completed_for_company(job).deliver_now
+            UserMailer.job_completed_for_technician(job).deliver_now
+          end
+          render json: job, serializer: JobSerializer, include: [:company_profile, { job_applications: { technician_profile: :user } }], status: :ok
         else
           render json: { error: 'Access denied' }, status: :forbidden
         end
@@ -360,13 +376,17 @@ module Api
           MailDelivery.safe_deliver do
             UserMailer.job_claimed_email(job).deliver_now
             UserMailer.payment_confirmation_email(job, job.company_charge_cents).deliver_now
+            UserMailer.technician_claimed_job_email(job).deliver_now
           end
         else
           job.update!(status: :filled)
-          MailDelivery.safe_deliver { UserMailer.job_claimed_email(job).deliver_now }
+          MailDelivery.safe_deliver do
+            UserMailer.job_claimed_email(job).deliver_now
+            UserMailer.technician_claimed_job_email(job).deliver_now
+          end
         end
 
-        render json: job, serializer: JobSerializer, status: :ok
+        render json: job, serializer: JobSerializer, include: [:company_profile, { job_applications: { technician_profile: :user } }], status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: 'Job not found' }, status: :not_found
       end

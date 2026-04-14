@@ -43,7 +43,7 @@ const MessagesPage = ({ user, onLogout }) => {
     <div className="min-h-screen bg-gray-50">
       <AppHeader user={currentUser} onLogout={onLogout} activePage="messages" emailVariant="welcome" />
 
-      <main className="max-w-4xl mx-auto px-4 py-8">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-24 sm:pb-8">
         {loading ? (
           <div className="text-center py-12 text-gray-500">Loading conversations...</div>
         ) : conversations.length === 0 ? (
