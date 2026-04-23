@@ -62,6 +62,7 @@ const JobDetail = () => {
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportBody, setReportBody] = useState('');
   const [reportSubmitting, setReportSubmitting] = useState(false);
+  const [deletingJob, setDeletingJob] = useState(false);
 
   useEffect(() => {
     // Read user from localStorage on mount
@@ -379,6 +380,20 @@ const JobDetail = () => {
     }
   };
 
+  const handleDeleteJob = async () => {
+    if (!job?.id) return;
+    if (!window.confirm('Delete this job post? This cannot be undone.')) return;
+    setDeletingJob(true);
+    try {
+      await jobsAPI.delete(job.id);
+      navigate('/jobs');
+    } catch (err) {
+      setAlertModal({ isOpen: true, title: 'Unable to delete job', message: err.message || 'Failed to delete job', variant: 'error' });
+    } finally {
+      setDeletingJob(false);
+    }
+  };
+
   const submitJobIssueReport = async (e) => {
     e.preventDefault();
     if (!reportBody.trim()) {
@@ -476,6 +491,12 @@ const JobDetail = () => {
   const acceptedApp = job?.job_applications?.find(app => app.status === 'accepted' || app.status === 1);
   const claimedTechnician = claimedTechnicianData || acceptedApp?.technician_profile;
   const isCompanyViewingOwnClaimedJob = currentUser?.role === 'company' && job?.company_profile_id === companyProfileId && (job?.status === 'reserved' || job?.status === 'finished' || job?.status === 'filled') && (claimedTechnician || acceptedApp?.technician_profile_id);
+  const isAdmin = currentUser?.role === 'admin' || auth.isAdmin();
+  const isCompanyOwner = currentUser?.role === 'company' && (
+    (companyProfileId && String(job?.company_profile_id) === String(companyProfileId)) ||
+    (currentUser?.id && String(job?.company_profile?.user_id) === String(currentUser.id))
+  );
+  const canManageJob = isAdmin || isCompanyOwner;
 
   const canReportIssue =
     currentUser &&
@@ -905,11 +926,11 @@ const JobDetail = () => {
             </div>
           )}
 
-          {user && user.role === 'company' && (
+          {currentUser && canManageJob && (
             <div className="bg-white border border-gray-200 rounded-lg p-6">
-              <h3 className="text-xl font-semibold text-gray-900 mb-4">Company Actions</h3>
+              <h3 className="text-xl font-semibold text-gray-900 mb-4">{isAdmin ? 'Admin Actions' : 'Company Actions'}</h3>
               <div className="space-y-3">
-                {(job.status === 'reserved' || job.status === 'filled' || job.status === 'finished') && claimedTechnician && (
+                {!isAdmin && (job.status === 'reserved' || job.status === 'filled' || job.status === 'finished') && claimedTechnician && (
                   <>
                     <button onClick={handleMessageCompany} className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
                       Message Technician
@@ -937,6 +958,13 @@ const JobDetail = () => {
                 )}
                 <button onClick={openEditModal} className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
                   Edit Job
+                </button>
+                <button
+                  onClick={handleDeleteJob}
+                  disabled={deletingJob}
+                  className="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
+                >
+                  {deletingJob ? 'Deleting...' : 'Delete Job'}
                 </button>
               </div>
             </div>

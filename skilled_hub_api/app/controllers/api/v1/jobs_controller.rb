@@ -2,7 +2,7 @@ module Api
   module V1
     class JobsController < ApplicationController
       before_action :authenticate_user
-      before_action :require_company, only: [:create, :update, :destroy]
+      before_action :require_company, only: [:create]
       
       def index
         Job.auto_complete_expired!
@@ -148,6 +148,9 @@ module Api
 
       def update
         job = Job.find(params[:id])
+        unless can_manage_job?(job)
+          return render json: { error: 'Access denied' }, status: :forbidden
+        end
         if job.update(job_params)
           render json: job, serializer: JobSerializer, status: :ok
         else
@@ -159,7 +162,14 @@ module Api
 
       def destroy
         job = Job.find(params[:id])
-        job.destroy
+        unless can_manage_job?(job)
+          return render json: { error: 'Access denied' }, status: :forbidden
+        end
+        unless job.destroy
+          return render json: {
+            errors: job.errors.full_messages.presence || ['Unable to delete job']
+          }, status: :unprocessable_entity
+        end
         head :no_content
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Job not found" }, status: :not_found
@@ -436,6 +446,12 @@ module Api
         {}
       rescue Stripe::StripeError => e
         { error: e.message }
+      end
+
+      # Company: own jobs only. Admin: any job, any status (open, claimed, finished, expired-open, etc.).
+      def can_manage_job?(job)
+        return true if @current_user&.admin?
+        @current_user&.company? && job.company_profile&.user_id == @current_user.id
       end
     end
   end

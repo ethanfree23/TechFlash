@@ -30,11 +30,22 @@ const apiRequest = async (endpoint, options = {}) => {
           throw new Error('Server error. Check Rails server logs for details. Run: cd skilled_hub_api && bundle exec rails db:migrate');
         }
       }
-      const msg = errorData.message || errorData.error || `HTTP error! status: ${response.status}`;
+      const msg =
+        errorData.message ||
+        errorData.error ||
+        (Array.isArray(errorData.errors) ? errorData.errors.join(', ') : null) ||
+        `HTTP error! status: ${response.status}`;
       throw new Error(msg);
     }
-    
-    return await response.json();
+
+    // 204 No Content and other empty successful bodies (Rails uses this for DELETE)
+    const raw = await response.text();
+    if (!raw) return null;
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return raw;
+    }
   } catch (error) {
     console.error('API request failed:', error);
     throw error;

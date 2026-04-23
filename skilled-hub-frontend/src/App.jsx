@@ -150,7 +150,7 @@ function App() {
           <Route
             path="/jobs/:id/edit"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated && user?.role === 'company'}>
+              <ProtectedRoute isAuthenticated={isAuthenticated && (user?.role === 'company' || user?.role === 'admin')}>
                 <EditJob />
               </ProtectedRoute>
             }
