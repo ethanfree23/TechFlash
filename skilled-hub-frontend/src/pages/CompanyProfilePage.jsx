@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
+import AdminCreateUserModal from '../components/AdminCreateUserModal';
+import AlertModal from '../components/AlertModal';
 import { profilesAPI } from '../api/api';
 
 const CompanyProfilePage = ({ user, onLogout }) => {
@@ -9,9 +11,19 @@ const CompanyProfilePage = ({ user, onLogout }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [createUserOpen, setCreateUserOpen] = useState(false);
+  const [alertModal, setAlertModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    variant: 'success',
+  });
 
   useEffect(() => {
-    if (!id) return;
+    if (!id) {
+      setLoading(false);
+      return;
+    }
     profilesAPI.getCompanyById(id)
       .then(setProfile)
       .catch((err) => {
@@ -25,6 +37,21 @@ const CompanyProfilePage = ({ user, onLogout }) => {
       })
       .finally(() => setLoading(false));
   }, [id, navigate]);
+
+  const refreshCompanyProfile = useCallback(async () => {
+    if (!id) return;
+    try {
+      const p = await profilesAPI.getCompanyById(id);
+      setProfile(p);
+    } catch {
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not refresh',
+        message: 'The user list may be stale. Try reloading the page.',
+        variant: 'error',
+      });
+    }
+  }, [id]);
 
   if (loading) {
     return (
@@ -111,7 +138,16 @@ const CompanyProfilePage = ({ user, onLogout }) => {
 
           {user?.role === 'admin' && (
             <div className="p-6 border-b border-gray-200">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">Company users</h2>
+              <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
+                <h2 className="text-lg font-semibold text-gray-900">Company users</h2>
+                <button
+                  type="button"
+                  onClick={() => setCreateUserOpen(true)}
+                  className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 shadow-sm"
+                >
+                  Add user
+                </button>
+              </div>
               {companyUsers.length === 0 ? (
                 <p className="text-gray-500">No linked login accounts yet.</p>
               ) : (
@@ -171,6 +207,43 @@ const CompanyProfilePage = ({ user, onLogout }) => {
           </div>
         </div>
       </div>
+
+      {user?.role === 'admin' && profile?.id != null && (
+        <AdminCreateUserModal
+          isOpen={createUserOpen}
+          onClose={() => setCreateUserOpen(false)}
+          presetCompanyProfile={{
+            id: profile.id,
+            company_name: profile.company_name,
+            company_users_count: companyUsers.length,
+          }}
+          onCompleted={async () => {
+            await refreshCompanyProfile();
+            setAlertModal({
+              isOpen: true,
+              title: 'Done',
+              message: 'Company users were updated.',
+              variant: 'success',
+            });
+          }}
+          onError={(message) =>
+            setAlertModal({
+              isOpen: true,
+              title: 'Something went wrong',
+              message: message || 'Request failed',
+              variant: 'error',
+            })
+          }
+        />
+      )}
+
+      <AlertModal
+        isOpen={alertModal.isOpen}
+        onClose={() => setAlertModal((m) => ({ ...m, isOpen: false }))}
+        title={alertModal.title}
+        message={alertModal.message}
+        variant={alertModal.variant}
+      />
     </div>
   );
 };

@@ -55,7 +55,7 @@ module Api
             )
           end
           MailDelivery.safe_deliver { UserMailer.welcome_email(user).deliver_now }
-          token = JWT.encode({ user_id: user.id }, Rails.application.secret_key_base)
+          token = JWT.encode({ user_id: user.id }, Rails.application.secret_key_base, "HS256")
           render json: { token: token, user: UserSerializer.new(user).as_json }, status: :created
         else
           render json: { errors: user.errors.full_messages }, status: :unprocessable_entity

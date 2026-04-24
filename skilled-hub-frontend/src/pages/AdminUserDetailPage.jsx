@@ -1,8 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
+import AdminCollapsibleCard from '../components/AdminCollapsibleCard';
+import AdminCreateUserModal from '../components/AdminCreateUserModal';
+import { ServiceCityPicker } from '../components/admin/AdminUserFormPickers';
 import { adminUsersAPI, adminReferralsAPI } from '../api/api';
 import AlertModal from '../components/AlertModal';
+import { auth } from '../auth';
+import { FaEye } from 'react-icons/fa';
 
 const PERIODS = [
   { id: '24h', label: '24h' },
@@ -31,6 +36,11 @@ export default function AdminUserDetailPage({ user, onLogout }) {
   const [manualPassword, setManualPassword] = useState('');
   const [manualPasswordConfirmation, setManualPasswordConfirmation] = useState('');
   const [issuingReferralId, setIssuingReferralId] = useState(null);
+  const [profileEditing, setProfileEditing] = useState(false);
+  const [profileDraft, setProfileDraft] = useState({});
+  const [profileSaveBusy, setProfileSaveBusy] = useState(false);
+  const [createUserModalOpen, setCreateUserModalOpen] = useState(false);
+  const [masqueradeBusy, setMasqueradeBusy] = useState(false);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -54,6 +64,10 @@ export default function AdminUserDetailPage({ user, onLogout }) {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    setProfileEditing(false);
+  }, [userId]);
 
   const u = data?.user;
   const profile = u?.profile;
@@ -178,6 +192,102 @@ export default function AdminUserDetailPage({ user, onLogout }) {
     }
   };
 
+  const beginProfileEdit = () => {
+    if (!profile) return;
+    if (isCompany) {
+      setProfileDraft({
+        company_name: profile.company_name || '',
+        industry: profile.industry || '',
+        location: profile.location || '',
+        bio: profile.bio || '',
+        phone: profile.phone || '',
+        website_url: profile.website_url || '',
+        facebook_url: profile.facebook_url || '',
+        instagram_url: profile.instagram_url || '',
+        linkedin_url: profile.linkedin_url || '',
+        service_cities: Array.isArray(profile.service_cities) ? [...profile.service_cities] : [],
+      });
+    } else if (isTech) {
+      setProfileDraft({
+        trade_type: profile.trade_type || '',
+        location: profile.location || '',
+        experience_years: profile.experience_years != null ? String(profile.experience_years) : '',
+        availability: profile.availability || '',
+        bio: profile.bio || '',
+      });
+    }
+    setProfileEditing(true);
+  };
+
+  const saveProfile = async (e) => {
+    e.preventDefault();
+    if (!u?.id || !profile) return;
+    setProfileSaveBusy(true);
+    try {
+      const payload =
+        isCompany
+          ? {
+              company_name: profileDraft.company_name?.trim(),
+              industry: profileDraft.industry?.trim(),
+              location: profileDraft.location?.trim(),
+              bio: profileDraft.bio?.trim(),
+              phone: profileDraft.phone?.trim(),
+              website_url: profileDraft.website_url?.trim() || null,
+              facebook_url: profileDraft.facebook_url?.trim() || null,
+              instagram_url: profileDraft.instagram_url?.trim() || null,
+              linkedin_url: profileDraft.linkedin_url?.trim() || null,
+              service_cities: Array.isArray(profileDraft.service_cities) ? profileDraft.service_cities : [],
+            }
+          : {
+              trade_type: profileDraft.trade_type?.trim(),
+              location: profileDraft.location?.trim(),
+              availability: profileDraft.availability?.trim(),
+              bio: profileDraft.bio?.trim(),
+              experience_years:
+                profileDraft.experience_years === '' || profileDraft.experience_years == null
+                  ? null
+                  : parseInt(profileDraft.experience_years, 10),
+            };
+      await adminUsersAPI.updateProfile(u.id, payload);
+      setProfileEditing(false);
+      await load();
+      setAlertModal({
+        isOpen: true,
+        title: 'Profile saved',
+        message: 'Profile information was updated.',
+        variant: 'success',
+      });
+    } catch (err) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not save profile',
+        message: err.message || 'Request failed',
+        variant: 'error',
+      });
+    } finally {
+      setProfileSaveBusy(false);
+    }
+  };
+
+  const startMasquerade = async () => {
+    if (!u?.id || !(isCompany || isTech)) return;
+    setMasqueradeBusy(true);
+    try {
+      const res = await adminUsersAPI.masqueradeStart(u.id);
+      auth.enterMasquerade(res.token, res.user);
+      window.location.assign('/dashboard');
+    } catch (err) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Masquerade failed',
+        message: err.message || 'Could not start masquerade session',
+        variant: 'error',
+      });
+    } finally {
+      setMasqueradeBusy(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader user={user} onLogout={onLogout} activePage="users" emailVariant="crm" />
@@ -198,7 +308,26 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               {profile?.trade_type && ` · ${profile.trade_type}`}
             </p>
           </div>
-          <div className="flex flex-wrap gap-2 items-center">
+          <div className="flex flex-wrap gap-2 items-center justify-end">
+            {(isCompany || isTech) && u?.id && (
+              <button
+                type="button"
+                disabled={masqueradeBusy}
+                onClick={startMasquerade}
+                title="Open the app as this user"
+                aria-label="View as this user"
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold border border-amber-400 text-amber-900 bg-amber-50 hover:bg-amber-100 disabled:opacity-50"
+              >
+                {masqueradeBusy ? (
+                  'Starting…'
+                ) : (
+                  <>
+                    <FaEye className="text-base shrink-0" aria-hidden />
+                    View as this user
+                  </>
+                )}
+              </button>
+            )}
             <span className="text-xs font-medium text-gray-500 uppercase mr-1">Metrics window</span>
             {PERIODS.map((p) => (
               <button
@@ -221,59 +350,311 @@ export default function AdminUserDetailPage({ user, onLogout }) {
 
         {!loading && data && (
           <div className="space-y-8">
-            <section className="bg-white rounded-2xl border border-gray-100 shadow p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Profile</h2>
-              <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
-                <div>
-                  <dt className="text-gray-500">User ID</dt>
-                  <dd className="font-medium text-gray-900">{u?.id}</dd>
-                </div>
-                <div>
-                  <dt className="text-gray-500">Joined</dt>
-                  <dd className="font-medium text-gray-900">
-                    {u?.created_at ? new Date(u.created_at).toLocaleString() : '—'}
-                  </dd>
-                </div>
-                {profile?.location && (
-                  <div>
-                    <dt className="text-gray-500">Location</dt>
-                    <dd className="font-medium text-gray-900">{profile.location}</dd>
-                  </div>
-                )}
-                {isCompany && u?.company_context?.company_profile_id && (
-                  <div>
-                    <dt className="text-gray-500">Company profile</dt>
-                    <dd>
-                      <Link
-                        to={`/companies/${u.company_context.company_profile_id}`}
-                        className="font-medium text-blue-600 hover:text-blue-800"
+            <AdminCollapsibleCard
+              title="Profile"
+              actions={
+                (isCompany || isTech) && profile ? (
+                  profileEditing ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setProfileEditing(false)}
+                        className="px-3 py-1.5 text-sm font-medium text-gray-700 border border-gray-300 rounded-lg hover:bg-gray-50"
                       >
-                        {u.company_context.company_name || `Company #${u.company_context.company_profile_id}`} →
-                      </Link>
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        form={isCompany ? 'admin-profile-company-form' : 'admin-profile-tech-form'}
+                        disabled={profileSaveBusy}
+                        className="px-3 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {profileSaveBusy ? 'Saving…' : 'Save'}
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={beginProfileEdit}
+                      className="px-3 py-1.5 text-sm font-semibold text-blue-700 border border-blue-300 rounded-lg hover:bg-blue-50"
+                    >
+                      Edit
+                    </button>
+                  )
+                ) : null
+              }
+            >
+              {!profileEditing ? (
+                <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                  <div>
+                    <dt className="text-gray-500">User ID</dt>
+                    <dd className="font-medium text-gray-900">{u?.id}</dd>
+                  </div>
+                  <div>
+                    <dt className="text-gray-500">Joined</dt>
+                    <dd className="font-medium text-gray-900">
+                      {u?.created_at ? new Date(u.created_at).toLocaleString() : '—'}
                     </dd>
                   </div>
-                )}
-                {profile?.stripe_customer_id != null && (
-                  <div>
-                    <dt className="text-gray-500">Stripe customer</dt>
-                    <dd className="font-mono text-xs text-gray-800 break-all">{profile.stripe_customer_id}</dd>
+                  {isCompany && profile && (
+                    <>
+                      <div>
+                        <dt className="text-gray-500">Company name</dt>
+                        <dd className="font-medium text-gray-900">{profile.company_name || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-gray-500">Industry</dt>
+                        <dd className="font-medium text-gray-900">{profile.industry || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-gray-500">Phone</dt>
+                        <dd className="font-medium text-gray-900">{profile.phone || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-gray-500">Location</dt>
+                        <dd className="font-medium text-gray-900">{profile.location || '—'}</dd>
+                      </div>
+                      {Array.isArray(profile.service_cities) && profile.service_cities.length > 0 && (
+                        <div className="sm:col-span-2">
+                          <dt className="text-gray-500">Service cities</dt>
+                          <dd className="font-medium text-gray-900">{profile.service_cities.join(', ')}</dd>
+                        </div>
+                      )}
+                      <div className="sm:col-span-2">
+                        <dt className="text-gray-500">Bio</dt>
+                        <dd className="font-medium text-gray-900 whitespace-pre-wrap">{profile.bio || '—'}</dd>
+                      </div>
+                    </>
+                  )}
+                  {isTech && profile && (
+                    <>
+                      <div>
+                        <dt className="text-gray-500">Trade</dt>
+                        <dd className="font-medium text-gray-900">{profile.trade_type || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-gray-500">Location</dt>
+                        <dd className="font-medium text-gray-900">{profile.location || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-gray-500">Experience (years)</dt>
+                        <dd className="font-medium text-gray-900">{profile.experience_years ?? '—'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-gray-500">Availability</dt>
+                        <dd className="font-medium text-gray-900">{profile.availability || '—'}</dd>
+                      </div>
+                      <div className="sm:col-span-2">
+                        <dt className="text-gray-500">Bio</dt>
+                        <dd className="font-medium text-gray-900 whitespace-pre-wrap">{profile.bio || '—'}</dd>
+                      </div>
+                    </>
+                  )}
+                  {isCompany && u?.company_context?.company_profile_id && (
+                    <div>
+                      <dt className="text-gray-500">Company profile</dt>
+                      <dd>
+                        <Link
+                          to={`/companies/${u.company_context.company_profile_id}`}
+                          className="font-medium text-blue-600 hover:text-blue-800"
+                        >
+                          {u.company_context.company_name || `Company #${u.company_context.company_profile_id}`} →
+                        </Link>
+                      </dd>
+                    </div>
+                  )}
+                  {profile?.stripe_customer_id != null && (
+                    <div>
+                      <dt className="text-gray-500">Stripe customer</dt>
+                      <dd className="font-mono text-xs text-gray-800 break-all">{profile.stripe_customer_id}</dd>
+                    </div>
+                  )}
+                  {profile?.stripe_account_id != null && (
+                    <div>
+                      <dt className="text-gray-500">Stripe Connect</dt>
+                      <dd className="font-mono text-xs text-gray-800 break-all">{profile.stripe_account_id}</dd>
+                    </div>
+                  )}
+                </dl>
+              ) : isCompany ? (
+                <form id="admin-profile-company-form" onSubmit={saveProfile} className="space-y-4">
+                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm border-b border-gray-100 pb-4 mb-4">
+                    <div>
+                      <dt className="text-gray-500">User ID</dt>
+                      <dd className="font-medium text-gray-900">{u?.id}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-gray-500">Joined</dt>
+                      <dd className="font-medium text-gray-900">
+                        {u?.created_at ? new Date(u.created_at).toLocaleString() : '—'}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <label className="block sm:col-span-2">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Company name</span>
+                      <input
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.company_name || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, company_name: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block sm:col-span-2">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Industry</span>
+                      <input
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.industry || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, industry: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Phone</span>
+                      <input
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.phone || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, phone: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Location (summary)</span>
+                      <input
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.location || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, location: e.target.value }))}
+                      />
+                    </label>
+                    <div className="sm:col-span-2">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Service cities</span>
+                      <ServiceCityPicker
+                        inputId="admin-user-detail-service-cities"
+                        value={profileDraft.service_cities || []}
+                        onChange={(cities) => setProfileDraft((d) => ({ ...d, service_cities: cities }))}
+                      />
+                    </div>
+                    <label className="block sm:col-span-2">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Bio</span>
+                      <textarea
+                        rows={3}
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.bio || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, bio: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block sm:col-span-2">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Website</span>
+                      <input
+                        type="url"
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.website_url || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, website_url: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Facebook</span>
+                      <input
+                        type="url"
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.facebook_url || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, facebook_url: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Instagram</span>
+                      <input
+                        type="url"
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.instagram_url || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, instagram_url: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block sm:col-span-2">
+                      <span className="text-xs font-medium text-gray-500 uppercase">LinkedIn</span>
+                      <input
+                        type="url"
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.linkedin_url || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, linkedin_url: e.target.value }))}
+                      />
+                    </label>
                   </div>
-                )}
-                {profile?.stripe_account_id != null && (
-                  <div>
-                    <dt className="text-gray-500">Stripe Connect</dt>
-                    <dd className="font-mono text-xs text-gray-800 break-all">{profile.stripe_account_id}</dd>
+                </form>
+              ) : (
+                <form id="admin-profile-tech-form" onSubmit={saveProfile} className="space-y-4">
+                  <dl className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm border-b border-gray-100 pb-4 mb-4">
+                    <div>
+                      <dt className="text-gray-500">User ID</dt>
+                      <dd className="font-medium text-gray-900">{u?.id}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-gray-500">Joined</dt>
+                      <dd className="font-medium text-gray-900">
+                        {u?.created_at ? new Date(u.created_at).toLocaleString() : '—'}
+                      </dd>
+                    </div>
+                  </dl>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Trade</span>
+                      <input
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.trade_type || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, trade_type: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Location</span>
+                      <input
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.location || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, location: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Years experience</span>
+                      <input
+                        type="number"
+                        min={0}
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.experience_years ?? ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, experience_years: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Availability</span>
+                      <input
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.availability || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, availability: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block sm:col-span-2">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Bio</span>
+                      <textarea
+                        rows={3}
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.bio || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, bio: e.target.value }))}
+                      />
+                    </label>
                   </div>
-                )}
-              </dl>
-            </section>
+                </form>
+              )}
+            </AdminCollapsibleCard>
 
-            {isCompany && u?.company_context?.users?.length > 0 && (
-              <section className="bg-white rounded-2xl border border-gray-100 shadow p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-2">Company login users</h2>
-                <p className="text-sm text-gray-500 mb-4">
-                  Accounts linked to this company profile.
-                </p>
+            {isCompany && u?.company_context && (
+              <AdminCollapsibleCard
+                title="Company login users"
+                description="Accounts linked to this company profile."
+                actions={
+                  <button
+                    type="button"
+                    onClick={() => setCreateUserModalOpen(true)}
+                    className="px-3 py-1.5 text-sm font-semibold text-white bg-blue-600 rounded-lg hover:bg-blue-700"
+                  >
+                    Add user
+                  </button>
+                }
+              >
                 <div className="overflow-x-auto">
                   <table className="min-w-full text-sm">
                     <thead>
@@ -285,34 +666,42 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                       </tr>
                     </thead>
                     <tbody>
-                      {u.company_context.users.map((member) => (
-                        <tr key={member.id} className="border-b border-gray-50">
-                          <td className="py-2 pr-4">{member.email}</td>
-                          <td className="py-2 pr-4 text-gray-600">
-                            {member.created_at ? new Date(member.created_at).toLocaleString() : '—'}
-                          </td>
-                          <td className="py-2 pr-4 text-gray-600">
-                            {member.id === u.company_context.company_profile_owner_user_id ? 'Primary owner' : 'Contact login'}
-                          </td>
-                          <td className="py-2">
-                            <Link to={`/admin/users/${member.id}`} className="text-blue-600 hover:text-blue-800 font-medium">
-                              View →
-                            </Link>
+                      {(u.company_context.users || []).length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="py-4 text-gray-500">
+                            No linked accounts yet. Use Add user to create one.
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        u.company_context.users.map((member) => (
+                          <tr key={member.id} className="border-b border-gray-50">
+                            <td className="py-2 pr-4">{member.email}</td>
+                            <td className="py-2 pr-4 text-gray-600">
+                              {member.created_at ? new Date(member.created_at).toLocaleString() : '—'}
+                            </td>
+                            <td className="py-2 pr-4 text-gray-600">
+                              {member.id === u.company_context.company_profile_owner_user_id ? 'Primary owner' : 'Contact login'}
+                            </td>
+                            <td className="py-2">
+                              {String(member.id) === String(userId) ? (
+                                <span className="text-gray-400 font-medium">Current</span>
+                              ) : (
+                                <Link to={`/admin/users/${member.id}`} className="text-blue-600 hover:text-blue-800 font-medium">
+                                  View →
+                                </Link>
+                              )}
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>
-              </section>
+              </AdminCollapsibleCard>
             )}
 
             {canManagePassword && (
-              <section className="bg-white rounded-2xl border border-gray-100 shadow p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-2">Access management</h2>
-                <p className="text-sm text-gray-500 mb-4">
-                  Send a new setup email, generate a manual setup link, or set a password directly for this account.
-                </p>
+              <AdminCollapsibleCard title="Access management" description="Send a new setup email, generate a manual setup link, or set a password directly for this account.">
                 <div className="flex flex-wrap gap-2 mb-4">
                   <button
                     type="button"
@@ -387,11 +776,10 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                     </button>
                   </div>
                 </form>
-              </section>
+              </AdminCollapsibleCard>
             )}
 
-            <section className="bg-white rounded-2xl border border-gray-100 shadow p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Logins</h2>
+            <AdminCollapsibleCard title="Logins">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
                 <Stat label="In period" value={data.logins?.total_in_period ?? '—'} />
                 <Stat label="All time" value={data.logins?.total_all_time ?? '—'} />
@@ -414,21 +802,19 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                   </ul>
                 </div>
               )}
-            </section>
+            </AdminCollapsibleCard>
 
-            <section className="bg-white rounded-2xl border border-gray-100 shadow p-6">
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Messages</h2>
+            <AdminCollapsibleCard title="Messages">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
                 <Stat label="Job threads (period)" value={data.messages?.job_threads_sent_in_period ?? 0} />
                 <Stat label="Job threads (all time)" value={data.messages?.job_threads_sent_all_time ?? 0} />
                 <Stat label="Feedback (period)" value={data.messages?.feedback_messages_sent_in_period ?? 0} />
                 <Stat label="Feedback (all time)" value={data.messages?.feedback_messages_sent_all_time ?? 0} />
               </div>
-            </section>
+            </AdminCollapsibleCard>
 
             {data.referrals && (
-              <section className="bg-white rounded-2xl border border-gray-100 shadow p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Referrals</h2>
+              <AdminCollapsibleCard title="Referrals">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 text-sm">
                   <Stat label="Sent (window)" value={data.referrals.sent_in_period ?? 0} />
                   <Stat label="Sent (all time)" value={data.referrals.sent_total ?? 0} />
@@ -476,12 +862,11 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                     </table>
                   </div>
                 )}
-              </section>
+              </AdminCollapsibleCard>
             )}
 
             {isCompany && data.jobs && (
-              <section className="bg-white rounded-2xl border border-gray-100 shadow p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Jobs (company)</h2>
+              <AdminCollapsibleCard title="Jobs (company)">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
                   <Stat label="Total jobs" value={data.jobs.total ?? 0} />
                   <Stat label="Posted in window" value={data.jobs.in_period ?? 0} />
@@ -511,13 +896,11 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                     </ul>
                   </div>
                 )}
-              </section>
+              </AdminCollapsibleCard>
             )}
 
             {isTech && data.jobs && data.applications && (
-              <>
-                <section className="bg-white rounded-2xl border border-gray-100 shadow p-6">
-                  <h2 className="text-lg font-semibold text-gray-900 mb-4">Jobs & applications</h2>
+              <AdminCollapsibleCard title="Jobs & applications">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
                     <Stat label="Accepted jobs (total)" value={data.jobs.accepted_total ?? 0} />
                     <Stat label="Accepted (window)" value={data.jobs.accepted_in_period ?? 0} />
@@ -546,15 +929,11 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                       </ul>
                     </div>
                   )}
-                </section>
-              </>
+              </AdminCollapsibleCard>
             )}
 
             {data.payments && (
-              <section className="bg-white rounded-2xl border border-gray-100 shadow p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">
-                  {isCompany ? 'Payments (company)' : 'Payments (technician)'}
-                </h2>
+              <AdminCollapsibleCard title={isCompany ? 'Payments (company)' : 'Payments (technician)'}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                   {isCompany && (
                     <>
@@ -595,12 +974,11 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                     </table>
                   </div>
                 )}
-              </section>
+              </AdminCollapsibleCard>
             )}
 
             {data.ratings && (
-              <section className="bg-white rounded-2xl border border-gray-100 shadow p-6">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Ratings & reviews</h2>
+              <AdminCollapsibleCard title="Ratings & reviews">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
                   <Stat label="Received (total)" value={data.ratings.received_total ?? 0} />
                   <Stat label="Received (window)" value={data.ratings.received_in_period ?? 0} />
@@ -648,11 +1026,47 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                     </ul>
                   </div>
                 </div>
-              </section>
+              </AdminCollapsibleCard>
             )}
           </div>
         )}
       </main>
+
+      {isCompany && u?.company_context && (
+        <AdminCreateUserModal
+          isOpen={createUserModalOpen}
+          onClose={() => setCreateUserModalOpen(false)}
+          presetCompanyProfile={{
+            id: u.company_context.company_profile_id,
+            company_name: u.company_context.company_name,
+            company_users_count: (u.company_context.users || []).length,
+          }}
+          onCompleted={async ({ kind }) => {
+            await load();
+            const messages = {
+              company_link:
+                'Company contact login was created and linked. They were emailed a secure password setup link.',
+              company_new:
+                'Company user created. They were emailed a link to set a secure password.',
+              technician: 'Technician account created.',
+            };
+            setAlertModal({
+              isOpen: true,
+              title: 'User created',
+              message: messages[kind] || 'Done.',
+              variant: 'success',
+            });
+          }}
+          onError={(msg) =>
+            setAlertModal({
+              isOpen: true,
+              title: 'Create failed',
+              message: msg || 'Could not create user',
+              variant: 'error',
+            })
+          }
+        />
+      )}
 
       <AlertModal
         isOpen={alertModal.isOpen}

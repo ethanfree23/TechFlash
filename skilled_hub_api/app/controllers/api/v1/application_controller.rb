@@ -12,6 +12,15 @@ module Api
         @current_user
       end
 
+      # True when JWT was issued by admin masquerade (see Admin::MasqueradesController).
+      def masquerading?
+        ActiveModel::Type::Boolean.new.cast(@jwt_payload&.[]("masquerade"))
+      end
+
+      def impersonator_id
+        @jwt_payload&.[]("impersonator_id")
+      end
+
       private
 
       def handle_server_error(exception)
@@ -26,8 +35,17 @@ module Api
       def authenticate_user
         authenticate_or_request_with_http_token do |token, _options|
           begin
-            decoded_token = JWT.decode(token, Rails.application.secret_key_base)[0]
-            @current_user = User.find(decoded_token["user_id"])
+            @jwt_payload = JWT.decode(
+              token,
+              Rails.application.secret_key_base,
+              true,
+              { algorithm: "HS256", verify_expiration: false }
+            ).first
+            if @jwt_payload["exp"].present? && Time.at(@jwt_payload["exp"].to_i) < Time.current
+              head :unauthorized
+              next
+            end
+            @current_user = User.find(@jwt_payload["user_id"])
           rescue JWT::DecodeError, ActiveRecord::RecordNotFound
             head :unauthorized
           end

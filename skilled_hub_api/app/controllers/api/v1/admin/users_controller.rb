@@ -167,6 +167,34 @@ module Api
           render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
         end
 
+        # PATCH /api/v1/admin/users/:id/profile
+        # Updates company or technician profile fields (admin only).
+        def update_profile
+          user = provisioned_user!
+          return if user.nil?
+
+          if user.company?
+            cp = user.company_profile
+            return render json: { errors: ["Company profile not found"] }, status: :not_found unless cp
+
+            unless cp.update(company_profile_admin_params)
+              return render json: { errors: cp.errors.full_messages }, status: :unprocessable_entity
+            end
+          elsif user.technician?
+            tp = user.technician_profile
+            return render json: { errors: ["Technician profile not found"] }, status: :not_found unless tp
+
+            attrs = technician_profile_admin_params
+            unless tp.update(attrs)
+              return render json: { errors: tp.errors.full_messages }, status: :unprocessable_entity
+            end
+          else
+            return render json: { errors: ["This account has no editable profile"] }, status: :unprocessable_entity
+          end
+
+          render json: { message: "Profile updated" }, status: :ok
+        end
+
         # PATCH /api/v1/admin/users/:id/membership_pricing
         def membership_pricing
           user = provisioned_user!
@@ -212,6 +240,23 @@ module Api
         end
 
         private
+
+        def company_profile_admin_params
+          params.permit(
+            :company_name, :industry, :location, :bio, :phone,
+            :website_url, :facebook_url, :instagram_url, :linkedin_url,
+            service_cities: []
+          )
+        end
+
+        def technician_profile_admin_params
+          p = params.permit(:trade_type, :location, :availability, :bio, :experience_years)
+          if p.key?(:experience_years)
+            raw = p[:experience_years]
+            p[:experience_years] = raw.present? ? raw.to_i : nil
+          end
+          p
+        end
 
         def provisioned_user!
           user = User.find_by(id: params[:id].to_i)

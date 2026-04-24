@@ -1,6 +1,8 @@
 // Authentication helper for JWT token management
 const TOKEN_KEY = 'token';
 const USER_KEY = 'user';
+const MSQ_PREV_TOKEN = 'tf_masq_prev_token';
+const MSQ_PREV_USER = 'tf_masq_prev_user';
 
 export const auth = {
   // Store JWT token in localStorage
@@ -31,6 +33,46 @@ export const auth = {
     } catch (error) {
       console.error('Error parsing token:', error);
       return false;
+    }
+  },
+
+  /** True when current JWT is an admin masquerade session (acts as another user). */
+  isMasquerading: () => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) return false;
+    try {
+      const payload = JSON.parse(atob(token.split('.')[1]));
+      return payload.masquerade === true;
+    } catch {
+      return false;
+    }
+  },
+
+  /** Save admin session and switch to masquerade token + user (then reload or navigate). */
+  enterMasquerade: (newToken, newUser) => {
+    const prevToken = localStorage.getItem(TOKEN_KEY);
+    const prevUser = localStorage.getItem(USER_KEY);
+    if (prevToken) sessionStorage.setItem(MSQ_PREV_TOKEN, prevToken);
+    if (prevUser) sessionStorage.setItem(MSQ_PREV_USER, prevUser);
+    localStorage.setItem(TOKEN_KEY, newToken);
+    localStorage.setItem(USER_KEY, JSON.stringify(newUser));
+  },
+
+  /** Restore admin session after masquerade. */
+  exitMasquerade: () => {
+    const prevToken = sessionStorage.getItem(MSQ_PREV_TOKEN);
+    const prevUser = sessionStorage.getItem(MSQ_PREV_USER);
+    sessionStorage.removeItem(MSQ_PREV_TOKEN);
+    sessionStorage.removeItem(MSQ_PREV_USER);
+    if (prevToken) {
+      localStorage.setItem(TOKEN_KEY, prevToken);
+    } else {
+      localStorage.removeItem(TOKEN_KEY);
+    }
+    if (prevUser) {
+      localStorage.setItem(USER_KEY, prevUser);
+    } else {
+      localStorage.removeItem(USER_KEY);
     }
   },
 
@@ -90,6 +132,8 @@ export const auth = {
   logout: () => {
     auth.removeToken();
     localStorage.removeItem(USER_KEY);
+    sessionStorage.removeItem(MSQ_PREV_TOKEN);
+    sessionStorage.removeItem(MSQ_PREV_USER);
   },
 
   // Get authorization header for API requests

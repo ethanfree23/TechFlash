@@ -67,6 +67,7 @@ Rails.application.routes.draw do
       post 'stripe/webhook', to: 'stripe_webhooks#create'
 
       namespace :admin do
+        post "masquerade", to: "masquerades#create"
         get "location_suggestions", to: "location_suggestions#index"
         post "company_accounts", to: "company_accounts#create"
         get "company_accounts/search", to: "company_accounts#search"
@@ -78,6 +79,7 @@ Rails.application.routes.draw do
             patch :password, action: :set_password
             patch :company_membership
             patch :membership_pricing
+            patch :profile, action: :update_profile
           end
         end
         resources :crm_leads, only: %i[index show create update destroy]

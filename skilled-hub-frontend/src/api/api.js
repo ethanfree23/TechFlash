@@ -153,6 +153,11 @@ export const adminLocationAPI = {
 
 // Admin user directory + per-user analytics
 export const adminUsersAPI = {
+  masqueradeStart: (targetUserId) =>
+    apiRequest('/admin/masquerade', {
+      method: 'POST',
+      body: JSON.stringify({ target_user_id: targetUserId }),
+    }),
   list: ({ q, role } = {}) => {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
@@ -181,6 +186,11 @@ export const adminUsersAPI = {
       body: JSON.stringify({
         company_profile_id: companyProfileId,
       }),
+    }),
+  updateProfile: (id, payload) =>
+    apiRequest(`/admin/users/${id}/profile`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
     }),
   create: (data) => {
     if (data instanceof FormData) {

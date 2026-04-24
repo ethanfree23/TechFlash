@@ -22,6 +22,7 @@ import PaymentTermsPage from './pages/PaymentTermsPage';
 import DmcaIpClaimsPage from './pages/DmcaIpClaimsPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import FeedbackWidget from './components/FeedbackWidget';
+import MasqueradeBanner from './components/MasqueradeBanner';
 import { auth } from './auth';
 
 // Protected Route component
@@ -82,6 +83,7 @@ function App() {
   return (
     <Router>
       <div className="App min-w-0 overflow-x-hidden">
+        <MasqueradeBanner />
         <FeedbackWidget user={user} />
         <Routes>
           {/* Marketing landing page */}
