@@ -320,6 +320,7 @@ export default function AdminUsersPage({ user, onLogout }) {
     message: '',
     variant: 'success',
   });
+  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   const [createRole, setCreateRole] = useState('company');
   const [creating, setCreating] = useState(false);
@@ -372,6 +373,15 @@ export default function AdminUsersPage({ user, onLogout }) {
   useEffect(() => {
     loadUsers();
   }, [loadUsers]);
+
+  useEffect(() => {
+    if (!createModalOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape' && !creating) setCreateModalOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [createModalOpen, creating]);
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -443,6 +453,7 @@ export default function AdminUsersPage({ user, onLogout }) {
       setServiceCities([]);
       setSelectedIndustries([]);
       setLogoFile(null);
+      setCreateModalOpen(false);
       await loadUsers();
       setAlertModal({
         isOpen: true,
@@ -470,43 +481,78 @@ export default function AdminUsersPage({ user, onLogout }) {
       <AppHeader user={user} onLogout={onLogout} activePage="users" emailVariant="crm" />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <h1 className="text-2xl font-semibold text-gray-900">Users</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Browse technicians and companies, open analytics for any account, or provision a new user.
-          </p>
+        <div className="mb-8 flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <h1 className="text-2xl font-semibold text-gray-900">Users</h1>
+            <p className="text-sm text-gray-500 mt-1">
+              Browse technicians and companies, or open analytics for any account.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setCreateModalOpen(true)}
+            className="inline-flex items-center justify-center gap-2 shrink-0 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 shadow-sm"
+          >
+            <FaUserPlus className="w-4 h-4" aria-hidden />
+            Create user
+          </button>
         </div>
 
-        <div className="bg-white rounded-2xl border border-gray-100 shadow p-6 mb-8">
-          <div className="flex flex-wrap items-center gap-3 mb-4">
-            <FaUserPlus className="text-emerald-600 shrink-0" aria-hidden />
-            <h2 className="text-lg font-semibold text-gray-900">Create user</h2>
-          </div>
-          <div className="flex gap-2 mb-4">
-            <button
-              type="button"
-              onClick={() => setCreateRole('company')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
-                createRole === 'company'
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-700 border-gray-300'
-              }`}
+        {createModalOpen ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="admin-create-user-title"
+            onClick={() => !creating && setCreateModalOpen(false)}
+          >
+            <div
+              className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
             >
-              <FaBuilding className="inline mr-1" /> Company
-            </button>
-            <button
-              type="button"
-              onClick={() => setCreateRole('technician')}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
-                createRole === 'technician'
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-gray-700 border-gray-300'
-              }`}
-            >
-              <FaWrench className="inline mr-1" /> Technician
-            </button>
-          </div>
-          <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
+                <div className="flex items-center gap-2 min-w-0">
+                  <FaUserPlus className="text-emerald-600 shrink-0 w-5 h-5" aria-hidden />
+                  <h2 id="admin-create-user-title" className="text-lg font-semibold text-gray-900 truncate">
+                    Create user
+                  </h2>
+                </div>
+                <button
+                  type="button"
+                  disabled={creating}
+                  onClick={() => setCreateModalOpen(false)}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+                  aria-label="Close"
+                >
+                  <FaTimes className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="overflow-y-auto px-6 py-5">
+                <div className="flex gap-2 mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setCreateRole('company')}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
+                      createRole === 'company'
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-700 border-gray-300'
+                    }`}
+                  >
+                    <FaBuilding className="inline mr-1" /> Company
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCreateRole('technician')}
+                    className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
+                      createRole === 'technician'
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-white text-gray-700 border-gray-300'
+                    }`}
+                  >
+                    <FaWrench className="inline mr-1" /> Technician
+                  </button>
+                </div>
+                <form onSubmit={handleCreate} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <label className="block sm:col-span-2">
               <span className="text-xs font-medium text-gray-500 uppercase">Email *</span>
               <input
@@ -670,7 +716,7 @@ export default function AdminUsersPage({ user, onLogout }) {
                 onChange={(e) => setCreateForm((f) => ({ ...f, bio: e.target.value }))}
               />
             </label>
-            <div className="sm:col-span-2">
+            <div className="sm:col-span-2 flex flex-wrap gap-2">
               <button
                 type="submit"
                 disabled={creating}
@@ -678,9 +724,20 @@ export default function AdminUsersPage({ user, onLogout }) {
               >
                 {creating ? 'Creating…' : 'Create & email'}
               </button>
+              <button
+                type="button"
+                disabled={creating}
+                onClick={() => setCreateModalOpen(false)}
+                className="inline-flex items-center gap-2 px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 font-medium disabled:opacity-50"
+              >
+                Cancel
+              </button>
             </div>
           </form>
-        </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap gap-2 mb-4">
           {ROLE_TABS.map((t) => (
