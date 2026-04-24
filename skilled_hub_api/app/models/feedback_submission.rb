@@ -1,5 +1,5 @@
 class FeedbackSubmission < ApplicationRecord
-  KINDS = %w[problem suggestion].freeze
+  KINDS = %w[problem suggestion referral].freeze
 
   belongs_to :user
   has_one :conversation, dependent: :destroy

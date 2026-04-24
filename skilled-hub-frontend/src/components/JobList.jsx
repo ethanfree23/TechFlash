@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { jobsAPI, profilesAPI, ratingsAPI, savedJobSearchesAPI } from '../api/api';
 import { auth } from '../auth';
 import AlertModal from './AlertModal';
+import ReferralModal from './ReferralModal';
 import { formatExperienceShort } from '../constants/experienceSelect';
 
 const matchesSavedSearch = (job, saved) => {
@@ -56,6 +57,7 @@ const JobList = () => {
   const [reviewedJobIds, setReviewedJobIds] = useState(new Set());
   const [savedSearches, setSavedSearches] = useState([]);
   const [saveSearchBusy, setSaveSearchBusy] = useState(false);
+  const [showReferralModal, setShowReferralModal] = useState(false);
 
   const user = auth.getUser();
 
@@ -448,6 +450,13 @@ const JobList = () => {
           <div className="mb-8 flex flex-wrap items-center gap-3">
             <button
               type="button"
+              onClick={() => setShowReferralModal(true)}
+              className="px-5 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 shadow-sm"
+            >
+              Send Referral
+            </button>
+            <button
+              type="button"
               onClick={saveCurrentSearch}
               disabled={saveSearchBusy}
               className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 disabled:opacity-50 shadow-sm"
@@ -707,6 +716,7 @@ const JobList = () => {
         message={alertModal.message}
         variant={alertModal.variant}
       />
+      <ReferralModal isOpen={showReferralModal} onClose={() => setShowReferralModal(false)} triggerLabel="Send Referral" />
     </div>
   );
 };

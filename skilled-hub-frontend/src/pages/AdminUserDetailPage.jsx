@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
-import { adminUsersAPI } from '../api/api';
+import { adminUsersAPI, adminReferralsAPI } from '../api/api';
 import AlertModal from '../components/AlertModal';
 
 const PERIODS = [
@@ -30,6 +30,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
   const [manualResetUrl, setManualResetUrl] = useState('');
   const [manualPassword, setManualPassword] = useState('');
   const [manualPasswordConfirmation, setManualPasswordConfirmation] = useState('');
+  const [issuingReferralId, setIssuingReferralId] = useState(null);
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -151,6 +152,29 @@ export default function AdminUserDetailPage({ user, onLogout }) {
       });
     } finally {
       setAccessBusy(false);
+    }
+  };
+
+  const markRewardIssued = async (referralId) => {
+    setIssuingReferralId(referralId);
+    try {
+      await adminReferralsAPI.issueReward(referralId);
+      await load();
+      setAlertModal({
+        isOpen: true,
+        title: 'Gift card marked issued',
+        message: 'The referral has been marked as paid out.',
+        variant: 'success',
+      });
+    } catch (err) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not mark issued',
+        message: err.message || 'Request failed',
+        variant: 'error',
+      });
+    } finally {
+      setIssuingReferralId(null);
     }
   };
 
@@ -349,6 +373,59 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                 <Stat label="Feedback (all time)" value={data.messages?.feedback_messages_sent_all_time ?? 0} />
               </div>
             </section>
+
+            {data.referrals && (
+              <section className="bg-white rounded-2xl border border-gray-100 shadow p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Referrals</h2>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 text-sm">
+                  <Stat label="Sent (window)" value={data.referrals.sent_in_period ?? 0} />
+                  <Stat label="Sent (all time)" value={data.referrals.sent_total ?? 0} />
+                  <Stat label="Gift card eligible" value={data.referrals.reward_eligible_total ?? 0} />
+                  <Stat label="Gift card issued" value={data.referrals.reward_issued_total ?? 0} />
+                </div>
+                {(data.referrals.recent || []).length > 0 && (
+                  <div className="overflow-x-auto">
+                    <table className="min-w-full text-sm">
+                      <thead>
+                        <tr className="text-left text-gray-500 border-b">
+                          <th className="py-2 pr-4">Referral</th>
+                          <th className="py-2 pr-4">Type</th>
+                          <th className="py-2 pr-4">Submitted</th>
+                          <th className="py-2 pr-4">Eligible</th>
+                          <th className="py-2 pr-4">Issued</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.referrals.recent.map((r) => (
+                          <tr key={r.id} className="border-b border-gray-50">
+                            <td className="py-2 pr-4">{`${r.first_name} ${r.last_name}`} ({r.email})</td>
+                            <td className="py-2 pr-4 uppercase">{r.referred_type}</td>
+                            <td className="py-2 pr-4">{r.created_at ? new Date(r.created_at).toLocaleString() : '—'}</td>
+                            <td className="py-2 pr-4">{r.reward_eligible_at ? new Date(r.reward_eligible_at).toLocaleString() : 'No'}</td>
+                            <td className="py-2 pr-4">
+                              {r.reward_issued_at ? (
+                                <span className="text-emerald-700 font-medium">{new Date(r.reward_issued_at).toLocaleString()}</span>
+                              ) : r.reward_eligible_at ? (
+                                <button
+                                  type="button"
+                                  disabled={issuingReferralId === r.id}
+                                  onClick={() => markRewardIssued(r.id)}
+                                  className="px-3 py-1.5 text-xs font-medium rounded-md bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                                >
+                                  {issuingReferralId === r.id ? 'Saving…' : 'Mark issued'}
+                                </button>
+                              ) : (
+                                <span className="text-gray-500">Not eligible</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            )}
 
             {isCompany && data.jobs && (
               <section className="bg-white rounded-2xl border border-gray-100 shadow p-6">

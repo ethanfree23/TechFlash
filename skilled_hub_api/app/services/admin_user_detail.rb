@@ -23,6 +23,7 @@ class AdminUserDetail
       since: @since&.iso8601,
       logins: login_stats(user),
       messages: message_stats(user),
+      referrals: referral_stats(user),
       **role_analytics(user)
     }
   end
@@ -143,6 +144,30 @@ class AdminUserDetail
       job_threads_sent_in_period: messages_sent_job_threads(user, scoped_to_period: true),
       feedback_messages_sent_all_time: feedback_messages_sent(user, scoped_to_period: false),
       feedback_messages_sent_in_period: feedback_messages_sent(user, scoped_to_period: true)
+    }
+  end
+
+  def referral_stats(user)
+    sent = user.sent_referrals.order(created_at: :desc)
+    in_period = @since ? sent.where("referral_submissions.created_at >= ?", @since) : sent
+
+    {
+      sent_total: sent.count,
+      sent_in_period: in_period.count,
+      reward_eligible_total: sent.where.not(reward_eligible_at: nil).count,
+      reward_issued_total: sent.where.not(reward_issued_at: nil).count,
+      recent: sent.limit(20).map do |r|
+        {
+          id: r.id,
+          first_name: r.first_name,
+          last_name: r.last_name,
+          email: r.email,
+          referred_type: r.referred_type,
+          created_at: r.created_at&.iso8601,
+          reward_eligible_at: r.reward_eligible_at&.iso8601,
+          reward_issued_at: r.reward_issued_at&.iso8601
+        }
+      end
     }
   end
 

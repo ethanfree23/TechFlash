@@ -41,5 +41,7 @@ class User < ApplicationRecord
   has_many :crm_leads, foreign_key: :linked_user_id, dependent: :nullify, inverse_of: :linked_user
   has_many :user_login_events, dependent: :delete_all
   has_many :job_issue_reports, dependent: :destroy
+  has_many :sent_referrals, class_name: "ReferralSubmission", foreign_key: :referrer_user_id, dependent: :destroy, inverse_of: :referrer_user
+  has_many :received_referrals, class_name: "ReferralSubmission", foreign_key: :referred_user_id, dependent: :nullify, inverse_of: :referred_user
 end
   

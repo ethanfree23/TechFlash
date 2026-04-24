@@ -74,14 +74,11 @@ Rails.application.configure do
 
   config.action_mailer.perform_caching = false
 
-  # Railway blocks outbound SMTP (587). Use Mailtrap HTTPS API by default when a token exists.
-  # Opt out: MAILTRAP_USE_HTTP=false (then SMTP_ADDRESS + SMTP_* are used).
+  # Use Mailtrap HTTPS API only when explicitly enabled.
+  # This avoids accidentally routing production mail to Mailtrap when SMTP_PASSWORD is set.
   mailtrap_http =
-    ENV['MAILTRAP_USE_HTTP'] != 'false' && (
-      ENV['MAILTRAP_USE_HTTP'] == 'true' ||
-      ENV['SMTP_PASSWORD'].present? ||
-      ENV['MAILTRAP_API_TOKEN'].present?
-    )
+    ENV['MAILTRAP_USE_HTTP'] == 'true' ||
+    (ENV['MAILTRAP_USE_HTTP'].blank? && ENV['MAILTRAP_API_TOKEN'].present?)
 
   if mailtrap_http
     config.action_mailer.delivery_method = :mailtrap_http
@@ -127,11 +124,9 @@ Rails.application.configure do
   # config.host_authorization = { exclude: ->(request) { request.path == "/up" } }
 
   config.after_initialize do
-    mailtrap_http = ENV['MAILTRAP_USE_HTTP'] != 'false' && (
+    mailtrap_http =
       ENV['MAILTRAP_USE_HTTP'] == 'true' ||
-      ENV['SMTP_PASSWORD'].present? ||
-      ENV['MAILTRAP_API_TOKEN'].present?
-    )
+      (ENV['MAILTRAP_USE_HTTP'].blank? && ENV['MAILTRAP_API_TOKEN'].present?)
 
     if mailtrap_http
       Rails.logger.warn(

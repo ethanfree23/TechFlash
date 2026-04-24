@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import { profilesAPI, favoriteTechniciansAPI } from '../api/api';
+import ReferralModal from '../components/ReferralModal';
 
 const TechnicianProfilePage = ({ user, onLogout }) => {
   const { id } = useParams();
@@ -10,6 +11,7 @@ const TechnicianProfilePage = ({ user, onLogout }) => {
   const [error, setError] = useState(null);
   const [favoriteIds, setFavoriteIds] = useState([]);
   const [favBusy, setFavBusy] = useState(false);
+  const [showReferralModal, setShowReferralModal] = useState(false);
 
   useEffect(() => {
     if (id) {
@@ -98,15 +100,24 @@ const TechnicianProfilePage = ({ user, onLogout }) => {
                     {profile.user?.email || 'Technician'}
                   </h1>
                   {user?.role === 'company' && (
-                    <button
-                      type="button"
-                      onClick={toggleFavorite}
-                      disabled={favBusy}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 disabled:opacity-50"
-                      title={favoriteIds.map(Number).includes(Number(profile.id)) ? 'Remove from favorites' : 'Save for repeat hire'}
-                    >
-                      {favoriteIds.map(Number).includes(Number(profile.id)) ? '★ Saved' : '☆ Save technician'}
-                    </button>
+                    <>
+                      <button
+                        type="button"
+                        onClick={toggleFavorite}
+                        disabled={favBusy}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 disabled:opacity-50"
+                        title={favoriteIds.map(Number).includes(Number(profile.id)) ? 'Remove from favorites' : 'Save for repeat hire'}
+                      >
+                        {favoriteIds.map(Number).includes(Number(profile.id)) ? '★ Saved' : '☆ Save technician'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowReferralModal(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border border-blue-300 bg-blue-50 text-blue-900 hover:bg-blue-100"
+                      >
+                        Send Referral
+                      </button>
+                    </>
                   )}
                 </div>
             <div className="mt-2 flex flex-wrap gap-4 text-gray-600">
@@ -189,6 +200,17 @@ const TechnicianProfilePage = ({ user, onLogout }) => {
           </div>
         </div>
       </div>
+      <ReferralModal
+        isOpen={showReferralModal}
+        onClose={() => setShowReferralModal(false)}
+        prefill={{
+          first_name: '',
+          last_name: '',
+          referred_type: 'tech',
+          email: profile?.user?.email || '',
+          location: profile?.location || '',
+        }}
+      />
     </div>
   );
 };

@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { TECHFLASH_LOGO_NAV } from '../constants/branding';
+import ReferralModal from './ReferralModal';
 
 const navInactive =
   'px-3 py-2 font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-md whitespace-nowrap shrink-0';
@@ -23,6 +24,8 @@ export default function AppHeader({
 }) {
   const isAdmin = user?.role === 'admin';
   const showCrm = navPreset === 'full' && isAdmin;
+  const [showReferralModal, setShowReferralModal] = useState(false);
+  const canRefer = user?.role === 'company' || user?.role === 'technician';
 
   const NavLink = ({ page, to, children }) => {
     const active = activePage === page;
@@ -84,6 +87,15 @@ export default function AppHeader({
           )}
         </nav>
         <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          {canRefer && (
+            <button
+              type="button"
+              onClick={() => setShowReferralModal(true)}
+              className="px-2.5 py-1.5 text-xs font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-md hover:bg-blue-100 whitespace-nowrap"
+            >
+              Send Referral
+            </button>
+          )}
           {profileAvatar && (
             <Link
               to="/settings"
@@ -141,6 +153,7 @@ export default function AppHeader({
           </button>
         </div>
       </div>
+      <ReferralModal isOpen={showReferralModal} onClose={() => setShowReferralModal(false)} />
     </header>
   );
 }

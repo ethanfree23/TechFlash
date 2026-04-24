@@ -51,6 +51,7 @@ Rails.application.routes.draw do
       resources :technicians
       resources :job_seekers
       resources :auth, only: [:index]
+      resources :referrals, only: [:create]
       get 'dashboard/jobs', to: 'jobs#dashboard_jobs'
       get 'dashboard/technician_jobs', to: 'jobs#technician_dashboard_jobs'
       get 'dashboard/analytics', to: 'analytics#show'
@@ -74,6 +75,7 @@ Rails.application.routes.draw do
           end
         end
         resources :crm_leads, only: %i[index show create update destroy]
+        patch "referrals/:id/issue_reward", to: "referrals#issue_reward"
       end
     end
   end

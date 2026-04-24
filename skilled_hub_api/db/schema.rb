@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_04_24_103000) do
+ActiveRecord::Schema[7.1].define(version: 2026_04_24_124000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -211,6 +211,29 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_24_103000) do
     t.index ["reviewer_type", "reviewer_id"], name: "index_ratings_on_reviewer"
   end
 
+  create_table "referral_submissions", force: :cascade do |t|
+    t.integer "referrer_user_id", null: false
+    t.integer "referred_user_id"
+    t.integer "crm_lead_id"
+    t.string "first_name", null: false
+    t.string "last_name", null: false
+    t.string "cell_phone"
+    t.string "referred_type", null: false
+    t.string "email", null: false
+    t.string "location"
+    t.text "extra_info"
+    t.datetime "reward_eligible_at"
+    t.datetime "reward_issued_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["crm_lead_id"], name: "index_referral_submissions_on_crm_lead_id"
+    t.index ["email"], name: "index_referral_submissions_on_email"
+    t.index ["referred_type"], name: "index_referral_submissions_on_referred_type"
+    t.index ["referred_user_id"], name: "index_referral_submissions_on_referred_user_id"
+    t.index ["referrer_user_id"], name: "index_referral_submissions_on_referrer_user_id"
+    t.index ["reward_eligible_at"], name: "index_referral_submissions_on_reward_eligible_at"
+  end
+
   create_table "saved_job_searches", force: :cascade do |t|
     t.integer "technician_profile_id", null: false
     t.string "keyword"
@@ -291,6 +314,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_24_103000) do
   add_foreign_key "messages", "conversations"
   add_foreign_key "payments", "jobs"
   add_foreign_key "ratings", "jobs"
+  add_foreign_key "referral_submissions", "crm_leads"
+  add_foreign_key "referral_submissions", "users", column: "referred_user_id"
+  add_foreign_key "referral_submissions", "users", column: "referrer_user_id"
   add_foreign_key "saved_job_searches", "technician_profiles"
   add_foreign_key "technician_profiles", "users"
   add_foreign_key "user_login_events", "users"

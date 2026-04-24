@@ -162,6 +162,13 @@ export const adminUsersAPI = {
   },
 };
 
+export const adminReferralsAPI = {
+  issueReward: (id) =>
+    apiRequest(`/admin/referrals/${id}/issue_reward`, {
+      method: 'PATCH',
+    }),
+};
+
 // Admin platform metrics (dashboard drill-down lists)
 export const adminAPI = {
   getPlatformInsights: (category, period = '7d') => {
@@ -177,6 +184,14 @@ export const feedbackAPI = {
     apiRequest('/feedback', {
       method: 'POST',
       body: JSON.stringify({ kind, body, page_path: pagePath }),
+    }),
+};
+
+export const referralsAPI = {
+  create: (data) =>
+    apiRequest('/referrals', {
+      method: 'POST',
+      body: JSON.stringify(data),
     }),
 };
 

@@ -245,6 +245,7 @@ module Api
         if can_finish
           job.update!(status: :finished, finished_at: Time.current)
           PaymentService.release_if_eligible(job)
+          ReferralRewardMarker.mark_for_finished_job!(job)
           MailDelivery.safe_deliver do
             UserMailer.job_completed_for_company(job).deliver_now
             UserMailer.job_completed_for_technician(job).deliver_now
