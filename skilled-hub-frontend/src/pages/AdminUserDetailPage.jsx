@@ -240,6 +240,19 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                     <dd className="font-medium text-gray-900">{profile.location}</dd>
                   </div>
                 )}
+                {isCompany && u?.company_context?.company_profile_id && (
+                  <div>
+                    <dt className="text-gray-500">Company profile</dt>
+                    <dd>
+                      <Link
+                        to={`/companies/${u.company_context.company_profile_id}`}
+                        className="font-medium text-blue-600 hover:text-blue-800"
+                      >
+                        {u.company_context.company_name || `Company #${u.company_context.company_profile_id}`} →
+                      </Link>
+                    </dd>
+                  </div>
+                )}
                 {profile?.stripe_customer_id != null && (
                   <div>
                     <dt className="text-gray-500">Stripe customer</dt>
@@ -254,6 +267,45 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                 )}
               </dl>
             </section>
+
+            {isCompany && u?.company_context?.users?.length > 0 && (
+              <section className="bg-white rounded-2xl border border-gray-100 shadow p-6">
+                <h2 className="text-lg font-semibold text-gray-900 mb-2">Company login users</h2>
+                <p className="text-sm text-gray-500 mb-4">
+                  Accounts linked to this company profile.
+                </p>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full text-sm">
+                    <thead>
+                      <tr className="text-left text-gray-500 border-b">
+                        <th className="py-2 pr-4">Email</th>
+                        <th className="py-2 pr-4">Joined</th>
+                        <th className="py-2 pr-4">Type</th>
+                        <th className="py-2">Open</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {u.company_context.users.map((member) => (
+                        <tr key={member.id} className="border-b border-gray-50">
+                          <td className="py-2 pr-4">{member.email}</td>
+                          <td className="py-2 pr-4 text-gray-600">
+                            {member.created_at ? new Date(member.created_at).toLocaleString() : '—'}
+                          </td>
+                          <td className="py-2 pr-4 text-gray-600">
+                            {member.id === u.company_context.company_profile_owner_user_id ? 'Primary owner' : 'Contact login'}
+                          </td>
+                          <td className="py-2">
+                            <Link to={`/admin/users/${member.id}`} className="text-blue-600 hover:text-blue-800 font-medium">
+                              View →
+                            </Link>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
 
             {canManagePassword && (
               <section className="bg-white rounded-2xl border border-gray-100 shadow p-6">

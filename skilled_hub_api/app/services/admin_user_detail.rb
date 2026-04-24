@@ -54,12 +54,14 @@ class AdminUserDetail
   end
 
   def user_payload(user)
+    company_profile = user.company? ? user.company_profile : nil
     {
       id: user.id,
       email: user.email,
       role: user.role,
       created_at: user.created_at&.iso8601,
-      profile: profile_payload(user)
+      profile: profile_payload(user),
+      company_context: company_context_payload(user, company_profile)
     }
   end
 
@@ -76,7 +78,15 @@ class AdminUserDetail
         experience_years: tp.experience_years,
         availability: tp.availability,
         bio: tp.bio,
-        stripe_account_id: tp.stripe_account_id
+        stripe_account_id: tp.stripe_account_id,
+        membership_level: MembershipPolicy.normalized_level(tp.membership_level),
+        membership_fee_waived: tp.membership_fee_waived,
+        membership_fee_override_cents: tp.membership_fee_override_cents,
+        commission_override_percent: tp.commission_override_percent,
+        effective_membership_fee_cents: MembershipPolicy.technician_monthly_fee_cents(tp),
+        effective_commission_percent: MembershipPolicy.technician_commission_percent(tp),
+        membership_status: tp.membership_status,
+        membership_current_period_end_at: tp.membership_current_period_end_at&.iso8601
       }
     elsif user.company?
       cp = user.company_profile
@@ -95,9 +105,35 @@ class AdminUserDetail
         instagram_url: cp.instagram_url,
         linkedin_url: cp.linkedin_url,
         service_cities: Array(cp.service_cities),
-        stripe_customer_id: user.stripe_customer_id
+        stripe_customer_id: user.stripe_customer_id,
+        membership_level: MembershipPolicy.normalized_level(cp.membership_level),
+        membership_fee_waived: cp.membership_fee_waived,
+        membership_fee_override_cents: cp.membership_fee_override_cents,
+        commission_override_percent: cp.commission_override_percent,
+        effective_membership_fee_cents: MembershipPolicy.company_monthly_fee_cents(cp),
+        effective_commission_percent: MembershipPolicy.company_commission_percent(cp),
+        membership_status: cp.membership_status,
+        membership_current_period_end_at: cp.membership_current_period_end_at&.iso8601
       }
     end
+  end
+
+  def company_context_payload(user, company_profile)
+    return nil unless user.company? && company_profile
+
+    company_users = User.where(role: :company, company_profile_id: company_profile.id).order(:email)
+    {
+      company_profile_id: company_profile.id,
+      company_name: company_profile.company_name,
+      company_profile_owner_user_id: company_profile.user_id,
+      users: company_users.map do |member|
+        {
+          id: member.id,
+          email: member.email,
+          created_at: member.created_at&.iso8601
+        }
+      end
+    }
   end
 
   def login_stats(user)

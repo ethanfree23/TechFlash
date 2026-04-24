@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
-import { adminUsersAPI, adminLocationAPI } from '../api/api';
+import { adminUsersAPI, adminLocationAPI, crmAPI } from '../api/api';
 import AlertModal from '../components/AlertModal';
 import { FaBuilding, FaSearch, FaTimes, FaUserPlus, FaWrench } from 'react-icons/fa';
 
@@ -308,6 +308,7 @@ function ServiceCityPicker({ value, onChange, inputId }) {
 }
 
 export default function AdminUsersPage({ user, onLogout }) {
+  const navigate = useNavigate();
   const [roleTab, setRoleTab] = useState('all');
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -342,6 +343,11 @@ export default function AdminUsersPage({ user, onLogout }) {
   const [serviceCities, setServiceCities] = useState([]);
   const [selectedIndustries, setSelectedIndustries] = useState([]);
   const [logoFile, setLogoFile] = useState(null);
+  const [useExistingCompany, setUseExistingCompany] = useState(false);
+  const [companySearch, setCompanySearch] = useState('');
+  const [companyOptions, setCompanyOptions] = useState([]);
+  const [companySearchBusy, setCompanySearchBusy] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState(null);
 
   useEffect(() => {
     if (searchTimer.current) clearTimeout(searchTimer.current);
@@ -383,6 +389,37 @@ export default function AdminUsersPage({ user, onLogout }) {
     return () => window.removeEventListener('keydown', onKey);
   }, [createModalOpen, creating]);
 
+  useEffect(() => {
+    if (!createModalOpen || createRole !== 'company' || !useExistingCompany) {
+      setCompanyOptions([]);
+      setCompanySearch('');
+      return undefined;
+    }
+    const q = companySearch.trim();
+    if (!q) {
+      setCompanyOptions([]);
+      return undefined;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      setCompanySearchBusy(true);
+      try {
+        const res = await crmAPI.searchCompanies(q);
+        if (!cancelled) {
+          setCompanyOptions(Array.isArray(res?.companies) ? res.companies : []);
+        }
+      } catch {
+        if (!cancelled) setCompanyOptions([]);
+      } finally {
+        if (!cancelled) setCompanySearchBusy(false);
+      }
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [companySearch, createModalOpen, createRole, useExistingCompany]);
+
   const handleCreate = async (e) => {
     e.preventDefault();
     const email = createForm.email?.trim();
@@ -398,31 +435,49 @@ export default function AdminUsersPage({ user, onLogout }) {
     setCreating(true);
     try {
       if (createRole === 'company') {
-        if (!createForm.company_name?.trim() || !createForm.phone?.trim() || !createForm.bio?.trim()) {
-          setAlertModal({
-            isOpen: true,
-            title: 'Missing required fields',
-            message: 'Company name, phone number, and bio are required.',
-            variant: 'error',
+        if (useExistingCompany) {
+          if (!selectedCompany?.id) {
+            setAlertModal({
+              isOpen: true,
+              title: 'Select a company',
+              message: 'Pick an existing company before creating this contact login.',
+              variant: 'error',
+            });
+            setCreating(false);
+            return;
+          }
+          await adminUsersAPI.create({
+            role: 'company',
+            email,
+            company_profile_id: selectedCompany.id,
           });
-          setCreating(false);
-          return;
+        } else {
+          if (!createForm.company_name?.trim() || !createForm.phone?.trim() || !createForm.bio?.trim()) {
+            setAlertModal({
+              isOpen: true,
+              title: 'Missing required fields',
+              message: 'Company name, phone number, and bio are required.',
+              variant: 'error',
+            });
+            setCreating(false);
+            return;
+          }
+          const fd = new FormData();
+          fd.append('role', 'company');
+          fd.append('email', email);
+          fd.append('company_name', createForm.company_name.trim());
+          if (createForm.contact_name?.trim()) fd.append('contact_name', createForm.contact_name.trim());
+          fd.append('phone', createForm.phone.trim());
+          if (selectedIndustries.length) fd.append('industry', selectedIndustries.join(', '));
+          fd.append('bio', createForm.bio.trim());
+          if (createForm.website_url?.trim()) fd.append('website_url', createForm.website_url.trim());
+          if (createForm.facebook_url?.trim()) fd.append('facebook_url', createForm.facebook_url.trim());
+          if (createForm.instagram_url?.trim()) fd.append('instagram_url', createForm.instagram_url.trim());
+          if (createForm.linkedin_url?.trim()) fd.append('linkedin_url', createForm.linkedin_url.trim());
+          serviceCities.map((c) => c.trim()).filter(Boolean).forEach((c) => fd.append('service_cities[]', c));
+          if (logoFile) fd.append('logo', logoFile);
+          await adminUsersAPI.create(fd);
         }
-        const fd = new FormData();
-        fd.append('role', 'company');
-        fd.append('email', email);
-        fd.append('company_name', createForm.company_name.trim());
-        if (createForm.contact_name?.trim()) fd.append('contact_name', createForm.contact_name.trim());
-        fd.append('phone', createForm.phone.trim());
-        if (selectedIndustries.length) fd.append('industry', selectedIndustries.join(', '));
-        fd.append('bio', createForm.bio.trim());
-        if (createForm.website_url?.trim()) fd.append('website_url', createForm.website_url.trim());
-        if (createForm.facebook_url?.trim()) fd.append('facebook_url', createForm.facebook_url.trim());
-        if (createForm.instagram_url?.trim()) fd.append('instagram_url', createForm.instagram_url.trim());
-        if (createForm.linkedin_url?.trim()) fd.append('linkedin_url', createForm.linkedin_url.trim());
-        serviceCities.map((c) => c.trim()).filter(Boolean).forEach((c) => fd.append('service_cities[]', c));
-        if (logoFile) fd.append('logo', logoFile);
-        await adminUsersAPI.create(fd);
       } else {
         await adminUsersAPI.create({
           role: 'technician',
@@ -453,6 +508,10 @@ export default function AdminUsersPage({ user, onLogout }) {
       setServiceCities([]);
       setSelectedIndustries([]);
       setLogoFile(null);
+      setUseExistingCompany(false);
+      setCompanySearch('');
+      setCompanyOptions([]);
+      setSelectedCompany(null);
       setCreateModalOpen(false);
       await loadUsers();
       setAlertModal({
@@ -460,7 +519,9 @@ export default function AdminUsersPage({ user, onLogout }) {
         title: 'User created',
         message:
           createRole === 'company'
-            ? 'Company user created. A CRM record was added as Prospect until they post their first job (then it becomes Customer). They were emailed “Welcome aboard” with a link to set a secure password.'
+            ? useExistingCompany
+              ? 'Company contact login created and linked to the selected company account. They were emailed a secure password setup link.'
+              : 'Company user created. A CRM record was added as Prospect until they post their first job (then it becomes Customer). They were emailed “Welcome aboard” with a link to set a secure password.'
             : 'They receive an email with a link to set their password. Until then they can sign in using their email-derived temporary password.',
         variant: 'success',
       });
@@ -566,6 +627,68 @@ export default function AdminUsersPage({ user, onLogout }) {
             </label>
             {createRole === 'company' ? (
               <>
+                <div className="sm:col-span-2 rounded-xl border border-gray-200 p-3 bg-gray-50">
+                  <div className="text-xs font-medium text-gray-500 uppercase mb-2">Company account target</div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUseExistingCompany(false);
+                        setSelectedCompany(null);
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
+                        !useExistingCompany ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+                      }`}
+                    >
+                      Create new company
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setUseExistingCompany(true)}
+                      className={`px-3 py-1.5 rounded-lg text-sm font-medium border ${
+                        useExistingCompany ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+                      }`}
+                    >
+                      Link to existing company
+                    </button>
+                  </div>
+                </div>
+                {useExistingCompany ? (
+                  <div className="sm:col-span-2">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Find company account *</span>
+                    <input
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      value={companySearch}
+                      onChange={(e) => {
+                        setCompanySearch(e.target.value);
+                        setSelectedCompany(null);
+                      }}
+                      placeholder="Search company by name..."
+                    />
+                    <div className="mt-2 border border-gray-200 rounded-lg max-h-40 overflow-auto bg-white">
+                      {companySearchBusy ? (
+                        <div className="px-3 py-2 text-sm text-gray-500">Searching…</div>
+                      ) : companyOptions.length === 0 ? (
+                        <div className="px-3 py-2 text-sm text-gray-500">No companies found.</div>
+                      ) : (
+                        companyOptions.map((opt) => (
+                          <button
+                            key={opt.id}
+                            type="button"
+                            onClick={() => setSelectedCompany(opt)}
+                            className={`w-full text-left px-3 py-2 text-sm border-b border-gray-100 last:border-b-0 ${
+                              selectedCompany?.id === opt.id ? 'bg-blue-50 text-blue-800' : 'hover:bg-gray-50 text-gray-700'
+                            }`}
+                          >
+                            <div className="font-medium">{opt.company_name || `Company #${opt.id}`}</div>
+                            <div className="text-xs text-gray-500">{opt.company_users_count || 0} login account(s)</div>
+                          </button>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <>
                 <label className="block sm:col-span-2">
                   <span className="text-xs font-medium text-gray-500 uppercase">Company name *</span>
                   <input
@@ -665,6 +788,8 @@ export default function AdminUsersPage({ user, onLogout }) {
                   />
                   <p className="text-xs text-gray-500 mt-1">Optional. Shown as the company profile image.</p>
                 </label>
+                  </>
+                )}
               </>
             ) : (
               <>
@@ -706,11 +831,11 @@ export default function AdminUsersPage({ user, onLogout }) {
             )}
             <label className="block sm:col-span-2">
               <span className="text-xs font-medium text-gray-500 uppercase">
-                Bio{createRole === 'company' ? ' *' : ''}
+                Bio{createRole === 'company' && !useExistingCompany ? ' *' : ''}
               </span>
               <textarea
                 rows={2}
-                required={createRole === 'company'}
+                required={createRole === 'company' && !useExistingCompany}
                 className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 value={createForm.bio}
                 onChange={(e) => setCreateForm((f) => ({ ...f, bio: e.target.value }))}
@@ -794,7 +919,11 @@ export default function AdminUsersPage({ user, onLogout }) {
                   </tr>
                 ) : (
                   list.map((row) => (
-                    <tr key={row.id} className="hover:bg-gray-50/80">
+                    <tr
+                      key={row.id}
+                      className="hover:bg-gray-50/80 cursor-pointer"
+                      onClick={() => navigate(`/admin/users/${row.id}`)}
+                    >
                       <td className="px-4 py-3 text-sm">
                         <div className="font-medium text-gray-900">{row.email}</div>
                         <div className="text-xs text-gray-500">#{row.id}</div>
@@ -813,6 +942,7 @@ export default function AdminUsersPage({ user, onLogout }) {
                       <td className="px-4 py-3 text-right">
                         <Link
                           to={`/admin/users/${row.id}`}
+                          onClick={(e) => e.stopPropagation()}
                           className="text-blue-600 hover:text-blue-800 text-sm font-medium"
                         >
                           View →

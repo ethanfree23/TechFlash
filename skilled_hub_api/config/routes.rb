@@ -10,6 +10,8 @@ Rails.application.routes.draw do
       post "auth/register", to: "users#create"
       post "password_resets", to: "password_resets#create"
       patch "password_resets", to: "password_resets#update"
+      post "marketing_leads", to: "marketing_leads#create"
+      post "signup_payment_intents", to: "signup_payment_intents#create"
       get 'technicians/profile', to: 'technicians#profile'
       get 'company_profiles/profile', to: 'company_profiles#profile'
       patch 'users/me', to: 'users#update_me'
@@ -30,6 +32,7 @@ Rails.application.routes.draw do
       post 'jobs/:job_id/create_payment_intent', to: 'payments#create_intent'
       post 'settings/create_setup_intent', to: 'settings#create_setup_intent'
       post 'settings/create_connect_account_link', to: 'settings#create_connect_account_link'
+      resource :membership, only: %i[show update], controller: :memberships
       resources :job_applications do
         member do
           patch :accept
@@ -73,6 +76,8 @@ Rails.application.routes.draw do
           member do
             post :password_setup
             patch :password, action: :set_password
+            patch :company_membership
+            patch :membership_pricing
           end
         end
         resources :crm_leads, only: %i[index show create update destroy]

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_04_24_150000) do
+ActiveRecord::Schema[7.1].define(version: 2026_04_24_161100) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -53,6 +53,15 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_24_150000) do
     t.string "instagram_url"
     t.string "linkedin_url"
     t.json "service_cities", default: []
+    t.string "membership_level", default: "basic", null: false
+    t.integer "membership_fee_override_cents"
+    t.decimal "commission_override_percent", precision: 5, scale: 2
+    t.boolean "membership_fee_waived", default: false, null: false
+    t.string "stripe_membership_subscription_id"
+    t.string "membership_status"
+    t.datetime "membership_current_period_end_at"
+    t.index ["membership_level"], name: "index_company_profiles_on_membership_level"
+    t.index ["stripe_membership_subscription_id"], name: "index_company_profiles_on_stripe_membership_subscription_id", unique: true
     t.index ["user_id"], name: "index_company_profiles_on_user_id"
   end
 
@@ -171,6 +180,17 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_24_150000) do
     t.index ["company_profile_id"], name: "index_jobs_on_company_profile_id"
   end
 
+  create_table "marketing_leads", force: :cascade do |t|
+    t.string "email", null: false
+    t.string "role_view", default: "technician", null: false
+    t.string "source", default: "landing_page", null: false
+    t.boolean "honeypot_triggered", default: false, null: false
+    t.datetime "blocked_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["email"], name: "index_marketing_leads_on_email", unique: true
+  end
+
   create_table "messages", force: :cascade do |t|
     t.integer "conversation_id", null: false
     t.string "sender_type", null: false
@@ -274,6 +294,15 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_24_150000) do
     t.string "country"
     t.decimal "latitude", precision: 10, scale: 7
     t.decimal "longitude", precision: 10, scale: 7
+    t.string "membership_level", default: "basic", null: false
+    t.integer "membership_fee_override_cents"
+    t.decimal "commission_override_percent", precision: 5, scale: 2
+    t.boolean "membership_fee_waived", default: false, null: false
+    t.string "stripe_membership_subscription_id"
+    t.string "membership_status"
+    t.datetime "membership_current_period_end_at"
+    t.index ["membership_level"], name: "index_technician_profiles_on_membership_level"
+    t.index ["stripe_membership_subscription_id"], name: "index_technician_profiles_on_stripe_membership_subscription_id", unique: true
     t.index ["user_id"], name: "index_technician_profiles_on_user_id"
   end
 

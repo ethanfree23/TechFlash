@@ -35,20 +35,28 @@ module Api
           begin
             case role
             when "company"
-              result = AdminAccountProvisioner.provision_company!(
-                email: params[:email],
-                company_name: params[:company_name],
-                industry: params[:industry],
-                bio: params[:bio],
-                phone: params[:phone],
-                website_url: params[:website_url],
-                facebook_url: params[:facebook_url],
-                instagram_url: params[:instagram_url],
-                linkedin_url: params[:linkedin_url],
-                service_cities: parse_service_cities_param,
-                logo: params[:logo],
-                contact_name: params[:contact_name]
-              )
+              result =
+                if params[:company_profile_id].present?
+                  AdminAccountProvisioner.provision_company_login!(
+                    email: params[:email],
+                    company_profile_id: params[:company_profile_id]
+                  )
+                else
+                  AdminAccountProvisioner.provision_company!(
+                    email: params[:email],
+                    company_name: params[:company_name],
+                    industry: params[:industry],
+                    bio: params[:bio],
+                    phone: params[:phone],
+                    website_url: params[:website_url],
+                    facebook_url: params[:facebook_url],
+                    instagram_url: params[:instagram_url],
+                    linkedin_url: params[:linkedin_url],
+                    service_cities: parse_service_cities_param,
+                    logo: params[:logo],
+                    contact_name: params[:contact_name]
+                  )
+                end
             when "technician"
               result = AdminAccountProvisioner.provision_technician!(
                 email: params[:email],
@@ -135,6 +143,74 @@ module Api
           end
         end
 
+        # PATCH /api/v1/admin/users/:id/company_membership
+        # Links a company contact account to an existing company profile.
+        def company_membership
+          user = provisioned_user!
+          return if user.nil?
+          return render json: { errors: ["Only company users can be linked"] }, status: :unprocessable_entity unless user.company?
+
+          profile_id = params[:company_profile_id].to_i
+          profile = CompanyProfile.find_by(id: profile_id)
+          return render json: { errors: ["Company profile not found"] }, status: :not_found unless profile
+
+          user.update!(company_profile_id: profile.id)
+          render json: {
+            message: "Company membership updated",
+            user: list_item(user.reload),
+            company_profile: {
+              id: profile.id,
+              company_name: profile.company_name
+            }
+          }, status: :ok
+        rescue ActiveRecord::RecordInvalid => e
+          render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+        end
+
+        # PATCH /api/v1/admin/users/:id/membership_pricing
+        def membership_pricing
+          user = provisioned_user!
+          return if user.nil?
+
+          profile =
+            if user.company?
+              user.company_profile
+            elsif user.technician?
+              user.technician_profile
+            end
+          return render json: { errors: ["Membership profile not found"] }, status: :not_found if profile.blank?
+
+          attrs = {}
+          if params.key?(:membership_level)
+            level = MembershipPolicy.normalized_level(params[:membership_level])
+            unless MembershipPolicy.level_valid?(level)
+              return render json: { errors: ["membership_level must be basic, pro, or premium"] }, status: :unprocessable_entity
+            end
+            attrs[:membership_level] = level
+          end
+          if params.key?(:membership_fee_override_cents)
+            value = params[:membership_fee_override_cents]
+            attrs[:membership_fee_override_cents] = value.present? ? value.to_i : nil
+          end
+          if params.key?(:commission_override_percent)
+            value = params[:commission_override_percent]
+            attrs[:commission_override_percent] = value.present? ? value.to_f : nil
+          end
+          if params.key?(:membership_fee_waived)
+            attrs[:membership_fee_waived] = ActiveModel::Type::Boolean.new.cast(params[:membership_fee_waived])
+          end
+
+          profile.update!(attrs) if attrs.any?
+
+          render json: {
+            message: "Membership pricing updated",
+            user: list_item(user.reload),
+            membership: membership_payload(user: user, profile: profile.reload)
+          }, status: :ok
+        rescue ActiveRecord::RecordInvalid => e
+          render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+        end
+
         private
 
         def provisioned_user!
@@ -211,6 +287,33 @@ module Api
             label: user_list_label(user),
             technician_profile_id: user.technician_profile&.id,
             company_profile_id: user.company_profile&.id
+          }
+        end
+
+        def membership_payload(user:, profile:)
+          monthly_fee_cents =
+            if user.company?
+              MembershipPolicy.company_monthly_fee_cents(profile)
+            else
+              MembershipPolicy.technician_monthly_fee_cents(profile)
+            end
+
+          commission_percent =
+            if user.company?
+              MembershipPolicy.company_commission_percent(profile)
+            else
+              MembershipPolicy.technician_commission_percent(profile)
+            end
+
+          {
+            membership_level: profile.membership_level,
+            monthly_fee_cents: monthly_fee_cents,
+            commission_percent: commission_percent,
+            membership_fee_override_cents: profile.membership_fee_override_cents,
+            commission_override_percent: profile.commission_override_percent,
+            membership_fee_waived: profile.membership_fee_waived,
+            membership_status: profile.membership_status,
+            membership_current_period_end_at: profile.membership_current_period_end_at
           }
         end
 

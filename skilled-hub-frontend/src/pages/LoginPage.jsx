@@ -8,6 +8,8 @@ import RegisterForm from '../components/RegisterForm';
 const LoginPage = ({ onLoginSuccess }) => {
   const [searchParams] = useSearchParams();
   const tab = searchParams.get('tab');
+  const signupEmail = searchParams.get('email') || '';
+  const signupRoleView = searchParams.get('role') === 'company' ? 'company' : 'technician';
   const [isLogin, setIsLogin] = useState(tab !== 'signup');
 
   useEffect(() => {
@@ -163,7 +165,12 @@ const LoginPage = ({ onLoginSuccess }) => {
               </button>
             </form>
           ) : (
-            <RegisterForm onLoginSuccess={onLoginSuccess} />
+            <RegisterForm
+              onLoginSuccess={onLoginSuccess}
+              initialEmail={signupEmail}
+              initialRole={signupRoleView}
+              initialRoleView={signupRoleView}
+            />
           )}
 
           <div className="mt-6 text-center">

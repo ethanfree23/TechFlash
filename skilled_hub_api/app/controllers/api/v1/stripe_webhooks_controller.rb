@@ -60,6 +60,29 @@ module Api
             held_at: Time.zone.at(pi.created),
             stripe_payment_intent_id: pi.id
           )
+        when 'checkout.session.completed'
+          session = event.data.object
+          subscription_id = session.subscription.to_s
+          return if subscription_id.blank?
+
+          subscription = Stripe::Subscription.retrieve(subscription_id)
+          MembershipSubscriptionService.sync_from_subscription(subscription)
+        when 'customer.subscription.updated', 'customer.subscription.created'
+          subscription = event.data.object
+          MembershipSubscriptionService.sync_from_subscription(subscription)
+        when 'customer.subscription.deleted'
+          subscription = event.data.object
+          company_profile = CompanyProfile.find_by(stripe_membership_subscription_id: subscription.id)
+          technician_profile = TechnicianProfile.find_by(stripe_membership_subscription_id: subscription.id)
+          profile = company_profile || technician_profile
+          if profile
+            profile.update!(
+              membership_level: "basic",
+              membership_status: subscription.status,
+              stripe_membership_subscription_id: nil,
+              membership_current_period_end_at: nil
+            )
+          end
         when 'charge.refunded'
           Rails.logger.info("[stripe webhook] charge.refunded id=#{event.id}")
         else

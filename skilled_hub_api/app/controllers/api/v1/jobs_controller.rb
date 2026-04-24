@@ -50,6 +50,12 @@ module Api
                 .where.not(job_applications: { technician_profile_id: technician_profile.id })
                 .select(:id)
               jobs = jobs.where.not(id: claimed_by_others)
+
+              # Membership early-access gating based on job posted_at (created_at).
+              visible_ids = jobs.select(:id).select do |candidate|
+                MembershipPolicy.job_visible_to_technician?(job: candidate, technician_profile: technician_profile)
+              end.map(&:id)
+              jobs = jobs.where(id: visible_ids)
             end
           end
         end

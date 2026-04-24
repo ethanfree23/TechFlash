@@ -49,6 +49,7 @@ const CompanyProfilePage = ({ user, onLogout }) => {
   }
 
   const ratings = profile.ratings_received || [];
+  const companyUsers = Array.isArray(profile.company_users) ? profile.company_users : [];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -105,6 +106,29 @@ const CompanyProfilePage = ({ user, onLogout }) => {
             <div className="p-6 border-b border-gray-200">
               <h2 className="text-lg font-semibold text-gray-900 mb-2">About</h2>
               <p className="text-gray-700 whitespace-pre-wrap">{profile.bio}</p>
+            </div>
+          )}
+
+          {user?.role === 'admin' && (
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">Company users</h2>
+              {companyUsers.length === 0 ? (
+                <p className="text-gray-500">No linked login accounts yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {companyUsers.map((member) => (
+                    <li key={member.id} className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                      <div>
+                        <div className="text-sm font-medium text-gray-900">{member.email}</div>
+                        <div className="text-xs text-gray-500">User #{member.id}</div>
+                      </div>
+                      <Link to={`/admin/users/${member.id}`} className="text-sm text-blue-600 hover:underline">
+                        View user
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           )}
 

@@ -91,6 +91,31 @@ export const passwordResetsAPI = {
     }),
 };
 
+export const marketingLeadsAPI = {
+  create: ({ email, role_view: roleView, source = 'landing_page', honeypot = '' }) =>
+    apiRequest('/marketing_leads', {
+      method: 'POST',
+      body: JSON.stringify({
+        email,
+        role_view: roleView,
+        source,
+        honeypot,
+      }),
+    }),
+};
+
+export const signupPaymentsAPI = {
+  createIntent: ({ email, role, membership_tier: membershipTier }) =>
+    apiRequest('/signup_payment_intents', {
+      method: 'POST',
+      body: JSON.stringify({
+        email,
+        role,
+        membership_tier: membershipTier,
+      }),
+    }),
+};
+
 // Admin CRM (company pipeline + optional link to platform company account)
 export const crmAPI = {
   list: () => apiRequest('/admin/crm_leads'),
@@ -148,6 +173,13 @@ export const adminUsersAPI = {
       body: JSON.stringify({
         password,
         password_confirmation: passwordConfirmation,
+      }),
+    }),
+  setCompanyMembership: (id, companyProfileId) =>
+    apiRequest(`/admin/users/${id}/company_membership`, {
+      method: 'PATCH',
+      body: JSON.stringify({
+        company_profile_id: companyProfileId,
       }),
     }),
   create: (data) => {

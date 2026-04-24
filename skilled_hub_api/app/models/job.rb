@@ -1,5 +1,4 @@
 class Job < ApplicationRecord
-  PLATFORM_FEE_PERCENT = 5 # Company pays +5%, tech receives -5% (TechFlash earns 10% total)
 
   enum status: { open: 0, reserved: 1, accepted: 2, completed: 3, filled: 4, finished: 5 }
 
@@ -18,14 +17,16 @@ class Job < ApplicationRecord
     end
   end
 
-  # What company is charged: job amount + 5%
+  # What company is charged: job amount + company commission
   def company_charge_cents
-    (job_amount_cents * 1.05).round
+    commission_multiplier = company_commission_percent.to_f / 100.0
+    (job_amount_cents * (1 + commission_multiplier)).round
   end
 
-  # What tech receives: job amount - 5%
+  # What tech receives: job amount - technician commission
   def tech_payout_cents
-    (job_amount_cents * 0.95).round
+    commission_multiplier = technician_commission_percent.to_f / 100.0
+    (job_amount_cents * (1 - commission_multiplier)).round
   end
 
   before_validation :normalize_job_display_fields
@@ -48,6 +49,16 @@ class Job < ApplicationRecord
   end
 
   private
+
+  def company_commission_percent
+    MembershipPolicy.company_commission_percent(company_profile)
+  end
+
+  def technician_commission_percent
+    accepted_app = job_applications.find_by(status: :accepted)
+    tech_profile = accepted_app&.technician_profile
+    MembershipPolicy.technician_commission_percent(tech_profile)
+  end
 
   def normalize_job_display_fields
     self.skill_class = skill_class.to_s.strip.presence

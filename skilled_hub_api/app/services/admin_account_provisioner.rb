@@ -40,6 +40,7 @@ module AdminAccountProvisioner
       )
       profile = CompanyProfile.create!(
         user: user,
+        membership_level: "basic",
         company_name: company_name_clean,
         industry: industry.to_s.strip.presence,
         bio: bio_clean,
@@ -78,6 +79,7 @@ module AdminAccountProvisioner
       )
       profile = TechnicianProfile.create!(
         user: user,
+        membership_level: "basic",
         trade_type: trade_type.to_s.strip.presence || "Technician",
         location: location.to_s.strip.presence,
         experience_years: experience_years.present? ? experience_years.to_i : nil,

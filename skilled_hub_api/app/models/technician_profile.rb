@@ -3,6 +3,7 @@ class TechnicianProfile < ApplicationRecord
 
   before_save :sync_location_from_address
   before_save :geocode_address
+  before_validation :normalize_membership_level
 
   belongs_to :user
   has_many :job_applications, dependent: :destroy
@@ -13,6 +14,8 @@ class TechnicianProfile < ApplicationRecord
   has_many :saved_job_searches, dependent: :destroy
   has_many :favorite_technician_entries, class_name: 'FavoriteTechnician', dependent: :destroy
   has_many :companies_that_favorited, through: :favorite_technician_entries, source: :company_profile
+
+  validates :membership_level, inclusion: { in: MembershipPolicy::LEVELS }
 
   def average_rating
     Rating.average_for(self)
@@ -40,5 +43,9 @@ class TechnicianProfile < ApplicationRecord
     self.longitude = coords[1] if coords
   rescue StandardError => e
     Rails.logger.warn("TechnicianProfile geocoding failed: #{e.message}")
+  end
+
+  def normalize_membership_level
+    self.membership_level = MembershipPolicy.normalized_level(membership_level)
   end
 end
