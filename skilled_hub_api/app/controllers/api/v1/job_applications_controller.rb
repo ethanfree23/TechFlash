@@ -21,13 +21,13 @@ module Api
           if params[:job_id].present?
             # Verify the job belongs to the company
             company_job = Job.joins(:company_profile)
-                            .where(company_profiles: { user_id: @current_user.id })
+                            .where(company_profiles: { id: @current_user.company_profile&.id })
                             .find(params[:job_id])
             job_applications = job_applications.where(job: company_job)
           else
             # Show all applications for company's jobs
             company_jobs = Job.joins(:company_profile)
-                             .where(company_profiles: { user_id: @current_user.id })
+                             .where(company_profiles: { id: @current_user.company_profile&.id })
             job_applications = job_applications.where(job: company_jobs)
           end
         end
@@ -110,7 +110,7 @@ module Api
 
       def accept
         job_application = JobApplication.find(params[:id])
-        unless @current_user.company? && job_application.job.company_profile.user_id == @current_user.id
+        unless @current_user.company? && job_application.job.company_profile_id == @current_user.company_profile&.id
           return render json: { error: 'Access denied' }, status: :forbidden
         end
         job_application.update(status: :accepted)
@@ -122,7 +122,7 @@ module Api
 
       def deny
         job_application = JobApplication.find(params[:id])
-        unless @current_user.company? && job_application.job.company_profile.user_id == @current_user.id
+        unless @current_user.company? && job_application.job.company_profile_id == @current_user.company_profile&.id
           return render json: { error: 'Access denied' }, status: :forbidden
         end
         job_application.update(status: :rejected)
@@ -144,7 +144,7 @@ module Api
           return technician_profile && job_application.technician_profile_id == technician_profile.id
         elsif @current_user.company?
           # Companies can access applications for their jobs
-          return job_application.job.company_profile.user_id == @current_user.id
+          return job_application.job.company_profile_id == @current_user.company_profile&.id
         end
         false
       end

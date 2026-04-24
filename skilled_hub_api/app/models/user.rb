@@ -32,7 +32,8 @@ class User < ApplicationRecord
   end
 
   has_one :technician_profile, dependent: :destroy
-  has_one :company_profile, dependent: :destroy
+  has_one :company_profile, foreign_key: :user_id, inverse_of: :user, dependent: :destroy
+  belongs_to :shared_company_profile, class_name: "CompanyProfile", foreign_key: :company_profile_id, optional: true, inverse_of: :company_users
 
   has_many :messages, foreign_key: :sender_id, dependent: :destroy
   has_many :ratings_given, class_name: 'Rating', foreign_key: :reviewer_id, dependent: :destroy
@@ -43,5 +44,8 @@ class User < ApplicationRecord
   has_many :job_issue_reports, dependent: :destroy
   has_many :sent_referrals, class_name: "ReferralSubmission", foreign_key: :referrer_user_id, dependent: :destroy, inverse_of: :referrer_user
   has_many :received_referrals, class_name: "ReferralSubmission", foreign_key: :referred_user_id, dependent: :nullify, inverse_of: :referred_user
+
+  def company_profile
+    shared_company_profile || super
+  end
 end
-  

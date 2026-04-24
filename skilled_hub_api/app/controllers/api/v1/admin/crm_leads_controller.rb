@@ -54,13 +54,20 @@ module Api
         end
 
         def lead_params
-          p = params.permit(:name, :contact_name, :email, :phone, :website, :status, :notes, :linked_user_id)
+          p = params.permit(:name, :contact_name, :email, :phone, :website, :status, :notes, :linked_user_id, :linked_company_profile_id)
           p[:linked_user_id] = nil if p.key?(:linked_user_id) && p[:linked_user_id].blank?
+          p[:linked_company_profile_id] = nil if p.key?(:linked_company_profile_id) && p[:linked_company_profile_id].blank?
+          if p[:linked_company_profile_id].present? && p[:linked_user_id].blank?
+            p[:linked_user_id] = User.find_by(company_profile_id: p[:linked_company_profile_id], role: :company)&.id
+          elsif p[:linked_user_id].present? && p[:linked_company_profile_id].blank?
+            p[:linked_company_profile_id] = User.find_by(id: p[:linked_user_id])&.company_profile&.id
+          end
           p
         end
 
         def lead_json(lead)
           lu = lead.linked_user
+          linked_profile = lead.linked_company_profile || lu&.company_profile
           {
             id: lead.id,
             name: lead.name,
@@ -71,27 +78,27 @@ module Api
             status: lead.status,
             notes: lead.notes,
             linked_user_id: lead.linked_user_id,
+            linked_company_profile_id: linked_profile&.id,
             created_at: lead.created_at,
             updated_at: lead.updated_at,
-            linked_account: linked_account_json(lu)
+            linked_account: linked_account_json(lu, linked_profile)
           }
         end
 
-        def linked_account_json(user)
-          return nil unless user
-
-          cp = user.company_profile
+        def linked_account_json(user, company_profile)
+          return nil unless user || company_profile
           {
-            user_id: user.id,
-            email: user.email,
-            company_profile_id: cp&.id,
-            company_name: cp&.company_name
+            user_id: user&.id,
+            email: user&.email,
+            company_profile_id: company_profile&.id,
+            company_name: company_profile&.company_name,
+            company_user_count: company_profile ? company_profile.company_users.where(role: :company).count : 0
           }
         end
 
         def append_linked_payload(payload, lead)
-          user = lead.linked_user
-          cp = user&.company_profile
+          cp = lead.linked_company_profile || lead.linked_user&.company_profile
+          user = lead.linked_user || cp&.company_users&.where(role: :company)&.order(:id)&.first || cp&.user
           return unless cp
 
           payload[:linked_metrics] = CompanyMetrics.for_company_profile(cp)

@@ -67,6 +67,7 @@ Rails.application.routes.draw do
         get "location_suggestions", to: "location_suggestions#index"
         post "company_accounts", to: "company_accounts#create"
         get "company_accounts/search", to: "company_accounts#search"
+        get "company_accounts/search_companies", to: "company_accounts#search_companies"
         get "platform_insights", to: "platform_insights#show"
         resources :users, only: %i[index show create] do
           member do

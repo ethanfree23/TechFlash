@@ -119,7 +119,7 @@ module Api
         if @current_user&.technician? && (tp = @current_user.technician_profile)
           ActiveRecord::Associations::Preloader.new(records: [tp], associations: [:documents]).call
         end
-        if @current_user&.company? && job.company_profile.user_id != @current_user.id
+        if @current_user&.company? && job.company_profile_id != @current_user.company_profile&.id
           return render json: { error: "You can only view your own jobs" }, status: :forbidden
         end
         render json: job,
@@ -184,6 +184,7 @@ module Api
 
         company_profile = @current_user.company_profile
         company_profile ||= CompanyProfile.create!(user_id: @current_user.id)
+        @current_user.update_column(:company_profile_id, company_profile.id) if @current_user.company_profile_id != company_profile.id
 
         jobs = company_profile.jobs.includes(:job_applications)
 
@@ -208,7 +209,7 @@ module Api
       # Company denies the claimed technician (refunds if already charged)
       def deny
         job = Job.find(params[:id])
-        unless @current_user.company? && job.company_profile.user_id == @current_user.id
+        unless @current_user.company? && job.company_profile_id == @current_user.company_profile&.id
           return render json: { error: 'Access denied' }, status: :forbidden
         end
         unless job.filled?
@@ -236,7 +237,7 @@ module Api
       def finish
         job = Job.find(params[:id])
         can_finish = false
-        if @current_user.company? && job.company_profile.user_id == @current_user.id
+        if @current_user.company? && job.company_profile_id == @current_user.company_profile&.id
           can_finish = true
         elsif @current_user.technician? && (job.reserved? || job.filled?)
           accepted_app = job.job_applications.find_by(status: :accepted)
@@ -260,7 +261,7 @@ module Api
 
       def extend
         job = Job.find(params[:id])
-        unless @current_user.company? && job.company_profile.user_id == @current_user.id
+        unless @current_user.company? && job.company_profile_id == @current_user.company_profile&.id
           return render json: { error: 'Only the company can extend a job' }, status: :forbidden
         end
         unless job.reserved? || job.filled?
@@ -453,7 +454,7 @@ module Api
       # Company: own jobs only. Admin: any job, any status (open, claimed, finished, expired-open, etc.).
       def can_manage_job?(job)
         return true if @current_user&.admin?
-        @current_user&.company? && job.company_profile&.user_id == @current_user.id
+        @current_user&.company? && job.company_profile_id == @current_user.company_profile&.id
       end
     end
   end

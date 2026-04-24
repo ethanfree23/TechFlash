@@ -47,6 +47,7 @@ const CrmPage = ({ user, onLogout }) => {
   const [searchHits, setSearchHits] = useState([]);
   const [searchBusy, setSearchBusy] = useState(false);
   const searchTimer = useRef(null);
+  const companySearchTimer = useRef(null);
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'error' });
 
   const [provision, setProvision] = useState({
@@ -60,6 +61,11 @@ const CrmPage = ({ user, onLogout }) => {
   const [provisionSaving, setProvisionSaving] = useState(false);
   const [provisionModalOpen, setProvisionModalOpen] = useState(false);
   const [newCompanyModalOpen, setNewCompanyModalOpen] = useState(false);
+  const [provisionMode, setProvisionMode] = useState('new');
+  const [companySearchQ, setCompanySearchQ] = useState('');
+  const [companyHits, setCompanyHits] = useState([]);
+  const [companySearchBusy, setCompanySearchBusy] = useState(false);
+  const [selectedCompany, setSelectedCompany] = useState(null);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -102,6 +108,7 @@ const CrmPage = ({ user, onLogout }) => {
         status: c.status || 'lead',
         notes: c.notes || '',
         linked_user_id: c.linked_user_id ?? null,
+        linked_company_profile_id: c.linked_company_profile_id ?? null,
       });
     } catch (e) {
       setAlertModal({
@@ -127,6 +134,7 @@ const CrmPage = ({ user, onLogout }) => {
         status: 'lead',
         notes: '',
         linked_user_id: null,
+        linked_company_profile_id: null,
       });
       return;
     }
@@ -138,13 +146,13 @@ const CrmPage = ({ user, onLogout }) => {
   }, [selectedId, isCreating, loadDetail]);
 
   useEffect(() => {
-    if (searchTimer.current) clearTimeout(searchTimer.current);
+    if (companySearchTimer.current) clearTimeout(companySearchTimer.current);
     const q = searchQ.trim();
     if (q.length < 2) {
       setSearchHits([]);
       return;
     }
-    searchTimer.current = setTimeout(async () => {
+    companySearchTimer.current = setTimeout(async () => {
       setSearchBusy(true);
       try {
         const res = await crmAPI.searchCompanyAccounts(q);
@@ -157,6 +165,28 @@ const CrmPage = ({ user, onLogout }) => {
     }, 300);
     return () => clearTimeout(searchTimer.current);
   }, [searchQ]);
+
+  useEffect(() => {
+    if (!provisionModalOpen) return undefined;
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    const q = companySearchQ.trim();
+    if (provisionMode !== 'existing' || q.length < 2) {
+      setCompanyHits([]);
+      return undefined;
+    }
+    searchTimer.current = setTimeout(async () => {
+      setCompanySearchBusy(true);
+      try {
+        const res = await crmAPI.searchCompanies(q);
+        setCompanyHits(res.companies || []);
+      } catch {
+        setCompanyHits([]);
+      } finally {
+        setCompanySearchBusy(false);
+      }
+    }, 300);
+    return () => clearTimeout(companySearchTimer.current);
+  }, [companySearchQ, provisionMode, provisionModalOpen]);
 
   useEffect(() => {
     const modalOpen = provisionModalOpen || newCompanyModalOpen;
@@ -200,6 +230,7 @@ const CrmPage = ({ user, onLogout }) => {
       status: form.status || 'lead',
       notes: form.notes || undefined,
       linked_user_id: form.linked_user_id ?? null,
+      linked_company_profile_id: form.linked_company_profile_id ?? null,
     };
     if (!payload.name) {
       setAlertModal({
@@ -248,7 +279,7 @@ const CrmPage = ({ user, onLogout }) => {
       });
       return;
     }
-    if (!provision.company_name?.trim() || !provision.phone?.trim() || !provision.bio?.trim()) {
+    if (provisionMode === 'new' && (!provision.company_name?.trim() || !provision.phone?.trim() || !provision.bio?.trim())) {
       setAlertModal({
         isOpen: true,
         title: 'Missing required fields',
@@ -257,17 +288,35 @@ const CrmPage = ({ user, onLogout }) => {
       });
       return;
     }
+    if (provisionMode === 'existing' && !selectedCompany?.id) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Company required',
+        message: 'Select an existing company first.',
+        variant: 'error',
+      });
+      return;
+    }
     setProvisionSaving(true);
     try {
-      await crmAPI.createCompanyAccount({
+      const payload = {
         email,
-        company_name: provision.company_name.trim(),
-        phone: provision.phone.trim(),
-        industry: provision.industry?.trim() || undefined,
-        location: provision.location?.trim() || undefined,
-        bio: provision.bio.trim(),
-      });
+      };
+      if (provisionMode === 'existing') {
+        payload.company_profile_id = selectedCompany.id;
+      } else {
+        payload.company_name = provision.company_name.trim();
+        payload.phone = provision.phone.trim();
+        payload.industry = provision.industry?.trim() || undefined;
+        payload.location = provision.location?.trim() || undefined;
+        payload.bio = provision.bio.trim();
+      }
+      await crmAPI.createCompanyAccount(payload);
       setProvision({ email: '', company_name: '', phone: '', industry: '', location: '', bio: '' });
+      setProvisionMode('new');
+      setCompanySearchQ('');
+      setCompanyHits([]);
+      setSelectedCompany(null);
       setProvisionModalOpen(false);
       setAlertModal({
         isOpen: true,
@@ -337,6 +386,10 @@ const CrmPage = ({ user, onLogout }) => {
               onClick={() => {
                 setNewCompanyModalOpen(false);
                 setIsCreating(false);
+                setProvisionMode('new');
+                setCompanySearchQ('');
+                setCompanyHits([]);
+                setSelectedCompany(null);
                 setProvisionModalOpen(true);
               }}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 shadow-sm"
@@ -471,7 +524,7 @@ const CrmPage = ({ user, onLogout }) => {
                   </h3>
                   <p className="text-xs text-gray-500 mb-3">
                     Search by company login email, then select the account. Only company accounts can be linked. One CRM
-                    record can link to one company user.
+                    record links to a company, which can have multiple logins.
                   </p>
                   <div className="relative">
                     <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 bg-white">
@@ -492,7 +545,7 @@ const CrmPage = ({ user, onLogout }) => {
                               type="button"
                               className="w-full text-left px-3 py-2 hover:bg-gray-50"
                               onClick={() => {
-                                setForm((f) => ({ ...f, linked_user_id: u.id }));
+                                setForm((f) => ({ ...f, linked_user_id: u.id, linked_company_profile_id: u.company_profile_id ?? null }));
                                 setSearchQ('');
                                 setSearchHits([]);
                               }}
@@ -508,13 +561,14 @@ const CrmPage = ({ user, onLogout }) => {
                   {form.linked_user_id != null && (
                     <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
                       <span className="text-emerald-700 font-medium">
-                        Linked user id {form.linked_user_id}
+                        Linked company user id {form.linked_user_id}
                         {c?.linked_account?.email && ` (${c.linked_account.email})`}
+                        {c?.linked_account?.company_user_count ? ` - ${c.linked_account.company_user_count} company users` : ''}
                       </span>
                       <button
                         type="button"
                         className="text-red-600 hover:underline inline-flex items-center gap-1"
-                        onClick={() => setForm((f) => ({ ...f, linked_user_id: null }))}
+                        onClick={() => setForm((f) => ({ ...f, linked_user_id: null, linked_company_profile_id: null }))}
                       >
                         Unlink
                       </button>
@@ -683,10 +737,37 @@ const CrmPage = ({ user, onLogout }) => {
               </div>
               <div className="overflow-y-auto px-6 py-5">
                 <p className="text-sm text-gray-500 mb-4">
-                  Creates a business user and company profile. A temporary password is derived from their email for first
-                  login; we always send a follow-up email with a secure link to choose a new password.
+                  Create a login for a new company profile or add another login to an existing company. A temporary password
+                  is derived from their email for first login; we always send a follow-up email with a secure link to choose
+                  a new password.
                 </p>
                 <form onSubmit={provisionCompanyAccount} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Account target</span>
+                    <div className="mt-2 flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setProvisionMode('new');
+                          setSelectedCompany(null);
+                        }}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium border ${
+                          provisionMode === 'new' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700'
+                        }`}
+                      >
+                        New company
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setProvisionMode('existing')}
+                        className={`px-3 py-2 rounded-lg text-sm font-medium border ${
+                          provisionMode === 'existing' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700'
+                        }`}
+                      >
+                        Existing company
+                      </button>
+                    </div>
+                  </div>
                   <label className="block sm:col-span-2">
                     <span className="text-xs font-medium text-gray-500 uppercase">Login email *</span>
                     <input
@@ -699,6 +780,50 @@ const CrmPage = ({ user, onLogout }) => {
                       autoComplete="off"
                     />
                   </label>
+                  {provisionMode === 'existing' && (
+                    <div className="sm:col-span-2">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Find company *</span>
+                      <div className="relative mt-1">
+                        <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 bg-white">
+                          <FaSearch className="text-gray-400 shrink-0" />
+                          <input
+                            className="flex-1 text-sm outline-none"
+                            placeholder="Search company name..."
+                            value={companySearchQ}
+                            onChange={(e) => setCompanySearchQ(e.target.value)}
+                          />
+                          {companySearchBusy && <span className="text-xs text-gray-400">Searching...</span>}
+                        </div>
+                        {companyHits.length > 0 && (
+                          <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto text-sm">
+                            {companyHits.map((cp) => (
+                              <li key={cp.id}>
+                                <button
+                                  type="button"
+                                  className="w-full text-left px-3 py-2 hover:bg-gray-50"
+                                  onClick={() => {
+                                    setSelectedCompany(cp);
+                                    setCompanySearchQ(cp.company_name || `Company #${cp.id}`);
+                                    setCompanyHits([]);
+                                  }}
+                                >
+                                  <span className="font-medium text-gray-900">{cp.company_name || `Company #${cp.id}`}</span>
+                                  <span className="text-gray-500">{` - ${cp.company_users_count || 0} users`}</span>
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                      {selectedCompany && (
+                        <p className="mt-2 text-xs text-emerald-700">
+                          Selected: {selectedCompany.company_name || `Company #${selectedCompany.id}`}
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {provisionMode === 'new' && (
+                  <>
                   <label className="block sm:col-span-2">
                     <span className="text-xs font-medium text-gray-500 uppercase">Company display name *</span>
                     <input
@@ -745,6 +870,8 @@ const CrmPage = ({ user, onLogout }) => {
                       onChange={(e) => setProvision((p) => ({ ...p, bio: e.target.value }))}
                     />
                   </label>
+                  </>
+                  )}
                   <div className="sm:col-span-2 flex flex-wrap gap-2">
                     <button
                       type="submit"
@@ -875,7 +1002,7 @@ const CrmPage = ({ user, onLogout }) => {
                   </h3>
                   <p className="text-xs text-gray-500 mb-3">
                     Search by company login email, then select the account. Only company accounts can be linked. One CRM
-                    record can link to one company user.
+                    record links to a company, which can have multiple logins.
                   </p>
                   <div className="relative z-10">
                     <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 bg-white">
@@ -896,7 +1023,7 @@ const CrmPage = ({ user, onLogout }) => {
                               type="button"
                               className="w-full text-left px-3 py-2 hover:bg-gray-50"
                               onClick={() => {
-                                setForm((f) => ({ ...f, linked_user_id: u.id }));
+                                setForm((f) => ({ ...f, linked_user_id: u.id, linked_company_profile_id: u.company_profile_id ?? null }));
                                 setSearchQ('');
                                 setSearchHits([]);
                               }}
@@ -911,11 +1038,11 @@ const CrmPage = ({ user, onLogout }) => {
                   </div>
                   {form.linked_user_id != null && (
                     <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-                      <span className="text-emerald-700 font-medium">Linked user id {form.linked_user_id}</span>
+                      <span className="text-emerald-700 font-medium">Linked company user id {form.linked_user_id}</span>
                       <button
                         type="button"
                         className="text-red-600 hover:underline inline-flex items-center gap-1"
-                        onClick={() => setForm((f) => ({ ...f, linked_user_id: null }))}
+                        onClick={() => setForm((f) => ({ ...f, linked_user_id: null, linked_company_profile_id: null }))}
                       >
                         Unlink
                       </button>

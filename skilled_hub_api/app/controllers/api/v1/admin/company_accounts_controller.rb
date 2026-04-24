@@ -8,27 +8,36 @@ module Api
         before_action :require_admin
 
         # POST /api/v1/admin/company_accounts
-        # Creates a company user + company profile; initial password is derived from email;
-        # sends password-reset email so they can choose a real password.
+        # Creates either:
+        # - a new company user + company profile, or
+        # - an additional company user under an existing company_profile_id.
         def create
-          cities = provision_params[:service_cities]
-          if cities.blank? && provision_params[:location].present?
-            cities = provision_params[:location].to_s.split(",").map(&:strip).reject(&:blank?)
-          end
+          result =
+            if provision_params[:company_profile_id].present?
+              AdminAccountProvisioner.provision_company_login!(
+                email: provision_params[:email],
+                company_profile_id: provision_params[:company_profile_id]
+              )
+            else
+              cities = provision_params[:service_cities]
+              if cities.blank? && provision_params[:location].present?
+                cities = provision_params[:location].to_s.split(",").map(&:strip).reject(&:blank?)
+              end
 
-          result = AdminAccountProvisioner.provision_company!(
-            email: provision_params[:email],
-            company_name: provision_params[:company_name],
-            industry: provision_params[:industry],
-            bio: provision_params[:bio],
-            phone: provision_params[:phone],
-            website_url: provision_params[:website_url],
-            facebook_url: provision_params[:facebook_url],
-            instagram_url: provision_params[:instagram_url],
-            linkedin_url: provision_params[:linkedin_url],
-            service_cities: cities,
-            contact_name: provision_params[:contact_name]
-          )
+              AdminAccountProvisioner.provision_company!(
+                email: provision_params[:email],
+                company_name: provision_params[:company_name],
+                industry: provision_params[:industry],
+                bio: provision_params[:bio],
+                phone: provision_params[:phone],
+                website_url: provision_params[:website_url],
+                facebook_url: provision_params[:facebook_url],
+                instagram_url: provision_params[:instagram_url],
+                linkedin_url: provision_params[:linkedin_url],
+                service_cities: cities,
+                contact_name: provision_params[:contact_name]
+              )
+            end
 
           render json: {
             user: UserSerializer.new(result[:user]).as_json,
@@ -64,11 +73,31 @@ module Api
           }, status: :ok
         end
 
+        # GET /api/v1/admin/company_accounts/search_companies?q=
+        def search_companies
+          q = params[:q].to_s.strip
+          scope = CompanyProfile.includes(:company_users)
+          if q.present?
+            like = "%#{ActiveRecord::Base.sanitize_sql_like(q.downcase)}%"
+            scope = scope.where("LOWER(company_profiles.company_name) LIKE ?", like)
+          end
+          companies = scope.order(:company_name).limit(30)
+          render json: {
+            companies: companies.map do |cp|
+              {
+                id: cp.id,
+                company_name: cp.company_name,
+                company_users_count: cp.company_users.where(role: :company).count
+              }
+            end
+          }, status: :ok
+        end
+
         private
 
         def provision_params
           params.permit(
-            :email, :company_name, :industry, :location, :bio, :phone, :website_url,
+            :email, :company_name, :industry, :location, :bio, :phone, :website_url, :company_profile_id,
             :facebook_url, :instagram_url, :linkedin_url, :contact_name,
             service_cities: []
           )

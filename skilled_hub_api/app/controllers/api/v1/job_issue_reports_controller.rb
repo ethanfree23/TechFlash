@@ -30,7 +30,7 @@ module Api
 
       def participant?(job)
         return true if @current_user.admin?
-        return true if @current_user.company? && job.company_profile.user_id == @current_user.id
+        return true if @current_user.company? && job.company_profile_id == @current_user.company_profile&.id
 
         if @current_user.technician?
           app = job.job_applications.find_by(status: :accepted)

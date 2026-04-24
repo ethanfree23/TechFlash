@@ -28,6 +28,10 @@ module Api
         permitted_role = %w[technician company].include?(params[:role].to_s) ? params[:role] : 'technician'
         user = User.new(user_params.merge(role: permitted_role))
         if user.save
+          if user.company?
+            profile = CompanyProfile.create!(user: user)
+            user.update_column(:company_profile_id, profile.id)
+          end
           MailDelivery.safe_deliver { UserMailer.welcome_email(user).deliver_now }
           token = JWT.encode({ user_id: user.id }, Rails.application.secret_key_base)
           render json: { token: token, user: UserSerializer.new(user).as_json }, status: :created

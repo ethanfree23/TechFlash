@@ -50,6 +50,7 @@ module AdminAccountProvisioner
         linkedin_url: strip_or_nil(linkedin_url),
         service_cities: cities
       )
+      user.update_column(:company_profile_id, profile.id)
       profile.avatar.attach(logo) if logo.respond_to?(:tempfile)
 
       user.generate_password_reset_token!
@@ -82,6 +83,31 @@ module AdminAccountProvisioner
         experience_years: experience_years.present? ? experience_years.to_i : nil,
         availability: availability.to_s.strip.presence,
         bio: bio.to_s.strip.presence
+      )
+      user.generate_password_reset_token!
+    end
+
+    send_reset_email(user)
+    { user: user, profile: profile }
+  end
+
+  def provision_company_login!(email:, company_profile_id:)
+    email = normalize_email(email)
+    assert_email_available!(email)
+
+    profile = CompanyProfile.find_by(id: company_profile_id)
+    raise Error, "Company not found" unless profile
+
+    pw = User.initial_password_from_email(email)
+    user = nil
+
+    ActiveRecord::Base.transaction do
+      user = User.create!(
+        email: email,
+        password: pw,
+        password_confirmation: pw,
+        role: :company,
+        company_profile_id: profile.id
       )
       user.generate_password_reset_token!
     end
@@ -145,6 +171,7 @@ module AdminAccountProvisioner
       website: profile.website_url,
       status: "prospect",
       linked_user_id: user.id,
+      linked_company_profile_id: profile.id,
       notes: notes_lines.join("\n")
     )
   end

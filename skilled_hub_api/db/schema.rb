@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_04_24_124000) do
+ActiveRecord::Schema[7.1].define(version: 2026_04_24_150000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -82,7 +82,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_24_124000) do
     t.integer "linked_user_id"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
-    t.index ["linked_user_id"], name: "index_crm_leads_on_linked_user_id", unique: true
+    t.integer "linked_company_profile_id"
+    t.index ["linked_company_profile_id"], name: "index_crm_leads_on_linked_company_profile_id"
+    t.index ["linked_user_id"], name: "index_crm_leads_on_linked_user_id"
     t.index ["status"], name: "index_crm_leads_on_status"
   end
 
@@ -292,6 +294,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_24_124000) do
     t.string "stripe_customer_id"
     t.string "password_reset_token"
     t.datetime "password_reset_sent_at"
+    t.integer "company_profile_id"
+    t.index ["company_profile_id"], name: "index_users_on_company_profile_id"
     t.index ["password_reset_token"], name: "index_users_on_password_reset_token", unique: true
   end
 
@@ -302,6 +306,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_24_124000) do
   add_foreign_key "conversations", "feedback_submissions"
   add_foreign_key "conversations", "jobs"
   add_foreign_key "conversations", "technician_profiles"
+  add_foreign_key "crm_leads", "company_profiles", column: "linked_company_profile_id"
   add_foreign_key "crm_leads", "users", column: "linked_user_id"
   add_foreign_key "favorite_technicians", "company_profiles"
   add_foreign_key "favorite_technicians", "technician_profiles"
@@ -320,4 +325,5 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_24_124000) do
   add_foreign_key "saved_job_searches", "technician_profiles"
   add_foreign_key "technician_profiles", "users"
   add_foreign_key "user_login_events", "users"
+  add_foreign_key "users", "company_profiles"
 end

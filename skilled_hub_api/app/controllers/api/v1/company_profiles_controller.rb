@@ -12,7 +12,7 @@ module Api
       def show
         company_profile = CompanyProfile.find(params[:id])
         # Companies can only view their own profile (for "My Reviews"); technicians can view any company
-        if @current_user&.company? && company_profile.user_id != @current_user.id
+        if @current_user&.company? && company_profile.id != @current_user.company_profile&.id
           return render json: { error: "You can only view your own company profile" }, status: :forbidden
         end
         render json: company_profile, serializer: CompanyProfileDetailSerializer, status: :ok
@@ -31,7 +31,7 @@ module Api
 
       def update
         company_profile = CompanyProfile.find(params[:id])
-        return render json: { error: 'Access denied' }, status: :forbidden unless company_profile.user_id == @current_user.id
+        return render json: { error: 'Access denied' }, status: :forbidden unless company_profile.id == @current_user.company_profile&.id
         attrs = company_profile_params.to_h
         company_profile.avatar.attach(params[:avatar]) if params[:avatar].present?
         if company_profile.update(attrs.except(:avatar))
@@ -54,6 +54,9 @@ module Api
       def profile
         profile = @current_user.company_profile
         profile ||= CompanyProfile.create!(user_id: @current_user.id)
+        if @current_user.company_profile_id != profile.id
+          @current_user.update_column(:company_profile_id, profile.id)
+        end
         render json: profile, serializer: CompanyProfileSerializer, status: :ok
       end
 

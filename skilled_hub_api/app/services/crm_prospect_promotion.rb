@@ -8,7 +8,7 @@ module CrmProspectPromotion
     cp = CompanyProfile.find_by(id: company_profile_id)
     return unless cp
 
-    lead = CrmLead.find_by(linked_user_id: cp.user_id)
+    lead = CrmLead.find_by(linked_company_profile_id: cp.id) || CrmLead.find_by(linked_user_id: cp.user_id)
     return unless lead&.status == "prospect"
 
     lead.update!(status: "customer")

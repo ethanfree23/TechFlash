@@ -111,6 +111,8 @@ export const crmAPI = {
     }),
   searchCompanyAccounts: (q) =>
     apiRequest(`/admin/company_accounts/search?q=${encodeURIComponent(q || '')}`),
+  searchCompanies: (q) =>
+    apiRequest(`/admin/company_accounts/search_companies?q=${encodeURIComponent(q || '')}`),
   createCompanyAccount: (data) =>
     apiRequest('/admin/company_accounts', {
       method: 'POST',

@@ -130,7 +130,7 @@ module Api
           # Companies can access documents for their jobs
           if @current_user.company?
             job = Job.find(document.uploadable_id)
-            return job.company_profile.user_id == @current_user.id
+            return job.company_profile_id == @current_user.company_profile&.id
           end
           # Technicians can access documents for jobs they've applied to
           if @current_user.technician?
@@ -146,7 +146,7 @@ module Api
           # Companies can access documents for applications to their jobs
           if @current_user.company?
             job_application = JobApplication.find(document.uploadable_id)
-            return job_application.job.company_profile.user_id == @current_user.id
+            return job_application.job.company_profile_id == @current_user.company_profile&.id
           end
         end
         false

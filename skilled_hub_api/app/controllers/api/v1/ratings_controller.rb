@@ -32,7 +32,7 @@ module Api
             technician_profile = accepted_app&.technician_profile
 
             current_reviewer = nil
-            current_reviewer = company_profile if @current_user.company? && company_profile&.user_id == @current_user.id
+            current_reviewer = company_profile if @current_user.company? && company_profile&.id == @current_user.company_profile&.id
             current_reviewer = technician_profile if @current_user.technician? && technician_profile&.user_id == @current_user.id
 
             if current_reviewer
@@ -87,7 +87,7 @@ module Api
         end
 
         reviewer, reviewee = nil, nil
-        if @current_user.company? && company_profile.user_id == @current_user.id
+        if @current_user.company? && company_profile.id == @current_user.company_profile&.id
           reviewer = company_profile
           reviewee = technician_profile
         elsif @current_user.technician? && technician_profile.user_id == @current_user.id

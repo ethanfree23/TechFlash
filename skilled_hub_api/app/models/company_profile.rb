@@ -4,7 +4,8 @@ class CompanyProfile < ApplicationRecord
   before_validation :normalize_service_cities_list
   before_save :sync_location_from_service_cities
 
-  belongs_to :user
+  belongs_to :user, inverse_of: :company_profile
+  has_many :company_users, class_name: "User", foreign_key: :company_profile_id, inverse_of: :shared_company_profile, dependent: :nullify
   has_many :jobs, dependent: :destroy
   has_many :conversations, dependent: :destroy
   has_many :messages, through: :conversations

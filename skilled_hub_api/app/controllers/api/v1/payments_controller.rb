@@ -8,7 +8,7 @@ module Api
       # Create a PaymentIntent for the company to pay when accepting a job
       def create_intent
         job = Job.find(params[:job_id])
-        unless @current_user.company? && job.company_profile.user_id == @current_user.id
+        unless @current_user.company? && job.company_profile_id == @current_user.company_profile&.id
           return render json: { error: 'Access denied' }, status: :forbidden
         end
         unless job.reserved?
