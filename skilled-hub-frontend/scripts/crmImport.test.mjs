@@ -67,10 +67,37 @@ function testAutoFix() {
   assert.ok(Array.isArray(fixed[0]._errors), 'should include validation result');
 }
 
+function testUnstructuredMultipleContacts() {
+  const pasted = `logo-c1920x600.png
+15100 Fitzhugh Rd.
+Austin, TX 78736
+
+Jason Neyland, Principal
+TECL#26650
+Cell: 512-970-4989
+jason@neylandelectrical.com
+
+Janet Sone, Controller
+Cell: (512) 923-8114
+admin@neylandelectrical.com`;
+
+  const draft = buildImportDraftRows(pasted, CRM_STATUSES, CRM_COMPANY_TYPES);
+  assert.strictEqual(draft.length, 2, 'should parse two contacts from unstructured text');
+  assert.strictEqual(draft[0].contact_name, 'Jason Neyland');
+  assert.strictEqual(draft[0].phone, '+1 (512) 970-4989');
+  assert.strictEqual(draft[0].email, 'jason@neylandelectrical.com');
+  assert.strictEqual(draft[1].contact_name, 'Janet Sone');
+  assert.strictEqual(draft[1].phone, '+1 (512) 923-8114');
+  assert.strictEqual(draft[1].email, 'admin@neylandelectrical.com');
+  assert.strictEqual(draft[0].name, 'Neyland Electrical');
+  assert.strictEqual(draft[1].name, 'Neyland Electrical');
+}
+
 function run() {
   testWrappedHeaderlessRows();
   testHeaderCsvRows();
   testAutoFix();
+  testUnstructuredMultipleContacts();
   // eslint-disable-next-line no-console
   console.log('crmImport tests passed');
 }

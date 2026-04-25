@@ -64,6 +64,92 @@ const looksLikePersonName = (value) => {
 
 const uniqueValues = (values) => Array.from(new Set(values.map((v) => cleanLooseValue(v)).filter(Boolean)));
 
+const extractNameFromLine = (value) => {
+  const raw = cleanLooseValue(value);
+  if (!raw) return '';
+  const primary = raw.split(',')[0].trim();
+  return looksLikePersonName(primary) ? primary : '';
+};
+
+const toTitleCase = (value) =>
+  String(value || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(' ');
+
+const inferCompanyNameFromEmailDomain = (emails) => {
+  const firstEmail = emails.find(Boolean);
+  if (!firstEmail || !firstEmail.includes('@')) return '';
+  const domain = firstEmail.split('@')[1].toLowerCase();
+  const host = domain.split('.')[0];
+  if (!host) return '';
+  const expanded = host
+    .replace(/[_-]+/g, ' ')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .replace(/([a-z])(\d)/gi, '$1 $2')
+    .replace(/(\d)([a-z])/gi, '$1 $2');
+  const spaced = expanded
+    .replace(/electrical/g, ' electrical')
+    .replace(/services/g, ' services')
+    .replace(/solutions/g, ' solutions')
+    .replace(/contracting/g, ' contracting')
+    .replace(/plumbing/g, ' plumbing')
+    .replace(/hvac/g, ' hvac')
+    .replace(/mechanical/g, ' mechanical')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return toTitleCase(spaced || host);
+};
+
+const findContactEmailAndPhone = (line, lines, startIdx) => {
+  const searchWindow = [line, ...lines.slice(startIdx + 1, startIdx + 5)].join(' ');
+  const emailMatch = searchWindow.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  const phoneMatch = searchWindow.match(/(?:\+?1[\s.-]*)?(?:\(?\d{3}\)?[\s.-]*)\d{3}[\s.-]*\d{4}/);
+  return {
+    email: cleanLooseValue(emailMatch ? emailMatch[0] : ''),
+    phone: cleanLooseValue(phoneMatch ? phoneMatch[0] : ''),
+  };
+};
+
+const inferMultipleImportRowsFromUnstructuredText = (text, statuses = [], companyTypes = []) => {
+  const raw = String(text || '').trim();
+  if (!raw) return [];
+  const lines = raw
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) return [];
+
+  const fullText = lines.join(' ');
+  const emails = uniqueValues(fullText.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || []);
+  const companyFromHintLine = lines.find((line) => COMPANY_NAME_HINT_RE.test(line) && !looksLikePersonName(line));
+  const sharedCompanyName = cleanLooseValue(companyFromHintLine) || inferCompanyNameFromEmailDomain(emails);
+  const inferredTypes = inferCompanyTypeTokens(fullText, companyTypes);
+
+  const contacts = [];
+  lines.forEach((line, idx) => {
+    const contactName = extractNameFromLine(line);
+    if (!contactName) return;
+    const { email, phone } = findContactEmailAndPhone(line, lines, idx);
+    if (!email && !phone) return;
+    contacts.push({
+      name: sharedCompanyName,
+      contact_name: contactName,
+      email,
+      phone: formatPhoneInput(phone),
+      website: '',
+      company_types: inferredTypes.join('|'),
+      status: statuses.includes('lead') ? 'lead' : statuses[0] || 'lead',
+      notes: '',
+    });
+  });
+
+  return contacts.filter((row) => row.name && row.contact_name && (row.email || row.phone));
+};
+
 export const inferSingleImportRowFromUnstructuredText = (text, statuses = [], companyTypes = [], options = {}) => {
   const raw = String(text || '').trim();
   const includeDiagnostics = Boolean(options.includeDiagnostics);
@@ -257,7 +343,14 @@ export const buildImportDraftRows = (content, statuses, companyTypes) => {
   const headerlessRows = normalizedLines.map((line) => parseCsv(line)[0] || []);
   const rows = mapRowsToObjects(headerlessRows, CRM_IMPORT_HEADERS);
   if (rows.length > 0) {
-    return rows.map((r, idx) => makeDraftRow(r, idx, statuses, companyTypes));
+    const draftRows = rows.map((r, idx) => makeDraftRow(r, idx, statuses, companyTypes));
+    const hasStructuredSignal = draftRows.some((row) => row.email || row.phone || row.website);
+    if (hasStructuredSignal) return draftRows;
+  }
+
+  const inferredMultiple = inferMultipleImportRowsFromUnstructuredText(content, statuses, companyTypes);
+  if (inferredMultiple.length > 1) {
+    return inferredMultiple.map((row, idx) => makeDraftRow(row, idx, statuses, companyTypes));
   }
 
   const inferred = inferSingleImportRowFromUnstructuredText(content, statuses, companyTypes);
