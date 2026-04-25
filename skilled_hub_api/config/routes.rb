@@ -87,7 +87,11 @@ Rails.application.routes.draw do
             patch :profile, action: :update_profile
           end
         end
-        resources :crm_leads, only: %i[index show create update destroy]
+        resources :crm_leads, only: %i[index show create update destroy] do
+          collection do
+            post :import
+          end
+        end
         patch "referrals/:id/issue_reward", to: "referrals#issue_reward"
       end
     end

@@ -143,6 +143,11 @@ export const crmAPI = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  importRows: (rows) =>
+    apiRequest('/admin/crm_leads/import', {
+      method: 'POST',
+      body: JSON.stringify({ rows }),
+    }),
 };
 
 // US city autocomplete (Nominatim via Rails) — admin only

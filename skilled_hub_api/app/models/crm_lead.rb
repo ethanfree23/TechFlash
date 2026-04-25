@@ -2,14 +2,31 @@
 
 class CrmLead < ApplicationRecord
   STATUSES = %w[lead contacted qualified proposal prospect customer competitor churned lost].freeze
+  COMPANY_TYPES = [
+    "hvac",
+    "plumbing",
+    "electrical",
+    "refrigeration",
+    "fire_protection",
+    "general_contracting",
+    "handyman",
+    "roofing",
+    "solar",
+    "appliance_repair",
+    "facility_maintenance",
+    "other"
+  ].freeze
 
   belongs_to :linked_user, class_name: "User", optional: true, inverse_of: :crm_leads
   belongs_to :linked_company_profile, class_name: "CompanyProfile", optional: true
 
   validates :name, presence: true
   validates :status, inclusion: { in: STATUSES }
+  validate :company_types_must_be_supported
 
   validate :linked_target_must_be_company
+
+  before_validation :normalize_company_types!
 
   private
 
@@ -39,5 +56,32 @@ class CrmLead < ApplicationRecord
     unless linked_company_profile.company_users.exists?(role: :company) || linked_company_profile.user&.company?
       errors.add(:linked_company_profile_id, "must belong to a company")
     end
+  end
+
+  def company_types_must_be_supported
+    return if company_types.blank?
+    unless company_types.is_a?(Array)
+      errors.add(:company_types, "must be an array")
+      return
+    end
+
+    invalid = company_types - COMPANY_TYPES
+    return if invalid.empty?
+
+    errors.add(:company_types, "contains unsupported values: #{invalid.join(', ')}")
+  end
+
+  def normalize_company_types!
+    normalized =
+      case company_types
+      when String
+        company_types.split(/[,|;]/)
+      when Array
+        company_types
+      else
+        []
+      end
+
+    self.company_types = normalized.map { |v| v.to_s.strip.downcase }.reject(&:blank?).uniq
   end
 end

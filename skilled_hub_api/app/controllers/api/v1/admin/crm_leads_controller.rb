@@ -45,6 +45,38 @@ module Api
           head :no_content
         end
 
+        def import
+          rows = params[:rows]
+          unless rows.is_a?(Array)
+            return render json: { error: "rows must be an array" }, status: :unprocessable_entity
+          end
+
+          created = []
+          errors = []
+
+          rows.each_with_index do |raw_row, idx|
+            row = normalize_import_row(raw_row)
+            lead = CrmLead.new(row)
+
+            if lead.save
+              created << lead
+            else
+              errors << {
+                row: idx + 1,
+                name: row[:name],
+                errors: lead.errors.full_messages
+              }
+            end
+          end
+
+          render json: {
+            imported_count: created.count,
+            failed_count: errors.count,
+            crm_leads: created.map { |l| lead_json(l) },
+            errors: errors
+          }, status: :ok
+        end
+
         private
 
         def set_lead
@@ -54,7 +86,7 @@ module Api
         end
 
         def lead_params
-          p = params.permit(:name, :contact_name, :email, :phone, :website, :status, :notes, :linked_user_id, :linked_company_profile_id)
+          p = params.permit(:name, :contact_name, :email, :phone, :website, :status, :notes, :linked_user_id, :linked_company_profile_id, company_types: [])
           p[:linked_user_id] = nil if p.key?(:linked_user_id) && p[:linked_user_id].blank?
           p[:linked_company_profile_id] = nil if p.key?(:linked_company_profile_id) && p[:linked_company_profile_id].blank?
           if p[:linked_company_profile_id].present? && p[:linked_user_id].blank?
@@ -76,6 +108,7 @@ module Api
             phone: lead.phone,
             website: lead.website,
             status: lead.status,
+            company_types: lead.company_types || [],
             notes: lead.notes,
             linked_user_id: lead.linked_user_id,
             linked_company_profile_id: linked_profile&.id,
@@ -117,6 +150,29 @@ module Api
             conversations_count: cp.conversations.count,
             messages_count: cp.messages.count
           }
+        end
+
+        def normalize_import_row(raw_row)
+          row = raw_row.respond_to?(:to_unsafe_h) ? raw_row.to_unsafe_h : raw_row
+          row = row.respond_to?(:to_h) ? row.to_h : {}
+          normalized = row.transform_keys(&:to_s)
+
+          allowed = %w[name contact_name email phone website status notes linked_user_id linked_company_profile_id company_types]
+          payload = normalized.slice(*allowed).symbolize_keys
+
+          payload[:status] = payload[:status].presence || "lead"
+          payload[:company_types] =
+            case payload[:company_types]
+            when String
+              payload[:company_types].split(/[,|;]/).map(&:strip).reject(&:blank?)
+            when Array
+              payload[:company_types].map(&:to_s).map(&:strip).reject(&:blank?)
+            else
+              []
+            end
+          payload[:linked_user_id] = payload[:linked_user_id].presence
+          payload[:linked_company_profile_id] = payload[:linked_company_profile_id].presence
+          payload
         end
       end
     end

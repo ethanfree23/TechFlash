@@ -16,6 +16,7 @@ import {
   FaTimes,
   FaTrash,
   FaUserPlus,
+  FaFileUpload,
 } from 'react-icons/fa';
 
 const CRM_STATUSES = [
@@ -29,6 +30,61 @@ const CRM_STATUSES = [
   'churned',
   'lost',
 ];
+
+const CRM_COMPANY_TYPES = [
+  'hvac',
+  'plumbing',
+  'electrical',
+  'refrigeration',
+  'fire_protection',
+  'general_contracting',
+  'handyman',
+  'roofing',
+  'solar',
+  'appliance_repair',
+  'facility_maintenance',
+  'other',
+];
+
+const CRM_IMPORT_HEADERS = ['name', 'contact_name', 'email', 'phone', 'website', 'company_types', 'status', 'notes'];
+
+const parseCsv = (text) => {
+  const rows = [];
+  let current = '';
+  let row = [];
+  let inQuotes = false;
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    const next = text[i + 1];
+    if (ch === '"') {
+      if (inQuotes && next === '"') {
+        current += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (ch === ',' && !inQuotes) {
+      row.push(current);
+      current = '';
+      continue;
+    }
+    if ((ch === '\n' || ch === '\r') && !inQuotes) {
+      if (ch === '\r' && next === '\n') i += 1;
+      row.push(current);
+      if (row.some((cell) => cell.trim() !== '')) rows.push(row);
+      row = [];
+      current = '';
+      continue;
+    }
+    current += ch;
+  }
+  row.push(current);
+  if (row.some((cell) => cell.trim() !== '')) rows.push(row);
+  return rows;
+};
 
 const formatCurrency = (cents) => {
   if (cents == null || cents === 0) return '$0';
@@ -52,6 +108,9 @@ const CrmPage = ({ user, onLogout }) => {
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'error' });
   const [pipelineNameFilter, setPipelineNameFilter] = useState('');
   const [pipelineStatusFilter, setPipelineStatusFilter] = useState('');
+  const [importModalOpen, setImportModalOpen] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [importSummary, setImportSummary] = useState(null);
 
   const [provision, setProvision] = useState({
     email: '',
@@ -110,6 +169,7 @@ const CrmPage = ({ user, onLogout }) => {
         email: c.email || '',
         phone: c.phone || '',
         website: c.website || '',
+        company_types: c.company_types || [],
         status: c.status || 'lead',
         notes: c.notes || '',
         linked_user_id: c.linked_user_id ?? null,
@@ -136,6 +196,7 @@ const CrmPage = ({ user, onLogout }) => {
         email: '',
         phone: '',
         website: '',
+        company_types: [],
         status: 'lead',
         notes: '',
         linked_user_id: null,
@@ -232,6 +293,7 @@ const CrmPage = ({ user, onLogout }) => {
       email: form.email?.trim() || undefined,
       phone: form.phone?.trim() || undefined,
       website: form.website?.trim() || undefined,
+      company_types: form.company_types || [],
       status: form.status || 'lead',
       notes: form.notes || undefined,
       linked_user_id: form.linked_user_id ?? null,
@@ -383,6 +445,88 @@ const CrmPage = ({ user, onLogout }) => {
     }
   };
 
+  const toggleCompanyType = (type) => {
+    setForm((f) => {
+      const selected = f.company_types || [];
+      const next = selected.includes(type) ? selected.filter((t) => t !== type) : [...selected, type];
+      return { ...f, company_types: next };
+    });
+  };
+
+  const importCsvFile = async (file) => {
+    if (!file) return;
+    const content = await file.text();
+    const parsed = parseCsv(content);
+    if (parsed.length < 2) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Import failed',
+        message: 'CSV needs a header row plus at least one data row.',
+        variant: 'error',
+      });
+      return;
+    }
+
+    const headers = parsed[0].map((h) => h.trim().toLowerCase());
+    const missing = CRM_IMPORT_HEADERS.filter((h) => !headers.includes(h));
+    if (missing.length > 0) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Import failed',
+        message: `Missing required columns: ${missing.join(', ')}`,
+        variant: 'error',
+      });
+      return;
+    }
+
+    const rows = parsed
+      .slice(1)
+      .map((cells) => {
+        const rowObj = {};
+        headers.forEach((header, idx) => {
+          rowObj[header] = (cells[idx] || '').trim();
+        });
+        return rowObj;
+      })
+      .filter((rowObj) => rowObj.name);
+
+    if (rows.length === 0) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Import failed',
+        message: 'No valid rows found. Ensure each row has a company name.',
+        variant: 'error',
+      });
+      return;
+    }
+
+    setImportBusy(true);
+    try {
+      const res = await crmAPI.importRows(rows);
+      setImportSummary({
+        importedCount: res.imported_count || 0,
+        failedCount: res.failed_count || 0,
+        errors: res.errors || [],
+      });
+      await loadList();
+      setAlertModal({
+        isOpen: true,
+        title: 'Import completed',
+        message: `Imported ${res.imported_count || 0} rows. Failed ${res.failed_count || 0}.`,
+        variant: (res.failed_count || 0) > 0 ? 'error' : 'success',
+      });
+    } catch (e) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Import failed',
+        message: e.message || 'Could not import CSV',
+        variant: 'error',
+      });
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
   const c = detail?.crm_lead;
   const metrics = detail?.linked_metrics;
   const activity = detail?.activity;
@@ -407,6 +551,17 @@ const CrmPage = ({ user, onLogout }) => {
             </p>
           </div>
           <div className="flex flex-wrap gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setImportSummary(null);
+                setImportModalOpen(true);
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 shadow-sm"
+            >
+              <FaFileUpload className="w-4 h-4" aria-hidden />
+              Import CSV
+            </button>
             <button
               type="button"
               onClick={openCreate}
@@ -563,6 +718,26 @@ const CrmPage = ({ user, onLogout }) => {
                       onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
                     />
                   </label>
+                  <div className="block sm:col-span-2">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Company types</span>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {CRM_COMPANY_TYPES.map((type) => {
+                        const active = (form.company_types || []).includes(type);
+                        return (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => toggleCompanyType(type)}
+                            className={`px-2.5 py-1 rounded-full border text-xs capitalize ${
+                              active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+                            }`}
+                          >
+                            {type.replace(/_/g, ' ')}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <label className="block sm:col-span-2">
                     <span className="text-xs font-medium text-gray-500 uppercase">Notes</span>
                     <textarea
@@ -763,6 +938,81 @@ const CrmPage = ({ user, onLogout }) => {
             )}
           </div>
         </div>
+
+        {importModalOpen ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="crm-import-title"
+            onClick={() => !importBusy && setImportModalOpen(false)}
+          >
+            <div
+              className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
+                <h2 id="crm-import-title" className="text-lg font-semibold text-gray-900">
+                  Import CRM companies from CSV
+                </h2>
+                <button
+                  type="button"
+                  disabled={importBusy}
+                  onClick={() => setImportModalOpen(false)}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+                  aria-label="Close"
+                >
+                  <FaTimes className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="overflow-y-auto px-6 py-5 space-y-4">
+                <p className="text-sm text-gray-600">
+                  Build your list in Excel or Google Sheets using this exact header order, then export to CSV and upload.
+                </p>
+                <code className="block p-3 rounded-lg bg-gray-100 text-xs text-gray-800 break-words">
+                  name,contact_name,email,phone,website,company_types,status,notes
+                </code>
+                <p className="text-xs text-gray-500">
+                  Status must be one of: {CRM_STATUSES.join(', ')}. If blank, it defaults to lead.
+                </p>
+                <p className="text-xs text-gray-500">
+                  company_types can include multiple values separated by pipe/comma/semicolon (example:
+                  hvac|plumbing|electrical).
+                </p>
+                <label className="block">
+                  <span className="text-xs font-medium text-gray-500 uppercase">CSV file</span>
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    disabled={importBusy}
+                    className="mt-1 block w-full text-sm"
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      importCsvFile(file);
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                {importSummary && (
+                  <div className="rounded-lg border border-gray-200 p-3 text-sm">
+                    <p className="font-medium text-gray-900">
+                      Imported {importSummary.importedCount}, failed {importSummary.failedCount}.
+                    </p>
+                    {importSummary.errors.length > 0 && (
+                      <ul className="mt-2 text-xs text-red-700 space-y-1 max-h-40 overflow-y-auto">
+                        {importSummary.errors.map((err) => (
+                          <li key={`${err.row}-${err.name || 'row'}`}>
+                            Row {err.row} ({err.name || 'Unnamed'}): {(err.errors || []).join(', ')}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {provisionModalOpen ? (
           <div
@@ -1057,6 +1307,26 @@ const CrmPage = ({ user, onLogout }) => {
                       onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
                     />
                   </label>
+                  <div className="block sm:col-span-2">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Company types</span>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {CRM_COMPANY_TYPES.map((type) => {
+                        const active = (form.company_types || []).includes(type);
+                        return (
+                          <button
+                            key={type}
+                            type="button"
+                            onClick={() => toggleCompanyType(type)}
+                            className={`px-2.5 py-1 rounded-full border text-xs capitalize ${
+                              active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+                            }`}
+                          >
+                            {type.replace(/_/g, ' ')}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                   <label className="block sm:col-span-2">
                     <span className="text-xs font-medium text-gray-500 uppercase">Notes</span>
                     <textarea

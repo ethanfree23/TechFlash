@@ -10,6 +10,16 @@ class CrmLeadTest < ActiveSupport::TestCase
     assert lead.valid?, lead.errors.full_messages.join(", ")
   end
 
+  test "allows multiple supported company types" do
+    lead = CrmLead.new(
+      name: "Multi-Trade Co",
+      status: "lead",
+      company_types: %w[hvac plumbing electrical]
+    )
+
+    assert lead.valid?, lead.errors.full_messages.join(", ")
+  end
+
   test "allows linking crm lead to company profile with multiple company users" do
     owner = User.create!(
       email: "owner+crm_lead_test@example.com",
