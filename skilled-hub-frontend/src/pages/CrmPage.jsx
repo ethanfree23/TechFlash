@@ -5,6 +5,17 @@ import { crmAPI } from '../api/api';
 import AlertModal from '../components/AlertModal';
 import { formatPhoneInput } from '../utils/phone';
 import {
+  buildImportDraftRows,
+  autoFixDraftRows as autoFixImportDraftRows,
+  makeDraftRow,
+} from '../utils/crmImport';
+import {
+  emptyNoteDraft,
+  noteDraftForReply,
+  noteDraftForEdit,
+  noteWasEdited,
+} from '../utils/crmNotes';
+import {
   FaBuilding,
   FaChartLine,
   FaComments,
@@ -47,46 +58,7 @@ const CRM_COMPANY_TYPES = [
   'other',
 ];
 
-const CRM_IMPORT_HEADERS = ['name', 'contact_name', 'email', 'phone', 'website', 'company_types', 'status', 'notes'];
 const CRM_NOTE_CONTACT_METHODS = ['call', 'text', 'email', 'in_person', 'note'];
-
-const parseCsv = (text) => {
-  const rows = [];
-  let current = '';
-  let row = [];
-  let inQuotes = false;
-
-  for (let i = 0; i < text.length; i += 1) {
-    const ch = text[i];
-    const next = text[i + 1];
-    if (ch === '"') {
-      if (inQuotes && next === '"') {
-        current += '"';
-        i += 1;
-      } else {
-        inQuotes = !inQuotes;
-      }
-      continue;
-    }
-    if (ch === ',' && !inQuotes) {
-      row.push(current);
-      current = '';
-      continue;
-    }
-    if ((ch === '\n' || ch === '\r') && !inQuotes) {
-      if (ch === '\r' && next === '\n') i += 1;
-      row.push(current);
-      if (row.some((cell) => cell.trim() !== '')) rows.push(row);
-      row = [];
-      current = '';
-      continue;
-    }
-    current += ch;
-  }
-  row.push(current);
-  if (row.some((cell) => cell.trim() !== '')) rows.push(row);
-  return rows;
-};
 
 const formatCurrency = (cents) => {
   if (cents == null || cents === 0) return '$0';
@@ -120,6 +92,8 @@ const CrmPage = ({ user, onLogout }) => {
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
   const [importSummary, setImportSummary] = useState(null);
+  const [pasteImportText, setPasteImportText] = useState('');
+  const [importDraftRows, setImportDraftRows] = useState([]);
 
   const [provision, setProvision] = useState({
     email: '',
@@ -142,14 +116,7 @@ const CrmPage = ({ user, onLogout }) => {
   const [newCompanyHits, setNewCompanyHits] = useState([]);
   const [newCompanySearchBusy, setNewCompanySearchBusy] = useState(false);
   const [crmNotes, setCrmNotes] = useState([]);
-  const [noteDraft, setNoteDraft] = useState({
-    id: null,
-    parent_note_id: null,
-    contact_method: 'note',
-    made_contact: false,
-    title: '',
-    body: '',
-  });
+  const [noteDraft, setNoteDraft] = useState(emptyNoteDraft());
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteComposerOpen, setNoteComposerOpen] = useState(false);
 
@@ -509,44 +476,8 @@ const CrmPage = ({ user, onLogout }) => {
     });
   };
 
-  const importCsvFile = async (file) => {
-    if (!file) return;
-    const content = await file.text();
-    const parsed = parseCsv(content);
-    if (parsed.length < 2) {
-      setAlertModal({
-        isOpen: true,
-        title: 'Import failed',
-        message: 'CSV needs a header row plus at least one data row.',
-        variant: 'error',
-      });
-      return;
-    }
-
-    const headers = parsed[0].map((h) => h.trim().toLowerCase());
-    const missing = CRM_IMPORT_HEADERS.filter((h) => !headers.includes(h));
-    if (missing.length > 0) {
-      setAlertModal({
-        isOpen: true,
-        title: 'Import failed',
-        message: `Missing required columns: ${missing.join(', ')}`,
-        variant: 'error',
-      });
-      return;
-    }
-
-    const rows = parsed
-      .slice(1)
-      .map((cells) => {
-        const rowObj = {};
-        headers.forEach((header, idx) => {
-          rowObj[header] = (cells[idx] || '').trim();
-        });
-        return rowObj;
-      })
-      .filter((rowObj) => rowObj.name);
-
-    if (rows.length === 0) {
+  const importRows = async (rows) => {
+    if (!rows.length) {
       setAlertModal({
         isOpen: true,
         title: 'Import failed',
@@ -583,15 +514,97 @@ const CrmPage = ({ user, onLogout }) => {
     }
   };
 
+  const parseCsvTextToDraft = (content) => {
+    return buildImportDraftRows(content, CRM_STATUSES, CRM_COMPANY_TYPES);
+  };
+
+  const importCsvFile = async (file) => {
+    if (!file) return;
+    const content = await file.text();
+    const draft = parseCsvTextToDraft(content);
+    if (!draft.length) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Import failed',
+        message: 'Could not parse rows from this file.',
+        variant: 'error',
+      });
+      return;
+    }
+    setImportDraftRows(draft);
+    setImportSummary(null);
+  };
+
+  const parsePastedData = async () => {
+    if (!pasteImportText.trim()) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Nothing to import',
+        message: 'Paste CSV-like rows first.',
+        variant: 'error',
+      });
+      return;
+    }
+    const draft = parseCsvTextToDraft(pasteImportText);
+    if (!draft.length) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Import failed',
+        message: 'Could not parse rows from pasted text.',
+        variant: 'error',
+      });
+      return;
+    }
+    setImportDraftRows(draft);
+    setImportSummary(null);
+  };
+
+  const updateDraftRow = (idx, key, value) => {
+    setImportDraftRows((rows) =>
+      rows.map((row, i) => {
+        if (i !== idx) return row;
+        const updated = makeDraftRow({ ...row, [key]: value }, row._rowNum - 1, CRM_STATUSES, CRM_COMPANY_TYPES);
+        return { ...updated, _rowNum: row._rowNum };
+      }),
+    );
+  };
+
+  const removeDraftRow = (idx) => {
+    setImportDraftRows((rows) => rows.filter((_, i) => i !== idx));
+  };
+
+  const autoFixDraftRows = () => {
+    setImportDraftRows((rows) => autoFixImportDraftRows(rows, CRM_STATUSES, CRM_COMPANY_TYPES));
+  };
+
+  const importCleanedRows = async () => {
+    if (!importDraftRows.length) {
+      setAlertModal({
+        isOpen: true,
+        title: 'No rows to import',
+        message: 'Parse pasted text or upload a file first.',
+        variant: 'error',
+      });
+      return;
+    }
+
+    const errorCount = importDraftRows.reduce((sum, r) => sum + (r._errors?.length || 0), 0);
+    if (errorCount > 0) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Fix data first',
+        message: `There are ${errorCount} data issues in preview rows. Use auto-fix or edit rows before import.`,
+        variant: 'error',
+      });
+      return;
+    }
+
+    const rows = importDraftRows.map(({ _errors, _rowNum, ...row }) => row).filter((r) => r.name);
+    await importRows(rows);
+  };
+
   function resetNoteDraft() {
-    setNoteDraft({
-      id: null,
-      parent_note_id: null,
-      contact_method: 'note',
-      made_contact: false,
-      title: '',
-      body: '',
-    });
+    setNoteDraft(emptyNoteDraft());
   }
 
   const startAddNote = () => {
@@ -600,26 +613,12 @@ const CrmPage = ({ user, onLogout }) => {
   };
 
   const startReply = (parentNoteId) => {
-    setNoteDraft({
-      id: null,
-      parent_note_id: parentNoteId,
-      contact_method: 'note',
-      made_contact: false,
-      title: '',
-      body: '',
-    });
+    setNoteDraft(noteDraftForReply(parentNoteId));
     setNoteComposerOpen(true);
   };
 
   const startEditNote = (note) => {
-    setNoteDraft({
-      id: note.id,
-      parent_note_id: note.parent_note_id ?? null,
-      contact_method: note.contact_method || 'note',
-      made_contact: Boolean(note.made_contact),
-      title: note.title || '',
-      body: note.body || '',
-    });
+    setNoteDraft(noteDraftForEdit(note));
     setNoteComposerOpen(true);
   };
 
@@ -689,6 +688,8 @@ const CrmPage = ({ user, onLogout }) => {
               type="button"
               onClick={() => {
                 setImportSummary(null);
+                setPasteImportText('');
+                setImportDraftRows([]);
                 setImportModalOpen(true);
               }}
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 shadow-sm"
@@ -1046,7 +1047,7 @@ const CrmPage = ({ user, onLogout }) => {
                 ) : (
                   <div className="space-y-3">
                     {crmNotes.map((note) => {
-                      const wasEdited = note.updated_at && note.created_at && new Date(note.updated_at).getTime() > new Date(note.created_at).getTime();
+                      const wasEdited = noteWasEdited(note);
                       return (
                         <div key={note.id} className="rounded-xl border border-gray-200 bg-white p-4">
                           <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
@@ -1069,7 +1070,7 @@ const CrmPage = ({ user, onLogout }) => {
                           {(note.comments || []).length > 0 && (
                             <div className="mt-3 border-t border-gray-100 pt-3 space-y-2">
                               {note.comments.map((comment) => {
-                                const commentEdited = comment.updated_at && comment.created_at && new Date(comment.updated_at).getTime() > new Date(comment.created_at).getTime();
+                                const commentEdited = noteWasEdited(comment);
                                 return (
                                   <div key={comment.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
                                     <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
@@ -1237,7 +1238,7 @@ const CrmPage = ({ user, onLogout }) => {
               </div>
               <div className="overflow-y-auto px-6 py-5 space-y-4">
                 <p className="text-sm text-gray-600">
-                  Build your list in Excel or Google Sheets using this exact header order, then export to CSV and upload.
+                  Build your list in Excel/Google Sheets or paste raw rows, then review and fix data before importing.
                 </p>
                 <code className="block p-3 rounded-lg bg-gray-100 text-xs text-gray-800 break-words">
                   name,contact_name,email,phone,website,company_types,status,notes
@@ -1263,6 +1264,105 @@ const CrmPage = ({ user, onLogout }) => {
                     }}
                   />
                 </label>
+                <div className="rounded-lg border border-gray-200 p-3 bg-gray-50">
+                  <label className="block">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Or paste rows directly</span>
+                    <textarea
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[160px] bg-white"
+                      placeholder="Paste rows here (with or without header). Wrapped lines are supported."
+                      value={pasteImportText}
+                      onChange={(e) => setPasteImportText(e.target.value)}
+                      disabled={importBusy}
+                    />
+                  </label>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={importBusy}
+                      onClick={parsePastedData}
+                      className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 text-sm font-medium disabled:opacity-50"
+                    >
+                      Parse pasted data
+                    </button>
+                    <button
+                      type="button"
+                      disabled={importBusy}
+                      onClick={() => setPasteImportText('')}
+                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 text-sm font-medium disabled:opacity-50"
+                    >
+                      Clear pasted text
+                    </button>
+                  </div>
+                </div>
+                {importDraftRows.length > 0 && (
+                  <div className="rounded-lg border border-gray-200 p-3 bg-white space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-medium text-gray-900">
+                        Parsed rows: {importDraftRows.length} | Issues:{' '}
+                        {importDraftRows.reduce((sum, r) => sum + (r._errors?.length || 0), 0)}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={autoFixDraftRows}
+                          disabled={importBusy}
+                          className="px-3 py-1.5 text-xs rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                        >
+                          Auto-fix common issues
+                        </button>
+                        <button
+                          type="button"
+                          onClick={importCleanedRows}
+                          disabled={importBusy}
+                          className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          {importBusy ? 'Importing…' : 'Import cleaned rows'}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="max-h-72 overflow-auto border border-gray-200 rounded-lg">
+                      <table className="min-w-full text-xs">
+                        <thead className="bg-gray-50">
+                          <tr>
+                            <th className="px-2 py-1 text-left">Row</th>
+                            <th className="px-2 py-1 text-left">Name</th>
+                            <th className="px-2 py-1 text-left">Email</th>
+                            <th className="px-2 py-1 text-left">Phone</th>
+                            <th className="px-2 py-1 text-left">Website</th>
+                            <th className="px-2 py-1 text-left">Types</th>
+                            <th className="px-2 py-1 text-left">Status</th>
+                            <th className="px-2 py-1 text-left">Notes</th>
+                            <th className="px-2 py-1 text-left">Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {importDraftRows.map((row, idx) => (
+                            <tr key={`${row._rowNum}-${idx}`} className="border-t border-gray-100 align-top">
+                              <td className="px-2 py-1 text-gray-500">{row._rowNum}</td>
+                              <td className="px-2 py-1"><input className="w-36 border rounded px-1 py-0.5" value={row.name} onChange={(e) => updateDraftRow(idx, 'name', e.target.value)} /></td>
+                              <td className="px-2 py-1"><input className="w-44 border rounded px-1 py-0.5" value={row.email} onChange={(e) => updateDraftRow(idx, 'email', e.target.value)} /></td>
+                              <td className="px-2 py-1"><input className="w-32 border rounded px-1 py-0.5" value={row.phone} onChange={(e) => updateDraftRow(idx, 'phone', e.target.value)} /></td>
+                              <td className="px-2 py-1"><input className="w-40 border rounded px-1 py-0.5" value={row.website} onChange={(e) => updateDraftRow(idx, 'website', e.target.value)} /></td>
+                              <td className="px-2 py-1"><input className="w-40 border rounded px-1 py-0.5" value={row.company_types} onChange={(e) => updateDraftRow(idx, 'company_types', e.target.value)} /></td>
+                              <td className="px-2 py-1">
+                                <select className="w-28 border rounded px-1 py-0.5" value={row.status} onChange={(e) => updateDraftRow(idx, 'status', e.target.value)}>
+                                  {CRM_STATUSES.map((s) => (<option key={s} value={s}>{s}</option>))}
+                                </select>
+                              </td>
+                              <td className="px-2 py-1"><input className="w-48 border rounded px-1 py-0.5" value={row.notes} onChange={(e) => updateDraftRow(idx, 'notes', e.target.value)} /></td>
+                              <td className="px-2 py-1">
+                                <button type="button" onClick={() => removeDraftRow(idx)} className="text-red-700 hover:underline">Remove</button>
+                                {row._errors?.length > 0 && (
+                                  <div className="mt-1 text-red-700 whitespace-pre-wrap">{row._errors.join('; ')}</div>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
                 {importSummary && (
                   <div className="rounded-lg border border-gray-200 p-3 text-sm">
                     <p className="font-medium text-gray-900">
