@@ -8,6 +8,7 @@ import {
   buildImportDraftRows,
   autoFixDraftRows as autoFixImportDraftRows,
   makeDraftRow,
+  inferSingleImportRowFromUnstructuredText,
 } from '../utils/crmImport';
 import {
   emptyNoteDraft,
@@ -139,6 +140,8 @@ const CrmPage = ({ user, onLogout }) => {
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteComposerOpen, setNoteComposerOpen] = useState(false);
   const [isRecordEditing, setIsRecordEditing] = useState(false);
+  const [profileImportOpen, setProfileImportOpen] = useState(false);
+  const [profileImportText, setProfileImportText] = useState('');
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -339,6 +342,7 @@ const CrmPage = ({ user, onLogout }) => {
 
   const openCreate = () => {
     setProvisionModalOpen(false);
+    setProfileImportOpen(false);
     setSelectedId(null);
     setIsCreating(true);
     setNewCompanyModalOpen(true);
@@ -349,6 +353,7 @@ const CrmPage = ({ user, onLogout }) => {
   const selectLead = (id) => {
     setIsCreating(false);
     setNewCompanyModalOpen(false);
+    setProfileImportOpen(false);
     setSelectedId(id);
     setSearchQ('');
     setSearchHits([]);
@@ -414,6 +419,79 @@ const CrmPage = ({ user, onLogout }) => {
       });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const applyProfileImportFromText = () => {
+    if (!profileImportText.trim()) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Nothing to import',
+        message: 'Paste company/contact details first.',
+        variant: 'error',
+      });
+      return;
+    }
+
+    const inferred = inferSingleImportRowFromUnstructuredText(
+      profileImportText,
+      CRM_STATUSES,
+      CRM_COMPANY_TYPES,
+      { includeDiagnostics: true },
+    );
+    const draft = buildImportDraftRows(profileImportText, CRM_STATUSES, CRM_COMPANY_TYPES);
+    if (!draft.length) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not map details',
+        message: 'Try adding at least a company name, email, website, or phone.',
+        variant: 'error',
+      });
+      return;
+    }
+
+    const row = draft[0];
+    setForm((f) => {
+      const existingContacts = normalizeContacts(f.contacts, {
+        name: f.contact_name || '',
+        email: f.email || '',
+        phone: f.phone || '',
+      });
+      const importedPrimary = normalizeContactEntry({
+        name: row.contact_name,
+        email: row.email,
+        phone: row.phone,
+      });
+      const mergedContacts = importedPrimary
+        ? [importedPrimary, ...existingContacts.slice(1)]
+        : existingContacts;
+      return {
+        ...f,
+        name: row.name || f.name || '',
+        contact_name: importedPrimary?.name || f.contact_name || '',
+        email: importedPrimary?.email || f.email || '',
+        phone: importedPrimary?.phone || f.phone || '',
+        website: row.website || f.website || '',
+        company_types: row.company_types
+          ? Array.from(new Set([...(f.company_types || []), ...row.company_types.split(/[,|;]/).map((t) => t.trim()).filter(Boolean)]))
+          : (f.company_types || []),
+        status: row.status || f.status || 'lead',
+        notes: [f.notes, row.notes].filter(Boolean).join('\n').trim(),
+        contacts: mergedContacts,
+      };
+    });
+    setProfileImportOpen(false);
+    setProfileImportText('');
+    if (!isRecordEditing) setIsRecordEditing(true);
+
+    const warnings = inferred?.diagnostics?.warnings || [];
+    if (warnings.length > 0) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Imported with review suggestions',
+        message: `${warnings.join('. ')}.`,
+        variant: inferred?.diagnostics?.confidence === 'low' ? 'error' : 'success',
+      });
     }
   };
 
@@ -681,7 +759,21 @@ const CrmPage = ({ user, onLogout }) => {
     setImportDraftRows((rows) => withDuplicateMetadata(rows));
   }, [withDuplicateMetadata]);
 
-  const importRows = async (rows) => {
+  const summarizeDuplicateBreakdown = (rows) => {
+    return rows.reduce(
+      (acc, row) => {
+        const reasons = row._duplicateReasons || [];
+        if (reasons.some((reason) => reason.includes('in this import list'))) acc.withinList += 1;
+        if (reasons.some((reason) => reason.includes('existing CRM record'))) acc.inCrm += 1;
+        return acc;
+      },
+      { withinList: 0, inCrm: 0 },
+    );
+  };
+
+  const draftDuplicateStats = summarizeDuplicateBreakdown(importDraftRows);
+
+  const importRows = async (rows, duplicateStats = { withinList: 0, inCrm: 0 }) => {
     if (!rows.length) {
       setAlertModal({
         isOpen: true,
@@ -705,7 +797,9 @@ const CrmPage = ({ user, onLogout }) => {
       setAlertModal({
         isOpen: true,
         title: 'Import completed',
-        message: `Imported ${res.imported_count || 0} rows. Failed ${res.failed_count || 0}.`,
+        message:
+          `${res.imported_count || 0} successes. ${res.failed_count || 0} failures. ` +
+          `${duplicateStats.withinList}:${duplicateStats.inCrm} duplicates (list:crm).`,
         variant: (res.failed_count || 0) > 0 ? 'error' : 'success',
       });
       return res;
@@ -820,9 +914,11 @@ const CrmPage = ({ user, onLogout }) => {
     }
 
     const submitRows = [];
+    const submitDraftRows = [];
     const submitDraftIndexes = [];
     importDraftRows.forEach((row, draftIdx) => {
       if (!row.name) return;
+      submitDraftRows.push(row);
       const payload = { ...row };
       delete payload._errors;
       delete payload._rowNum;
@@ -833,8 +929,15 @@ const CrmPage = ({ user, onLogout }) => {
       submitDraftIndexes.push(draftIdx);
     });
 
-    const result = await importRows(submitRows);
+    const duplicateStats = summarizeDuplicateBreakdown(submitDraftRows);
+    const result = await importRows(submitRows, duplicateStats);
     if (!result) return;
+
+    if ((result.failed_count || 0) === 0) {
+      setImportRowsWithDuplicateMetadata([]);
+      setPasteImportText('');
+      return;
+    }
 
     const failedRowNumbers = new Set((result.errors || []).map((err) => Number(err.row)).filter((n) => Number.isFinite(n) && n > 0));
     const importedDraftIndexes = submitDraftIndexes.filter((_, submitIdx) => !failedRowNumbers.has(submitIdx + 1));
@@ -986,7 +1089,7 @@ const CrmPage = ({ user, onLogout }) => {
               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 shadow-sm"
             >
               <FaFileUpload className="w-4 h-4" aria-hidden />
-              Import CSV
+              Import
             </button>
             <button
               type="button"
@@ -1087,6 +1190,14 @@ const CrmPage = ({ user, onLogout }) => {
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <h2 className="text-lg font-semibold text-gray-900">Edit record</h2>
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setProfileImportOpen(true)}
+                      className="px-3 py-1.5 border border-violet-300 text-violet-700 rounded-lg hover:bg-violet-50 text-sm font-medium inline-flex items-center gap-1"
+                    >
+                      <FaFileUpload className="w-3.5 h-3.5" />
+                      Import
+                    </button>
                     {isRecordEditing && (
                       <button
                         type="button"
@@ -1655,6 +1766,63 @@ const CrmPage = ({ user, onLogout }) => {
           </div>
         </div>
 
+        {profileImportOpen ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="crm-profile-import-title"
+            onClick={() => setProfileImportOpen(false)}
+          >
+            <div
+              className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-xl w-full overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100">
+                <h2 id="crm-profile-import-title" className="text-lg font-semibold text-gray-900">
+                  Import into this company
+                </h2>
+                <button
+                  type="button"
+                  onClick={() => setProfileImportOpen(false)}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                  aria-label="Close"
+                >
+                  <FaTimes className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="px-6 py-5 space-y-3">
+                <p className="text-sm text-gray-600">
+                  Paste any company/contact text. The CRM will detect values like company name, contact, email, phone,
+                  website, status, and notes and map them automatically.
+                </p>
+                <textarea
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[180px]"
+                  placeholder="Example: Magic Valley Electric / Contact: Jose Garcia / Email: jgarcia@mvec.coop / +1 (956) 555-1050 / https://mvec.coop"
+                  value={profileImportText}
+                  onChange={(e) => setProfileImportText(e.target.value)}
+                />
+                <div className="flex items-center justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setProfileImportOpen(false)}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 text-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={applyProfileImportFromText}
+                    className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-sm font-medium"
+                  >
+                    Apply import
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
         {importModalOpen ? (
           <div
             className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
@@ -1685,6 +1853,10 @@ const CrmPage = ({ user, onLogout }) => {
                 <p className="text-sm text-gray-600">
                   Build your list in Excel/Google Sheets or paste raw rows, then review and fix data before importing.
                   Rows for the same company are consolidated into one CRM company record.
+                </p>
+                <p className="text-xs text-gray-500">
+                  For a single contact/company, you can also paste disorganized text and the parser will infer likely
+                  field mappings automatically.
                 </p>
                 <code className="block p-3 rounded-lg bg-gray-100 text-xs text-gray-800 break-words">
                   name,contact_name,email,phone,website,company_types,status,notes
@@ -1749,8 +1921,10 @@ const CrmPage = ({ user, onLogout }) => {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-sm font-medium text-gray-900">
                         Parsed rows: {importDraftRows.length} | Issues:{' '}
-                        {importDraftRows.reduce((sum, r) => sum + (r._errors?.length || 0), 0)} | Duplicates:{' '}
-                        {importDraftRows.filter((r) => r._isDuplicate).length} | Unverified duplicates:{' '}
+                        {importDraftRows.reduce((sum, r) => sum + (r._errors?.length || 0), 0)} | Duplicates (list:crm):{' '}
+                        <span className="text-amber-700">{draftDuplicateStats.withinList}</span>
+                        :
+                        <span className="text-red-700">{draftDuplicateStats.inCrm}</span> | Unverified duplicates:{' '}
                         {importDraftRows.filter((r) => r._isDuplicate && !r._duplicateVerified).length}
                       </p>
                       <div className="flex flex-wrap gap-2">
