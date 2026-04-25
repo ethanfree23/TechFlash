@@ -2,7 +2,7 @@ module Api
   module V1
     class JobsController < ApplicationController
       before_action :authenticate_user
-      before_action :require_company, only: [:create]
+      before_action :require_company_or_admin, only: [:create]
       
       def index
         Job.auto_complete_expired!
@@ -138,13 +138,17 @@ module Api
       end
 
       def create
-        company_profile = @current_user.company_profile
+        company_profile = resolve_company_profile_for_create
+        return if performed?
+
         requires_saved_card = !MembershipPolicy.billing_exempt?(company_profile)
-        if requires_saved_card && !PaymentService.company_has_payment_method?(@current_user)
+        skip_card_validation = @current_user&.admin? && ActiveModel::Type::Boolean.new.cast(params[:skip_card_validation])
+        if requires_saved_card && !skip_card_validation && !PaymentService.company_has_payment_method?(company_profile.user)
           return render json: { error: 'Add a valid credit or debit card in Profile & Settings → Payment before posting a job.' }, status: :unprocessable_entity
         end
 
-        job = Job.new(job_params)
+        job = Job.new(job_params.except(:company_profile_id, :skip_card_validation))
+        job.company_profile_id = company_profile.id
         if job.save
           CrmProspectPromotion.promote_after_job_created!(job.company_profile_id)
           Rails.logger.info("[mail] job_posted_email job_id=#{job.id}") # confirm this code path + deploy hit Mailtrap
@@ -415,8 +419,32 @@ module Api
 
       private
 
+      def require_company_or_admin
+        return if @current_user&.company? || @current_user&.admin?
+
+        render json: { error: 'Access denied. Company or admin role required.' }, status: :forbidden
+      end
+
+      def resolve_company_profile_for_create
+        if @current_user&.company?
+          profile = @current_user.company_profile
+          if profile.blank?
+            render json: { error: 'Company profile not found for current user' }, status: :unprocessable_entity
+            return nil
+          end
+          return profile
+        end
+
+        profile = CompanyProfile.find_by(id: params[:company_profile_id])
+        if profile.blank?
+          render json: { error: 'Valid company_profile_id is required for admin job creation' }, status: :unprocessable_entity
+          return nil
+        end
+        profile
+      end
+
       def job_params
-        params.permit(:title, :description, :required_documents, :required_certifications, :location, :status, :company_profile_id, :timeline,
+        params.permit(:title, :description, :required_documents, :required_certifications, :location, :status, :company_profile_id, :timeline, :skip_card_validation,
                       :scheduled_start_at, :scheduled_end_at, :price_cents, :hourly_rate_cents, :hours_per_day, :days,
                       :address, :city, :state, :zip_code, :country,
                       :skill_class, :minimum_years_experience, :notes)

@@ -346,9 +346,19 @@ const JobList = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-8 lg:px-12 py-12">
       <div className="mb-12">
-        <h2 className="text-3xl font-bold text-gray-900 mb-4">
-          {auth.isCompany() ? 'My Jobs' : auth.isAdmin() ? 'All Jobs' : 'Available Jobs'}
-        </h2>
+        <div className="mb-4 flex items-center justify-between gap-3">
+          <h2 className="text-3xl font-bold text-gray-900">
+            {auth.isCompany() ? 'My Jobs' : auth.isAdmin() ? 'All Jobs' : 'Available Jobs'}
+          </h2>
+          {(auth.isCompany() || auth.isAdmin()) && (
+            <Link
+              to="/jobs/create"
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 whitespace-nowrap"
+            >
+              Create Job
+            </Link>
+          )}
+        </div>
         {auth.isTechnician() && (
           <p className="text-sm text-gray-600 mb-8 max-w-3xl leading-relaxed">
             Open roles are often claimed within a day or two when the schedule works for nearby techs. Save your filters to spot matching posts faster.

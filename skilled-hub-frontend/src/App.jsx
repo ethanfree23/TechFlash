@@ -139,7 +139,7 @@ function App() {
           <Route
             path="/jobs/create"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated && user?.role === 'company'}>
+              <ProtectedRoute isAuthenticated={isAuthenticated && (user?.role === 'company' || user?.role === 'admin')}>
                 <CreateJob />
               </ProtectedRoute>
             }

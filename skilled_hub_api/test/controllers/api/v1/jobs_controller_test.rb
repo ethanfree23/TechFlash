@@ -5,6 +5,175 @@ module Api
     class JobsControllerTest < ActionDispatch::IntegrationTest
       include AuthTestHelper
 
+      def with_mocked_company_has_payment_method(value)
+        singleton = PaymentService.singleton_class
+        original_exists = singleton.method_defined?(:company_has_payment_method?)
+        original_method = PaymentService.method(:company_has_payment_method?) if original_exists
+
+        singleton.send(:define_method, :company_has_payment_method?) { |_user| value }
+        yield
+      ensure
+        if original_exists
+          singleton.send(:define_method, :company_has_payment_method?, original_method)
+        else
+          singleton.send(:remove_method, :company_has_payment_method?)
+        end
+      end
+
+      test "admin can create job for selected company when card validation is enabled and card exists" do
+        admin = User.create!(
+          email: "admin-job-create-enabled@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :admin
+        )
+        company_user = User.create!(
+          email: "company-selected-enabled@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        company_profile = CompanyProfile.create!(
+          user: company_user,
+          membership_level: "basic"
+        )
+        company_user.update_column(:company_profile_id, company_profile.id)
+
+        with_mocked_company_has_payment_method(true) do
+          post "/api/v1/jobs",
+               params: {
+                 title: "Admin posted job with card check",
+                 description: "desc",
+                 status: "open",
+                 company_profile_id: company_profile.id
+               },
+               headers: auth_header_for(admin),
+               as: :json
+        end
+
+        assert_response :created
+        created_job = Job.order(:id).last
+        assert_equal company_profile.id, created_job.company_profile_id
+      end
+
+      test "admin cannot create job for selected company when card validation is enabled and no card exists" do
+        admin = User.create!(
+          email: "admin-job-create-blocked@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :admin
+        )
+        company_user = User.create!(
+          email: "company-selected-blocked@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        company_profile = CompanyProfile.create!(
+          user: company_user,
+          membership_level: "basic"
+        )
+        company_user.update_column(:company_profile_id, company_profile.id)
+
+        with_mocked_company_has_payment_method(false) do
+          post "/api/v1/jobs",
+               params: {
+                 title: "Admin posted job blocked",
+                 description: "desc",
+                 status: "open",
+                 company_profile_id: company_profile.id
+               },
+               headers: auth_header_for(admin),
+               as: :json
+        end
+
+        assert_response :unprocessable_entity
+      end
+
+      test "admin can bypass card validation with toggle and create job without saved card" do
+        admin = User.create!(
+          email: "admin-job-create-bypass@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :admin
+        )
+        company_user = User.create!(
+          email: "company-selected-bypass@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        company_profile = CompanyProfile.create!(
+          user: company_user,
+          membership_level: "basic"
+        )
+        company_user.update_column(:company_profile_id, company_profile.id)
+
+        with_mocked_company_has_payment_method(false) do
+          post "/api/v1/jobs",
+               params: {
+                 title: "Admin posted job bypassed",
+                 description: "desc",
+                 status: "open",
+                 company_profile_id: company_profile.id,
+                 skip_card_validation: true
+               },
+               headers: auth_header_for(admin),
+               as: :json
+        end
+
+        assert_response :created
+      end
+
+      test "admin create requires valid company_profile_id" do
+        admin = User.create!(
+          email: "admin-job-create-no-company@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :admin
+        )
+
+        post "/api/v1/jobs",
+             params: {
+               title: "Admin posted job missing company",
+               description: "desc",
+               status: "open"
+             },
+             headers: auth_header_for(admin),
+             as: :json
+
+        assert_response :unprocessable_entity
+      end
+
+      test "company create still enforces saved card requirement when not billing exempt" do
+        user = User.create!(
+          email: "company-enforce-card@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "basic",
+          membership_fee_waived: false
+        )
+        user.update_column(:company_profile_id, profile.id)
+
+        with_mocked_company_has_payment_method(false) do
+          post "/api/v1/jobs",
+               params: {
+                 title: "Card required posting",
+                 description: "Must fail without card",
+                 status: "open",
+                 company_profile_id: profile.id
+               },
+               headers: auth_header_for(user),
+               as: :json
+        end
+
+        assert_response :unprocessable_entity
+      end
+
       test "company with waived membership fee can create job without saved card" do
         user = User.create!(
           email: "company-waived-posting@example.com",

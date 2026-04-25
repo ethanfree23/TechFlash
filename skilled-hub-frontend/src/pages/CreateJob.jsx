@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { jobsAPI, profilesAPI } from '../api/api';
+import { jobsAPI, profilesAPI, crmAPI } from '../api/api';
 import DateTimeInput from '../components/DateTimeInput';
 import CountryStateSelect from '../components/CountryStateSelect';
 import AlertModal from '../components/AlertModal';
 import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
+import { auth } from '../auth';
 
 const toDatetimeLocal = (d) => {
   if (!d) return '';
@@ -42,6 +43,8 @@ const computeEndFromPricing = (startStr, days, hoursPerDay) => {
 };
 
 const CreateJob = () => {
+  const user = auth.getUser();
+  const isAdmin = user?.role === 'admin';
   const defaultStart = getDefaultStart();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -64,11 +67,18 @@ const CreateJob = () => {
   );
   const [saving, setSaving] = useState(false);
   const [companyProfileId, setCompanyProfileId] = useState(null);
+  const [companyQuery, setCompanyQuery] = useState('');
+  const [companyOptions, setCompanyOptions] = useState([]);
+  const [companySearchLoading, setCompanySearchLoading] = useState(false);
+  const [selectedCompanyName, setSelectedCompanyName] = useState('');
+  const [enforceCardValidation, setEnforceCardValidation] = useState(true);
   const [successModal, setSuccessModal] = useState(false);
   const [errorModal, setErrorModal] = useState(null);
   const navigate = useNavigate();
 
   useEffect(() => {
+    if (isAdmin) return;
+
     const fetchProfile = async () => {
       try {
         const profile = await profilesAPI.getCompanyProfile();
@@ -78,7 +88,36 @@ const CreateJob = () => {
       }
     };
     fetchProfile();
-  }, []);
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    const q = companyQuery.trim();
+    if (q.length < 2) {
+      setCompanyOptions([]);
+      return;
+    }
+
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      setCompanySearchLoading(true);
+      try {
+        const res = await crmAPI.searchCompanies(q);
+        if (!cancelled) {
+          setCompanyOptions(Array.isArray(res?.companies) ? res.companies : []);
+        }
+      } catch {
+        if (!cancelled) setCompanyOptions([]);
+      } finally {
+        if (!cancelled) setCompanySearchLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [companyQuery, isAdmin]);
 
   // Auto-compute end date/time from start + days + hours per day (+ 1 hr lunch)
   useEffect(() => {
@@ -116,6 +155,9 @@ const CreateJob = () => {
         scheduled_start_at: scheduledStartAt ? new Date(scheduledStartAt).toISOString() : null,
         scheduled_end_at: scheduledEndAt ? new Date(scheduledEndAt).toISOString() : null,
       };
+      if (isAdmin) {
+        payload.skip_card_validation = !enforceCardValidation;
+      }
       if (jobAmount > 0) {
         payload.hourly_rate_cents = Math.round(hr * 100);
         payload.hours_per_day = hpd;
@@ -151,6 +193,65 @@ const CreateJob = () => {
           />
         </div>
         <div>
+          {isAdmin && (
+            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-3 mb-4">
+              <h3 className="font-medium text-gray-900">Company Account</h3>
+              <p className="text-xs text-gray-500">
+                Search and select the company account this job should be attached to.
+              </p>
+              <input
+                className="w-full border px-3 py-2 rounded bg-white"
+                value={companyQuery}
+                onChange={(e) => setCompanyQuery(e.target.value)}
+                placeholder="Search by company name..."
+              />
+              {companySearchLoading && (
+                <p className="text-xs text-gray-500">Searching companies...</p>
+              )}
+              {!companySearchLoading && companyOptions.length > 0 && (
+                <div className="max-h-44 overflow-y-auto border rounded bg-white">
+                  {companyOptions.map((company) => (
+                    <button
+                      key={company.id}
+                      type="button"
+                      onClick={() => {
+                        setCompanyProfileId(company.id);
+                        setSelectedCompanyName(company.company_name || `Company #${company.id}`);
+                        setCompanyQuery(company.company_name || '');
+                        setCompanyOptions([]);
+                      }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b last:border-b-0"
+                    >
+                      {company.company_name || `Company #${company.id}`}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {selectedCompanyName && (
+                <p className="text-sm text-green-700">
+                  Selected company: <span className="font-medium">{selectedCompanyName}</span>
+                </p>
+              )}
+            </div>
+          )}
+
+          {isAdmin && (
+            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-2 mb-4">
+              <h3 className="font-medium text-gray-900">Card Validation</h3>
+              <p className="text-xs text-gray-500">
+                Toggle whether to require a saved card on the selected company before posting.
+              </p>
+              <label className="inline-flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={enforceCardValidation}
+                  onChange={(e) => setEnforceCardValidation(e.target.checked)}
+                />
+                Validate card on file before posting
+              </label>
+            </div>
+          )}
+
           <label className="block font-medium mb-1">Description</label>
           <textarea
             className="w-full border px-3 py-2 rounded"
@@ -356,6 +457,14 @@ const CreateJob = () => {
         >
           {saving ? 'Creating...' : 'Create Job'}
         </button>
+        {isAdmin && (
+          <p className="text-xs text-gray-600">
+            Card validation:{" "}
+            <span className={enforceCardValidation ? "font-semibold text-green-700" : "font-semibold text-amber-700"}>
+              {enforceCardValidation ? "ON" : "OFF"}
+            </span>
+          </p>
+        )}
       </form>
 
       <AlertModal
