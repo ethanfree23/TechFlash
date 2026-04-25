@@ -4,6 +4,23 @@ import AppHeader from '../components/AppHeader';
 import AdminCreateUserModal from '../components/AdminCreateUserModal';
 import AlertModal from '../components/AlertModal';
 import { profilesAPI, crmAPI } from '../api/api';
+import { buildImportDraftRows } from '../utils/crmImport';
+
+const CRM_STATUSES = ['lead', 'contacted', 'qualified', 'proposal', 'prospect', 'customer', 'competitor', 'churned', 'lost'];
+const CRM_COMPANY_TYPES = [
+  'hvac',
+  'plumbing',
+  'electrical',
+  'refrigeration',
+  'fire_protection',
+  'general_contracting',
+  'handyman',
+  'roofing',
+  'solar',
+  'appliance_repair',
+  'facility_maintenance',
+  'other',
+];
 
 const CompanyProfilePage = ({ user, onLogout }) => {
   const { id } = useParams();
@@ -17,6 +34,11 @@ const CompanyProfilePage = ({ user, onLogout }) => {
   const [mergeBusy, setMergeBusy] = useState(false);
   const [mergeSaving, setMergeSaving] = useState(false);
   const [mergeTarget, setMergeTarget] = useState(null);
+  const [companyCrmLeads, setCompanyCrmLeads] = useState([]);
+  const [selectedCrmLeadId, setSelectedCrmLeadId] = useState('');
+  const [contactImportText, setContactImportText] = useState('');
+  const [contactImportRows, setContactImportRows] = useState([]);
+  const [contactImportBusy, setContactImportBusy] = useState(false);
   const [alertModal, setAlertModal] = useState({
     isOpen: false,
     title: '',
@@ -71,6 +93,28 @@ const CompanyProfilePage = ({ user, onLogout }) => {
     };
   }, [mergeQuery, id, user?.role]);
 
+  useEffect(() => {
+    if (user?.role !== 'admin' || !id) return;
+    let cancelled = false;
+    const loadCompanyCrmLeads = async () => {
+      try {
+        const res = await crmAPI.list();
+        if (cancelled) return;
+        const leads = (res.crm_leads || []).filter((lead) => Number(lead.linked_company_profile_id) === Number(id));
+        setCompanyCrmLeads(leads);
+        if (leads.length > 0) setSelectedCrmLeadId(String(leads[0].id));
+      } catch {
+        if (cancelled) return;
+        setCompanyCrmLeads([]);
+        setSelectedCrmLeadId('');
+      }
+    };
+    loadCompanyCrmLeads();
+    return () => {
+      cancelled = true;
+    };
+  }, [id, user?.role]);
+
   const refreshCompanyProfile = useCallback(async () => {
     if (!id) return;
     try {
@@ -116,6 +160,166 @@ const CompanyProfilePage = ({ user, onLogout }) => {
       });
     } finally {
       setMergeSaving(false);
+    }
+  };
+
+  const parseContactImport = () => {
+    if (!contactImportText.trim()) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Nothing to parse',
+        message: 'Paste contact details first.',
+        variant: 'error',
+      });
+      return;
+    }
+    const draft = buildImportDraftRows(contactImportText, CRM_STATUSES, CRM_COMPANY_TYPES);
+    const contacts = draft
+      .map((row) => ({
+        name: String(row.contact_name || '').trim(),
+        email: String(row.email || '').trim(),
+        phone: String(row.phone || '').trim(),
+      }))
+      .filter((contact) => contact.name || contact.email || contact.phone);
+    if (contacts.length === 0) {
+      setAlertModal({
+        isOpen: true,
+        title: 'No contacts found',
+        message: 'Try adding names with emails or phone numbers.',
+        variant: 'error',
+      });
+      return;
+    }
+    setContactImportRows(contacts);
+  };
+
+  const updateContactImportRow = (idx, key, value) => {
+    setContactImportRows((rows) => rows.map((row, i) => (i === idx ? { ...row, [key]: value } : row)));
+  };
+
+  const removeContactImportRow = (idx) => {
+    setContactImportRows((rows) => rows.filter((_, i) => i !== idx));
+  };
+
+  const saveImportedContacts = async () => {
+    const targetLeadId = Number(selectedCrmLeadId);
+    if (!targetLeadId) {
+      setAlertModal({
+        isOpen: true,
+        title: 'CRM company required',
+        message: 'Link this company to a CRM record first, then import contacts.',
+        variant: 'error',
+      });
+      return;
+    }
+    const cleanedRows = contactImportRows
+      .map((row) => ({
+        name: String(row.name || '').trim(),
+        email: String(row.email || '').trim(),
+        phone: String(row.phone || '').trim(),
+      }))
+      .filter((row) => row.name || row.email || row.phone);
+    if (cleanedRows.length === 0) {
+      setAlertModal({
+        isOpen: true,
+        title: 'No contacts to save',
+        message: 'Parse and review at least one contact first.',
+        variant: 'error',
+      });
+      return;
+    }
+
+    const dedupeKey = (entry) => [
+      String(entry.name || '').trim().toLowerCase(),
+      String(entry.email || '').trim().toLowerCase(),
+      String(entry.phone || '').replace(/\D/g, '').slice(-10),
+    ].join('|');
+
+    setContactImportBusy(true);
+    try {
+      const leadRes = await crmAPI.get(targetLeadId);
+      const lead = leadRes.crm_lead || {};
+      const existingContacts = Array.isArray(lead.contacts) ? lead.contacts : [];
+      const merged = [...existingContacts, ...cleanedRows]
+        .map((entry) => ({
+          name: String(entry.name || '').trim(),
+          email: String(entry.email || '').trim(),
+          phone: String(entry.phone || '').trim(),
+        }))
+        .filter((entry) => entry.name || entry.email || entry.phone);
+      const uniqueContacts = [];
+      const seen = new Set();
+      merged.forEach((entry) => {
+        const key = dedupeKey(entry);
+        if (!key || seen.has(key)) return;
+        seen.add(key);
+        uniqueContacts.push(entry);
+      });
+      const primary = uniqueContacts[0] || {};
+
+      await crmAPI.update(targetLeadId, {
+        contacts: uniqueContacts,
+        contact_name: primary.name || '',
+        email: primary.email || '',
+        phone: primary.phone || '',
+      });
+
+      setContactImportRows([]);
+      setContactImportText('');
+      setAlertModal({
+        isOpen: true,
+        title: 'Contacts imported',
+        message: `${cleanedRows.length} contact(s) added to this company CRM record.`,
+        variant: 'success',
+      });
+    } catch (e) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Import failed',
+        message: e.message || 'Could not save contacts.',
+        variant: 'error',
+      });
+    } finally {
+      setContactImportBusy(false);
+    }
+  };
+
+  const createLinkedCrmRecord = async () => {
+    if (!profile?.id) return;
+    setContactImportBusy(true);
+    try {
+      const primaryCompanyUser = Array.isArray(profile.company_users) ? profile.company_users[0] : null;
+      const payload = {
+        name: (profile.company_name || '').trim() || `Company #${profile.id}`,
+        status: 'lead',
+        linked_company_profile_id: profile.id,
+        linked_user_id: primaryCompanyUser?.id || undefined,
+        website: profile.website_url || '',
+        phone: profile.phone || '',
+      };
+      const res = await crmAPI.create(payload);
+      const createdLead = res.crm_lead;
+      if (!createdLead?.id) {
+        throw new Error('CRM record was created but no id was returned.');
+      }
+      const nextLeads = [createdLead, ...companyCrmLeads];
+      setCompanyCrmLeads(nextLeads);
+      setSelectedCrmLeadId(String(createdLead.id));
+      setAlertModal({
+        isOpen: true,
+        title: 'CRM record created',
+        message: 'Linked CRM company record is ready. You can now paste and import contacts.',
+        variant: 'success',
+      });
+    } catch (e) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not create CRM record',
+        message: e.message || 'Please create/link a CRM company record from the CRM page.',
+        variant: 'error',
+      });
+    } finally {
+      setContactImportBusy(false);
     }
   };
 
@@ -280,6 +484,139 @@ const CompanyProfilePage = ({ user, onLogout }) => {
                   {mergeSaving ? 'Merging…' : 'Merge into selected company'}
                 </button>
               </div>
+            </div>
+          )}
+
+          {user?.role === 'admin' && (
+            <div className="p-6 border-b border-gray-200 bg-indigo-50/40">
+              <h2 className="text-lg font-semibold text-gray-900 mb-2">Company Contact Loader</h2>
+              <p className="text-sm text-gray-600 mb-3">
+                Paste contact details for this one company, review, then append contacts to its linked CRM company record.
+              </p>
+              {companyCrmLeads.length === 0 ? (
+                <div className="space-y-3">
+                  <p className="text-sm text-amber-700">
+                    This company is not linked to any CRM company record yet.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={createLinkedCrmRecord}
+                    disabled={contactImportBusy}
+                    className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    {contactImportBusy ? 'Creating…' : 'Create linked CRM company record'}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <label className="block">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Target CRM company record</span>
+                    <select
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                      value={selectedCrmLeadId}
+                      onChange={(e) => setSelectedCrmLeadId(e.target.value)}
+                    >
+                      {companyCrmLeads.map((lead) => (
+                        <option key={lead.id} value={String(lead.id)}>
+                          {lead.name || `CRM #${lead.id}`} (ID {lead.id})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Paste contact rows/text</span>
+                    <textarea
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[140px] bg-white"
+                      value={contactImportText}
+                      onChange={(e) => setContactImportText(e.target.value)}
+                      placeholder="Paste contact rows or unstructured contact text here."
+                    />
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={parseContactImport}
+                      disabled={contactImportBusy}
+                      className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      Parse contacts
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setContactImportText('');
+                        setContactImportRows([]);
+                      }}
+                      disabled={contactImportBusy}
+                      className="px-4 py-2 rounded-lg border border-gray-300 text-sm text-gray-700 hover:bg-gray-100 disabled:opacity-50"
+                    >
+                      Clear
+                    </button>
+                  </div>
+
+                  {contactImportRows.length > 0 && (
+                    <div className="rounded-lg border border-gray-200 bg-white">
+                      <div className="px-3 py-2 text-sm font-medium text-gray-900 border-b border-gray-100">
+                        Parsed contacts: {contactImportRows.length}
+                      </div>
+                      <div className="max-h-64 overflow-auto">
+                        <table className="min-w-full text-xs">
+                          <thead className="bg-gray-50">
+                            <tr>
+                              <th className="px-2 py-1 text-left">Name</th>
+                              <th className="px-2 py-1 text-left">Email</th>
+                              <th className="px-2 py-1 text-left">Phone</th>
+                              <th className="px-2 py-1 text-left">Action</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {contactImportRows.map((row, idx) => (
+                              <tr key={`${idx}-${row.email || row.phone || row.name}`} className="border-t border-gray-100">
+                                <td className="px-2 py-1">
+                                  <input
+                                    className="w-44 border rounded px-1 py-0.5"
+                                    value={row.name}
+                                    onChange={(e) => updateContactImportRow(idx, 'name', e.target.value)}
+                                  />
+                                </td>
+                                <td className="px-2 py-1">
+                                  <input
+                                    className="w-52 border rounded px-1 py-0.5"
+                                    value={row.email}
+                                    onChange={(e) => updateContactImportRow(idx, 'email', e.target.value)}
+                                  />
+                                </td>
+                                <td className="px-2 py-1">
+                                  <input
+                                    className="w-40 border rounded px-1 py-0.5"
+                                    value={row.phone}
+                                    onChange={(e) => updateContactImportRow(idx, 'phone', e.target.value)}
+                                  />
+                                </td>
+                                <td className="px-2 py-1">
+                                  <button type="button" onClick={() => removeContactImportRow(idx)} className="text-red-700 hover:underline">
+                                    Remove
+                                  </button>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="px-3 py-2 border-t border-gray-100">
+                        <button
+                          type="button"
+                          onClick={saveImportedContacts}
+                          disabled={contactImportBusy}
+                          className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50"
+                        >
+                          {contactImportBusy ? 'Saving…' : 'Save contacts to company CRM record'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

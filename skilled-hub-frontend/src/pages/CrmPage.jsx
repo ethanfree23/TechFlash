@@ -82,6 +82,17 @@ const normalizeContactEntry = (entry) => {
   return { name, email, phone };
 };
 
+const normalizeContactDraftEntry = (entry) => {
+  if (!entry || typeof entry !== 'object') return { name: '', email: '', phone: '' };
+  return {
+    name: String(entry.name || '').trim(),
+    email: String(entry.email || '').trim(),
+    phone: formatPhoneInput(String(entry.phone || '').trim()),
+  };
+};
+
+const hasContactValue = (entry) => Boolean(entry?.name || entry?.email || entry?.phone);
+
 const normalizeContacts = (contacts, fallback = null) => {
   const normalized = Array.isArray(contacts)
     ? contacts.map((entry) => normalizeContactEntry(entry)).filter(Boolean)
@@ -89,6 +100,15 @@ const normalizeContacts = (contacts, fallback = null) => {
   if (normalized.length > 0) return normalized;
   const fallbackNormalized = normalizeContactEntry(fallback);
   return fallbackNormalized ? [fallbackNormalized] : [];
+};
+
+const editableContacts = (contacts, fallback = null) => {
+  const normalized = Array.isArray(contacts)
+    ? contacts.filter((entry) => entry && typeof entry === 'object').map((entry) => normalizeContactDraftEntry(entry))
+    : [];
+  if (normalized.length > 0) return normalized;
+  const fallbackNormalized = normalizeContactDraftEntry(fallback);
+  return hasContactValue(fallbackNormalized) ? [fallbackNormalized] : [];
 };
 
 const CrmPage = ({ user, onLogout }) => {
@@ -142,6 +162,7 @@ const CrmPage = ({ user, onLogout }) => {
   const [isRecordEditing, setIsRecordEditing] = useState(false);
   const [profileImportOpen, setProfileImportOpen] = useState(false);
   const [profileImportText, setProfileImportText] = useState('');
+  const pendingAdditionalContactFocusIdx = useRef(null);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -617,7 +638,7 @@ const CrmPage = ({ user, onLogout }) => {
 
   const updatePrimaryContactField = (field, value) => {
     setForm((f) => {
-      const contacts = normalizeContacts(f.contacts, {
+      const contacts = editableContacts(f.contacts, {
         name: f.contact_name || '',
         email: f.email || '',
         phone: f.phone || '',
@@ -637,19 +658,27 @@ const CrmPage = ({ user, onLogout }) => {
 
   const addAdditionalContact = () => {
     setForm((f) => {
-      const contacts = normalizeContacts(f.contacts, {
+      const contacts = editableContacts(f.contacts, {
         name: f.contact_name || '',
         email: f.email || '',
         phone: f.phone || '',
       });
       const baseContacts = contacts.length > 0 ? contacts : [{ name: '', email: '', phone: '' }];
+      pendingAdditionalContactFocusIdx.current = baseContacts.length;
       return { ...f, contacts: [...baseContacts, { name: '', email: '', phone: '' }] };
     });
   };
 
+  const focusAdditionalContactNameInput = (contactIdx) => (node) => {
+    if (!node) return;
+    if (pendingAdditionalContactFocusIdx.current !== contactIdx) return;
+    node.focus();
+    pendingAdditionalContactFocusIdx.current = null;
+  };
+
   const updateAdditionalContactField = (contactIdx, field, value) => {
     setForm((f) => {
-      const contacts = normalizeContacts(f.contacts, {
+      const contacts = editableContacts(f.contacts, {
         name: f.contact_name || '',
         email: f.email || '',
         phone: f.phone || '',
@@ -665,7 +694,7 @@ const CrmPage = ({ user, onLogout }) => {
 
   const removeAdditionalContact = (contactIdx) => {
     setForm((f) => {
-      const contacts = normalizeContacts(f.contacts, {
+      const contacts = editableContacts(f.contacts, {
         name: f.contact_name || '',
         email: f.email || '',
         phone: f.phone || '',
@@ -871,6 +900,29 @@ const CrmPage = ({ user, onLogout }) => {
     );
   };
 
+  const splitContactName = (fullName) => {
+    const tokens = String(fullName || '').trim().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return { firstName: '', lastName: '' };
+    if (tokens.length === 1) return { firstName: tokens[0], lastName: '' };
+    return { firstName: tokens[0], lastName: tokens.slice(1).join(' ') };
+  };
+
+  const updateDraftContactNamePart = (idx, part, value) => {
+    setImportRowsWithDuplicateMetadata((rows) =>
+      rows.map((row, i) => {
+        if (i !== idx) return row;
+        const current = splitContactName(row.contact_name);
+        const next = {
+          ...current,
+          [part]: value,
+        };
+        const contactName = [next.firstName, next.lastName].filter(Boolean).join(' ').trim();
+        const updated = makeDraftRow({ ...row, contact_name: contactName }, row._rowNum - 1, CRM_STATUSES, CRM_COMPANY_TYPES);
+        return { ...updated, _rowNum: row._rowNum, _duplicateVerified: row._duplicateVerified };
+      }),
+    );
+  };
+
   const removeDraftRow = (idx) => {
     setImportRowsWithDuplicateMetadata((rows) => rows.filter((_, i) => i !== idx));
   };
@@ -1057,6 +1109,15 @@ const CrmPage = ({ user, onLogout }) => {
   const metrics = detail?.linked_metrics;
   const activity = detail?.activity;
   const recentJobs = detail?.recent_jobs || [];
+  const displayContacts = editableContacts(form.contacts, {
+    name: form.contact_name || '',
+    email: form.email || '',
+    phone: form.phone || '',
+  });
+  const fullAddress = [form.street_address, form.city, form.state, form.zip].map((v) => String(v || '').trim()).filter(Boolean).join(', ');
+  const mapsAddressUrl = fullAddress
+    ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`
+    : '';
   const filteredLeads = leads.filter((row) => {
     const nameOk =
       pipelineNameFilter.trim() === '' || (row.name || '').toLowerCase().includes(pipelineNameFilter.trim().toLowerCase());
@@ -1224,7 +1285,8 @@ const CrmPage = ({ user, onLogout }) => {
                 {detailLoading && (
                   <p className="text-sm text-gray-500 mb-4">Loading details…</p>
                 )}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {isRecordEditing ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <label className="block sm:col-span-2">
                     <span className="text-xs font-medium text-gray-500 uppercase">Company name *</span>
                     <input
@@ -1289,7 +1351,7 @@ const CrmPage = ({ user, onLogout }) => {
                         Add contact
                       </button>
                     </div>
-                    {normalizeContacts(form.contacts, { name: form.contact_name, email: form.email, phone: form.phone })
+                    {editableContacts(form.contacts, { name: form.contact_name, email: form.email, phone: form.phone })
                       .slice(1)
                       .map((contact, idx) => {
                         const contactIndex = idx + 1;
@@ -1299,6 +1361,7 @@ const CrmPage = ({ user, onLogout }) => {
                               className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
                               placeholder="Name"
                               value={contact.name || ''}
+                              ref={focusAdditionalContactNameInput(contactIndex)}
                               onChange={(e) => updateAdditionalContactField(contactIndex, 'name', e.target.value)}
                               readOnly={!isRecordEditing}
                             />
@@ -1329,7 +1392,7 @@ const CrmPage = ({ user, onLogout }) => {
                           </div>
                         );
                       })}
-                    {normalizeContacts(form.contacts, { name: form.contact_name, email: form.email, phone: form.phone }).length <= 1 && (
+                    {editableContacts(form.contacts, { name: form.contact_name, email: form.email, phone: form.phone }).length <= 1 && (
                       <p className="mt-2 text-xs text-gray-500">No additional contacts yet.</p>
                     )}
                   </div>
@@ -1436,7 +1499,96 @@ const CrmPage = ({ user, onLogout }) => {
                       readOnly={!isRecordEditing}
                     />
                   </label>
-                </div>
+                  </div>
+                ) : (
+                  <div className="space-y-5">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-xs font-medium text-gray-500 uppercase">Company name</div>
+                        <div className="mt-1 text-sm text-gray-900 font-medium">{form.name || '—'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-gray-500 uppercase">Website</div>
+                        <div className="mt-1 text-sm text-gray-900">
+                          {form.website ? (
+                            <a
+                              href={/^https?:\/\//i.test(form.website) ? form.website : `https://${form.website}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="text-blue-700 hover:underline break-all"
+                            >
+                              {form.website}
+                            </a>
+                          ) : '—'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <div className="text-xs font-medium text-gray-500 uppercase">Company phone</div>
+                        <div className="mt-1 text-sm text-gray-900">{form.phone || '—'}</div>
+                      </div>
+                      <div>
+                        <div className="text-xs font-medium text-gray-500 uppercase">Company email</div>
+                        <div className="mt-1 text-sm text-gray-900">
+                          {form.email ? (
+                            <a href={`mailto:${form.email}`} className="text-blue-700 hover:underline break-all">
+                              {form.email}
+                            </a>
+                          ) : '—'}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-medium text-gray-500 uppercase">Company address</div>
+                      <div className="mt-1 text-sm text-gray-900">
+                        {fullAddress ? (
+                          <a href={mapsAddressUrl} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-words">
+                            {fullAddress}
+                          </a>
+                        ) : '—'}
+                      </div>
+                    </div>
+
+                    <div>
+                      <div className="text-xs font-medium text-gray-500 uppercase mb-2">
+                        Contacts ({displayContacts.length})
+                      </div>
+                      {displayContacts.length === 0 ? (
+                        <div className="text-sm text-gray-500">No contacts yet.</div>
+                      ) : (
+                        <div className="space-y-2">
+                          {displayContacts.map((contact, idx) => (
+                            <details
+                              key={`view-contact-${idx}`}
+                              className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
+                              open={idx === 0}
+                            >
+                              <summary className="cursor-pointer text-sm font-medium text-gray-900">
+                                {contact.name || `Contact ${idx + 1}`}
+                              </summary>
+                              <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                                <div>
+                                  <span className="text-gray-500">Email:</span>{' '}
+                                  {contact.email ? (
+                                    <a href={`mailto:${contact.email}`} className="text-blue-700 hover:underline break-all">
+                                      {contact.email}
+                                    </a>
+                                  ) : '—'}
+                                </div>
+                                <div>
+                                  <span className="text-gray-500">Phone:</span> {contact.phone || '—'}
+                                </div>
+                              </div>
+                            </details>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="mt-6 pt-6 border-t border-gray-100">
                   <h3 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
@@ -1961,14 +2113,16 @@ const CrmPage = ({ user, onLogout }) => {
                         <thead className="bg-gray-50">
                           <tr>
                             <th className="px-2 py-1 text-left">Row</th>
-                            <th className="px-2 py-1 text-left">Name</th>
+                            <th className="px-2 py-1 text-left">Company</th>
+                            <th className="px-2 py-1 text-left">First name</th>
+                            <th className="px-2 py-1 text-left">Last name</th>
                             <th className="px-2 py-1 text-left">Email</th>
                             <th className="px-2 py-1 text-left">Phone</th>
                             <th className="px-2 py-1 text-left">Website</th>
                             <th className="px-2 py-1 text-left">Types</th>
                             <th className="px-2 py-1 text-left">Status</th>
                             <th className="px-2 py-1 text-left">Notes</th>
-                            <th className="px-2 py-1 text-left">Action</th>
+                            <th className="px-2 py-1 text-left min-w-[12rem]">Action</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -1983,7 +2137,21 @@ const CrmPage = ({ user, onLogout }) => {
                             .map(({ row, idx }) => (
                             <tr key={`${row._rowNum}-${idx}`} className="border-t border-gray-100 align-top">
                               <td className="px-2 py-1 text-gray-500">{row._rowNum}</td>
-                              <td className="px-2 py-1"><input className="w-36 border rounded px-1 py-0.5" value={row.name} onChange={(e) => updateDraftRow(idx, 'name', e.target.value)} /></td>
+                              <td className="px-2 py-1"><input className="w-44 border rounded px-1 py-0.5" value={row.name} onChange={(e) => updateDraftRow(idx, 'name', e.target.value)} /></td>
+                              <td className="px-2 py-1">
+                                <input
+                                  className="w-32 border rounded px-1 py-0.5"
+                                  value={splitContactName(row.contact_name).firstName}
+                                  onChange={(e) => updateDraftContactNamePart(idx, 'firstName', e.target.value)}
+                                />
+                              </td>
+                              <td className="px-2 py-1">
+                                <input
+                                  className="w-32 border rounded px-1 py-0.5"
+                                  value={splitContactName(row.contact_name).lastName}
+                                  onChange={(e) => updateDraftContactNamePart(idx, 'lastName', e.target.value)}
+                                />
+                              </td>
                               <td className="px-2 py-1"><input className="w-44 border rounded px-1 py-0.5" value={row.email} onChange={(e) => updateDraftRow(idx, 'email', e.target.value)} /></td>
                               <td className="px-2 py-1"><input className="w-32 border rounded px-1 py-0.5" value={row.phone} onChange={(e) => updateDraftRow(idx, 'phone', e.target.value)} /></td>
                               <td className="px-2 py-1"><input className="w-40 border rounded px-1 py-0.5" value={row.website} onChange={(e) => updateDraftRow(idx, 'website', e.target.value)} /></td>
@@ -1994,11 +2162,11 @@ const CrmPage = ({ user, onLogout }) => {
                                 </select>
                               </td>
                               <td className="px-2 py-1"><input className="w-48 border rounded px-1 py-0.5" value={row.notes} onChange={(e) => updateDraftRow(idx, 'notes', e.target.value)} /></td>
-                              <td className="px-2 py-1">
+                              <td className="px-2 py-1 min-w-[12rem]">
                                 <button type="button" onClick={() => removeDraftRow(idx)} className="text-red-700 hover:underline">Remove</button>
                                 {row._isDuplicate && (
-                                  <div className="mt-1 space-y-1">
-                                    <div className="text-amber-700 whitespace-pre-wrap">{row._duplicateReasons.join('; ')}</div>
+                                  <div className="mt-1 space-y-1 max-h-24 overflow-auto pr-1">
+                                    <div className="text-amber-700 whitespace-normal break-words">{row._duplicateReasons.join('; ')}</div>
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -2015,7 +2183,7 @@ const CrmPage = ({ user, onLogout }) => {
                                   </div>
                                 )}
                                 {row._errors?.length > 0 && (
-                                  <div className="mt-1 text-red-700 whitespace-pre-wrap">{row._errors.join('; ')}</div>
+                                  <div className="mt-1 text-red-700 whitespace-normal break-words max-h-20 overflow-auto pr-1">{row._errors.join('; ')}</div>
                                 )}
                               </td>
                             </tr>
@@ -2386,7 +2554,7 @@ const CrmPage = ({ user, onLogout }) => {
                         Add contact
                       </button>
                     </div>
-                    {normalizeContacts(form.contacts, { name: form.contact_name, email: form.email, phone: form.phone })
+                    {editableContacts(form.contacts, { name: form.contact_name, email: form.email, phone: form.phone })
                       .slice(1)
                       .map((contact, idx) => {
                         const contactIndex = idx + 1;
@@ -2396,6 +2564,7 @@ const CrmPage = ({ user, onLogout }) => {
                               className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
                               placeholder="Name"
                               value={contact.name || ''}
+                              ref={focusAdditionalContactNameInput(contactIndex)}
                               onChange={(e) => updateAdditionalContactField(contactIndex, 'name', e.target.value)}
                             />
                             <input
@@ -2422,7 +2591,7 @@ const CrmPage = ({ user, onLogout }) => {
                           </div>
                         );
                       })}
-                    {normalizeContacts(form.contacts, { name: form.contact_name, email: form.email, phone: form.phone }).length <= 1 && (
+                    {editableContacts(form.contacts, { name: form.contact_name, email: form.email, phone: form.phone }).length <= 1 && (
                       <p className="mt-2 text-xs text-gray-500">No additional contacts yet.</p>
                     )}
                   </div>
