@@ -50,6 +50,7 @@ const inferCompanyTypeTokens = (text, companyTypes) => {
 };
 
 const COMPANY_NAME_HINT_RE = /\b(llc|inc|corp|co\.?|company|electric|plumbing|hvac|services|solutions|mechanical|contracting)\b/i;
+const NON_COMPANY_LINE_RE = /^(cell|phone|mobile|email|e-?mail|tel|fax|address|city|state|zip|tecl)\b/i;
 
 const looksLikePersonName = (value) => {
   const name = cleanLooseValue(value);
@@ -102,6 +103,20 @@ const inferCompanyNameFromEmailDomain = (emails) => {
   return toTitleCase(spaced || host);
 };
 
+const looksLikeStreetAddress = (line) => /^\d+\s+[A-Za-z0-9.'# -]+$/.test(cleanLooseValue(line));
+const looksLikeCityStateZip = (line) => /^[A-Za-z .'-]+,\s*[A-Z]{2}\s+\d{5}(?:-\d{4})?$/.test(cleanLooseValue(line));
+
+const extractExplicitCompanyName = (lines) =>
+  lines.find((line) => {
+    const value = cleanLooseValue(line);
+    if (!value) return false;
+    if (extractNameFromLine(value)) return false;
+    if (/@|https?:\/\//i.test(value)) return false;
+    if (NON_COMPANY_LINE_RE.test(value.toLowerCase())) return false;
+    if (looksLikeStreetAddress(value) || looksLikeCityStateZip(value)) return false;
+    return COMPANY_NAME_HINT_RE.test(value);
+  }) || '';
+
 const findContactEmailAndPhone = (line, lines, startIdx) => {
   const searchWindow = [line, ...lines.slice(startIdx + 1, startIdx + 5)].join(' ');
   const emailMatch = searchWindow.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
@@ -125,8 +140,8 @@ const inferMultipleImportRowsFromUnstructuredText = (text, statuses = [], compan
 
   const fullText = lines.join(' ');
   const emails = uniqueValues(fullText.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || []);
-  const companyFromHintLine = lines.find((line) => COMPANY_NAME_HINT_RE.test(line) && !looksLikePersonName(line));
-  const sharedCompanyName = cleanLooseValue(companyFromHintLine) || inferCompanyNameFromEmailDomain(emails);
+  const explicitCompanyName = cleanLooseValue(extractExplicitCompanyName(lines));
+  const sharedCompanyName = explicitCompanyName || inferCompanyNameFromEmailDomain(emails);
   const inferredTypes = inferCompanyTypeTokens(fullText, companyTypes);
 
   const contacts = [];
@@ -339,18 +354,27 @@ export const buildImportDraftRows = (content, statuses, companyTypes) => {
     return rows.map((r, idx) => makeDraftRow(r, idx, statuses, companyTypes));
   }
 
+  const rawLines = String(content || '')
+    .replace(/\r\n/g, '\n')
+    .replace(/\r/g, '\n')
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const likelyContactLineCount = rawLines.filter((line) => extractNameFromLine(line)).length;
+  const emailCount = (String(content || '').match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || []).length;
+  const hasCsvishLine = rawLines.some((line) => countCommas(line) >= 3);
+  if (likelyContactLineCount >= 2 && emailCount >= 2 && !hasCsvishLine) {
+    const inferredMultiple = inferMultipleImportRowsFromUnstructuredText(content, statuses, companyTypes);
+    if (inferredMultiple.length > 1) {
+      return inferredMultiple.map((row, idx) => makeDraftRow(row, idx, statuses, companyTypes));
+    }
+  }
+
   const normalizedLines = normalizeRowsWithWrappedLines(content);
   const headerlessRows = normalizedLines.map((line) => parseCsv(line)[0] || []);
   const rows = mapRowsToObjects(headerlessRows, CRM_IMPORT_HEADERS);
   if (rows.length > 0) {
-    const draftRows = rows.map((r, idx) => makeDraftRow(r, idx, statuses, companyTypes));
-    const hasStructuredSignal = draftRows.some((row) => row.email || row.phone || row.website);
-    if (hasStructuredSignal) return draftRows;
-  }
-
-  const inferredMultiple = inferMultipleImportRowsFromUnstructuredText(content, statuses, companyTypes);
-  if (inferredMultiple.length > 1) {
-    return inferredMultiple.map((row, idx) => makeDraftRow(row, idx, statuses, companyTypes));
+    return rows.map((r, idx) => makeDraftRow(r, idx, statuses, companyTypes));
   }
 
   const inferred = inferSingleImportRowFromUnstructuredText(content, statuses, companyTypes);
