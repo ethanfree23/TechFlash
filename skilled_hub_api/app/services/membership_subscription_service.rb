@@ -77,6 +77,8 @@ class MembershipSubscriptionService
     )
   rescue Stripe::InvalidRequestError
     profile.update!(stripe_membership_subscription_id: nil, membership_status: nil, membership_current_period_end_at: nil)
+  rescue Stripe::StripeError => e
+    Rails.logger.warn("MembershipSubscriptionService.cancel_for_basic!: Stripe error ignored (#{e.class}: #{e.message})")
   end
 
   def self.profile_for(user)

@@ -25,6 +25,7 @@ const CRM_STATUSES = [
   'proposal',
   'prospect',
   'customer',
+  'competitor',
   'churned',
   'lost',
 ];

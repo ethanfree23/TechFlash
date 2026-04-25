@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 class CrmLead < ApplicationRecord
-  STATUSES = %w[lead contacted qualified proposal prospect customer churned lost].freeze
+  STATUSES = %w[lead contacted qualified proposal prospect customer competitor churned lost].freeze
 
   belongs_to :linked_user, class_name: "User", optional: true, inverse_of: :crm_leads
   belongs_to :linked_company_profile, class_name: "CompanyProfile", optional: true

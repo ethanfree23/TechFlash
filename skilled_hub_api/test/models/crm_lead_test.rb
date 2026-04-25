@@ -1,6 +1,15 @@
 require "test_helper"
 
 class CrmLeadTest < ActiveSupport::TestCase
+  test "allows competitor crm status" do
+    lead = CrmLead.new(
+      name: "Rival Company",
+      status: "competitor"
+    )
+
+    assert lead.valid?, lead.errors.full_messages.join(", ")
+  end
+
   test "allows linking crm lead to company profile with multiple company users" do
     owner = User.create!(
       email: "owner+crm_lead_test@example.com",
