@@ -151,6 +151,7 @@ const CrmPage = ({ user, onLogout }) => {
     body: '',
   });
   const [noteSaving, setNoteSaving] = useState(false);
+  const [noteComposerOpen, setNoteComposerOpen] = useState(false);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -237,6 +238,7 @@ const CrmPage = ({ user, onLogout }) => {
 
   useEffect(() => {
     resetNoteDraft();
+    setNoteComposerOpen(false);
   }, [selectedId, isCreating]);
 
   useEffect(() => {
@@ -594,6 +596,7 @@ const CrmPage = ({ user, onLogout }) => {
 
   const startAddNote = () => {
     resetNoteDraft();
+    setNoteComposerOpen(true);
   };
 
   const startReply = (parentNoteId) => {
@@ -605,6 +608,7 @@ const CrmPage = ({ user, onLogout }) => {
       title: '',
       body: '',
     });
+    setNoteComposerOpen(true);
   };
 
   const startEditNote = (note) => {
@@ -616,6 +620,7 @@ const CrmPage = ({ user, onLogout }) => {
       title: note.title || '',
       body: note.body || '',
     });
+    setNoteComposerOpen(true);
   };
 
   const saveNote = async () => {
@@ -643,6 +648,7 @@ const CrmPage = ({ user, onLogout }) => {
         : await crmAPI.createNote(selectedId, payload);
       setCrmNotes(res.crm_notes || []);
       resetNoteDraft();
+      setNoteComposerOpen(false);
     } catch (e) {
       setAlertModal({
         isOpen: true,
@@ -967,6 +973,7 @@ const CrmPage = ({ user, onLogout }) => {
                   </button>
                 </div>
 
+                {noteComposerOpen ? (
                 <div className="rounded-xl border border-gray-200 p-4 bg-gray-50 mb-4">
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <label className="block">
@@ -1022,13 +1029,17 @@ const CrmPage = ({ user, onLogout }) => {
                     <button
                       type="button"
                       disabled={noteSaving}
-                      onClick={resetNoteDraft}
+                      onClick={() => {
+                        resetNoteDraft();
+                        setNoteComposerOpen(false);
+                      }}
                       className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 text-sm font-medium disabled:opacity-50"
                     >
-                      Clear
+                      Cancel
                     </button>
                   </div>
                 </div>
+                ) : null}
 
                 {crmNotes.length === 0 ? (
                   <p className="text-sm text-gray-500">No notes yet. Click "Add note" to log the first activity.</p>
