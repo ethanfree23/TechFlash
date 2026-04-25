@@ -202,6 +202,8 @@ export default function AdminUserDetailPage({ user, onLogout }) {
     if (!profile) return;
     if (isCompany) {
       setProfileDraft({
+        first_name: u?.first_name || '',
+        last_name: u?.last_name || '',
         company_name: profile.company_name || '',
         industry: profile.industry || '',
         location: profile.location || '',
@@ -215,6 +217,8 @@ export default function AdminUserDetailPage({ user, onLogout }) {
       });
     } else if (isTech) {
       setProfileDraft({
+        first_name: u?.first_name || '',
+        last_name: u?.last_name || '',
         trade_type: profile.trade_type || '',
         location: profile.location || '',
         experience_years: profile.experience_years != null ? String(profile.experience_years) : '',
@@ -233,6 +237,8 @@ export default function AdminUserDetailPage({ user, onLogout }) {
       const payload =
         isCompany
           ? {
+              first_name: profileDraft.first_name?.trim() || null,
+              last_name: profileDraft.last_name?.trim() || null,
               company_name: profileDraft.company_name?.trim(),
               industry: profileDraft.industry?.trim(),
               location: profileDraft.location?.trim(),
@@ -245,6 +251,8 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               service_cities: Array.isArray(profileDraft.service_cities) ? profileDraft.service_cities : [],
             }
           : {
+              first_name: profileDraft.first_name?.trim() || null,
+              last_name: profileDraft.last_name?.trim() || null,
               trade_type: profileDraft.trade_type?.trim(),
               location: profileDraft.location?.trim(),
               availability: profileDraft.availability?.trim(),
@@ -433,6 +441,14 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                   {isCompany && profile && (
                     <>
                       <div>
+                        <dt className="text-gray-500">Contact first name</dt>
+                        <dd className="font-medium text-gray-900">{u?.first_name || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-gray-500">Contact last name</dt>
+                        <dd className="font-medium text-gray-900">{u?.last_name || '—'}</dd>
+                      </div>
+                      <div>
                         <dt className="text-gray-500">Company name</dt>
                         <dd className="font-medium text-gray-900">{profile.company_name || '—'}</dd>
                       </div>
@@ -525,6 +541,22 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                     </div>
                   </dl>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Contact first name</span>
+                      <input
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.first_name || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, first_name: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Contact last name</span>
+                      <input
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.last_name || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, last_name: e.target.value }))}
+                      />
+                    </label>
                     <label className="block sm:col-span-2">
                       <span className="text-xs font-medium text-gray-500 uppercase">Company name</span>
                       <input
@@ -628,6 +660,22 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                   </dl>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">First name</span>
+                      <input
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.first_name || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, first_name: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Last name</span>
+                      <input
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.last_name || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, last_name: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block">
                       <span className="text-xs font-medium text-gray-500 uppercase">Trade</span>
                       <input
                         className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
@@ -720,6 +768,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                   <table className="min-w-full text-sm">
                     <thead>
                       <tr className="text-left text-gray-500 border-b">
+                        <th className="py-2 pr-4">Name</th>
                         <th className="py-2 pr-4">Email</th>
                         <th className="py-2 pr-4">Joined</th>
                         <th className="py-2 pr-4">Type</th>
@@ -729,13 +778,16 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                     <tbody>
                       {(u.company_context.users || []).length === 0 ? (
                         <tr>
-                          <td colSpan={4} className="py-4 text-gray-500">
+                          <td colSpan={5} className="py-4 text-gray-500">
                             No linked accounts yet. Use Add user to create one.
                           </td>
                         </tr>
                       ) : (
                         u.company_context.users.map((member) => (
                           <tr key={member.id} className="border-b border-gray-50">
+                            <td className="py-2 pr-4 text-gray-700">
+                              {[member.first_name, member.last_name].filter(Boolean).join(' ') || '—'}
+                            </td>
                             <td className="py-2 pr-4">{member.email}</td>
                             <td className="py-2 pr-4 text-gray-600">
                               {member.created_at ? new Date(member.created_at).toLocaleString() : '—'}

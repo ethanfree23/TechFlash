@@ -81,7 +81,7 @@ module Api
         # GET /api/v1/admin/company_accounts/search_companies?q=
         def search_companies
           q = params[:q].to_s.strip
-          scope = CompanyProfile.includes(:company_users)
+          scope = CompanyProfile.includes(:company_users, :user)
           companies =
             if q.present?
               rank_company_matches(scope, q).first(30).map { |entry| entry[:company] }
@@ -93,7 +93,9 @@ module Api
               {
                 id: cp.id,
                 company_name: cp.company_name,
-                company_users_count: cp.company_users.where(role: :company).count
+                company_users_count: cp.company_users.where(role: :company).count,
+                contact_first_name: cp.user&.first_name,
+                contact_last_name: cp.user&.last_name
               }
             end
           }, status: :ok

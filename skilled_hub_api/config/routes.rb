@@ -18,6 +18,8 @@ Rails.application.routes.draw do
       patch 'users/me', to: 'users#update_me'
       get 'feedback', to: 'feedback_submissions#index'
       post 'feedback', to: 'feedback_submissions#create'
+      get 'address_suggestions', to: 'addresses#suggestions'
+      get 'address_resolve', to: 'addresses#resolve'
       resources :users
       resources :jobs do
         collection do

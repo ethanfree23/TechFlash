@@ -176,6 +176,14 @@ export const adminLocationAPI = {
     apiRequest(`/admin/location_suggestions?q=${encodeURIComponent(q)}`),
 };
 
+/** Address search for job create/edit: Google Places when server has GOOGLE_MAPS_API_KEY, else Nominatim */
+export const addressesAPI = {
+  suggestions: (q) =>
+    apiRequest(`/address_suggestions?q=${encodeURIComponent(q || '')}`),
+  resolve: (placeId) =>
+    apiRequest(`/address_resolve?place_id=${encodeURIComponent(placeId)}`),
+};
+
 // Admin user directory + per-user analytics
 export const adminUsersAPI = {
   masqueradeStart: (targetUserId) =>
@@ -466,10 +474,13 @@ export const profilesAPI = {
   
   getTechnicianById: (id) =>
     apiRequest(`/technicians/${id}`),
-  mergeTechnicianProfile: (sourceId, targetTechnicianProfileId) =>
+  mergeTechnicianProfile: (sourceId, targetTechnicianProfileId, mergeDirection = 'into_target') =>
     apiRequest(`/technicians/${sourceId}/merge`, {
       method: 'POST',
-      body: JSON.stringify({ target_technician_profile_id: targetTechnicianProfileId }),
+      body: JSON.stringify({
+        target_technician_profile_id: targetTechnicianProfileId,
+        merge_direction: mergeDirection,
+      }),
     }),
 
   getCompanyProfile: () => 
@@ -477,10 +488,13 @@ export const profilesAPI = {
 
   getCompanyById: (id) =>
     apiRequest(`/company_profiles/${id}`),
-  mergeCompanyProfile: (sourceId, targetCompanyProfileId) =>
+  mergeCompanyProfile: (sourceId, targetCompanyProfileId, mergeDirection = 'into_target') =>
     apiRequest(`/company_profiles/${sourceId}/merge`, {
       method: 'POST',
-      body: JSON.stringify({ target_company_profile_id: targetCompanyProfileId }),
+      body: JSON.stringify({
+        target_company_profile_id: targetCompanyProfileId,
+        merge_direction: mergeDirection,
+      }),
     }),
   
   updateCompanyProfile: (id, profileData) => {

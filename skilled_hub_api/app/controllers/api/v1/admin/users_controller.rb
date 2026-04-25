@@ -187,6 +187,9 @@ module Api
           user = provisioned_user!
           return if user.nil?
 
+          user_attrs = user_admin_params.to_h.transform_values { |v| v.is_a?(String) ? v.strip.presence : v }
+          user.update!(user_attrs) if user_attrs.any?
+
           if user.company?
             cp = user.company_profile
             return render json: { errors: ["Company profile not found"] }, status: :not_found unless cp
@@ -207,6 +210,8 @@ module Api
           end
 
           render json: { message: "Profile updated" }, status: :ok
+        rescue ActiveRecord::RecordInvalid => e
+          render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
         end
 
         # PATCH /api/v1/admin/users/:id/membership_pricing
@@ -263,6 +268,10 @@ module Api
             :website_url, :facebook_url, :instagram_url, :linkedin_url,
             service_cities: []
           )
+        end
+
+        def user_admin_params
+          params.permit(:first_name, :last_name)
         end
 
         def technician_profile_admin_params

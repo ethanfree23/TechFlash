@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { jobsAPI } from '../api/api';
-import CountryStateSelect from '../components/CountryStateSelect';
+import { jobsAPI, profilesAPI, adminMembershipTierConfigsAPI } from '../api/api';
+import JobAddressFields from '../components/JobAddressFields';
 import AlertModal from '../components/AlertModal';
 import ConfirmModal from '../components/ConfirmModal';
 import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
+import { companyChargeFromJobAmount, formatPlatformFeePercent } from '../utils/companyPlatformFee';
+import { auth } from '../auth';
 
 const toDatetimeLocal = (d) => {
   if (!d) return '';
@@ -14,6 +16,7 @@ const toDatetimeLocal = (d) => {
 };
 
 const EditJob = () => {
+  const isAdmin = auth.getUser()?.role === 'admin';
   const { id } = useParams();
   const navigate = useNavigate();
   const [job, setJob] = useState(null);
@@ -21,7 +24,7 @@ const EditJob = () => {
   const [error, setError] = useState(null);
   const [form, setForm] = useState({
     title: '', description: '', skill_class: '', minimum_years_experience: '', notes: '', required_certifications: [''], address: '', city: '', state: '', zip_code: '', country: '', status: 'open',
-    hourly_rate_cents: '', hours_per_day: '8', days: '',
+    hourly_rate_cents: '', hours_per_day: '8', days: '', go_live_at: '',
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -29,6 +32,9 @@ const EditJob = () => {
   const [extending, setExtending] = useState(false);
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'success', onCloseAction: null });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [platformFeePercent, setPlatformFeePercent] = useState(null);
+  const [accessTiers, setAccessTiers] = useState([]);
+  const [accessTiersLoading, setAccessTiersLoading] = useState(false);
 
   useEffect(() => {
     const fetchJob = async () => {
@@ -54,6 +60,7 @@ const EditJob = () => {
           zip_code: data.zip_code || '',
           country: data.country || 'United States',
           status: data.status || 'open',
+          go_live_at: toDatetimeLocal(data.go_live_at),
           hourly_rate_cents: hasNewPricing ? (data.hourly_rate_cents / 100).toFixed(2) : '',
           hours_per_day: data.hours_per_day ?? 8,
           days: data.days ?? '',
@@ -62,6 +69,17 @@ const EditJob = () => {
         const defaultEnd = currentEnd ? new Date(currentEnd) : new Date(Date.now() + 24 * 60 * 60 * 1000);
         setExtendEndAt(toDatetimeLocal(currentEnd || defaultEnd));
         setError(null);
+
+        let pct = data.company_profile?.effective_commission_percent;
+        if (pct == null && data.company_profile_id) {
+          try {
+            const p = await profilesAPI.getCompanyById(data.company_profile_id);
+            pct = p?.effective_commission_percent;
+          } catch {
+            pct = null;
+          }
+        }
+        setPlatformFeePercent(pct != null ? Number(pct) : 10);
       } catch (err) {
         setError('Failed to load job details');
       } finally {
@@ -70,6 +88,32 @@ const EditJob = () => {
     };
     fetchJob();
   }, [id]);
+
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    (async () => {
+      setAccessTiersLoading(true);
+      try {
+        const res = await adminMembershipTierConfigsAPI.list('technician');
+        const tiers = Array.isArray(res?.membership_tier_configs) ? res.membership_tier_configs : [];
+        if (!cancelled) {
+          const sorted = [...tiers].sort((a, b) => {
+            if ((a.sort_order ?? 0) !== (b.sort_order ?? 0)) return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+            return (a.id ?? 0) - (b.id ?? 0);
+          });
+          setAccessTiers(sorted);
+        }
+      } catch {
+        if (!cancelled) setAccessTiers([]);
+      } finally {
+        if (!cancelled) setAccessTiersLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -102,10 +146,41 @@ const EditJob = () => {
   const hpd = parseInt(form.hours_per_day, 10) || 8;
   const d = parseInt(form.days, 10) || 0;
   const jobAmount = hr * hpd * d;
-  const companyCharge = jobAmount * 1.05;
+  const feePct = platformFeePercent ?? 10;
+  const feeLabel = formatPlatformFeePercent(feePct);
+  const companyCharge = jobAmount > 0 ? companyChargeFromJobAmount(jobAmount, feePct) : 0;
+
+  const patchAddress = (patch) => {
+    setForm((prev) => ({
+      ...prev,
+      ...(patch.address !== undefined ? { address: patch.address } : {}),
+      ...(patch.city !== undefined ? { city: patch.city } : {}),
+      ...(patch.state !== undefined ? { state: patch.state } : {}),
+      ...(patch.zip_code !== undefined ? { zip_code: patch.zip_code } : {}),
+      ...(patch.country !== undefined ? { country: patch.country } : {}),
+    }));
+  };
+
+  const formatAccessTime = (goLiveValue, delayHours) => {
+    if (!goLiveValue) return 'Set go-live to preview';
+    const base = new Date(goLiveValue);
+    if (Number.isNaN(base.getTime())) return 'Invalid go-live date';
+    const release = new Date(base.getTime() - (Number(delayHours) || 0) * 60 * 60 * 1000);
+    return release.toLocaleString();
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!String(form.address || '').trim() || !String(form.city || '').trim()) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Address required',
+        message: 'Pick an address from suggestions or use Fill out form manually.',
+        variant: 'error',
+        onCloseAction: null,
+      });
+      return;
+    }
     setSaving(true);
     try {
       const years = (form.minimum_years_experience || '').toString().trim() === ''
@@ -127,6 +202,9 @@ const EditJob = () => {
         country: form.country,
         status: form.status,
       };
+      if (isAdmin) {
+        payload.go_live_at = form.go_live_at ? new Date(form.go_live_at).toISOString() : null;
+      }
       if (jobAmount > 0) {
         payload.hourly_rate_cents = Math.round(hr * 100);
         payload.hours_per_day = hpd;
@@ -285,32 +363,19 @@ const EditJob = () => {
             </button>
           </div>
         </div>
-        <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-4">
-          <h3 className="font-medium text-gray-900">Job Location</h3>
-          <div>
-            <label className="block font-medium mb-1 text-sm">Address</label>
-            <input className="w-full border px-3 py-2 rounded bg-white" name="address" value={form.address} onChange={handleChange} placeholder="e.g. 123 Main St" required />
-          </div>
-          <div>
-            <label className="block font-medium mb-1 text-sm">City</label>
-            <input className="w-full border px-3 py-2 rounded bg-white" name="city" value={form.city} onChange={handleChange} placeholder="e.g. Houston" required />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <CountryStateSelect
-              country={form.country}
-              state={form.state}
-              onCountryChange={(v) => handleChange({ target: { name: 'country', value: v } })}
-              onStateChange={(v) => handleChange({ target: { name: 'state', value: v } })}
-              required
-            />
-          </div>
-          <div>
-            <label className="block font-medium mb-1 text-sm">Zip Code</label>
-            <input className="w-full border px-3 py-2 rounded bg-white" name="zip_code" value={form.zip_code} onChange={handleChange} placeholder="e.g. 77007" />
-          </div>
-        </div>
+        <JobAddressFields
+          address={form.address}
+          city={form.city}
+          state={form.state}
+          zipCode={form.zip_code}
+          country={form.country}
+          onChange={patchAddress}
+        />
         <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-4">
           <h3 className="font-medium text-gray-900">Pricing</h3>
+          <p className="text-sm text-gray-600">
+            When a tech claims this job, the company is charged the job total plus a {feeLabel}% platform fee (company tier).
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block font-medium mb-1 text-sm">Hourly rate (USD)</label>
@@ -353,10 +418,50 @@ const EditJob = () => {
           {jobAmount > 0 && (
             <div className="text-sm space-y-1 pt-2 border-t border-gray-200">
               <p><span className="font-medium">Job total:</span> ${jobAmount.toFixed(2)}</p>
-              <p><span className="font-medium">You pay (incl. 5% fee):</span> ${companyCharge.toFixed(2)}</p>
+              <p><span className="font-medium">You pay (incl. {feeLabel}% fee):</span> ${companyCharge.toFixed(2)}</p>
             </div>
           )}
         </div>
+        {isAdmin && (
+          <div>
+            <label className="block font-medium mb-1">Go Live Date & Time</label>
+            <input
+              type="datetime-local"
+              className="w-full border px-3 py-2 rounded"
+              name="go_live_at"
+              value={form.go_live_at}
+              onChange={handleChange}
+            />
+            <p className="text-xs text-gray-500 mt-0.5">
+              Tier access windows are calculated from this date/time.
+            </p>
+            <div className="mt-3 border border-gray-200 rounded-lg bg-gray-50 p-3">
+              <p className="text-xs font-medium text-gray-700 mb-2">Tier access preview</p>
+              {accessTiersLoading ? (
+                <p className="text-xs text-gray-500">Loading tier rules...</p>
+              ) : accessTiers.length === 0 ? (
+                <p className="text-xs text-gray-500">No technician tiers found.</p>
+              ) : (
+                <div className="space-y-1">
+                  {accessTiers.map((tier) => {
+                    const delay = Number(tier.early_access_delay_hours ?? 0);
+                    const minYears = Number(tier.job_access_min_experience_years ?? 0);
+                    const label = tier.display_name || tier.slug || `Tier #${tier.id}`;
+                    return (
+                      <div key={tier.id} className="text-xs text-gray-700 flex flex-wrap gap-x-2">
+                        <span className="font-medium">{label}:</span>
+                        <span>
+                          opens {delay}h before go-live ({formatAccessTime(form.go_live_at, delay)})
+                        </span>
+                        <span className="text-gray-500">min exp: {minYears}y</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
         <div>
           <label className="block font-medium mb-1">Status</label>
           <select

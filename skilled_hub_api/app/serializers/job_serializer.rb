@@ -3,7 +3,7 @@ class JobSerializer < ActiveModel::Serializer
              :scheduled_start_at, :scheduled_end_at, :finished_at, :price_cents, :hourly_rate_cents, :hours_per_day, :days,
              :job_amount_cents, :company_charge_cents, :tech_payout_cents,
              :address, :city, :state, :zip_code, :country, :latitude, :longitude,
-             :skill_class, :minimum_years_experience, :notes,
+             :skill_class, :minimum_years_experience, :notes, :go_live_at,
              :timeline_events
 
   belongs_to :company_profile

@@ -29,8 +29,7 @@ class MembershipPolicy
   end
 
   def self.default_slug_for(audience)
-    aud = normalize_audience(audience)
-    MembershipTierConfig.for_audience(aud).pick(:slug) || "basic"
+    rules_for_audience(audience).keys.first || "basic"
   end
 
   def self.company_monthly_fee_cents(company_profile)
@@ -62,11 +61,14 @@ class MembershipPolicy
     return true if technician_profile.blank?
 
     rule = rule_for(:technician, technician_profile.membership_level)
-    delay_hours = rule[:early_access_delay_hours].to_i
-    return true if delay_hours <= 0
-    return false if job.created_at.blank?
+    return false unless technician_experience_eligible?(job: job, technician_profile: technician_profile, rule: rule)
 
-    job.created_at <= delay_hours.hours.ago
+    delay_hours = rule[:early_access_delay_hours].to_i
+    anchor_time = job.go_live_at || job.created_at
+    return false if anchor_time.blank?
+
+    visible_from = anchor_time - delay_hours.hours
+    Time.current >= visible_from
   end
 
   def self.normalize_audience(audience)
@@ -79,9 +81,14 @@ class MembershipPolicy
 
   def self.build_rules(audience)
     aud = normalize_audience(audience)
-    MembershipTierConfig.for_audience(aud).each_with_object({}) do |config, h|
+    return legacy_rules_for(aud) unless MembershipTierConfig.table_exists?
+
+    rules = MembershipTierConfig.for_audience(aud).each_with_object({}) do |config, h|
       h[config.slug] = config.rules_hash
     end
+    rules.presence || legacy_rules_for(aud)
+  rescue ActiveRecord::StatementInvalid
+    legacy_rules_for(aud)
   end
 
   def self.rule_for(audience, membership_level)
@@ -111,5 +118,30 @@ class MembershipPolicy
     return 0.0 if value.negative?
 
     value
+  end
+
+  def self.legacy_rules_for(audience)
+    aud = normalize_audience(audience)
+    if aud == "company"
+      {
+        "basic" => { fee_cents: 0, commission_percent: 20.0, early_access_delay_hours: 0 },
+        "pro" => { fee_cents: 9900, commission_percent: 15.0, early_access_delay_hours: 0 },
+        "premium" => { fee_cents: 24_900, commission_percent: 10.0, early_access_delay_hours: 0 }
+      }
+    else
+      {
+        "basic" => { fee_cents: 0, commission_percent: 20.0, early_access_delay_hours: 0 },
+        "pro" => { fee_cents: 4900, commission_percent: 20.0, early_access_delay_hours: 24, job_access_min_experience_years: 0 },
+        "premium" => { fee_cents: 24_900, commission_percent: 10.0, early_access_delay_hours: 0, job_access_min_experience_years: 0 }
+      }
+    end
+  end
+
+  def self.technician_experience_eligible?(job:, technician_profile:, rule:)
+    tech_years = technician_profile.experience_years.to_i
+    job_required_years = job.minimum_years_experience.to_i
+    tier_required_years = rule[:job_access_min_experience_years].to_i
+    minimum_required = [job_required_years, tier_required_years].max
+    tech_years >= minimum_required
   end
 end

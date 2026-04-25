@@ -18,6 +18,7 @@ const TechnicianProfilePage = ({ user, onLogout }) => {
   const [mergeBusy, setMergeBusy] = useState(false);
   const [mergeSaving, setMergeSaving] = useState(false);
   const [mergeTarget, setMergeTarget] = useState(null);
+  const [mergeDirection, setMergeDirection] = useState('into_selected');
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'error' });
 
   useEffect(() => {
@@ -94,11 +95,18 @@ const TechnicianProfilePage = ({ user, onLogout }) => {
       });
       return;
     }
-    if (!window.confirm(`Merge this technician into "${mergeTarget.user_name || mergeTarget.email}"? This cannot be undone.`)) return;
+    const keepCurrent = mergeDirection === 'into_current';
+    const currentLabel = profile?.user?.email || `Technician #${id}`;
+    const selectedLabel = mergeTarget.user_name || mergeTarget.email || `Technician #${mergeTarget.technician_profile_id}`;
+    const confirmMessage = keepCurrent
+      ? `Merge "${selectedLabel}" into "${currentLabel}"? This keeps the current account and removes the selected one. This cannot be undone.`
+      : `Merge "${currentLabel}" into "${selectedLabel}"? This removes the current account and keeps the selected one. This cannot be undone.`;
+    if (!window.confirm(confirmMessage)) return;
     setMergeSaving(true);
     try {
-      await profilesAPI.mergeTechnicianProfile(id, mergeTarget.technician_profile_id);
-      window.location.assign(`/technicians/${mergeTarget.technician_profile_id}`);
+      const directionParam = keepCurrent ? 'into_current' : 'into_target';
+      await profilesAPI.mergeTechnicianProfile(id, mergeTarget.technician_profile_id, directionParam);
+      window.location.assign(`/technicians/${keepCurrent ? id : mergeTarget.technician_profile_id}`);
     } catch (e) {
       setAlertModal({
         isOpen: true,
@@ -231,8 +239,28 @@ const TechnicianProfilePage = ({ user, onLogout }) => {
             <div className="p-6 border-b border-gray-200 bg-amber-50/40">
               <h2 className="text-lg font-semibold text-gray-900 mb-2">Duplicate / Merge</h2>
               <p className="text-sm text-gray-600 mb-3">
-                If this technician is a duplicate, choose the profile to keep and merge this one into it.
+                Choose merge direction: keep this current account, or keep the selected account.
               </p>
+              <div className="mb-3 space-y-2">
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="radio"
+                    name="technician-merge-direction"
+                    checked={mergeDirection === 'into_selected'}
+                    onChange={() => setMergeDirection('into_selected')}
+                  />
+                  Merge current account into selected account (keep selected account data)
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="radio"
+                    name="technician-merge-direction"
+                    checked={mergeDirection === 'into_current'}
+                    onChange={() => setMergeDirection('into_current')}
+                  />
+                  Merge selected account into current account (keep current account data)
+                </label>
+              </div>
               <input
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 placeholder="Search technician name/email..."
@@ -270,7 +298,11 @@ const TechnicianProfilePage = ({ user, onLogout }) => {
                   onClick={mergeTechnician}
                   className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:opacity-50"
                 >
-                  {mergeSaving ? 'Merging…' : 'Merge into selected technician'}
+                  {mergeSaving
+                    ? 'Merging…'
+                    : mergeDirection === 'into_current'
+                      ? 'Merge selected into current technician'
+                      : 'Merge current into selected technician'}
                 </button>
               </div>
             </div>

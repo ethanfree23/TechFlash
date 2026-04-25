@@ -31,6 +31,7 @@ module Api
         def update
           attrs = update_attributes
           attrs[:early_access_delay_hours] = nil unless @config.audience == "technician"
+          attrs[:job_access_min_experience_years] = nil unless @config.audience == "technician"
 
           if @config.update(attrs)
             render json: { membership_tier_config: serialize(@config) }, status: :ok
@@ -80,7 +81,7 @@ module Api
         end
 
         def create_attributes
-          p = params.permit(:slug, :display_name, :monthly_fee_cents, :commission_percent, :early_access_delay_hours, :sort_order, :stripe_price_id).to_h
+          p = params.permit(:slug, :display_name, :monthly_fee_cents, :commission_percent, :early_access_delay_hours, :job_access_min_experience_years, :sort_order, :stripe_price_id).to_h
           p[:slug] = p[:slug].to_s.downcase.strip if p[:slug]
           p[:display_name] = p[:display_name].to_s.strip.presence
           p[:stripe_price_id] = p[:stripe_price_id].to_s.strip.presence
@@ -91,11 +92,15 @@ module Api
             p[:early_access_delay_hours] =
               p[:early_access_delay_hours].present? ? p[:early_access_delay_hours].to_i : nil
           end
+          if p.key?(:job_access_min_experience_years)
+            p[:job_access_min_experience_years] =
+              p[:job_access_min_experience_years].present? ? p[:job_access_min_experience_years].to_i : nil
+          end
           p
         end
 
         def update_attributes
-          p = params.permit(:display_name, :monthly_fee_cents, :commission_percent, :early_access_delay_hours, :sort_order, :stripe_price_id).to_h
+          p = params.permit(:display_name, :monthly_fee_cents, :commission_percent, :early_access_delay_hours, :job_access_min_experience_years, :sort_order, :stripe_price_id).to_h
           p[:display_name] = p[:display_name].to_s.strip.presence if p.key?(:display_name)
           p[:stripe_price_id] = p[:stripe_price_id].to_s.strip.presence if p.key?(:stripe_price_id)
           p[:monthly_fee_cents] = p[:monthly_fee_cents].to_i if p.key?(:monthly_fee_cents)
@@ -104,6 +109,10 @@ module Api
           if p.key?(:early_access_delay_hours)
             p[:early_access_delay_hours] =
               p[:early_access_delay_hours].present? ? p[:early_access_delay_hours].to_i : nil
+          end
+          if p.key?(:job_access_min_experience_years)
+            p[:job_access_min_experience_years] =
+              p[:job_access_min_experience_years].present? ? p[:job_access_min_experience_years].to_i : nil
           end
           p
         end
@@ -117,6 +126,7 @@ module Api
             monthly_fee_cents: config.monthly_fee_cents,
             commission_percent: config.commission_percent.to_f,
             early_access_delay_hours: config.early_access_delay_hours,
+            job_access_min_experience_years: config.job_access_min_experience_years,
             sort_order: config.sort_order,
             stripe_price_id: config.stripe_price_id
           }

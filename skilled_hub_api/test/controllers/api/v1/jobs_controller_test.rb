@@ -248,6 +248,60 @@ module Api
         assert_equal "filled", job.status
         assert_equal 0, job.payments.count
       end
+
+      test "technician cannot claim a job before tier access window opens" do
+        MembershipTierConfig.delete_all
+        MembershipTierConfig.create!(
+          audience: "technician",
+          slug: "basic",
+          display_name: "Basic",
+          monthly_fee_cents: 0,
+          commission_percent: 20,
+          early_access_delay_hours: 0,
+          job_access_min_experience_years: 0,
+          sort_order: 0
+        )
+        MembershipPolicy.invalidate_cache!
+
+        company_user = User.create!(
+          email: "company-go-live-claim@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        company_profile = CompanyProfile.create!(user: company_user, membership_level: "basic")
+        company_user.update_column(:company_profile_id, company_profile.id)
+
+        job = Job.create!(
+          company_profile: company_profile,
+          title: "Future Go Live Job",
+          description: "desc",
+          status: :open,
+          go_live_at: 6.hours.from_now,
+          scheduled_start_at: 24.hours.from_now,
+          scheduled_end_at: 26.hours.from_now
+        )
+
+        technician_user = User.create!(
+          email: "tech-go-live-claim@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        TechnicianProfile.create!(
+          user: technician_user,
+          trade_type: "General",
+          availability: "Full-time",
+          membership_level: "basic",
+          experience_years: 10
+        )
+
+        patch "/api/v1/jobs/#{job.id}/claim",
+              headers: auth_header_for(technician_user),
+              as: :json
+
+        assert_response :forbidden
+      end
     end
   end
 end

@@ -34,6 +34,7 @@ const CompanyProfilePage = ({ user, onLogout }) => {
   const [mergeBusy, setMergeBusy] = useState(false);
   const [mergeSaving, setMergeSaving] = useState(false);
   const [mergeTarget, setMergeTarget] = useState(null);
+  const [mergeDirection, setMergeDirection] = useState('into_selected');
   const [companyCrmLeads, setCompanyCrmLeads] = useState([]);
   const [selectedCrmLeadId, setSelectedCrmLeadId] = useState('');
   const [contactImportText, setContactImportText] = useState('');
@@ -140,17 +141,24 @@ const CompanyProfilePage = ({ user, onLogout }) => {
       });
       return;
     }
-    if (!window.confirm(`Merge this company into "${mergeTarget.company_name || `Company #${mergeTarget.id}`}"? This cannot be undone.`)) return;
+    const keepCurrent = mergeDirection === 'into_current';
+    const currentLabel = profile?.company_name || `Company #${id}`;
+    const selectedLabel = mergeTarget.company_name || `Company #${mergeTarget.id}`;
+    const confirmMessage = keepCurrent
+      ? `Merge "${selectedLabel}" into "${currentLabel}"? This keeps the current account and removes the selected one. This cannot be undone.`
+      : `Merge "${currentLabel}" into "${selectedLabel}"? This removes the current account and keeps the selected one. This cannot be undone.`;
+    if (!window.confirm(confirmMessage)) return;
     setMergeSaving(true);
     try {
-      await profilesAPI.mergeCompanyProfile(id, mergeTarget.id);
+      const directionParam = keepCurrent ? 'into_current' : 'into_target';
+      await profilesAPI.mergeCompanyProfile(id, mergeTarget.id, directionParam);
       setAlertModal({
         isOpen: true,
         title: 'Merge complete',
         message: 'Duplicate company was merged successfully.',
         variant: 'success',
       });
-      navigate(`/companies/${mergeTarget.id}`, { replace: true });
+      navigate(`/companies/${keepCurrent ? id : mergeTarget.id}`, { replace: true });
     } catch (e) {
       setAlertModal({
         isOpen: true,
@@ -442,8 +450,28 @@ const CompanyProfilePage = ({ user, onLogout }) => {
             <div className="p-6 border-b border-gray-200 bg-amber-50/40">
               <h2 className="text-lg font-semibold text-gray-900 mb-2">Duplicate / Merge</h2>
               <p className="text-sm text-gray-600 mb-3">
-                If this company is a duplicate, choose the company to keep and merge this profile into it.
+                Choose merge direction: keep this current account, or keep the selected account.
               </p>
+              <div className="mb-3 space-y-2">
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="radio"
+                    name="company-merge-direction"
+                    checked={mergeDirection === 'into_selected'}
+                    onChange={() => setMergeDirection('into_selected')}
+                  />
+                  Merge current account into selected account (keep selected account data)
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700">
+                  <input
+                    type="radio"
+                    name="company-merge-direction"
+                    checked={mergeDirection === 'into_current'}
+                    onChange={() => setMergeDirection('into_current')}
+                  />
+                  Merge selected account into current account (keep current account data)
+                </label>
+              </div>
               <input
                 className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 placeholder="Search company to keep..."
@@ -481,7 +509,11 @@ const CompanyProfilePage = ({ user, onLogout }) => {
                   onClick={mergeCompany}
                   className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700 disabled:opacity-50"
                 >
-                  {mergeSaving ? 'Merging…' : 'Merge into selected company'}
+                  {mergeSaving
+                    ? 'Merging…'
+                    : mergeDirection === 'into_current'
+                      ? 'Merge selected into current company'
+                      : 'Merge current into selected company'}
                 </button>
               </div>
             </div>

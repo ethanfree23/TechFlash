@@ -5,6 +5,7 @@ import MessageModal from './MessageModal';
 import AlertModal from './AlertModal';
 import ConfirmModal from './ConfirmModal';
 import { auth } from '../auth';
+import { companyChargeFromJobAmount, formatPlatformFeePercent, resolvedCompanyFeePercentFromJob } from '../utils/companyPlatformFee';
 import { EXPERIENCE_YEAR_OPTIONS, formatExperienceLong } from '../constants/experienceSelect';
 import Modal from 'react-modal';
 import StarRating from './StarRating';
@@ -608,9 +609,16 @@ const JobDetail = () => {
                   <div>
                     <p className="text-sm text-gray-500">Job amount</p>
                     <p className="font-medium">${((job?.job_amount_cents ?? job?.price_cents ?? 0) / 100).toFixed(2)}</p>
-                    {(job?.company_charge_cents ?? 0) > 0 && (
-                      <p className="text-xs text-gray-500">You pay ${((job.company_charge_cents) / 100).toFixed(2)} (incl. 5% fee)</p>
-                    )}
+                    {(job?.company_charge_cents ?? 0) > 0 && (() => {
+                      const pct = resolvedCompanyFeePercentFromJob(job);
+                      const pctLabel = pct != null ? formatPlatformFeePercent(pct) : null;
+                      return (
+                        <p className="text-xs text-gray-500">
+                          You pay ${((job.company_charge_cents) / 100).toFixed(2)}
+                          {pctLabel != null ? ` (incl. ${pctLabel}% platform fee)` : ' (incl. platform fee)'}
+                        </p>
+                      );
+                    })()}
                   </div>
                 </div>
               )}
@@ -1060,7 +1068,18 @@ const JobDetail = () => {
                 const hpd = parseInt(editData.hours_per_day, 10) || 8;
                 const d = parseInt(editData.days, 10) || 0;
                 const amt = hr * hpd * d;
-                return amt > 0 ? <p className="text-sm text-gray-600">Job amount: ${amt.toFixed(2)} (you pay ${(amt * 1.05).toFixed(2)} incl. 5% fee)</p> : null;
+                const pct = resolvedCompanyFeePercentFromJob(job);
+                const pctNum = pct != null ? pct : 0;
+                const youPay = amt > 0 ? companyChargeFromJobAmount(amt, pctNum) : 0;
+                const pctLabel = pct != null ? formatPlatformFeePercent(pct) : null;
+                return amt > 0 ? (
+                  <p className="text-sm text-gray-600">
+                    Job amount: ${amt.toFixed(2)}
+                    {pctLabel != null
+                      ? ` (you pay $${youPay.toFixed(2)} incl. ${pctLabel}% fee)`
+                      : ` (you pay $${youPay.toFixed(2)} incl. platform fee)`}
+                  </p>
+                ) : null;
               })()}
             </div>
             <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-4">

@@ -70,7 +70,7 @@ module Api
       private
 
       def user_params
-        params.permit(:email, :password, :password_confirmation, :first_name, :last_name, :phone, :role, :membership_tier, :membership_level, :signup_payment_intent_id, :honeypot)
+        params.permit(:email, :password, :password_confirmation, :first_name, :last_name, :phone, :role)
       end
 
       def update_me_params

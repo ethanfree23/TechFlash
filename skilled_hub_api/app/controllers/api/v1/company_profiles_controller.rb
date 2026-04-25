@@ -55,8 +55,15 @@ module Api
       # POST /api/v1/company_profiles/:id/merge
       # Admin only: merges the source company profile into a target company profile.
       def merge
-        source = CompanyProfile.find(params[:id])
-        target = CompanyProfile.find(params[:target_company_profile_id])
+        current = CompanyProfile.find(params[:id])
+        selected = CompanyProfile.find(params[:target_company_profile_id])
+        merge_direction = params[:merge_direction].to_s
+        source, target =
+          if merge_direction == "into_current"
+            [selected, current]
+          else
+            [current, selected]
+          end
         return render json: { error: "Target must be different from source" }, status: :unprocessable_entity if source.id == target.id
 
         now = Time.current
@@ -81,7 +88,8 @@ module Api
         render json: {
           message: "Company profile merged",
           source_company_profile_id: source.id,
-          target_company_profile_id: target.id
+          target_company_profile_id: target.id,
+          merge_direction: merge_direction.presence || "into_target"
         }, status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Company profile not found" }, status: :not_found

@@ -128,6 +128,11 @@ module Api
         if @current_user&.company? && job.company_profile_id != @current_user.company_profile&.id
           return render json: { error: "You can only view your own jobs" }, status: :forbidden
         end
+        if @current_user&.technician? && (tp = @current_user.technician_profile)
+          unless MembershipPolicy.job_visible_to_technician?(job: job, technician_profile: tp)
+            return render json: { error: "This job is not available for your tier yet." }, status: :forbidden
+          end
+        end
         render json: job,
                serializer: JobSerializer,
                include: [:company_profile, { job_applications: { technician_profile: :user } }],
@@ -363,6 +368,9 @@ module Api
         end
 
         technician_profile = @current_user.technician_profile
+        if technician_profile && !MembershipPolicy.job_visible_to_technician?(job: job, technician_profile: technician_profile)
+          return render json: { error: 'This job is not available for your tier yet.' }, status: :forbidden
+        end
         if technician_profile
           overlapping = technician_profile.job_applications
             .joins(:job)
@@ -447,7 +455,7 @@ module Api
         params.permit(:title, :description, :required_documents, :required_certifications, :location, :status, :company_profile_id, :timeline, :skip_card_validation,
                       :scheduled_start_at, :scheduled_end_at, :price_cents, :hourly_rate_cents, :hours_per_day, :days,
                       :address, :city, :state, :zip_code, :country,
-                      :skill_class, :minimum_years_experience, :notes)
+                      :skill_class, :minimum_years_experience, :notes, :go_live_at)
       end
 
       def jobs_overlap?(job_a, job_b)

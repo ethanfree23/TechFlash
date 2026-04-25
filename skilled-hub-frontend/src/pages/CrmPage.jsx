@@ -656,6 +656,30 @@ const CrmPage = ({ user, onLogout }) => {
     });
   };
 
+  const updatePrimaryContactNamePart = (part, value) => {
+    setForm((f) => {
+      const contacts = editableContacts(f.contacts, {
+        name: f.contact_name || '',
+        email: f.email || '',
+        phone: f.phone || '',
+      });
+      const first = contacts[0] || { name: '', email: '', phone: '' };
+      const tokens = String(first.name || '').trim().split(/\s+/).filter(Boolean);
+      const current = {
+        firstName: tokens.length > 0 ? tokens[0] : '',
+        lastName: tokens.length > 1 ? tokens.slice(1).join(' ') : '',
+      };
+      const next = { ...current, [part]: value };
+      const combinedName = [next.firstName, next.lastName].filter(Boolean).join(' ').trim();
+      const nextContacts = [{ ...first, name: combinedName }, ...contacts.slice(1)];
+      return {
+        ...f,
+        contacts: nextContacts,
+        contact_name: combinedName,
+      };
+    });
+  };
+
   const addAdditionalContact = () => {
     setForm((f) => {
       const contacts = editableContacts(f.contacts, {
@@ -1319,11 +1343,20 @@ const CrmPage = ({ user, onLogout }) => {
                     />
                   </label>
                   <label className="block">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Contact</span>
+                    <span className="text-xs font-medium text-gray-500 uppercase">First name</span>
                     <input
                       className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.contact_name ?? ''}
-                      onChange={(e) => updatePrimaryContactField('name', e.target.value)}
+                      value={splitContactName(form.contact_name).firstName}
+                      onChange={(e) => updatePrimaryContactNamePart('firstName', e.target.value)}
+                      readOnly={!isRecordEditing}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Last name</span>
+                    <input
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      value={splitContactName(form.contact_name).lastName}
+                      onChange={(e) => updatePrimaryContactNamePart('lastName', e.target.value)}
                       readOnly={!isRecordEditing}
                     />
                   </label>
@@ -2533,11 +2566,19 @@ const CrmPage = ({ user, onLogout }) => {
                     />
                   </label>
                   <label className="block">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Contact</span>
+                    <span className="text-xs font-medium text-gray-500 uppercase">First name</span>
                     <input
                       className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.contact_name ?? ''}
-                      onChange={(e) => updatePrimaryContactField('name', e.target.value)}
+                      value={splitContactName(form.contact_name).firstName}
+                      onChange={(e) => updatePrimaryContactNamePart('firstName', e.target.value)}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Last name</span>
+                    <input
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      value={splitContactName(form.contact_name).lastName}
+                      onChange={(e) => updatePrimaryContactNamePart('lastName', e.target.value)}
                     />
                   </label>
                   <label className="block">

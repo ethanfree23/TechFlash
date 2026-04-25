@@ -51,8 +51,15 @@ module Api
       # POST /api/v1/technicians/:id/merge
       # Admin only: merges the source technician profile into a target technician profile.
       def merge
-        source = TechnicianProfile.find(params[:id])
-        target = TechnicianProfile.find(params[:target_technician_profile_id])
+        current = TechnicianProfile.find(params[:id])
+        selected = TechnicianProfile.find(params[:target_technician_profile_id])
+        merge_direction = params[:merge_direction].to_s
+        source, target =
+          if merge_direction == "into_current"
+            [selected, current]
+          else
+            [current, selected]
+          end
         return render json: { error: "Target must be different from source" }, status: :unprocessable_entity if source.id == target.id
 
         now = Time.current
@@ -86,7 +93,8 @@ module Api
         render json: {
           message: "Technician profile merged",
           source_technician_profile_id: source.id,
-          target_technician_profile_id: target.id
+          target_technician_profile_id: target.id,
+          merge_direction: merge_direction.presence || "into_target"
         }, status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Technician profile not found" }, status: :not_found

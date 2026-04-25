@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { jobsAPI, profilesAPI, crmAPI } from '../api/api';
+import { jobsAPI, profilesAPI, crmAPI, adminMembershipTierConfigsAPI } from '../api/api';
 import DateTimeInput from '../components/DateTimeInput';
-import CountryStateSelect from '../components/CountryStateSelect';
+import JobAddressFields from '../components/JobAddressFields';
 import AlertModal from '../components/AlertModal';
 import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
 import { auth } from '../auth';
+import { companyChargeFromJobAmount, formatPlatformFeePercent } from '../utils/companyPlatformFee';
 
 const toDatetimeLocal = (d) => {
   if (!d) return '';
@@ -62,6 +63,7 @@ const CreateJob = () => {
   const [days, setDays] = useState("");
   const [status, setStatus] = useState("open");
   const [scheduledStartAt, setScheduledStartAt] = useState(toDatetimeLocal(defaultStart));
+  const [goLiveAt, setGoLiveAt] = useState(toDatetimeLocal(defaultStart));
   const [scheduledEndAt, setScheduledEndAt] = useState(
     computeEndFromPricing(toDatetimeLocal(defaultStart), 1, 8)
   );
@@ -72,6 +74,9 @@ const CreateJob = () => {
   const [companySearchLoading, setCompanySearchLoading] = useState(false);
   const [selectedCompanyName, setSelectedCompanyName] = useState('');
   const [enforceCardValidation, setEnforceCardValidation] = useState(true);
+  const [platformFeePercent, setPlatformFeePercent] = useState(null);
+  const [accessTiers, setAccessTiers] = useState([]);
+  const [accessTiersLoading, setAccessTiersLoading] = useState(false);
   const [successModal, setSuccessModal] = useState(false);
   const [errorModal, setErrorModal] = useState(null);
   const navigate = useNavigate();
@@ -83,12 +88,37 @@ const CreateJob = () => {
       try {
         const profile = await profilesAPI.getCompanyProfile();
         setCompanyProfileId(profile.id);
+        const pct = profile.effective_commission_percent;
+        setPlatformFeePercent(pct != null ? Number(pct) : 0);
       } catch {
         setCompanyProfileId(null);
+        setPlatformFeePercent(null);
       }
     };
     fetchProfile();
   }, [isAdmin]);
+
+  useEffect(() => {
+    if (!isAdmin || !companyProfileId) {
+      if (isAdmin) setPlatformFeePercent(null);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const profile = await profilesAPI.getCompanyById(companyProfileId);
+        if (!cancelled) {
+          const pct = profile?.effective_commission_percent;
+          setPlatformFeePercent(pct != null ? Number(pct) : 0);
+        }
+      } catch {
+        if (!cancelled) setPlatformFeePercent(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin, companyProfileId]);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -119,6 +149,32 @@ const CreateJob = () => {
     };
   }, [companyQuery, isAdmin]);
 
+  useEffect(() => {
+    if (!isAdmin) return;
+    let cancelled = false;
+    (async () => {
+      setAccessTiersLoading(true);
+      try {
+        const res = await adminMembershipTierConfigsAPI.list('technician');
+        const tiers = Array.isArray(res?.membership_tier_configs) ? res.membership_tier_configs : [];
+        if (!cancelled) {
+          const sorted = [...tiers].sort((a, b) => {
+            if ((a.sort_order ?? 0) !== (b.sort_order ?? 0)) return (a.sort_order ?? 0) - (b.sort_order ?? 0);
+            return (a.id ?? 0) - (b.id ?? 0);
+          });
+          setAccessTiers(sorted);
+        }
+      } catch {
+        if (!cancelled) setAccessTiers([]);
+      } finally {
+        if (!cancelled) setAccessTiersLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isAdmin]);
+
   // Auto-compute end date/time from start + days + hours per day (+ 1 hr lunch)
   useEffect(() => {
     const computed = computeEndFromPricing(scheduledStartAt, days, hoursPerDay);
@@ -129,10 +185,34 @@ const CreateJob = () => {
   const hpd = parseInt(hoursPerDay, 10) || 8;
   const d = parseInt(days, 10) || 0;
   const jobAmount = hr * hpd * d;
-  const companyCharge = jobAmount * 1.05;
+  const feeReady = platformFeePercent !== null && (!isAdmin || companyProfileId);
+  const companyCharge = feeReady && jobAmount > 0
+    ? companyChargeFromJobAmount(jobAmount, platformFeePercent)
+    : null;
+  const feeLabel = feeReady ? formatPlatformFeePercent(platformFeePercent) : null;
+
+  const patchAddress = (patch) => {
+    if (patch.address !== undefined) setAddress(patch.address);
+    if (patch.city !== undefined) setCity(patch.city);
+    if (patch.state !== undefined) setState(patch.state);
+    if (patch.zip_code !== undefined) setZipCode(patch.zip_code);
+    if (patch.country !== undefined) setCountry(patch.country);
+  };
+
+  const formatAccessTime = (goLiveValue, delayHours) => {
+    if (!goLiveValue) return 'Set go-live to preview';
+    const base = new Date(goLiveValue);
+    if (Number.isNaN(base.getTime())) return 'Invalid go-live date';
+    const release = new Date(base.getTime() - (Number(delayHours) || 0) * 60 * 60 * 1000);
+    return release.toLocaleString();
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!String(address || '').trim() || !String(city || '').trim()) {
+      setErrorModal('Please pick an address from the suggestions list, or use Fill out form manually and enter street and city.');
+      return;
+    }
     setSaving(true);
     try {
       const years = minimumYearsExperience.trim() === '' ? null : parseInt(minimumYearsExperience, 10);
@@ -157,6 +237,7 @@ const CreateJob = () => {
       };
       if (isAdmin) {
         payload.skip_card_validation = !enforceCardValidation;
+        payload.go_live_at = goLiveAt ? new Date(goLiveAt).toISOString() : null;
       }
       if (jobAmount > 0) {
         payload.hourly_rate_cents = Math.round(hr * 100);
@@ -211,19 +292,29 @@ const CreateJob = () => {
               {!companySearchLoading && companyOptions.length > 0 && (
                 <div className="max-h-44 overflow-y-auto border rounded bg-white">
                   {companyOptions.map((company) => (
+                    (() => {
+                      const contactName = [company.contact_first_name, company.contact_last_name]
+                        .map((x) => (x || '').trim())
+                        .filter(Boolean)
+                        .join(' ');
+                      const companyLabel = company.company_name || `Company #${company.id}`;
+                      const label = contactName ? `${companyLabel} — ${contactName}` : companyLabel;
+                      return (
                     <button
                       key={company.id}
                       type="button"
                       onClick={() => {
                         setCompanyProfileId(company.id);
-                        setSelectedCompanyName(company.company_name || `Company #${company.id}`);
-                        setCompanyQuery(company.company_name || '');
+                        setSelectedCompanyName(label);
+                        setCompanyQuery(companyLabel);
                         setCompanyOptions([]);
                       }}
                       className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b last:border-b-0"
                     >
-                      {company.company_name || `Company #${company.id}`}
+                      {label}
                     </button>
+                      );
+                    })()
                   ))}
                 </div>
               )}
@@ -332,50 +423,23 @@ const CreateJob = () => {
             </button>
           </div>
         </div>
-        <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-4">
-          <h3 className="font-medium text-gray-900">Job Location</h3>
-          <div>
-            <label className="block font-medium mb-1 text-sm">Address</label>
-            <input
-              className="w-full border px-3 py-2 rounded bg-white"
-              value={address}
-              onChange={e => setAddress(e.target.value)}
-              placeholder="e.g. 123 Main St"
-              required
-            />
-          </div>
-          <div>
-            <label className="block font-medium mb-1 text-sm">City</label>
-            <input
-              className="w-full border px-3 py-2 rounded bg-white"
-              value={city}
-              onChange={e => setCity(e.target.value)}
-              placeholder="e.g. Houston"
-              required
-            />
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <CountryStateSelect
-              country={country}
-              state={state}
-              onCountryChange={setCountry}
-              onStateChange={setState}
-              required
-            />
-          </div>
-          <div>
-            <label className="block font-medium mb-1 text-sm">Zip Code</label>
-            <input
-              className="w-full border px-3 py-2 rounded bg-white"
-              value={zipCode}
-              onChange={e => setZipCode(e.target.value)}
-              placeholder="e.g. 77007"
-            />
-          </div>
-        </div>
+        <JobAddressFields
+          address={address}
+          city={city}
+          state={state}
+          zipCode={zipCode}
+          country={country}
+          onChange={patchAddress}
+        />
         <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-4">
           <h3 className="font-medium text-gray-900">Pricing</h3>
-          <p className="text-sm text-gray-600">When a tech claims this job, you will be charged the total + 5% platform fee.</p>
+          <p className="text-sm text-gray-600">
+            {feeLabel != null
+              ? `When a tech claims this job, you will be charged the job total plus a ${feeLabel}% platform fee (your company tier).`
+              : isAdmin
+                ? 'When a tech claims this job, you will be charged the job total plus a platform fee based on the selected company’s tier. Select a company account to see the rate.'
+                : 'Loading your company’s platform fee…'}
+          </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block font-medium mb-1 text-sm">Hourly rate (USD)</label>
@@ -416,11 +480,59 @@ const CreateJob = () => {
           {jobAmount > 0 && (
             <div className="text-sm space-y-1 pt-2 border-t border-gray-200">
               <p><span className="font-medium">Job total:</span> ${jobAmount.toFixed(2)}</p>
-              <p><span className="font-medium">You pay (incl. 5% fee):</span> ${companyCharge.toFixed(2)}</p>
+              {companyCharge != null && feeLabel != null ? (
+                <p>
+                  <span className="font-medium">You pay (incl. {feeLabel}% fee):</span> ${companyCharge.toFixed(2)}
+                </p>
+              ) : (
+                <p className="text-gray-500">
+                  {isAdmin && !companyProfileId
+                    ? 'Select a company account to preview the total you pay (includes tier-based fee).'
+                    : 'Could not load fee rate yet.'}
+                </p>
+              )}
             </div>
           )}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {isAdmin && (
+            <div>
+              <label className="block font-medium mb-1">Go Live Date & Time</label>
+              <DateTimeInput
+                value={goLiveAt}
+                onChange={(e) => setGoLiveAt(e.target.value)}
+                className="w-full"
+              />
+              <p className="text-xs text-gray-500 mt-0.5">
+                Base release time for membership tier early-access windows.
+              </p>
+              <div className="mt-3 border border-gray-200 rounded-lg bg-gray-50 p-3">
+                <p className="text-xs font-medium text-gray-700 mb-2">Tier access preview</p>
+                {accessTiersLoading ? (
+                  <p className="text-xs text-gray-500">Loading tier rules...</p>
+                ) : accessTiers.length === 0 ? (
+                  <p className="text-xs text-gray-500">No technician tiers found.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {accessTiers.map((tier) => {
+                      const delay = Number(tier.early_access_delay_hours ?? 0);
+                      const minYears = Number(tier.job_access_min_experience_years ?? 0);
+                      const label = tier.display_name || tier.slug || `Tier #${tier.id}`;
+                      return (
+                        <div key={tier.id} className="text-xs text-gray-700 flex flex-wrap gap-x-2">
+                          <span className="font-medium">{label}:</span>
+                          <span>
+                            opens {delay}h before go-live ({formatAccessTime(goLiveAt, delay)})
+                          </span>
+                          <span className="text-gray-500">min exp: {minYears}y</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
           <div>
             <label className="block font-medium mb-1">Start Date & Time</label>
             <DateTimeInput

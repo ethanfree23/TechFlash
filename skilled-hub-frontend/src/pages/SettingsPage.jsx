@@ -9,6 +9,7 @@ import CountryStateSelect from '../components/CountryStateSelect';
 import AlertModal from '../components/AlertModal';
 import ConfirmModal from '../components/ConfirmModal';
 import SystemControlsPricing from '../components/admin/SystemControlsPricing';
+import AdminJobAccessSettings from '../components/admin/AdminJobAccessSettings';
 import { needsTechnicianMapSetup } from '../utils/technicianMap';
 
 const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
@@ -286,7 +287,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           aria-label="Settings sections"
         >
           <div className="flex border-b border-gray-200" role="tablist" aria-label="Settings categories">
-            {['account', 'profile', 'payment', ...(isAdmin ? ['system_controls'] : [])].map((id) => (
+            {['account', 'profile', 'payment', ...(isAdmin ? ['system_controls', 'job_access'] : [])].map((id) => (
               <button
                 key={id}
                 type="button"
@@ -308,7 +309,9 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                     ? 'Profile'
                     : id === 'payment'
                       ? 'Payment'
-                      : 'System controls'}
+                      : id === 'system_controls'
+                        ? 'System controls'
+                        : 'Job access'}
               </button>
             ))}
           </div>
@@ -585,6 +588,16 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 aria-labelledby="settings-tab-system_controls"
               >
                 <SystemControlsPricing />
+              </div>
+            )}
+
+            {isAdmin && settingsTab === 'job_access' && (
+              <div
+                id="settings-panel-job_access"
+                role="tabpanel"
+                aria-labelledby="settings-tab-job_access"
+              >
+                <AdminJobAccessSettings />
               </div>
             )}
           </div>
