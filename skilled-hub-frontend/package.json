@@ -14,7 +14,8 @@
     "test:crm-notes": "node scripts/crmNotes.test.mjs",
     "test:data": "node scripts/data.test.mjs",
     "test:api": "node scripts/api.test.mjs",
-    "test": "npm run test:crm-import && npm run test:phone && npm run test:auth && npm run test:crm-notes && npm run test:data && npm run test:api"
+    "test:technician-map": "node scripts/technicianMap.test.mjs",
+    "test": "npm run test:crm-import && npm run test:phone && npm run test:auth && npm run test:crm-notes && npm run test:data && npm run test:api && npm run test:technician-map"
   },
   "dependencies": {
     "axios": "^1.10.0",

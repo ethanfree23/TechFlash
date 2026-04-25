@@ -9,6 +9,7 @@ import CountryStateSelect from '../components/CountryStateSelect';
 import AlertModal from '../components/AlertModal';
 import ConfirmModal from '../components/ConfirmModal';
 import SystemControlsPricing from '../components/admin/SystemControlsPricing';
+import { needsTechnicianMapSetup } from '../utils/technicianMap';
 
 const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [profile, setProfile] = useState(null);
@@ -40,15 +41,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const isCompany = user?.role === 'company';
   const isTechnician = user?.role === 'technician';
   const isAdmin = user?.role === 'admin';
-  const needsMapSetup = isTechnician && (
-    !String(profile?.address || '').trim() ||
-    !String(profile?.city || '').trim() ||
-    !String(profile?.state || '').trim() ||
-    !String(profile?.zip_code || '').trim() ||
-    !String(profile?.country || '').trim() ||
-    profile?.latitude == null ||
-    profile?.longitude == null
-  );
+  const needsMapSetup = isTechnician && needsTechnicianMapSetup(profile);
 
   useEffect(() => {
     fetchProfile();

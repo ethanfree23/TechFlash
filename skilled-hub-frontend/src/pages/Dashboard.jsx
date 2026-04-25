@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { jobsAPI, ratingsAPI, feedbackAPI, adminAPI, profilesAPI } from '../api/api';
 import AlertModal from '../components/AlertModal';
 import AppHeader from '../components/AppHeader';
+import { filterJobsWithinRadius, needsTechnicianMapSetup } from '../utils/technicianMap';
 import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen, FaDollarSign, FaStar, FaChartLine, FaUsers, FaUserCog, FaBuilding, FaCommentDots } from 'react-icons/fa';
 
 // open, claimed (filled but not started), active (in progress), completed, expired
@@ -37,18 +38,6 @@ const formatDate = (dateStr) => {
 const formatCurrency = (cents) => {
   if (cents == null || cents === 0) return '$0';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
-};
-
-const haversineMiles = (lat1, lon1, lat2, lon2) => {
-  if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return Infinity;
-  const R = 3959;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
 };
 
 const PERIOD_OPTIONS = [
@@ -867,16 +856,7 @@ const TechnicianDashboardContent = ({ jobs, openJobs, technicianProfile, analyti
   const technicianLat = technicianProfile?.latitude;
   const technicianLng = technicianProfile?.longitude;
 
-  const nearbyOpenJobs = (openJobs || [])
-    .map((job) => ({
-      ...job,
-      distanceMiles: haversineMiles(technicianLat, technicianLng, job?.latitude, job?.longitude),
-    }))
-    .filter((job) => {
-      if (technicianLat == null || technicianLng == null) return true;
-      return job.distanceMiles <= searchRadiusMiles;
-    })
-    .sort((a, b) => a.distanceMiles - b.distanceMiles);
+  const nearbyOpenJobs = filterJobsWithinRadius(openJobs, technicianLat, technicianLng, searchRadiusMiles);
 
   useEffect(() => {
     if (!nearbyOpenJobs.length) {
@@ -900,8 +880,7 @@ const TechnicianDashboardContent = ({ jobs, openJobs, technicianProfile, analyti
   const selectedMapJob = nearbyOpenJobs.find((job) => job.id === selectedMapJobId) || null;
   const centerLat = technicianLat ?? selectedMapJob?.latitude ?? 39.5;
   const centerLng = technicianLng ?? selectedMapJob?.longitude ?? -98.35;
-  const needsExactAddressPrompt =
-    !technicianProfile?.address?.trim() || technicianLat == null || technicianLng == null;
+  const needsExactAddressPrompt = needsTechnicianMapSetup(technicianProfile);
   const latDelta = searchRadiusMiles / 69;
   const lonDelta = searchRadiusMiles / (Math.cos((centerLat * Math.PI) / 180) * 69 || 1);
   const left = centerLng - lonDelta;
