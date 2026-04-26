@@ -42,7 +42,6 @@ const JobDetail = () => {
     hourly_rate_cents: '',
     hours_per_day: '8',
     days: '',
-    go_live_at: '',
     scheduled_start_at: '',
     scheduled_end_at: '',
   });
@@ -250,7 +249,6 @@ const JobDetail = () => {
       hourly_rate_cents: hasNewPricing ? (job.hourly_rate_cents / 100).toFixed(2) : '',
       hours_per_day: String(job.hours_per_day ?? 8),
       days: job.days != null ? String(job.days) : '',
-      go_live_at: toDatetimeLocal(job.go_live_at),
       scheduled_start_at: toDatetimeLocal(job.scheduled_start_at),
       scheduled_end_at: toDatetimeLocal(job.scheduled_end_at),
     });
@@ -348,9 +346,6 @@ const JobDetail = () => {
         scheduled_start_at: editData.scheduled_start_at ? new Date(editData.scheduled_start_at).toISOString() : null,
         scheduled_end_at: editData.scheduled_end_at ? new Date(editData.scheduled_end_at).toISOString() : null,
       };
-      if (isAdmin) {
-        payload.go_live_at = editData.go_live_at ? new Date(editData.go_live_at).toISOString() : null;
-      }
       if (jobAmount > 0) {
         payload.hourly_rate_cents = Math.round(hr * 100);
         payload.hours_per_day = hpd;
@@ -1145,18 +1140,6 @@ const JobDetail = () => {
             </div>
             <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-4">
               <h3 className="font-medium text-gray-900">Schedule</h3>
-              {isAdmin && (
-                <div>
-                  <label className="block text-sm font-medium mb-1">Go live date &amp; time</label>
-                  <input
-                    type="datetime-local"
-                    name="go_live_at"
-                    value={editData.go_live_at}
-                    onChange={handleEditChange}
-                    className="w-full border rounded p-2"
-                  />
-                </div>
-              )}
               <div>
                 <label className="block text-sm font-medium mb-1">Start date & time</label>
                 <input type="datetime-local" name="scheduled_start_at" value={editData.scheduled_start_at} onChange={handleEditChange} className="w-full border rounded p-2" />

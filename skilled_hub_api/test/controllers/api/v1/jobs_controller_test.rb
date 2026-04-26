@@ -313,6 +313,163 @@ module Api
 
         assert_response :forbidden
       end
+
+      test "creating an open job sets go_live_at to now" do
+        user = User.create!(
+          email: "company-go-live-now-create@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "premium",
+          membership_fee_waived: true
+        )
+        user.update_column(:company_profile_id, profile.id)
+
+        travel_to Time.zone.parse("2026-04-25 23:00:00") do
+          post "/api/v1/jobs",
+               params: {
+                 title: "Immediate go-live",
+                 description: "Posted now",
+                 status: "open",
+                 company_profile_id: profile.id,
+                 go_live_at: 3.days.from_now
+               },
+               headers: auth_header_for(user),
+               as: :json
+
+          assert_response :created
+          created_job = Job.order(:id).last
+          assert_in_delta Time.current.to_f, created_job.go_live_at.to_f, 1.0
+        end
+      end
+
+      test "updating a non-open job to open sets go_live_at to now" do
+        user = User.create!(
+          email: "company-go-live-now-update@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "premium",
+          membership_fee_waived: true
+        )
+        user.update_column(:company_profile_id, profile.id)
+
+        job = Job.create!(
+          company_profile: profile,
+          title: "Reserved job",
+          description: "desc",
+          status: :reserved,
+          go_live_at: 2.days.from_now
+        )
+
+        travel_to Time.zone.parse("2026-04-26 10:30:00") do
+          patch "/api/v1/jobs/#{job.id}",
+                params: { status: "open" },
+                headers: auth_header_for(user),
+                as: :json
+
+          assert_response :ok
+          job.reload
+          assert_in_delta Time.current.to_f, job.go_live_at.to_f, 1.0
+        end
+      end
+
+      test "updating an open job with a future go_live_at resets go_live_at to now" do
+        user = User.create!(
+          email: "company-go-live-open-update@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "premium",
+          membership_fee_waived: true
+        )
+        user.update_column(:company_profile_id, profile.id)
+
+        job = Job.create!(
+          company_profile: profile,
+          title: "Open job",
+          description: "desc",
+          status: :open,
+          go_live_at: 2.hours.ago
+        )
+
+        travel_to Time.zone.parse("2026-04-26 11:30:00") do
+          patch "/api/v1/jobs/#{job.id}",
+                params: {
+                  title: "Open job updated",
+                  go_live_at: 3.days.from_now
+                },
+                headers: auth_header_for(user),
+                as: :json
+
+          assert_response :ok
+          job.reload
+          assert_in_delta Time.current.to_f, job.go_live_at.to_f, 1.0
+        end
+      end
+
+      test "deny reopens claimed job and sets go_live_at to now" do
+        company_user = User.create!(
+          email: "company-deny-reopen@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        company_profile = CompanyProfile.create!(
+          user: company_user,
+          membership_level: "premium",
+          membership_fee_waived: true
+        )
+        company_user.update_column(:company_profile_id, company_profile.id)
+
+        technician_user = User.create!(
+          email: "tech-deny-reopen@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        technician_profile = TechnicianProfile.create!(
+          user: technician_user,
+          trade_type: "General",
+          availability: "Full-time",
+          membership_level: "basic"
+        )
+
+        job = Job.create!(
+          company_profile: company_profile,
+          title: "Claimed job",
+          description: "desc",
+          status: :filled,
+          go_live_at: 2.days.from_now,
+          scheduled_start_at: 1.day.from_now,
+          scheduled_end_at: 2.days.from_now
+        )
+        JobApplication.create!(
+          job: job,
+          technician_profile: technician_profile,
+          status: :accepted
+        )
+
+        travel_to Time.zone.parse("2026-04-26 12:00:00") do
+          patch "/api/v1/jobs/#{job.id}/deny",
+                headers: auth_header_for(company_user),
+                as: :json
+
+          assert_response :ok
+          job.reload
+          assert_equal "open", job.status
+          assert_in_delta Time.current.to_f, job.go_live_at.to_f, 1.0
+        end
+      end
     end
   end
 end

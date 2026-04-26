@@ -156,6 +156,7 @@ module Api
 
         job = Job.new(job_params.except(:company_profile_id, :skip_card_validation))
         job.company_profile_id = company_profile.id
+        set_go_live_at_for_post!(job)
         if job.save
           CrmProspectPromotion.promote_after_job_created!(job.company_profile_id)
           Rails.logger.info("[mail] job_posted_email job_id=#{job.id}") # confirm this code path + deploy hit Mailtrap
@@ -171,7 +172,9 @@ module Api
         unless can_manage_job?(job)
           return render json: { error: 'Access denied' }, status: :forbidden
         end
-        if job.update(job_params)
+        job.assign_attributes(job_params)
+        set_go_live_at_for_post!(job)
+        if job.save
           render json: job, serializer: JobSerializer, status: :ok
         else
           render json: { errors: job.errors.full_messages }, status: :unprocessable_entity
@@ -247,7 +250,7 @@ module Api
         end
 
         accepted_app.update!(status: :rejected)
-        job.update!(status: :open)
+        job.update!(status: :open, go_live_at: Time.current)
         render json: job, serializer: JobSerializer, status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: 'Job not found' }, status: :not_found
@@ -468,6 +471,15 @@ module Api
         start_b = job_b.scheduled_start_at
         end_b = job_b.scheduled_end_at
         start_a < end_b && end_a > start_b
+      end
+
+      # Posting should make the job live immediately.
+      # Any publish event (create as open, or draft -> open) anchors tier visibility at current time.
+      def set_go_live_at_for_post!(job)
+        return unless job.status.to_s == "open"
+        return unless job.new_record? || job.will_save_change_to_status? || job.will_save_change_to_go_live_at?
+
+        job.go_live_at = Time.current
       end
 
       def capture_payment_and_hold(job, payment_intent_id)

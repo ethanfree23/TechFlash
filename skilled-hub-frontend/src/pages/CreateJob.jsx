@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { jobsAPI, profilesAPI, crmAPI, adminMembershipTierConfigsAPI } from '../api/api';
+import { jobsAPI, profilesAPI, crmAPI } from '../api/api';
 import DateTimeInput from '../components/DateTimeInput';
 import JobAddressFields from '../components/JobAddressFields';
 import AlertModal from '../components/AlertModal';
@@ -74,8 +74,6 @@ const CreateJob = () => {
   const [days, setDays] = useState("");
   const [status, setStatus] = useState("open");
   const [scheduledStartAt, setScheduledStartAt] = useState(toDatetimeLocal(defaultStart));
-  const [goLiveAt, setGoLiveAt] = useState(toDatetimeLocal(defaultStart));
-  const [useDifferentGoLiveAt, setUseDifferentGoLiveAt] = useState(false);
   const [scheduledEndAt, setScheduledEndAt] = useState(
     computeEndFromPricing(toDatetimeLocal(defaultStart), 1, 8)
   );
@@ -88,8 +86,6 @@ const CreateJob = () => {
   const [companySelectionLocked, setCompanySelectionLocked] = useState(false);
   const [enforceCardValidation, setEnforceCardValidation] = useState(true);
   const [platformFeePercent, setPlatformFeePercent] = useState(null);
-  const [accessTiers, setAccessTiers] = useState([]);
-  const [accessTiersLoading, setAccessTiersLoading] = useState(false);
   const [successModal, setSuccessModal] = useState(false);
   const [errorModal, setErrorModal] = useState(null);
   const navigate = useNavigate();
@@ -163,41 +159,11 @@ const CreateJob = () => {
     };
   }, [companyQuery, isAdmin, companySelectionLocked]);
 
-  useEffect(() => {
-    if (!isAdmin) return;
-    let cancelled = false;
-    (async () => {
-      setAccessTiersLoading(true);
-      try {
-        const res = await adminMembershipTierConfigsAPI.list('technician');
-        const tiers = Array.isArray(res?.membership_tier_configs) ? res.membership_tier_configs : [];
-        if (!cancelled) {
-          const sorted = [...tiers].sort((a, b) => {
-            if ((a.sort_order ?? 0) !== (b.sort_order ?? 0)) return (a.sort_order ?? 0) - (b.sort_order ?? 0);
-            return (a.id ?? 0) - (b.id ?? 0);
-          });
-          setAccessTiers(sorted);
-        }
-      } catch {
-        if (!cancelled) setAccessTiers([]);
-      } finally {
-        if (!cancelled) setAccessTiersLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isAdmin]);
-
   // Auto-compute end date/time from start + days + hours per day (+ 1 hr lunch)
   useEffect(() => {
     const computed = computeEndFromPricing(scheduledStartAt, days, hoursPerDay);
     if (computed) setScheduledEndAt(computed);
   }, [scheduledStartAt, days, hoursPerDay]);
-
-  useEffect(() => {
-    if (!useDifferentGoLiveAt) setGoLiveAt(scheduledStartAt || '');
-  }, [scheduledStartAt, useDifferentGoLiveAt]);
 
   const hr = parseFloat(hourlyRate) || 0;
   const hpd = parseInt(hoursPerDay, 10) || 8;
@@ -216,15 +182,6 @@ const CreateJob = () => {
     if (patch.zip_code !== undefined) setZipCode(patch.zip_code);
     if (patch.country !== undefined) setCountry(patch.country);
   };
-
-  const formatAccessTime = (goLiveValue, delayHours) => {
-    if (!goLiveValue) return 'Set go-live to preview';
-    const base = new Date(goLiveValue);
-    if (Number.isNaN(base.getTime())) return 'Invalid go-live date';
-    const release = new Date(base.getTime() - (Number(delayHours) || 0) * 60 * 60 * 1000);
-    return release.toLocaleString();
-  };
-  const effectiveGoLiveAt = useDifferentGoLiveAt ? goLiveAt : scheduledStartAt;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -259,7 +216,6 @@ const CreateJob = () => {
       };
       if (isAdmin) {
         payload.skip_card_validation = !enforceCardValidation;
-        payload.go_live_at = effectiveGoLiveAt ? new Date(effectiveGoLiveAt).toISOString() : null;
       }
       if (jobAmount > 0) {
         payload.hourly_rate_cents = Math.round(hr * 100);
@@ -543,19 +499,7 @@ const CreateJob = () => {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <div className="mb-1 flex items-start justify-between gap-3">
-              <label className="block font-medium">Start Date & Time</label>
-              {isAdmin && (
-                <label className="inline-flex items-center gap-1.5 text-xs text-gray-600 whitespace-nowrap">
-                  <span>Different go-live date</span>
-                  <input
-                    type="checkbox"
-                    checked={useDifferentGoLiveAt}
-                    onChange={(e) => setUseDifferentGoLiveAt(e.target.checked)}
-                  />
-                </label>
-              )}
-            </div>
+            <label className="block font-medium mb-1">Start Date & Time</label>
             <DateTimeInput
               id="create-job-start-at"
               value={scheduledStartAt}
@@ -574,47 +518,6 @@ const CreateJob = () => {
             <p className="text-xs text-gray-500 mt-0.5">Auto-calculated from days and hours (incl. 1 hr lunch/day). Adjust if needed.</p>
           </div>
         </div>
-        {isAdmin && useDifferentGoLiveAt && (
-          <div className="space-y-3">
-            <div>
-              <label className="block font-medium mb-1">Go Live Date & Time</label>
-              <DateTimeInput
-                id="create-job-go-live-at"
-                value={goLiveAt}
-                onChange={(e) => setGoLiveAt(e.target.value)}
-                className="w-full"
-              />
-              <p className="text-xs text-gray-500 mt-0.5">
-                Base release time for membership tier early-access windows.
-              </p>
-            </div>
-            <div className="border border-gray-200 rounded-lg bg-gray-50 p-3">
-              <p className="text-xs font-medium text-gray-700 mb-2">Tier access preview</p>
-              {accessTiersLoading ? (
-                <p className="text-xs text-gray-500">Loading tier rules...</p>
-              ) : accessTiers.length === 0 ? (
-                <p className="text-xs text-gray-500">No technician tiers found.</p>
-              ) : (
-                <div className="space-y-1">
-                  {accessTiers.map((tier) => {
-                    const delay = Number(tier.early_access_delay_hours ?? 0);
-                    const minYears = Number(tier.job_access_min_experience_years ?? 0);
-                    const label = tier.display_name || tier.slug || `Tier #${tier.id}`;
-                    return (
-                      <div key={tier.id} className="text-xs text-gray-700 flex flex-wrap gap-x-2">
-                        <span className="font-medium">{label}:</span>
-                        <span>
-                          opens {delay}h before go-live ({formatAccessTime(effectiveGoLiveAt, delay)})
-                        </span>
-                        <span className="text-gray-500">min exp: {minYears}y</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
         <div>
           <label className="block font-medium mb-1">Status</label>
           <select
@@ -625,6 +528,11 @@ const CreateJob = () => {
             <option value="open">Open</option>
             <option value="draft">Draft</option>
           </select>
+          {isAdmin && (
+            <p className="text-xs text-gray-500 mt-1">
+              Jobs go live immediately when status is set to Open.
+            </p>
+          )}
         </div>
         <button
           type="submit"

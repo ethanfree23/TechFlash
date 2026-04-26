@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { jobsAPI, profilesAPI, adminMembershipTierConfigsAPI } from '../api/api';
+import { jobsAPI, profilesAPI } from '../api/api';
 import JobAddressFields from '../components/JobAddressFields';
 import DateTimeInput from '../components/DateTimeInput';
 import AlertModal from '../components/AlertModal';
@@ -25,7 +25,7 @@ const EditJob = () => {
   const [error, setError] = useState(null);
   const [form, setForm] = useState({
     title: '', description: '', skill_class: '', minimum_years_experience: '', notes: '', required_certifications: [''], address: '', city: '', state: '', zip_code: '', country: '', status: 'open',
-    hourly_rate_cents: '', hours_per_day: '8', days: '', go_live_at: '',
+    hourly_rate_cents: '', hours_per_day: '8', days: '',
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -34,8 +34,6 @@ const EditJob = () => {
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'success', onCloseAction: null });
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [platformFeePercent, setPlatformFeePercent] = useState(null);
-  const [accessTiers, setAccessTiers] = useState([]);
-  const [accessTiersLoading, setAccessTiersLoading] = useState(false);
 
   useEffect(() => {
     const fetchJob = async () => {
@@ -61,7 +59,6 @@ const EditJob = () => {
           zip_code: data.zip_code || '',
           country: data.country || 'United States',
           status: data.status || 'open',
-          go_live_at: toDatetimeLocal(data.go_live_at),
           hourly_rate_cents: hasNewPricing ? (data.hourly_rate_cents / 100).toFixed(2) : '',
           hours_per_day: data.hours_per_day ?? 8,
           days: data.days ?? '',
@@ -89,32 +86,6 @@ const EditJob = () => {
     };
     fetchJob();
   }, [id]);
-
-  useEffect(() => {
-    if (!isAdmin) return;
-    let cancelled = false;
-    (async () => {
-      setAccessTiersLoading(true);
-      try {
-        const res = await adminMembershipTierConfigsAPI.list('technician');
-        const tiers = Array.isArray(res?.membership_tier_configs) ? res.membership_tier_configs : [];
-        if (!cancelled) {
-          const sorted = [...tiers].sort((a, b) => {
-            if ((a.sort_order ?? 0) !== (b.sort_order ?? 0)) return (a.sort_order ?? 0) - (b.sort_order ?? 0);
-            return (a.id ?? 0) - (b.id ?? 0);
-          });
-          setAccessTiers(sorted);
-        }
-      } catch {
-        if (!cancelled) setAccessTiers([]);
-      } finally {
-        if (!cancelled) setAccessTiersLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isAdmin]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -162,14 +133,6 @@ const EditJob = () => {
     }));
   };
 
-  const formatAccessTime = (goLiveValue, delayHours) => {
-    if (!goLiveValue) return 'Set go-live to preview';
-    const base = new Date(goLiveValue);
-    if (Number.isNaN(base.getTime())) return 'Invalid go-live date';
-    const release = new Date(base.getTime() - (Number(delayHours) || 0) * 60 * 60 * 1000);
-    return release.toLocaleString();
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!String(form.city || '').trim() || !String(form.state || '').trim()) {
@@ -203,9 +166,6 @@ const EditJob = () => {
         country: form.country,
         status: form.status,
       };
-      if (isAdmin) {
-        payload.go_live_at = form.go_live_at ? new Date(form.go_live_at).toISOString() : null;
-      }
       if (jobAmount > 0) {
         payload.hourly_rate_cents = Math.round(hr * 100);
         payload.hours_per_day = hpd;
@@ -423,45 +383,6 @@ const EditJob = () => {
             </div>
           )}
         </div>
-        {isAdmin && (
-          <div>
-            <label className="block font-medium mb-1">Go Live Date & Time</label>
-            <DateTimeInput
-              id="edit-job-go-live-at"
-              value={form.go_live_at}
-              onChange={(e) => setForm((prev) => ({ ...prev, go_live_at: e.target.value }))}
-              className="w-full"
-            />
-            <p className="text-xs text-gray-500 mt-0.5">
-              Tier access windows are calculated from this date/time.
-            </p>
-            <div className="mt-3 border border-gray-200 rounded-lg bg-gray-50 p-3">
-              <p className="text-xs font-medium text-gray-700 mb-2">Tier access preview</p>
-              {accessTiersLoading ? (
-                <p className="text-xs text-gray-500">Loading tier rules...</p>
-              ) : accessTiers.length === 0 ? (
-                <p className="text-xs text-gray-500">No technician tiers found.</p>
-              ) : (
-                <div className="space-y-1">
-                  {accessTiers.map((tier) => {
-                    const delay = Number(tier.early_access_delay_hours ?? 0);
-                    const minYears = Number(tier.job_access_min_experience_years ?? 0);
-                    const label = tier.display_name || tier.slug || `Tier #${tier.id}`;
-                    return (
-                      <div key={tier.id} className="text-xs text-gray-700 flex flex-wrap gap-x-2">
-                        <span className="font-medium">{label}:</span>
-                        <span>
-                          opens {delay}h before go-live ({formatAccessTime(form.go_live_at, delay)})
-                        </span>
-                        <span className="text-gray-500">min exp: {minYears}y</span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
         <div>
           <label className="block font-medium mb-1">Status</label>
           <select
@@ -477,6 +398,11 @@ const EditJob = () => {
             <option value="closed">Closed</option>
             <option value="expired">Expired</option>
           </select>
+          {isAdmin && (
+            <p className="text-xs text-gray-500 mt-1">
+              Jobs go live immediately when status is set to Open.
+            </p>
+          )}
         </div>
         <div className="flex gap-4 items-center">
           <button
