@@ -24,11 +24,7 @@ export const filterJobsWithinRadius = (jobs, centerLat, centerLng, radiusMiles) 
 };
 
 export const needsTechnicianMapSetup = (profile) => (
-  !String(profile?.address || '').trim() ||
   !String(profile?.city || '').trim() ||
   !String(profile?.state || '').trim() ||
-  !String(profile?.zip_code || '').trim() ||
-  !String(profile?.country || '').trim() ||
-  profile?.latitude == null ||
-  profile?.longitude == null
+  !String(profile?.country || '').trim()
 );
