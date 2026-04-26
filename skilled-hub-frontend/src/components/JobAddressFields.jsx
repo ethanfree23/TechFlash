@@ -26,11 +26,15 @@ const JobAddressFields = ({
   const wrapRef = useRef(null);
   const debounceRef = useRef(null);
 
-  const usingText =
-    pickedLabel ||
-    ((String(city || '').trim() || String(state || '').trim())
-      ? [address, city, state, zipCode, country].filter(Boolean).join(', ')
-      : '');
+  const hasSelectedLocation =
+    Boolean(String(pickedLabel || '').trim()) ||
+    Boolean(String(address || '').trim()) ||
+    Boolean(String(city || '').trim()) ||
+    Boolean(String(zipCode || '').trim());
+
+  const usingText = hasSelectedLocation
+    ? (pickedLabel || [address, city, state, zipCode, country].filter(Boolean).join(', '))
+    : '';
 
   const applyResolved = useCallback(
     (row) => {

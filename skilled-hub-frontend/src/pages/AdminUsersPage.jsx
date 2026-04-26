@@ -12,13 +12,13 @@ const ROLE_TABS = [
   { id: 'company', label: 'Companies' },
   { id: 'technician', label: 'Technicians' },
 ];
-const COLUMN_STORAGE_KEY = 'admin-users-table-columns-v1';
+const COLUMN_STORAGE_KEY = 'admin-users-table-columns-v2';
 const DEFAULT_COLUMNS = [
+  { key: 'company', label: 'Company', visible: true },
   { key: 'first_name', label: 'First name', visible: true },
   { key: 'last_name', label: 'Last name', visible: true },
   { key: 'email', label: 'Email', visible: true },
   { key: 'phone', label: 'Phone', visible: true },
-  { key: 'company', label: 'Company', visible: true },
   { key: 'role', label: 'Role', visible: true },
   { key: 'joined', label: 'Joined', visible: true },
 ];
