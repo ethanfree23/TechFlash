@@ -60,6 +60,23 @@ const CRM_COMPANY_TYPES = [
 ];
 
 const CRM_NOTE_CONTACT_METHODS = ['call', 'text', 'email', 'in_person', 'note'];
+const CRM_MERGE_FIELDS = [
+  { key: 'name', label: 'Company name' },
+  { key: 'contact_name', label: 'Primary contact name' },
+  { key: 'email', label: 'Primary email' },
+  { key: 'phone', label: 'Primary phone' },
+  { key: 'website', label: 'Website' },
+  { key: 'street_address', label: 'Street address' },
+  { key: 'city', label: 'City' },
+  { key: 'state', label: 'State' },
+  { key: 'zip', label: 'ZIP' },
+  { key: 'instagram_url', label: 'Instagram URL' },
+  { key: 'facebook_url', label: 'Facebook URL' },
+  { key: 'linkedin_url', label: 'LinkedIn URL' },
+  { key: 'status', label: 'Status' },
+  { key: 'linked_user_id', label: 'Linked company user id' },
+  { key: 'linked_company_profile_id', label: 'Linked company profile id' },
+];
 
 const formatCurrency = (cents) => {
   if (cents == null || cents === 0) return '$0';
@@ -109,6 +126,14 @@ const editableContacts = (contacts, fallback = null) => {
   if (normalized.length > 0) return normalized;
   const fallbackNormalized = normalizeContactDraftEntry(fallback);
   return hasContactValue(fallbackNormalized) ? [fallbackNormalized] : [];
+};
+
+const mergeFieldDisplayValue = (lead, key) => {
+  if (!lead) return '—';
+  const value = lead[key];
+  if (value == null || value === '') return '—';
+  if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : '—';
+  return String(value);
 };
 
 const CrmPage = ({ user, onLogout }) => {
@@ -162,6 +187,19 @@ const CrmPage = ({ user, onLogout }) => {
   const [isRecordEditing, setIsRecordEditing] = useState(false);
   const [profileImportOpen, setProfileImportOpen] = useState(false);
   const [profileImportText, setProfileImportText] = useState('');
+  const [mergeModalOpen, setMergeModalOpen] = useState(false);
+  const [mergeSaving, setMergeSaving] = useState(false);
+  const [mergeTargetId, setMergeTargetId] = useState('');
+  const [mergeDirection, setMergeDirection] = useState('into_current');
+  const [mergeFieldSources, setMergeFieldSources] = useState(() =>
+    Object.fromEntries(CRM_MERGE_FIELDS.map((field) => [field.key, 'current'])),
+  );
+  const [mergeOptions, setMergeOptions] = useState({
+    combine_contacts: true,
+    combine_company_types: true,
+    combine_notes: true,
+    combine_timeline_notes: true,
+  });
   const pendingAdditionalContactFocusIdx = useRef(null);
 
   const loadList = useCallback(async () => {
@@ -607,6 +645,98 @@ const CrmPage = ({ user, onLogout }) => {
       });
     } finally {
       setProvisionSaving(false);
+    }
+  };
+
+  const openMergeModal = () => {
+    const defaults = Object.fromEntries(CRM_MERGE_FIELDS.map((field) => [field.key, 'current']));
+    setMergeFieldSources(defaults);
+    setMergeOptions({
+      combine_contacts: true,
+      combine_company_types: true,
+      combine_notes: true,
+      combine_timeline_notes: true,
+    });
+    setMergeDirection('into_current');
+    setMergeTargetId('');
+    setMergeModalOpen(true);
+  };
+
+  const mergeRecord = async () => {
+    if (!selectedId || !mergeTargetId) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Merge target required',
+        message: 'Choose the CRM company record to merge with first.',
+        variant: 'error',
+      });
+      return;
+    }
+
+    const target = leads.find((lead) => Number(lead.id) === Number(mergeTargetId));
+    const currentLabel = form.name || c?.name || `CRM #${selectedId}`;
+    const targetLabel = target?.name || `CRM #${mergeTargetId}`;
+    const confirmText = mergeDirection === 'into_current'
+      ? `Merge "${targetLabel}" into "${currentLabel}"? This deletes "${targetLabel}" after merge.`
+      : `Merge "${currentLabel}" into "${targetLabel}"? This deletes "${currentLabel}" after merge.`;
+    if (!window.confirm(confirmText)) return;
+
+    setMergeSaving(true);
+    try {
+      const res = await crmAPI.merge(selectedId, {
+        target_crm_lead_id: Number(mergeTargetId),
+        merge_direction: mergeDirection,
+        field_sources: mergeFieldSources,
+        ...mergeOptions,
+      });
+      setDetail(res);
+      setCrmNotes(res.crm_notes || []);
+      const mergedLead = res.crm_lead;
+      const contacts = normalizeContacts(mergedLead.contacts, {
+        name: mergedLead.contact_name || '',
+        email: mergedLead.email || '',
+        phone: mergedLead.phone || '',
+      });
+      const primaryContact = contacts[0] || { name: '', email: '', phone: '' };
+      setForm({
+        name: mergedLead.name || '',
+        contact_name: primaryContact.name || '',
+        email: primaryContact.email || '',
+        phone: primaryContact.phone || '',
+        contacts,
+        website: mergedLead.website || '',
+        street_address: mergedLead.street_address || '',
+        city: mergedLead.city || '',
+        state: mergedLead.state || '',
+        zip: mergedLead.zip || '',
+        instagram_url: mergedLead.instagram_url || '',
+        facebook_url: mergedLead.facebook_url || '',
+        linkedin_url: mergedLead.linkedin_url || '',
+        company_types: mergedLead.company_types || [],
+        status: mergedLead.status || 'lead',
+        notes: mergedLead.notes || '',
+        linked_user_id: mergedLead.linked_user_id ?? null,
+        linked_company_profile_id: mergedLead.linked_company_profile_id ?? null,
+      });
+      setSelectedId(mergedLead.id);
+      setIsRecordEditing(false);
+      setMergeModalOpen(false);
+      await loadList();
+      setAlertModal({
+        isOpen: true,
+        title: 'Merge complete',
+        message: 'CRM company records were merged successfully.',
+        variant: 'success',
+      });
+    } catch (e) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Merge failed',
+        message: e.message || 'Could not merge CRM records.',
+        variant: 'error',
+      });
+    } finally {
+      setMergeSaving(false);
     }
   };
 
@@ -1170,6 +1300,16 @@ const CrmPage = ({ user, onLogout }) => {
     const statusOk = pipelineStatusFilter.trim() === '' || (row.status || '').toLowerCase() === pipelineStatusFilter.trim().toLowerCase();
     return nameOk && statusOk;
   });
+  const mergeTargetLead = leads.find((lead) => Number(lead.id) === Number(mergeTargetId));
+  const currentMergeLead = {
+    ...c,
+    ...form,
+    contacts: editableContacts(form.contacts, {
+      name: form.contact_name || '',
+      email: form.email || '',
+      phone: form.phone || '',
+    }),
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -1297,6 +1437,13 @@ const CrmPage = ({ user, onLogout }) => {
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <h2 className="text-lg font-semibold text-gray-900">Edit record</h2>
                   <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={openMergeModal}
+                      className="px-3 py-1.5 border border-amber-300 text-amber-700 rounded-lg hover:bg-amber-50 text-sm font-medium"
+                    >
+                      Merge
+                    </button>
                     <button
                       type="button"
                       onClick={() => setProfileImportOpen(true)}
@@ -2839,6 +2986,167 @@ const CrmPage = ({ user, onLogout }) => {
                     Cancel
                   </button>
                 </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {mergeModalOpen && selectedId ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="crm-merge-title"
+            onClick={() => {
+              if (!mergeSaving) setMergeModalOpen(false);
+            }}
+          >
+            <div
+              className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
+                <h2 id="crm-merge-title" className="text-lg font-semibold text-gray-900">Merge CRM companies</h2>
+                <button
+                  type="button"
+                  disabled={mergeSaving}
+                  onClick={() => setMergeModalOpen(false)}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+                  aria-label="Close"
+                >
+                  <FaTimes className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="overflow-y-auto px-6 py-5 space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <label className="block">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Merge direction</span>
+                    <select
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      value={mergeDirection}
+                      onChange={(e) => setMergeDirection(e.target.value)}
+                    >
+                      <option value="into_current">Keep current record (delete selected)</option>
+                      <option value="into_target">Keep selected record (delete current)</option>
+                    </select>
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Merge with record</span>
+                    <select
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      value={mergeTargetId}
+                      onChange={(e) => setMergeTargetId(e.target.value)}
+                    >
+                      <option value="">Select CRM record</option>
+                      {leads.filter((lead) => Number(lead.id) !== Number(selectedId)).map((lead) => (
+                        <option key={lead.id} value={String(lead.id)}>
+                          {lead.name || `CRM #${lead.id}`} (ID {lead.id})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={mergeOptions.combine_contacts}
+                      onChange={(e) => setMergeOptions((prev) => ({ ...prev, combine_contacts: e.target.checked }))}
+                    />
+                    Combine contacts
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={mergeOptions.combine_company_types}
+                      onChange={(e) => setMergeOptions((prev) => ({ ...prev, combine_company_types: e.target.checked }))}
+                    />
+                    Combine company types
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={mergeOptions.combine_notes}
+                      onChange={(e) => setMergeOptions((prev) => ({ ...prev, combine_notes: e.target.checked }))}
+                    />
+                    Combine notes field
+                  </label>
+                  <label className="inline-flex items-center gap-2 text-sm text-gray-700">
+                    <input
+                      type="checkbox"
+                      checked={mergeOptions.combine_timeline_notes}
+                      onChange={(e) => setMergeOptions((prev) => ({ ...prev, combine_timeline_notes: e.target.checked }))}
+                    />
+                    Combine timeline notes
+                  </label>
+                </div>
+
+                {mergeTargetLead ? (
+                  <div className="rounded-lg border border-gray-200 overflow-x-auto">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-2 py-2 text-left">Field</th>
+                          <th className="px-2 py-2 text-left">Current ({currentMergeLead.name || `#${selectedId}`})</th>
+                          <th className="px-2 py-2 text-left">Selected ({mergeTargetLead.name || `#${mergeTargetLead.id}`})</th>
+                          <th className="px-2 py-2 text-left">Use</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {CRM_MERGE_FIELDS.map((field) => (
+                          <tr key={field.key} className="border-t border-gray-100 align-top">
+                            <td className="px-2 py-2 font-medium text-gray-800">{field.label}</td>
+                            <td className="px-2 py-2 text-gray-700 break-words">{mergeFieldDisplayValue(currentMergeLead, field.key)}</td>
+                            <td className="px-2 py-2 text-gray-700 break-words">{mergeFieldDisplayValue(mergeTargetLead, field.key)}</td>
+                            <td className="px-2 py-2">
+                              <div className="flex flex-wrap gap-2">
+                                <label className="inline-flex items-center gap-1">
+                                  <input
+                                    type="radio"
+                                    name={`merge-source-${field.key}`}
+                                    checked={mergeFieldSources[field.key] === 'current'}
+                                    onChange={() => setMergeFieldSources((prev) => ({ ...prev, [field.key]: 'current' }))}
+                                  />
+                                  Current
+                                </label>
+                                <label className="inline-flex items-center gap-1">
+                                  <input
+                                    type="radio"
+                                    name={`merge-source-${field.key}`}
+                                    checked={mergeFieldSources[field.key] === 'selected'}
+                                    onChange={() => setMergeFieldSources((prev) => ({ ...prev, [field.key]: 'selected' }))}
+                                  />
+                                  Selected
+                                </label>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500">Pick a target CRM record to configure field-level merge choices.</p>
+                )}
+              </div>
+              <div className="px-6 py-4 border-t border-gray-100 flex flex-wrap gap-2 justify-end">
+                <button
+                  type="button"
+                  disabled={mergeSaving}
+                  onClick={() => setMergeModalOpen(false)}
+                  className="px-4 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={mergeSaving || !mergeTargetId}
+                  onClick={mergeRecord}
+                  className="px-4 py-2 rounded-lg bg-amber-600 text-white font-semibold hover:bg-amber-700 disabled:opacity-50"
+                >
+                  {mergeSaving ? 'Merging…' : 'Merge CRM records'}
+                </button>
               </div>
             </div>
           </div>

@@ -123,6 +123,73 @@ module Api
           assert_not CrmLead.exists?(remove_a.id)
           assert_not CrmLead.exists?(remove_b.id)
         end
+
+        test "merges crm leads with selected field values and combined contacts/notes" do
+          admin = User.create!(
+            email: "admin+crm_merge_test@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+
+          current = CrmLead.create!(
+            name: "Current Co",
+            contact_name: "Alice Current",
+            email: "alice@current.co",
+            phone: "555-111-2222",
+            website: "https://current.co",
+            status: "lead",
+            company_types: ["hvac"],
+            contacts: [{ name: "Alice Current", email: "alice@current.co", phone: "555-111-2222" }],
+            notes: "Current note body"
+          )
+          selected = CrmLead.create!(
+            name: "Selected Co",
+            contact_name: "Bob Selected",
+            email: "bob@selected.co",
+            phone: "555-333-4444",
+            website: "https://selected.co",
+            status: "qualified",
+            company_types: ["electrical"],
+            contacts: [{ name: "Bob Selected", email: "bob@selected.co", phone: "555-333-4444" }],
+            notes: "Selected note body"
+          )
+          current.crm_notes.create!(contact_method: "email", body: "Current timeline note")
+          selected.crm_notes.create!(contact_method: "call", body: "Selected timeline note")
+
+          post "/api/v1/admin/crm_leads/#{current.id}/merge",
+               params: {
+                 target_crm_lead_id: selected.id,
+                 merge_direction: "into_current",
+                 combine_contacts: true,
+                 combine_company_types: true,
+                 combine_notes: true,
+                 combine_timeline_notes: true,
+                 field_sources: {
+                   name: "selected",
+                   status: "selected",
+                   website: "current",
+                   contacts: "current"
+                 }
+               },
+               headers: auth_header_for(admin),
+               as: :json
+
+          assert_response :ok
+          body = JSON.parse(response.body)
+          merged = body.fetch("crm_lead")
+          assert_equal current.id, merged.fetch("id")
+          assert_equal "Selected Co", merged.fetch("name")
+          assert_equal "qualified", merged.fetch("status")
+          assert_equal "https://current.co", merged.fetch("website")
+          assert_equal 2, merged.fetch("contacts").length
+          assert_equal %w[electrical hvac], merged.fetch("company_types").sort
+          assert_includes merged.fetch("notes"), "Current note body"
+          assert_includes merged.fetch("notes"), "Selected note body"
+          assert_not CrmLead.exists?(selected.id)
+          assert_equal 2, CrmNote.where(crm_lead_id: current.id).count
+          assert_equal current.id, body.fetch("merged").fetch("target_crm_lead_id")
+        end
       end
     end
   end

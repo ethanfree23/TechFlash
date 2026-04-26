@@ -135,6 +135,11 @@ export const crmAPI = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
+  merge: (sourceId, data) =>
+    apiRequest(`/admin/crm_leads/${sourceId}/merge`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   remove: (id) =>
     apiRequest(`/admin/crm_leads/${id}`, {
       method: 'DELETE',

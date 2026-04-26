@@ -99,6 +99,9 @@ Rails.application.routes.draw do
           end
         end
         resources :crm_leads, only: %i[index show create update destroy] do
+          member do
+            post :merge
+          end
           collection do
             post :import
             post :bulk_destroy
