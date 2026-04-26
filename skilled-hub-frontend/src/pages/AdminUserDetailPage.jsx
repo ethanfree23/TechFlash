@@ -5,7 +5,7 @@ import AdminCollapsibleCard from '../components/AdminCollapsibleCard';
 import AdminCreateUserModal from '../components/AdminCreateUserModal';
 import JobAddressFields from '../components/JobAddressFields';
 import { ServiceCityPicker } from '../components/admin/AdminUserFormPickers';
-import { adminUsersAPI, adminReferralsAPI } from '../api/api';
+import { adminUsersAPI, adminReferralsAPI, adminMembershipTierConfigsAPI } from '../api/api';
 import AlertModal from '../components/AlertModal';
 import { auth } from '../auth';
 import { FaEye } from 'react-icons/fa';
@@ -42,6 +42,13 @@ export default function AdminUserDetailPage({ user, onLogout }) {
   const [profileDraft, setProfileDraft] = useState({});
   const [profileSaveBusy, setProfileSaveBusy] = useState(false);
   const [membershipSaveBusy, setMembershipSaveBusy] = useState(false);
+  const [membershipLevelOptions, setMembershipLevelOptions] = useState([]);
+  const [membershipDraft, setMembershipDraft] = useState({
+    membership_level: 'basic',
+    membership_fee_waived: false,
+    membership_fee_override_cents: '',
+    commission_override_percent: '',
+  });
   const [createUserModalOpen, setCreateUserModalOpen] = useState(false);
   const [masqueradeBusy, setMasqueradeBusy] = useState(false);
   const [ensureProfileBusy, setEnsureProfileBusy] = useState(false);
@@ -88,7 +95,53 @@ export default function AdminUserDetailPage({ user, onLogout }) {
   const membershipLevel = profile?.membership_level || 'basic';
   const effectiveMembershipFeeCents = profile?.effective_membership_fee_cents ?? 0;
   const effectiveCommissionPercent = profile?.effective_commission_percent ?? 0;
-  const billingExempt = !!profile?.membership_fee_waived;
+
+  useEffect(() => {
+    const audience = isCompany ? 'company' : isTech ? 'technician' : null;
+    if (!audience) {
+      setMembershipLevelOptions([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await adminMembershipTierConfigsAPI.list(audience);
+        if (cancelled) return;
+        const tiers = Array.isArray(res?.membership_tier_configs) ? res.membership_tier_configs : [];
+        const slugs = Array.from(
+          new Set(
+            tiers
+              .map((tier) => String(tier?.slug || '').trim())
+              .filter(Boolean)
+          )
+        );
+        setMembershipLevelOptions(slugs);
+      } catch {
+        if (!cancelled) setMembershipLevelOptions([]);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isCompany, isTech]);
+
+  useEffect(() => {
+    if (!profile) return;
+    setMembershipDraft({
+      membership_level: profile.membership_level || 'basic',
+      membership_fee_waived: !!profile.membership_fee_waived,
+      membership_fee_override_cents:
+        profile.membership_fee_override_cents == null ? '' : String(profile.membership_fee_override_cents),
+      commission_override_percent:
+        profile.commission_override_percent == null ? '' : String(profile.commission_override_percent),
+    });
+  }, [
+    profile?.id,
+    profile?.membership_level,
+    profile?.membership_fee_waived,
+    profile?.membership_fee_override_cents,
+    profile?.commission_override_percent,
+  ]);
 
   const sendSetupEmail = async () => {
     if (!u?.id) return;
@@ -303,32 +356,65 @@ export default function AdminUserDetailPage({ user, onLogout }) {
     }
   };
 
-  const toggleBillingExempt = async (nextChecked) => {
-    if (!u?.id || !isCompany) return;
+  const saveMembershipSettings = async ({ successTitle, successMessage, errorTitle }) => {
+    if (!u?.id || !profile) return;
     setMembershipSaveBusy(true);
     try {
+      const feeOverrideRaw = String(membershipDraft.membership_fee_override_cents ?? '').trim();
+      const feeOverride =
+        feeOverrideRaw === '' ? null : Number(feeOverrideRaw);
+      if (feeOverride != null && (!Number.isFinite(feeOverride) || feeOverride < 0)) {
+        throw new Error('Membership fee override must be a non-negative number of cents.');
+      }
+
+      const commissionOverrideRaw = String(membershipDraft.commission_override_percent ?? '').trim();
+      const commissionOverride =
+        commissionOverrideRaw === '' ? null : Number(commissionOverrideRaw);
+      if (commissionOverride != null && (!Number.isFinite(commissionOverride) || commissionOverride < 0)) {
+        throw new Error('Commission override must be a non-negative number.');
+      }
+
       await adminUsersAPI.updateMembershipPricing(u.id, {
-        membership_fee_waived: nextChecked,
+        membership_level: membershipDraft.membership_level,
+        membership_fee_waived: !!membershipDraft.membership_fee_waived,
+        membership_fee_override_cents: feeOverride == null ? null : Math.round(feeOverride),
+        commission_override_percent: commissionOverride,
       });
       await load();
       setAlertModal({
         isOpen: true,
-        title: 'Billing updated',
-        message: nextChecked
-          ? 'Billing exemption enabled. Membership fee and commission are now effectively 0 while tier stays unchanged.'
-          : 'Billing exemption disabled. Tier pricing now applies normally.',
+        title: successTitle,
+        message: successMessage,
         variant: 'success',
       });
     } catch (err) {
       setAlertModal({
         isOpen: true,
-        title: 'Could not update billing exemption',
+        title: errorTitle,
         message: err.message || 'Request failed',
         variant: 'error',
       });
     } finally {
       setMembershipSaveBusy(false);
     }
+  };
+
+  const saveCompanyMembershipSettings = async (e) => {
+    e.preventDefault();
+    await saveMembershipSettings({
+      successTitle: 'Company membership updated',
+      successMessage: 'Company tier, billing exemption, and overrides were saved.',
+      errorTitle: 'Could not update company membership',
+    });
+  };
+
+  const saveTechnicianMembershipSettings = async (e) => {
+    e.preventDefault();
+    await saveMembershipSettings({
+      successTitle: 'Technician membership updated',
+      successMessage: 'Technician tier, billing exemption, and overrides were saved.',
+      errorTitle: 'Could not update technician membership',
+    });
   };
 
   const startMasquerade = async () => {
@@ -805,27 +891,170 @@ export default function AdminUserDetailPage({ user, onLogout }) {
             {isCompany && profile && (
               <AdminCollapsibleCard
                 title="Membership billing"
-                description="Keep tier access while toggling billing exemption for this company."
+                description="Configure company tier, billing exemption, and pricing overrides."
               >
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-4">
-                  <Stat label="Tier" value={membershipLevel} />
-                  <Stat label="Effective monthly fee" value={fmtMoney(effectiveMembershipFeeCents)} />
-                  <Stat label="Effective commission" value={`${Number(effectiveCommissionPercent || 0).toFixed(2)}%`} />
-                </div>
-                <label className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg bg-gray-50">
-                  <input
-                    type="checkbox"
-                    className="mt-1 h-4 w-4"
-                    checked={billingExempt}
-                    disabled={membershipSaveBusy}
-                    onChange={(e) => toggleBillingExempt(e.target.checked)}
-                  />
-                  <span className="text-sm text-gray-700">
-                    <span className="font-semibold text-gray-900">Billing exempt</span>
-                    <br />
-                    Keeps current tier but makes effective membership fee and commission 0. Also allows posting jobs without a saved card.
-                  </span>
-                </label>
+                <form onSubmit={saveCompanyMembershipSettings} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <Stat label="Tier" value={membershipLevel} />
+                    <Stat label="Effective monthly fee" value={fmtMoney(effectiveMembershipFeeCents)} />
+                    <Stat label="Effective commission" value={`${Number(effectiveCommissionPercent || 0).toFixed(2)}%`} />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Tier</span>
+                      <select
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                        value={membershipDraft.membership_level}
+                        onChange={(e) => setMembershipDraft((d) => ({ ...d, membership_level: e.target.value }))}
+                        disabled={membershipSaveBusy || membershipLevelOptions.length === 0}
+                      >
+                        {membershipLevelOptions.map((level) => (
+                          <option key={level} value={level}>{level}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Fee override (cents)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={membershipDraft.membership_fee_override_cents}
+                        onChange={(e) => setMembershipDraft((d) => ({ ...d, membership_fee_override_cents: e.target.value }))}
+                        placeholder="Blank = no override"
+                        disabled={membershipSaveBusy}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Commission override (%)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={membershipDraft.commission_override_percent}
+                        onChange={(e) => setMembershipDraft((d) => ({ ...d, commission_override_percent: e.target.value }))}
+                        placeholder="Blank = no override"
+                        disabled={membershipSaveBusy}
+                      />
+                    </label>
+                  </div>
+                  {membershipLevelOptions.length === 0 && (
+                    <p className="text-sm text-amber-700">
+                      No membership tiers are configured for this audience yet. Configure tiers in admin settings first.
+                    </p>
+                  )}
+
+                  <label className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg bg-gray-50">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4"
+                      checked={!!membershipDraft.membership_fee_waived}
+                      disabled={membershipSaveBusy}
+                      onChange={(e) => setMembershipDraft((d) => ({ ...d, membership_fee_waived: e.target.checked }))}
+                    />
+                    <span className="text-sm text-gray-700">
+                      <span className="font-semibold text-gray-900">Billing exempt</span>
+                      <br />
+                      Keeps tier access while making effective membership fee and commission 0. Also allows posting without a saved card.
+                    </span>
+                  </label>
+
+                  <button
+                    type="submit"
+                    disabled={membershipSaveBusy || membershipLevelOptions.length === 0}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
+                  >
+                    {membershipSaveBusy ? 'Saving…' : 'Save company membership'}
+                  </button>
+                </form>
+              </AdminCollapsibleCard>
+            )}
+
+            {isTech && profile && (
+              <AdminCollapsibleCard
+                title="Technician membership"
+                description="Configure technician tier, billing exemption, and pricing overrides."
+              >
+                <form onSubmit={saveTechnicianMembershipSettings} className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <Stat label="Tier" value={membershipLevel} />
+                    <Stat label="Effective monthly fee" value={fmtMoney(effectiveMembershipFeeCents)} />
+                    <Stat label="Effective commission" value={`${Number(effectiveCommissionPercent || 0).toFixed(2)}%`} />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Tier</span>
+                      <select
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                        value={membershipDraft.membership_level}
+                        onChange={(e) => setMembershipDraft((d) => ({ ...d, membership_level: e.target.value }))}
+                        disabled={membershipSaveBusy || membershipLevelOptions.length === 0}
+                      >
+                        {membershipLevelOptions.map((level) => (
+                          <option key={level} value={level}>{level}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Fee override (cents)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={membershipDraft.membership_fee_override_cents}
+                        onChange={(e) => setMembershipDraft((d) => ({ ...d, membership_fee_override_cents: e.target.value }))}
+                        placeholder="Blank = no override"
+                        disabled={membershipSaveBusy}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Commission override (%)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step="0.01"
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={membershipDraft.commission_override_percent}
+                        onChange={(e) => setMembershipDraft((d) => ({ ...d, commission_override_percent: e.target.value }))}
+                        placeholder="Blank = no override"
+                        disabled={membershipSaveBusy}
+                      />
+                    </label>
+                  </div>
+                  {membershipLevelOptions.length === 0 && (
+                    <p className="text-sm text-amber-700">
+                      No membership tiers are configured for this audience yet. Configure tiers in admin settings first.
+                    </p>
+                  )}
+
+                  <label className="flex items-start gap-3 p-3 border border-gray-200 rounded-lg bg-gray-50">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4"
+                      checked={!!membershipDraft.membership_fee_waived}
+                      disabled={membershipSaveBusy}
+                      onChange={(e) => setMembershipDraft((d) => ({ ...d, membership_fee_waived: e.target.checked }))}
+                    />
+                    <span className="text-sm text-gray-700">
+                      <span className="font-semibold text-gray-900">Billing exempt</span>
+                      <br />
+                      Keeps tier access while making effective membership fee and commission 0 for this technician.
+                    </span>
+                  </label>
+
+                  <button
+                    type="submit"
+                    disabled={membershipSaveBusy || membershipLevelOptions.length === 0}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
+                  >
+                    {membershipSaveBusy ? 'Saving…' : 'Save technician membership'}
+                  </button>
+                </form>
               </AdminCollapsibleCard>
             )}
 
