@@ -5,6 +5,25 @@ module Api
     class JobsControllerTest < ActionDispatch::IntegrationTest
       include AuthTestHelper
 
+      def reset_technician_tier_rules!(overrides = {})
+        MembershipTierConfig.delete_all
+        MembershipTierConfig.create!({
+          audience: "technician",
+          slug: "basic",
+          display_name: "Basic",
+          monthly_fee_cents: 0,
+          commission_percent: 20,
+          early_access_delay_hours: 0,
+          job_access_min_experience_years: 0,
+          job_access_min_jobs_completed: 0,
+          job_access_min_successful_jobs: 0,
+          job_access_min_profile_completeness_percent: 0,
+          job_access_requires_verified_background: false,
+          sort_order: 0
+        }.merge(overrides))
+        MembershipPolicy.invalidate_cache!
+      end
+
       def with_mocked_company_has_payment_method(value)
         singleton = PaymentService.singleton_class
         original_exists = singleton.method_defined?(:company_has_payment_method?)
@@ -202,6 +221,8 @@ module Api
       end
 
       test "technician can claim paid job for billing exempt company without payment method" do
+        reset_technician_tier_rules!
+
         company_user = User.create!(
           email: "company-waived-claim@example.com",
           password: "password123",
@@ -236,7 +257,8 @@ module Api
         TechnicianProfile.create!(
           user: technician_user,
           trade_type: "General",
-          availability: "Full-time"
+          availability: "Full-time",
+          membership_level: "basic"
         )
 
         patch "/api/v1/jobs/#{job.id}/claim",
@@ -250,18 +272,7 @@ module Api
       end
 
       test "technician cannot claim a job before tier access window opens" do
-        MembershipTierConfig.delete_all
-        MembershipTierConfig.create!(
-          audience: "technician",
-          slug: "basic",
-          display_name: "Basic",
-          monthly_fee_cents: 0,
-          commission_percent: 20,
-          early_access_delay_hours: 0,
-          job_access_min_experience_years: 0,
-          sort_order: 0
-        )
-        MembershipPolicy.invalidate_cache!
+        reset_technician_tier_rules!
 
         company_user = User.create!(
           email: "company-go-live-claim@example.com",

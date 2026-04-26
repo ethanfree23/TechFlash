@@ -13,6 +13,7 @@ const testFiles = [
   'data.test.mjs',
   'api.test.mjs',
   'technicianMap.test.mjs',
+  'jobAccessSettings.test.mjs',
 ];
 
 let successful = 0;

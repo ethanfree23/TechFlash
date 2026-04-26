@@ -62,12 +62,13 @@ class MembershipPolicy
 
     rule = rule_for(:technician, technician_profile.membership_level)
     return false unless technician_experience_eligible?(job: job, technician_profile: technician_profile, rule: rule)
+    return false unless technician_additional_access_eligible?(technician_profile: technician_profile, rule: rule)
 
     delay_hours = rule[:early_access_delay_hours].to_i
     anchor_time = job.go_live_at || job.created_at
     return false if anchor_time.blank?
 
-    visible_from = anchor_time - delay_hours.hours
+    visible_from = anchor_time + delay_hours.hours
     Time.current >= visible_from
   end
 
@@ -131,8 +132,8 @@ class MembershipPolicy
     else
       {
         "basic" => { fee_cents: 0, commission_percent: 20.0, early_access_delay_hours: 0 },
-        "pro" => { fee_cents: 4900, commission_percent: 20.0, early_access_delay_hours: 24, job_access_min_experience_years: 0 },
-        "premium" => { fee_cents: 24_900, commission_percent: 10.0, early_access_delay_hours: 0, job_access_min_experience_years: 0 }
+        "pro" => { fee_cents: 4900, commission_percent: 20.0, early_access_delay_hours: 24, job_access_min_experience_years: 0, job_access_min_jobs_completed: 0, job_access_min_successful_jobs: 0, job_access_min_profile_completeness_percent: 0, job_access_requires_verified_background: false },
+        "premium" => { fee_cents: 24_900, commission_percent: 10.0, early_access_delay_hours: 0, job_access_min_experience_years: 0, job_access_min_jobs_completed: 0, job_access_min_successful_jobs: 0, job_access_min_profile_completeness_percent: 0, job_access_requires_verified_background: false }
       }
     end
   end
@@ -143,5 +144,49 @@ class MembershipPolicy
     tier_required_years = rule[:job_access_min_experience_years].to_i
     minimum_required = [job_required_years, tier_required_years].max
     tech_years >= minimum_required
+  end
+
+  def self.technician_additional_access_eligible?(technician_profile:, rule:)
+    minimum_jobs_completed = rule[:job_access_min_jobs_completed].to_i
+    minimum_successful_jobs = rule[:job_access_min_successful_jobs].to_i
+    minimum_profile_completeness = rule[:job_access_min_profile_completeness_percent].to_i
+    requires_verified_background = !!rule[:job_access_requires_verified_background]
+
+    return false if technician_completed_jobs_count(technician_profile) < minimum_jobs_completed
+    return false if technician_successful_jobs_count(technician_profile) < minimum_successful_jobs
+    return false if technician_profile_completeness_percent(technician_profile) < minimum_profile_completeness
+    return false if requires_verified_background && !technician_background_verified?(technician_profile)
+
+    true
+  end
+
+  def self.technician_completed_jobs_count(technician_profile)
+    JobApplication
+      .joins(:job)
+      .where(technician_profile_id: technician_profile.id, status: JobApplication.statuses[:accepted], jobs: { status: [Job.statuses[:completed], Job.statuses[:finished]] })
+      .count
+  end
+
+  def self.technician_successful_jobs_count(technician_profile)
+    JobApplication
+      .joins(:job)
+      .where(technician_profile_id: technician_profile.id, status: JobApplication.statuses[:accepted], jobs: { status: Job.statuses[:finished] })
+      .count
+  end
+
+  def self.technician_profile_completeness_percent(technician_profile)
+    fields = [
+      technician_profile.trade_type,
+      technician_profile.availability,
+      technician_profile.bio,
+      technician_profile.phone,
+      technician_profile.city
+    ]
+    present_count = fields.count { |value| value.present? }
+    ((present_count.to_f / fields.length) * 100).floor
+  end
+
+  def self.technician_background_verified?(technician_profile)
+    !!technician_profile.background_verified
   end
 end

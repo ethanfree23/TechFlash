@@ -311,11 +311,15 @@ module Api
             :city,
             :state,
             :zip_code,
-            :country
+            :country,
+            :background_verified
           )
           if p.key?(:experience_years)
             raw = p[:experience_years]
             p[:experience_years] = raw.present? ? raw.to_i : nil
+          end
+          if p.key?(:background_verified)
+            p[:background_verified] = ActiveModel::Type::Boolean.new.cast(p[:background_verified])
           end
           p
         end

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_04_26_001000) do
+ActiveRecord::Schema[7.1].define(version: 2026_04_26_004000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -227,6 +227,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_26_001000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.integer "job_access_min_experience_years"
+    t.integer "job_access_min_jobs_completed"
+    t.integer "job_access_min_successful_jobs"
+    t.integer "job_access_min_profile_completeness_percent"
+    t.boolean "job_access_requires_verified_background", default: false, null: false
     t.index ["audience", "slug"], name: "index_membership_tier_configs_on_audience_and_slug", unique: true
     t.index ["audience", "sort_order"], name: "index_membership_tier_configs_on_audience_and_sort_order"
   end
@@ -342,6 +346,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_04_26_001000) do
     t.string "membership_status"
     t.datetime "membership_current_period_end_at"
     t.string "phone"
+    t.boolean "background_verified", default: false, null: false
     t.index ["membership_level"], name: "index_technician_profiles_on_membership_level"
     t.index ["stripe_membership_subscription_id"], name: "index_technician_profiles_on_stripe_membership_subscription_id", unique: true
     t.index ["user_id"], name: "index_technician_profiles_on_user_id"

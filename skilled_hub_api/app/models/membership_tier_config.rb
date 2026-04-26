@@ -10,6 +10,9 @@ class MembershipTierConfig < ApplicationRecord
   validates :commission_percent, numericality: { greater_than_or_equal_to: 0 }
   validates :sort_order, numericality: { only_integer: true }
   validates :job_access_min_experience_years, numericality: { only_integer: true, greater_than_or_equal_to: 0, allow_nil: true }
+  validates :job_access_min_jobs_completed, numericality: { only_integer: true, greater_than_or_equal_to: 0, allow_nil: true }
+  validates :job_access_min_successful_jobs, numericality: { only_integer: true, greater_than_or_equal_to: 0, allow_nil: true }
+  validates :job_access_min_profile_completeness_percent, numericality: { only_integer: true, greater_than_or_equal_to: 0, less_than_or_equal_to: 100, allow_nil: true }
   validate :early_access_only_for_technician
 
   after_commit :clear_membership_tier_cache
@@ -24,6 +27,10 @@ class MembershipTierConfig < ApplicationRecord
     if audience == "technician"
       h[:early_access_delay_hours] = (early_access_delay_hours || 0).to_i
       h[:job_access_min_experience_years] = job_access_min_experience_years.to_i
+      h[:job_access_min_jobs_completed] = job_access_min_jobs_completed.to_i
+      h[:job_access_min_successful_jobs] = job_access_min_successful_jobs.to_i
+      h[:job_access_min_profile_completeness_percent] = job_access_min_profile_completeness_percent.to_i
+      h[:job_access_requires_verified_background] = !!job_access_requires_verified_background
     end
     h
   end

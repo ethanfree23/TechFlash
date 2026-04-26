@@ -32,6 +32,10 @@ module Api
           attrs = update_attributes
           attrs[:early_access_delay_hours] = nil unless @config.audience == "technician"
           attrs[:job_access_min_experience_years] = nil unless @config.audience == "technician"
+          attrs[:job_access_min_jobs_completed] = nil unless @config.audience == "technician"
+          attrs[:job_access_min_successful_jobs] = nil unless @config.audience == "technician"
+          attrs[:job_access_min_profile_completeness_percent] = nil unless @config.audience == "technician"
+          attrs[:job_access_requires_verified_background] = false unless @config.audience == "technician"
 
           if @config.update(attrs)
             render json: { membership_tier_config: serialize(@config) }, status: :ok
@@ -81,7 +85,7 @@ module Api
         end
 
         def create_attributes
-          p = params.permit(:slug, :display_name, :monthly_fee_cents, :commission_percent, :early_access_delay_hours, :job_access_min_experience_years, :sort_order, :stripe_price_id).to_h
+          p = params.permit(:slug, :display_name, :monthly_fee_cents, :commission_percent, :early_access_delay_hours, :job_access_min_experience_years, :job_access_min_jobs_completed, :job_access_min_successful_jobs, :job_access_min_profile_completeness_percent, :job_access_requires_verified_background, :sort_order, :stripe_price_id).to_h
           p[:slug] = p[:slug].to_s.downcase.strip if p[:slug]
           p[:display_name] = p[:display_name].to_s.strip.presence
           p[:stripe_price_id] = p[:stripe_price_id].to_s.strip.presence
@@ -96,11 +100,24 @@ module Api
             p[:job_access_min_experience_years] =
               p[:job_access_min_experience_years].present? ? p[:job_access_min_experience_years].to_i : nil
           end
+          if p.key?(:job_access_min_jobs_completed)
+            p[:job_access_min_jobs_completed] =
+              p[:job_access_min_jobs_completed].present? ? p[:job_access_min_jobs_completed].to_i : nil
+          end
+          if p.key?(:job_access_min_successful_jobs)
+            p[:job_access_min_successful_jobs] =
+              p[:job_access_min_successful_jobs].present? ? p[:job_access_min_successful_jobs].to_i : nil
+          end
+          if p.key?(:job_access_min_profile_completeness_percent)
+            p[:job_access_min_profile_completeness_percent] =
+              p[:job_access_min_profile_completeness_percent].present? ? p[:job_access_min_profile_completeness_percent].to_i : nil
+          end
+          p[:job_access_requires_verified_background] = ActiveModel::Type::Boolean.new.cast(p[:job_access_requires_verified_background]) if p.key?(:job_access_requires_verified_background)
           p
         end
 
         def update_attributes
-          p = params.permit(:display_name, :monthly_fee_cents, :commission_percent, :early_access_delay_hours, :job_access_min_experience_years, :sort_order, :stripe_price_id).to_h
+          p = params.permit(:display_name, :monthly_fee_cents, :commission_percent, :early_access_delay_hours, :job_access_min_experience_years, :job_access_min_jobs_completed, :job_access_min_successful_jobs, :job_access_min_profile_completeness_percent, :job_access_requires_verified_background, :sort_order, :stripe_price_id).to_h
           p[:display_name] = p[:display_name].to_s.strip.presence if p.key?(:display_name)
           p[:stripe_price_id] = p[:stripe_price_id].to_s.strip.presence if p.key?(:stripe_price_id)
           p[:monthly_fee_cents] = p[:monthly_fee_cents].to_i if p.key?(:monthly_fee_cents)
@@ -114,6 +131,19 @@ module Api
             p[:job_access_min_experience_years] =
               p[:job_access_min_experience_years].present? ? p[:job_access_min_experience_years].to_i : nil
           end
+          if p.key?(:job_access_min_jobs_completed)
+            p[:job_access_min_jobs_completed] =
+              p[:job_access_min_jobs_completed].present? ? p[:job_access_min_jobs_completed].to_i : nil
+          end
+          if p.key?(:job_access_min_successful_jobs)
+            p[:job_access_min_successful_jobs] =
+              p[:job_access_min_successful_jobs].present? ? p[:job_access_min_successful_jobs].to_i : nil
+          end
+          if p.key?(:job_access_min_profile_completeness_percent)
+            p[:job_access_min_profile_completeness_percent] =
+              p[:job_access_min_profile_completeness_percent].present? ? p[:job_access_min_profile_completeness_percent].to_i : nil
+          end
+          p[:job_access_requires_verified_background] = ActiveModel::Type::Boolean.new.cast(p[:job_access_requires_verified_background]) if p.key?(:job_access_requires_verified_background)
           p
         end
 
@@ -127,6 +157,10 @@ module Api
             commission_percent: config.commission_percent.to_f,
             early_access_delay_hours: config.early_access_delay_hours,
             job_access_min_experience_years: config.job_access_min_experience_years,
+            job_access_min_jobs_completed: config.job_access_min_jobs_completed,
+            job_access_min_successful_jobs: config.job_access_min_successful_jobs,
+            job_access_min_profile_completeness_percent: config.job_access_min_profile_completeness_percent,
+            job_access_requires_verified_background: config.job_access_requires_verified_background,
             sort_order: config.sort_order,
             stripe_price_id: config.stripe_price_id
           }

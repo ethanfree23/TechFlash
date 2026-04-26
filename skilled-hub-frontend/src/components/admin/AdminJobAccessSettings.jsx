@@ -1,22 +1,13 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { adminMembershipTierConfigsAPI } from '../../api/api';
-
-function rowFromTier(tier) {
-  return {
-    id: tier.id,
-    slug: tier.slug,
-    displayName: tier.display_name || tier.slug,
-    earlyAccessDelayHours: String(tier.early_access_delay_hours ?? 0),
-    minimumExperienceYears: String(tier.job_access_min_experience_years ?? 0),
-    sortOrder: tier.sort_order ?? 0,
-  };
-}
+import { buildTierUpdatePayload, defaultAdditionalFeatures, rowFromTier } from './adminJobAccessSettingsState';
 
 export default function AdminJobAccessSettings() {
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
+  const [activeFeatureTierId, setActiveFeatureTierId] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,17 +35,28 @@ export default function AdminJobAccessSettings() {
     setRows((prev) => prev.map((row) => (row.id === id ? { ...row, ...patch } : row)));
   };
 
+  const updateAdditionalFeature = (id, key, value) => {
+    setRows((prev) =>
+      prev.map((row) => {
+        if (row.id !== id) return row;
+        return {
+          ...row,
+          additionalFeatures: {
+            ...defaultAdditionalFeatures(),
+            ...row.additionalFeatures,
+            [key]: value,
+          },
+        };
+      })
+    );
+  };
+
   const save = async () => {
     setSaving(true);
     setError(null);
     try {
       for (const row of rows) {
-        const earlyAccessDelayHours = parseInt(row.earlyAccessDelayHours, 10);
-        const minimumExperienceYears = parseInt(row.minimumExperienceYears, 10);
-        await adminMembershipTierConfigsAPI.update(row.id, {
-          early_access_delay_hours: Number.isNaN(earlyAccessDelayHours) ? 0 : Math.max(0, earlyAccessDelayHours),
-          job_access_min_experience_years: Number.isNaN(minimumExperienceYears) ? 0 : Math.max(0, minimumExperienceYears),
-        });
+        await adminMembershipTierConfigsAPI.update(row.id, buildTierUpdatePayload(row));
       }
       await load();
     } catch (e) {
@@ -64,16 +66,21 @@ export default function AdminJobAccessSettings() {
     }
   };
 
+  const activeFeatureTier = useMemo(
+    () => rows.find((row) => row.id === activeFeatureTierId) || null,
+    [rows, activeFeatureTierId]
+  );
+
   return (
     <div className="space-y-4">
       <div className="text-sm text-gray-600 space-y-2">
         <p>
           Control job visibility by technician tier. A tier can see jobs starting{' '}
-          <span className="font-medium text-gray-900">X hours before</span> the job&apos;s go-live date.
+          <span className="font-medium text-gray-900">X hours after</span> the job&apos;s go-live date.
         </p>
         <p>
-          You can also require a minimum experience level by tier. Jobs still enforce each listing&apos;s own minimum
-          years requirement.
+          Configure extra early-access eligibility rules with the additional features popup. Jobs still enforce each
+          listing&apos;s own minimum years requirement.
         </p>
       </div>
 
@@ -92,8 +99,8 @@ export default function AdminJobAccessSettings() {
               <thead className="bg-gray-50 text-left text-gray-600">
                 <tr>
                   <th className="px-3 py-2 font-medium">Tier</th>
-                  <th className="px-3 py-2 font-medium">Access before go-live (hours)</th>
-                  <th className="px-3 py-2 font-medium">Min experience years for this tier</th>
+                  <th className="px-3 py-2 font-medium">Access after live (hours)</th>
+                  <th className="px-3 py-2 font-medium">Additional features</th>
                 </tr>
               </thead>
               <tbody>
@@ -107,19 +114,19 @@ export default function AdminJobAccessSettings() {
                       <input
                         type="number"
                         min="0"
-                        value={row.earlyAccessDelayHours}
-                        onChange={(e) => updateRow(row.id, { earlyAccessDelayHours: e.target.value })}
+                        value={row.accessAfterLiveHours}
+                        onChange={(e) => updateRow(row.id, { accessAfterLiveHours: e.target.value })}
                         className="w-28 border rounded px-2 py-1 text-sm"
                       />
                     </td>
                     <td className="px-3 py-2">
-                      <input
-                        type="number"
-                        min="0"
-                        value={row.minimumExperienceYears}
-                        onChange={(e) => updateRow(row.id, { minimumExperienceYears: e.target.value })}
-                        className="w-28 border rounded px-2 py-1 text-sm"
-                      />
+                      <button
+                        type="button"
+                        onClick={() => setActiveFeatureTierId(row.id)}
+                        className="px-3 py-1.5 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                      >
+                        Additional features
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -135,6 +142,89 @@ export default function AdminJobAccessSettings() {
           >
             {saving ? 'Saving...' : 'Save access settings'}
           </button>
+        </div>
+      )}
+
+      {activeFeatureTier && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-xl rounded-xl bg-white p-5 shadow-xl space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-900">
+                Additional features for {activeFeatureTier.displayName}
+              </h3>
+              <p className="text-sm text-gray-600 mt-1">
+                Configure additional access conditions for this tier.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="text-sm text-gray-700 space-y-1">
+                <span>Minimum years experience</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={activeFeatureTier.additionalFeatures?.minimumExperienceYears ?? '0'}
+                  onChange={(e) =>
+                    updateAdditionalFeature(activeFeatureTier.id, 'minimumExperienceYears', e.target.value)
+                  }
+                  className="w-full border rounded px-2 py-1.5"
+                />
+              </label>
+              <label className="text-sm text-gray-700 space-y-1">
+                <span>Minimum jobs completed on platform</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={activeFeatureTier.additionalFeatures?.minimumJobsCompleted ?? '0'}
+                  onChange={(e) => updateAdditionalFeature(activeFeatureTier.id, 'minimumJobsCompleted', e.target.value)}
+                  className="w-full border rounded px-2 py-1.5"
+                />
+              </label>
+              <label className="text-sm text-gray-700 space-y-1">
+                <span>Minimum successful jobs</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={activeFeatureTier.additionalFeatures?.minimumSuccessfulJobs ?? '0'}
+                  onChange={(e) => updateAdditionalFeature(activeFeatureTier.id, 'minimumSuccessfulJobs', e.target.value)}
+                  className="w-full border rounded px-2 py-1.5"
+                />
+              </label>
+              <label className="text-sm text-gray-700 space-y-1">
+                <span>Minimum profile completeness (%)</span>
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={activeFeatureTier.additionalFeatures?.minimumProfileCompletenessPercent ?? '0'}
+                  onChange={(e) =>
+                    updateAdditionalFeature(activeFeatureTier.id, 'minimumProfileCompletenessPercent', e.target.value)
+                  }
+                  className="w-full border rounded px-2 py-1.5"
+                />
+              </label>
+              <label className="sm:col-span-2 inline-flex items-center gap-2 text-sm text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={Boolean(activeFeatureTier.additionalFeatures?.requiresVerifiedBackground)}
+                  onChange={(e) =>
+                    updateAdditionalFeature(activeFeatureTier.id, 'requiresVerifiedBackground', e.target.checked)
+                  }
+                />
+                Require verified background check
+              </label>
+            </div>
+
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setActiveFeatureTierId(null)}
+                className="px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
+              >
+                Close
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

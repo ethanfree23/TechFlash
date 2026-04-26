@@ -113,7 +113,7 @@ module Api
 
       def technician_params
         params.permit(:trade_type, :experience_years, :availability, :bio, :phone, :location, :user_id,
-                     :address, :city, :state, :zip_code, :country)
+                     :address, :city, :state, :zip_code, :country, :background_verified)
       end
     end
   end
