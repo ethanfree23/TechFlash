@@ -49,11 +49,32 @@ const PERIOD_OPTIONS = [
 
 const GOOGLE_MAPS_API_KEY = import.meta.env?.VITE_GOOGLE_MAPS_API_KEY || '';
 let googleMapsScriptPromise = null;
+let googleMapsLoaded = false;
+let googleMapsPreconnectInjected = false;
+
+const ensureGoogleMapsPreconnect = () => {
+  if (typeof document === 'undefined' || googleMapsPreconnectInjected) return;
+  const addPreconnect = (href, crossOrigin = false) => {
+    if (document.querySelector(`link[rel="preconnect"][href="${href}"]`)) return;
+    const link = document.createElement('link');
+    link.rel = 'preconnect';
+    link.href = href;
+    if (crossOrigin) link.crossOrigin = 'anonymous';
+    document.head.appendChild(link);
+  };
+  addPreconnect('https://maps.googleapis.com');
+  addPreconnect('https://maps.gstatic.com', true);
+  googleMapsPreconnectInjected = true;
+};
 
 const loadGoogleMapsScript = () => {
   if (typeof window === 'undefined') return Promise.reject(new Error('Window unavailable'));
-  if (window.google?.maps) return Promise.resolve(window.google.maps);
+  if (window.google?.maps) {
+    googleMapsLoaded = true;
+    return Promise.resolve(window.google.maps);
+  }
   if (!GOOGLE_MAPS_API_KEY) return Promise.reject(new Error('Google Maps API key missing'));
+  ensureGoogleMapsPreconnect();
   if (googleMapsScriptPromise) return googleMapsScriptPromise;
 
   googleMapsScriptPromise = new Promise((resolve, reject) => {
@@ -68,7 +89,11 @@ const loadGoogleMapsScript = () => {
     script.async = true;
     script.defer = true;
     script.dataset.techflashGoogleMaps = '1';
-    script.onload = () => resolve(window.google.maps);
+    script.fetchPriority = 'high';
+    script.onload = () => {
+      googleMapsLoaded = true;
+      resolve(window.google.maps);
+    };
     script.onerror = () => reject(new Error('Failed to load Google Maps script'));
     document.head.appendChild(script);
   });
@@ -311,6 +336,12 @@ const Dashboard = ({ user, onLogout }) => {
 
   useEffect(() => {
     fetchDashboard();
+  }, [user?.role]);
+
+  useEffect(() => {
+    if (user?.role !== 'technician') return undefined;
+    loadGoogleMapsScript().catch(() => {});
+    return undefined;
   }, [user?.role]);
 
   useEffect(() => {
@@ -708,7 +739,7 @@ const TechnicianOpenJobsMap = ({ technicianProfile, selectedMapJob }) => {
   const mapRef = useRef(null);
   const mapContainerRef = useRef(null);
   const markersRef = useRef([]);
-  const [mapsReady, setMapsReady] = useState(Boolean(window.google?.maps));
+  const [mapsReady, setMapsReady] = useState(googleMapsLoaded || Boolean(window.google?.maps));
   const [loadError, setLoadError] = useState(null);
 
   const technicianLat = technicianProfile?.latitude;
@@ -821,7 +852,7 @@ const TechnicianOpenJobsMap = ({ technicianProfile, selectedMapJob }) => {
     mapRef.current.setZoom(homeLatLng ? 11 : 6);
   }, [mapsReady, homeLatLng, selectedLatLng, selectedMapJob?.title]);
 
-  if (!mapsReady || loadError) {
+  if (loadError) {
     return (
       <iframe
         title="Open jobs map area view"
@@ -831,6 +862,14 @@ const TechnicianOpenJobsMap = ({ technicianProfile, selectedMapJob }) => {
         fetchPriority="high"
         referrerPolicy="no-referrer-when-downgrade"
       />
+    );
+  }
+
+  if (!mapsReady) {
+    return (
+      <div className="h-full w-full min-h-[24rem] flex items-center justify-center bg-slate-100 text-gray-500 text-sm">
+        Loading map...
+      </div>
     );
   }
 
