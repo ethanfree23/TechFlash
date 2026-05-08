@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Link } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import {
   profilesAPI,
@@ -7,11 +6,11 @@ import {
   authAPI,
   documentsAPI,
   licensingSettingsAPI,
-  savedJobSearchesAPI,
   membershipTierConfigsAPI,
   membershipsAPI,
   couponsAPI,
   jobAlertPreferencesAPI,
+  feedbackAPI,
 } from '../api/api';
 import { auth } from '../auth';
 import CardPaymentForm from '../components/CardPaymentForm';
@@ -24,6 +23,7 @@ import AdminJobAccessSettings from '../components/admin/AdminJobAccessSettings';
 import { needsTechnicianMapSetup } from '../utils/technicianMap';
 import { requiresElectricalLicenseForState, setLocalOnlyLicenseStates } from '../utils/licensingRules';
 import { formatPhoneInput } from '../utils/phone';
+import { TRADE_OPTIONS, TRADE_OTHER_SENTINEL } from '../constants/trades';
 
 const formatMembershipTier = (tier) => {
   const raw = String(tier || '').trim();
@@ -41,12 +41,22 @@ const DEFAULT_EMAIL_PREFS = {
   membership_updates: true,
 };
 
-const toList = (value) => {
-  if (Array.isArray(value)) return value.map((v) => String(v || '').trim()).filter(Boolean);
-  return String(value || '')
-    .split(',')
-    .map((v) => v.trim())
-    .filter(Boolean);
+const MAX_DURATION_WEEKS = 12;
+
+const clampDurationThumb = (value) => {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 0;
+  return Math.min(MAX_DURATION_WEEKS, Math.max(0, Math.round(n)));
+};
+
+const durationSummary = (minWeeks, maxWeeks) => {
+  const hasMin = Number.isFinite(minWeeks);
+  const hasMax = Number.isFinite(maxWeeks);
+  if (!hasMin && !hasMax) return 'Any duration';
+  if (!hasMin && hasMax) return maxWeeks >= MAX_DURATION_WEEKS ? 'Any duration' : `${maxWeeks} weeks or less`;
+  if (hasMin && !hasMax) return minWeeks >= MAX_DURATION_WEEKS ? '12+ weeks' : `${minWeeks}+ weeks`;
+  if (minWeeks === maxWeeks) return `${minWeeks} week${minWeeks === 1 ? '' : 's'}`;
+  return `${minWeeks}-${maxWeeks} weeks`;
 };
 
 const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
@@ -68,28 +78,21 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     email_notification_preferences: DEFAULT_EMAIL_PREFS,
   });
   const [savingNotifications, setSavingNotifications] = useState(false);
-  const [savedAlertTemplates, setSavedAlertTemplates] = useState([]);
-  const [templateForm, setTemplateForm] = useState({
-    keyword: '',
-    location: '',
-    skill_class: '',
-    max_distance_miles: '',
-    min_hourly_rate_cents: '',
-    max_required_years_experience: '',
-    required_certifications: '',
-  });
-  const [savingTemplate, setSavingTemplate] = useState(false);
-  const [removingTemplateId, setRemovingTemplateId] = useState(null);
   const [jobAlertForm, setJobAlertForm] = useState({
     trade_label: '',
-    min_hourly_rate_cents: 0,
+    min_hourly_rate_dollars: '0.00',
     max_distance_miles: 200,
-    max_duration_days: 365,
+    min_duration_weeks: null,
+    max_duration_weeks: null,
     email_enabled: true,
     sms_enabled: true,
     app_enabled: true,
   });
   const [savingJobAlertForm, setSavingJobAlertForm] = useState(false);
+  const [tradeQueryOpen, setTradeQueryOpen] = useState(false);
+  const [jobAlertTradeNote, setJobAlertTradeNote] = useState('');
+  const [sendingTradeSuggestion, setSendingTradeSuggestion] = useState(false);
+  const [tradeSuggestionSent, setTradeSuggestionSent] = useState(false);
   const [couponCode, setCouponCode] = useState('');
   const [couponBusy, setCouponBusy] = useState(false);
   const [certificates, setCertificates] = useState([]);
@@ -123,6 +126,17 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
     return opts;
   }, [membershipTierOptions, profile?.membership_level]);
+
+  const matchingTradeOptions = useMemo(() => {
+    const query = (jobAlertForm.trade_label || '').trim().toLowerCase();
+    if (!query) return TRADE_OPTIONS;
+    return TRADE_OPTIONS.filter((opt) => opt.toLowerCase().includes(query));
+  }, [jobAlertForm.trade_label]);
+
+  const minDurationSlider = Number.isFinite(jobAlertForm.min_duration_weeks) ? jobAlertForm.min_duration_weeks : 0;
+  const maxDurationSlider = Number.isFinite(jobAlertForm.max_duration_weeks) ? jobAlertForm.max_duration_weeks : MAX_DURATION_WEEKS;
+  const minDurationPercent = (minDurationSlider / MAX_DURATION_WEEKS) * 100;
+  const maxDurationPercent = (maxDurationSlider / MAX_DURATION_WEEKS) * 100;
 
   const fetchProfile = useCallback(async (opts = {}) => {
     const quiet = opts.quiet === true;
@@ -235,17 +249,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   }, [user?.email_notifications_enabled, user?.job_alert_notifications_enabled, user?.email_notification_preferences]);
 
   useEffect(() => {
-    if (!isTechnician) {
-      setSavedAlertTemplates([]);
-      return;
-    }
-    savedJobSearchesAPI
-      .list()
-      .then((items) => setSavedAlertTemplates(Array.isArray(items) ? items : []))
-      .catch(() => setSavedAlertTemplates([]));
-  }, [isTechnician]);
-
-  useEffect(() => {
     if (!isTechnician) return undefined;
     let cancelled = false;
     jobAlertPreferencesAPI
@@ -256,9 +259,10 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         if (!j) return;
         setJobAlertForm({
           trade_label: j.trade_label ?? '',
-          min_hourly_rate_cents: j.min_hourly_rate_cents ?? 0,
+          min_hourly_rate_dollars: ((Number(j.min_hourly_rate_cents) || 0) / 100).toFixed(2),
           max_distance_miles: j.max_distance_miles ?? 200,
-          max_duration_days: j.max_duration_days ?? 365,
+          min_duration_weeks: Number.isFinite(j.min_duration_weeks) ? j.min_duration_weeks : null,
+          max_duration_weeks: Number.isFinite(j.max_duration_weeks) ? j.max_duration_weeks : null,
           email_enabled: j.email_enabled !== false,
           sms_enabled: j.sms_enabled !== false,
           app_enabled: j.app_enabled !== false,
@@ -498,78 +502,24 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     if (!ok) setNotificationPrefs(prev);
   };
 
-  const handleTemplateFieldChange = (e) => {
-    const { name, value } = e.target;
-    setTemplateForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleCreateTemplate = async (e) => {
-    e.preventDefault();
-    setSavingTemplate(true);
-    try {
-      await savedJobSearchesAPI.create({
-        keyword: templateForm.keyword || null,
-        location: templateForm.location || null,
-        skill_class: templateForm.skill_class || null,
-        max_distance_miles: templateForm.max_distance_miles === '' ? null : Number(templateForm.max_distance_miles),
-        min_hourly_rate_cents: templateForm.min_hourly_rate_cents === '' ? null : Number(templateForm.min_hourly_rate_cents),
-        max_required_years_experience: templateForm.max_required_years_experience === '' ? null : Number(templateForm.max_required_years_experience),
-        required_certifications: toList(templateForm.required_certifications),
-      });
-      const items = await savedJobSearchesAPI.list();
-      setSavedAlertTemplates(Array.isArray(items) ? items : []);
-      setTemplateForm({
-        keyword: '',
-        location: '',
-        skill_class: '',
-        max_distance_miles: '',
-        min_hourly_rate_cents: '',
-        max_required_years_experience: '',
-        required_certifications: '',
-      });
-      setAlertModal({
-        isOpen: true,
-        title: 'Template saved',
-        message: 'Job alert template added.',
-        variant: 'success',
-      });
-    } catch (err) {
-      setAlertModal({
-        isOpen: true,
-        title: 'Could not save',
-        message: err.message || 'Could not save job alert template.',
-        variant: 'error',
-      });
-    } finally {
-      setSavingTemplate(false);
-    }
-  };
-
-  const handleRemoveTemplate = async (id) => {
-    setRemovingTemplateId(id);
-    try {
-      await savedJobSearchesAPI.remove(id);
-      setSavedAlertTemplates((prev) => prev.filter((row) => row.id !== id));
-    } catch (err) {
-      setAlertModal({
-        isOpen: true,
-        title: 'Remove failed',
-        message: err.message || 'Could not remove template.',
-        variant: 'error',
-      });
-    } finally {
-      setRemovingTemplateId(null);
-    }
-  };
-
   const handleJobAlertFieldChange = (e) => {
-    const { name, value, type, checked } = e.target;
+    const { name, value, checked } = e.target;
     const boolKeys = ['email_enabled', 'sms_enabled', 'app_enabled'];
     if (boolKeys.includes(name)) {
       setJobAlertForm((prev) => ({ ...prev, [name]: checked }));
       return;
     }
-    const numKeys = ['min_hourly_rate_cents', 'max_distance_miles', 'max_duration_days'];
+    if (name === 'min_hourly_rate_dollars') {
+      const normalized = value.replace(/[^0-9.]/g, '');
+      if (normalized.includes('.')) {
+        const [left, right] = normalized.split('.');
+        setJobAlertForm((prev) => ({ ...prev, min_hourly_rate_dollars: `${left}.${(right || '').slice(0, 2)}` }));
+      } else {
+        setJobAlertForm((prev) => ({ ...prev, min_hourly_rate_dollars: normalized }));
+      }
+      return;
+    }
+    const numKeys = ['max_distance_miles'];
     if (numKeys.includes(name)) {
       if (value === '') {
         setJobAlertForm((prev) => ({ ...prev, [name]: '' }));
@@ -582,18 +532,74 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     setJobAlertForm((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleDurationMinChange = (value) => {
+    const nextMin = clampDurationThumb(value);
+    const nextMax = Math.max(nextMin, maxDurationSlider);
+    setJobAlertForm((prev) => ({
+      ...prev,
+      min_duration_weeks: nextMin === 0 ? null : nextMin,
+      max_duration_weeks: nextMax >= MAX_DURATION_WEEKS ? null : nextMax,
+    }));
+  };
+
+  const handleDurationMaxChange = (value) => {
+    const nextMax = clampDurationThumb(value);
+    const nextMin = Math.min(minDurationSlider, nextMax);
+    setJobAlertForm((prev) => ({
+      ...prev,
+      min_duration_weeks: nextMin === 0 ? null : nextMin,
+      max_duration_weeks: nextMax >= MAX_DURATION_WEEKS ? null : nextMax,
+    }));
+  };
+
+  const handlePickTrade = (label) => {
+    setTradeSuggestionSent(false);
+    if (label === TRADE_OTHER_SENTINEL) {
+      setTradeQueryOpen(true);
+      return;
+    }
+    setTradeQueryOpen(false);
+    setJobAlertForm((prev) => ({ ...prev, trade_label: label }));
+  };
+
+  const handleSendTradeSuggestion = async () => {
+    const typed = (jobAlertForm.trade_label || '').trim();
+    const note = jobAlertTradeNote.trim();
+    if (!typed || !note) return;
+    setSendingTradeSuggestion(true);
+    try {
+      await feedbackAPI.create({
+        kind: 'suggestion',
+        body: `Trade suggestion from Job alerts\nTyped value: "${typed}"\nNote: ${note}`,
+        page_path: '/settings',
+      });
+      setTradeSuggestionSent(true);
+      setJobAlertTradeNote('');
+      setTradeQueryOpen(false);
+    } catch (err) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not send suggestion',
+        message: err.message || 'Please try again.',
+        variant: 'error',
+      });
+    } finally {
+      setSendingTradeSuggestion(false);
+    }
+  };
+
   const handleSaveJobAlertPreferences = async (e) => {
     e.preventDefault();
     setSavingJobAlertForm(true);
     try {
       const md = jobAlertForm.max_distance_miles === '' ? NaN : Number(jobAlertForm.max_distance_miles);
-      const dur = jobAlertForm.max_duration_days === '' ? NaN : Number(jobAlertForm.max_duration_days);
-      const minC = jobAlertForm.min_hourly_rate_cents === '' ? NaN : Number(jobAlertForm.min_hourly_rate_cents);
+      const dollars = parseFloat(jobAlertForm.min_hourly_rate_dollars || '0');
       const payload = {
         trade_label: (jobAlertForm.trade_label || '').trim(),
-        min_hourly_rate_cents: Number.isFinite(minC) ? Math.max(0, Math.floor(minC)) : 0,
+        min_hourly_rate_cents: Number.isFinite(dollars) ? Math.max(0, Math.round(dollars * 100)) : 0,
         max_distance_miles: Number.isFinite(md) && md > 0 ? md : 1,
-        max_duration_days: Number.isFinite(dur) && dur > 0 ? Math.floor(dur) : 1,
+        min_duration_weeks: Number.isFinite(jobAlertForm.min_duration_weeks) ? jobAlertForm.min_duration_weeks : null,
+        max_duration_weeks: Number.isFinite(jobAlertForm.max_duration_weeks) ? jobAlertForm.max_duration_weeks : null,
         email_enabled: !!jobAlertForm.email_enabled,
         sms_enabled: !!jobAlertForm.sms_enabled,
         app_enabled: !!jobAlertForm.app_enabled,
@@ -602,7 +608,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       setAlertModal({
         isOpen: true,
         title: 'Saved',
-        message: 'Job alert matching preferences updated.',
+        message: 'Job alert preferences updated.',
         variant: 'success',
       });
     } catch (err) {
@@ -1336,9 +1342,9 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
                 {isTechnician && (
                   <div className="rounded-xl border border-gray-200 p-4">
-                    <h3 className="text-base font-semibold text-gray-900 mb-1">Job alert matching</h3>
+                    <h3 className="text-base font-semibold text-gray-900 mb-1">Job alerts</h3>
                     <p className="text-sm text-gray-600 mb-4">
-                      Filters used when evaluating new jobs for alerts (distance, pay floor, how far out jobs can start, and channels).
+                      Filters used when evaluating new jobs for alerts (trade, pay floor, distance, duration, and channels).
                     </p>
                     <form onSubmit={handleSaveJobAlertPreferences} className="space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1350,26 +1356,98 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                             id="job-alert-trade"
                             name="trade_label"
                             value={jobAlertForm.trade_label}
-                            onChange={handleJobAlertFieldChange}
+                            onChange={(e) => {
+                              setTradeSuggestionSent(false);
+                              handleJobAlertFieldChange(e);
+                              setTradeQueryOpen(true);
+                            }}
+                            onFocus={() => setTradeQueryOpen(true)}
                             className="w-full border rounded-lg px-3 py-2 text-sm"
-                            placeholder="e.g. Commercial electrician"
+                            placeholder="Type a trade (example: Electrician)"
                             disabled={savingJobAlertForm}
                           />
+                          {tradeQueryOpen && (
+                            <div className="mt-2 rounded-lg border border-gray-200 bg-white shadow-sm">
+                              {matchingTradeOptions.slice(0, 8).map((opt) => (
+                                <button
+                                  key={opt}
+                                  type="button"
+                                  onClick={() => handlePickTrade(opt)}
+                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
+                                >
+                                  {opt}
+                                </button>
+                              ))}
+                              {matchingTradeOptions.length === 0 && (
+                                <button
+                                  type="button"
+                                  onClick={() => handlePickTrade(TRADE_OTHER_SENTINEL)}
+                                  className="w-full text-left px-3 py-2 text-sm text-blue-700 hover:bg-blue-50"
+                                >
+                                  Other - suggest this trade to admin
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          {tradeQueryOpen && matchingTradeOptions.length === 0 && (
+                            <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                              <p className="text-xs text-gray-700 mb-2">
+                                If this trade is missing, send it to admin and we can add it to the list.
+                              </p>
+                              <textarea
+                                rows={3}
+                                maxLength={1000}
+                                value={jobAlertTradeNote}
+                                onChange={(e) => setJobAlertTradeNote(e.target.value)}
+                                className="w-full border rounded-lg px-3 py-2 text-sm"
+                                placeholder="Describe this trade and common job titles"
+                                disabled={sendingTradeSuggestion}
+                              />
+                              <div className="mt-2 flex justify-end gap-2">
+                                <button
+                                  type="button"
+                                  className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg text-gray-700"
+                                  onClick={() => {
+                                    setTradeQueryOpen(false);
+                                    setJobAlertTradeNote('');
+                                  }}
+                                  disabled={sendingTradeSuggestion}
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg disabled:opacity-50"
+                                  onClick={handleSendTradeSuggestion}
+                                  disabled={sendingTradeSuggestion || !jobAlertTradeNote.trim() || !jobAlertForm.trade_label.trim()}
+                                >
+                                  {sendingTradeSuggestion ? 'Sending…' : 'Send to admin'}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          {tradeSuggestionSent && (
+                            <p className="mt-2 text-xs text-green-700">Suggestion sent to admin for review.</p>
+                          )}
                         </div>
                         <div>
                           <label htmlFor="job-alert-min-rate" className="block text-xs font-medium text-gray-700 mb-1">
-                            Minimum hourly rate (cents)
+                            Minimum hourly rate
                           </label>
-                          <input
-                            id="job-alert-min-rate"
-                            type="number"
-                            min="0"
-                            name="min_hourly_rate_cents"
-                            value={jobAlertForm.min_hourly_rate_cents}
-                            onChange={handleJobAlertFieldChange}
-                            className="w-full border rounded-lg px-3 py-2 text-sm"
-                            disabled={savingJobAlertForm}
-                          />
+                          <div className="relative">
+                            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-500">$</span>
+                            <input
+                              id="job-alert-min-rate"
+                              type="text"
+                              inputMode="decimal"
+                              name="min_hourly_rate_dollars"
+                              value={jobAlertForm.min_hourly_rate_dollars}
+                              onChange={handleJobAlertFieldChange}
+                              className="w-full border rounded-lg pl-7 pr-3 py-2 text-sm"
+                              placeholder="25.00"
+                              disabled={savingJobAlertForm}
+                            />
+                          </div>
                         </div>
                         <div>
                           <label htmlFor="job-alert-max-mi" className="block text-xs font-medium text-gray-700 mb-1">
@@ -1386,20 +1464,56 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                             disabled={savingJobAlertForm}
                           />
                         </div>
-                        <div>
-                          <label htmlFor="job-alert-max-dur" className="block text-xs font-medium text-gray-700 mb-1">
-                            Job may start within (days)
+                        <div className="md:col-span-2">
+                          <label className="block text-xs font-medium text-gray-700 mb-1">
+                            Job duration (work weeks)
                           </label>
-                          <input
-                            id="job-alert-max-dur"
-                            type="number"
-                            min="1"
-                            name="max_duration_days"
-                            value={jobAlertForm.max_duration_days}
-                            onChange={handleJobAlertFieldChange}
-                            className="w-full border rounded-lg px-3 py-2 text-sm"
-                            disabled={savingJobAlertForm}
-                          />
+                          <p className="text-xs text-gray-600 mb-2">{durationSummary(jobAlertForm.min_duration_weeks, jobAlertForm.max_duration_weeks)}</p>
+                          <div className="relative h-10">
+                            <div className="absolute left-0 right-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-gray-200" />
+                            <div
+                              className="absolute top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-blue-500"
+                              style={{
+                                left: `${minDurationPercent}%`,
+                                width: `${Math.max(0, maxDurationPercent - minDurationPercent)}%`,
+                              }}
+                            />
+                            <div
+                              className="absolute top-1/2 h-6 w-6 md:h-5 md:w-5 -translate-y-1/2 -translate-x-1/2 rounded-full border-2 border-blue-600 bg-white shadow-sm"
+                              style={{ left: `${minDurationPercent}%` }}
+                            />
+                            <div
+                              className="absolute top-1/2 h-6 w-6 md:h-5 md:w-5 -translate-y-1/2 -translate-x-1/2 rounded-full border-2 border-blue-600 bg-white shadow-sm"
+                              style={{ left: `${maxDurationPercent}%` }}
+                            />
+                            <input
+                              type="range"
+                              min="0"
+                              max={MAX_DURATION_WEEKS}
+                              value={minDurationSlider}
+                              onChange={(e) => handleDurationMinChange(e.target.value)}
+                              className="absolute inset-0 w-full cursor-pointer appearance-none bg-transparent opacity-0"
+                              aria-label="Minimum job duration in weeks"
+                              disabled={savingJobAlertForm}
+                            />
+                            <input
+                              type="range"
+                              min="0"
+                              max={MAX_DURATION_WEEKS}
+                              value={maxDurationSlider}
+                              onChange={(e) => handleDurationMaxChange(e.target.value)}
+                              className="absolute inset-0 w-full cursor-pointer appearance-none bg-transparent opacity-0"
+                              aria-label="Maximum job duration in weeks"
+                              disabled={savingJobAlertForm}
+                            />
+                          </div>
+                          <div className="mt-1 flex justify-between text-[11px] text-gray-500">
+                            <span>Any min</span>
+                            <span>2w</span>
+                            <span>4w</span>
+                            <span>8w</span>
+                            <span>12+w</span>
+                          </div>
                         </div>
                       </div>
                       <div className="space-y-2 pt-1">
@@ -1443,85 +1557,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                         disabled={savingJobAlertForm}
                         className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50"
                       >
-                        {savingJobAlertForm ? 'Saving…' : 'Save matching preferences'}
+                        {savingJobAlertForm ? 'Saving…' : 'Save job alert preferences'}
                       </button>
                     </form>
                   </div>
                 )}
-
-                <div className="rounded-xl border border-gray-200 p-4">
-                  <h3 className="text-base font-semibold text-gray-900 mb-1">Job alerts</h3>
-                  <p className="text-sm text-gray-600 mb-4">
-                    {isTechnician
-                      ? <>Get alerts for new jobs matching your saved searches. Save filters from the <Link to="/jobs" className="text-blue-600 hover:underline">Jobs page</Link> to tune matches.</>
-                      : isCompany
-                        ? 'Get job-related alerts for marketplace activity, including applications and workflow updates as these alerts expand.'
-                        : 'Get marketplace job alert emails for activity tied to your account context.'}
-                  </p>
-                  <label className="flex items-center justify-between gap-4">
-                    <span className="text-sm text-gray-800">Job alert emails</span>
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      checked={notificationPrefs.job_alert_notifications_enabled}
-                      disabled={savingNotifications}
-                      onChange={(e) => handleNotificationToggle('job_alert_notifications_enabled', e.target.checked)}
-                    />
-                  </label>
-
-                  {isTechnician && (
-                    <div className="mt-5 border-t border-gray-200 pt-4">
-                      <h4 className="text-sm font-semibold text-gray-900 mb-3">Job alert templates</h4>
-                      <p className="text-xs text-gray-600 mb-3">
-                        Templates match jobs by criteria like distance, pay, years required, and required certifications.
-                      </p>
-                      <form onSubmit={handleCreateTemplate} className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <input name="keyword" value={templateForm.keyword} onChange={handleTemplateFieldChange} className="border rounded-lg px-3 py-2 text-sm" placeholder="Keyword (optional)" />
-                        <input name="location" value={templateForm.location} onChange={handleTemplateFieldChange} className="border rounded-lg px-3 py-2 text-sm" placeholder="Location (optional)" />
-                        <input name="skill_class" value={templateForm.skill_class} onChange={handleTemplateFieldChange} className="border rounded-lg px-3 py-2 text-sm" placeholder="Skill class (optional)" />
-                        <input type="number" min="1" name="max_distance_miles" value={templateForm.max_distance_miles} onChange={handleTemplateFieldChange} className="border rounded-lg px-3 py-2 text-sm" placeholder="Max distance (miles)" />
-                        <input type="number" min="0" name="min_hourly_rate_cents" value={templateForm.min_hourly_rate_cents} onChange={handleTemplateFieldChange} className="border rounded-lg px-3 py-2 text-sm" placeholder="Min hourly rate cents" />
-                        <input type="number" min="0" name="max_required_years_experience" value={templateForm.max_required_years_experience} onChange={handleTemplateFieldChange} className="border rounded-lg px-3 py-2 text-sm" placeholder="Max years required" />
-                        <input name="required_certifications" value={templateForm.required_certifications} onChange={handleTemplateFieldChange} className="border rounded-lg px-3 py-2 text-sm md:col-span-2" placeholder="Required certs (comma separated)" />
-                        <div className="md:col-span-2">
-                          <button type="submit" disabled={savingTemplate} className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50">
-                            {savingTemplate ? 'Saving...' : 'Save template'}
-                          </button>
-                        </div>
-                      </form>
-                      <div className="mt-4 space-y-2">
-                        {savedAlertTemplates.length === 0 && (
-                          <p className="text-xs text-gray-500">No templates yet.</p>
-                        )}
-                        {savedAlertTemplates.map((tpl) => (
-                          <div key={tpl.id} className="flex items-start justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2">
-                            <div className="text-xs text-gray-700">
-                              <p>
-                                {[tpl.keyword, tpl.location, tpl.skill_class].filter(Boolean).join(' | ') || 'Template'}
-                              </p>
-                              <p className="text-gray-500">
-                                {[
-                                  tpl.max_distance_miles ? `${tpl.max_distance_miles}mi` : null,
-                                  tpl.min_hourly_rate_cents ? `>= ${tpl.min_hourly_rate_cents}c/hr` : null,
-                                  tpl.max_required_years_experience ? `<= ${tpl.max_required_years_experience} yrs req` : null,
-                                  Array.isArray(tpl.required_certifications) && tpl.required_certifications.length > 0 ? `certs: ${tpl.required_certifications.join(', ')}` : null,
-                                ].filter(Boolean).join(' | ') || 'No extra filters'}
-                              </p>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleRemoveTemplate(tpl.id)}
-                              disabled={removingTemplateId === tpl.id}
-                              className="text-xs text-red-600 hover:text-red-700 disabled:opacity-50"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
               </div>
             )}
 

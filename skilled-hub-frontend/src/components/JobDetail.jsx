@@ -1440,8 +1440,15 @@ const JobDetail = () => {
         </div>
       </div>
       {/* Edit Job Modal */}
-      <Modal isOpen={showEditModal} onRequestClose={closeEditModal} ariaHideApp={false} className="fixed inset-0 flex items-center justify-center z-50">
-        <div className="bg-white p-8 rounded shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
+      <Modal
+        isOpen={showEditModal}
+        onRequestClose={closeEditModal}
+        ariaHideApp={false}
+        shouldCloseOnOverlayClick
+        overlayClassName="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4"
+        className="bg-white p-8 rounded shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto outline-none"
+      >
+        <div>
           <h2 className="text-xl font-bold mb-4">Edit Job</h2>
           <form onSubmit={handleEditSubmit} className="space-y-4">
             <div>

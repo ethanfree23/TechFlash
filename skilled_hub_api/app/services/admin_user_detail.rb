@@ -87,6 +87,7 @@ class AdminUserDetail
         type: "technician",
         id: tp.id,
         trade_type: tp.trade_type,
+        job_alert_trade_label: user.job_alert_preference&.trade_label,
         location: tp.location,
         address: tp.address,
         city: tp.city,

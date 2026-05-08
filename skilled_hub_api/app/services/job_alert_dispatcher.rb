@@ -29,7 +29,8 @@ class JobAlertDispatcher
       trade_label: nil,
       min_hourly_rate_cents: 0,
       max_distance_miles: 200,
-      max_duration_days: 365,
+      min_duration_weeks: nil,
+      max_duration_weeks: nil,
       email_enabled: true,
       sms_enabled: true,
       app_enabled: true
@@ -50,7 +51,11 @@ class JobAlertDispatcher
   def self.matches_duration?(pref:, job:)
     return true if job.days.blank?
 
-    job.days.to_i <= pref.max_duration_days.to_i
+    weeks = (job.days.to_f / 5.0).ceil
+    return false if pref.min_duration_weeks.present? && weeks < pref.min_duration_weeks
+    return false if pref.max_duration_weeks.present? && weeks > pref.max_duration_weeks
+
+    true
   end
 
   def self.matches_distance?(pref:, job:, technician_profile:)

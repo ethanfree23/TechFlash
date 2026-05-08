@@ -179,7 +179,7 @@ module Api
 
       def job_alert_preference_params
         params.require(:job_alert_preference).permit(
-          :trade_label, :min_hourly_rate_cents, :max_distance_miles, :max_duration_days,
+          :trade_label, :min_hourly_rate_cents, :max_distance_miles, :min_duration_weeks, :max_duration_weeks,
           :email_enabled, :sms_enabled, :app_enabled
         )
       end

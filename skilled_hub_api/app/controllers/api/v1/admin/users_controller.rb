@@ -223,6 +223,11 @@ module Api
             return render json: { errors: ["This account has no editable profile"] }, status: :unprocessable_entity
           end
 
+          if params.key?(:job_alert_trade_label)
+            pref = user.job_alert_preference || user.build_job_alert_preference
+            pref.update!(trade_label: params[:job_alert_trade_label].to_s.strip.presence)
+          end
+
           render json: { message: "Profile updated" }, status: :ok
         rescue ActiveRecord::RecordInvalid => e
           render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
@@ -345,7 +350,7 @@ module Api
         end
 
         def user_admin_params
-          params.permit(:first_name, :last_name)
+          params.permit(:first_name, :last_name, :job_alert_trade_label)
         end
 
         def technician_profile_admin_params
