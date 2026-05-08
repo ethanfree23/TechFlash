@@ -29,6 +29,10 @@ module Api
         end
 
         if @current_user.update(update_me_params)
+          if params[:job_alert_preference].present?
+            pref = @current_user.job_alert_preference || @current_user.build_job_alert_preference
+            pref.update!(job_alert_preference_params)
+          end
           render json: { user: UserSerializer.new(@current_user).as_json }, status: :ok
         else
           render json: { errors: @current_user.errors.full_messages }, status: :unprocessable_entity
@@ -114,6 +118,7 @@ module Api
             )
           end
           MailDelivery.safe_deliver { UserMailer.welcome_email(user).deliver_now }
+          JobAlertDispatcher.default_preference_for(user) if user.technician?
           token = JWT.encode({ user_id: user.id }, Rails.application.secret_key_base, "HS256")
           render json: { token: token, user: UserSerializer.new(user).as_json }, status: :created
         else
@@ -170,6 +175,13 @@ module Api
           p["ui_preferences"] = merged
         end
         p
+      end
+
+      def job_alert_preference_params
+        params.require(:job_alert_preference).permit(
+          :trade_label, :min_hourly_rate_cents, :max_distance_miles, :max_duration_days,
+          :email_enabled, :sms_enabled, :app_enabled
+        )
       end
 
       def blocked_signup_email?(email)

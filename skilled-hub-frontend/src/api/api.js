@@ -259,6 +259,10 @@ export const addressesAPI = {
     apiRequest(`/address_resolve?place_id=${encodeURIComponent(placeId)}`),
 };
 
+export const techPresenceAPI = {
+  list: () => apiRequest('/tech_presence_markers'),
+};
+
 // Admin user directory + per-user analytics
 export const adminUsersAPI = {
   masqueradeStart: (targetUserId) =>
@@ -350,6 +354,49 @@ export const adminMembershipTierConfigsAPI = {
     apiRequest(`/admin/membership_tier_configs/${id}/provision_stripe`, {
       method: 'POST',
     }),
+};
+
+export const adminSimulatedMarkersAPI = {
+  list: () => apiRequest('/admin/simulated_technician_markers'),
+  create: (payload) =>
+    apiRequest('/admin/simulated_technician_markers', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  update: (id, payload) =>
+    apiRequest(`/admin/simulated_technician_markers/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  remove: (id) =>
+    apiRequest(`/admin/simulated_technician_markers/${id}`, {
+      method: 'DELETE',
+    }),
+};
+
+export const adminCouponsAPI = {
+  list: () => apiRequest('/admin/coupons'),
+  get: (id) => apiRequest(`/admin/coupons/${id}`),
+  create: (payload) => apiRequest('/admin/coupons', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (id, payload) => apiRequest(`/admin/coupons/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  remove: (id) => apiRequest(`/admin/coupons/${id}`, { method: 'DELETE' }),
+  assignToUser: (payload) => apiRequest('/admin/coupon_assignments', { method: 'POST', body: JSON.stringify(payload) }),
+  updateAssignment: (id, payload) => apiRequest(`/admin/coupon_assignments/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  removeAssignment: (id) => apiRequest(`/admin/coupon_assignments/${id}`, { method: 'DELETE' }),
+};
+
+export const couponsAPI = {
+  redeem: (code) => apiRequest('/coupons/redeem', { method: 'POST', body: JSON.stringify({ code }) }),
+};
+
+export const jobAlertPreferencesAPI = {
+  get: () => apiRequest('/job_alert_preference'),
+  update: (payload) => apiRequest('/job_alert_preference', { method: 'PATCH', body: JSON.stringify(payload) }),
+};
+
+export const appNotificationsAPI = {
+  list: () => apiRequest('/app_notifications'),
+  markRead: (id) => apiRequest(`/app_notifications/${id}/mark_read`, { method: 'PATCH' }),
 };
 
 export const adminLicensingSettingsAPI = {

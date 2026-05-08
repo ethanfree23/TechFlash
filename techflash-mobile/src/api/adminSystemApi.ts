@@ -74,3 +74,63 @@ export async function adminEmailQaSendAll(confirmation: string, toEmail?: string
     }),
   });
 }
+
+export async function adminListCoupons() {
+  const data = await apiRequest<{ coupons?: Record<string, unknown>[] }>('/admin/coupons');
+  return Array.isArray(data?.coupons) ? data.coupons : [];
+}
+
+export async function adminCreateCoupon(payload: Record<string, unknown>) {
+  return apiRequest<{ coupon?: Record<string, unknown> }>('/admin/coupons', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function adminUpdateCoupon(id: number, payload: Record<string, unknown>) {
+  return apiRequest<{ coupon?: Record<string, unknown> }>(`/admin/coupons/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function adminDeleteCoupon(id: number) {
+  return apiRequest<null>(`/admin/coupons/${id}`, { method: 'DELETE' });
+}
+
+export async function adminAssignCoupon(payload: {
+  coupon_id: number;
+  user_id: number;
+  status?: string;
+  auto_renew?: boolean;
+}) {
+  return apiRequest<Record<string, unknown>>('/admin/coupon_assignments', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function adminListSimulatedMarkers() {
+  const data = await apiRequest<{ simulated_technician_markers?: Record<string, unknown>[] }>(
+    '/admin/simulated_technician_markers'
+  );
+  return Array.isArray(data?.simulated_technician_markers) ? data.simulated_technician_markers : [];
+}
+
+export async function adminCreateSimulatedMarker(payload: Record<string, unknown>) {
+  return apiRequest<Record<string, unknown>>('/admin/simulated_technician_markers', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function adminUpdateSimulatedMarker(id: number, payload: Record<string, unknown>) {
+  return apiRequest<Record<string, unknown>>(`/admin/simulated_technician_markers/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function adminDeleteSimulatedMarker(id: number) {
+  return apiRequest<null>(`/admin/simulated_technician_markers/${id}`, { method: 'DELETE' });
+}

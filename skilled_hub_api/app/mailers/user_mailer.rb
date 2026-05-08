@@ -34,6 +34,14 @@ class UserMailer < ApplicationMailer
     mail(to: @user.email, subject: "Job posted: #{job.title}")
   end
 
+  def job_alert_email(user, job)
+    @user = user
+    @job = job
+    return unless notifications_enabled_for?(user, :job_lifecycle)
+
+    mail(to: user.email, subject: "New matching job: #{job.title}")
+  end
+
   def job_claimed_email(job)
     @job = job
     accepted_app = job.job_applications.find_by(status: :accepted)

@@ -10,6 +10,8 @@ import {
   savedJobSearchesAPI,
   membershipTierConfigsAPI,
   membershipsAPI,
+  couponsAPI,
+  jobAlertPreferencesAPI,
 } from '../api/api';
 import { auth } from '../auth';
 import CardPaymentForm from '../components/CardPaymentForm';
@@ -78,6 +80,18 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   });
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [removingTemplateId, setRemovingTemplateId] = useState(null);
+  const [jobAlertForm, setJobAlertForm] = useState({
+    trade_label: '',
+    min_hourly_rate_cents: 0,
+    max_distance_miles: 200,
+    max_duration_days: 365,
+    email_enabled: true,
+    sms_enabled: true,
+    app_enabled: true,
+  });
+  const [savingJobAlertForm, setSavingJobAlertForm] = useState(false);
+  const [couponCode, setCouponCode] = useState('');
+  const [couponBusy, setCouponBusy] = useState(false);
   const [certificates, setCertificates] = useState([]);
   const [uploadingCert, setUploadingCert] = useState(false);
   const [deletingCertId, setDeletingCertId] = useState(null);
@@ -229,6 +243,31 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       .list()
       .then((items) => setSavedAlertTemplates(Array.isArray(items) ? items : []))
       .catch(() => setSavedAlertTemplates([]));
+  }, [isTechnician]);
+
+  useEffect(() => {
+    if (!isTechnician) return undefined;
+    let cancelled = false;
+    jobAlertPreferencesAPI
+      .get()
+      .then((res) => {
+        if (cancelled) return;
+        const j = res?.job_alert_preference;
+        if (!j) return;
+        setJobAlertForm({
+          trade_label: j.trade_label ?? '',
+          min_hourly_rate_cents: j.min_hourly_rate_cents ?? 0,
+          max_distance_miles: j.max_distance_miles ?? 200,
+          max_duration_days: j.max_duration_days ?? 365,
+          email_enabled: j.email_enabled !== false,
+          sms_enabled: j.sms_enabled !== false,
+          app_enabled: j.app_enabled !== false,
+        });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
   }, [isTechnician]);
 
   useEffect(() => {
@@ -520,6 +559,87 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       });
     } finally {
       setRemovingTemplateId(null);
+    }
+  };
+
+  const handleJobAlertFieldChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    const boolKeys = ['email_enabled', 'sms_enabled', 'app_enabled'];
+    if (boolKeys.includes(name)) {
+      setJobAlertForm((prev) => ({ ...prev, [name]: checked }));
+      return;
+    }
+    const numKeys = ['min_hourly_rate_cents', 'max_distance_miles', 'max_duration_days'];
+    if (numKeys.includes(name)) {
+      if (value === '') {
+        setJobAlertForm((prev) => ({ ...prev, [name]: '' }));
+        return;
+      }
+      const n = Number(value);
+      setJobAlertForm((prev) => ({ ...prev, [name]: Number.isFinite(n) ? n : prev[name] }));
+      return;
+    }
+    setJobAlertForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleSaveJobAlertPreferences = async (e) => {
+    e.preventDefault();
+    setSavingJobAlertForm(true);
+    try {
+      const md = jobAlertForm.max_distance_miles === '' ? NaN : Number(jobAlertForm.max_distance_miles);
+      const dur = jobAlertForm.max_duration_days === '' ? NaN : Number(jobAlertForm.max_duration_days);
+      const minC = jobAlertForm.min_hourly_rate_cents === '' ? NaN : Number(jobAlertForm.min_hourly_rate_cents);
+      const payload = {
+        trade_label: (jobAlertForm.trade_label || '').trim(),
+        min_hourly_rate_cents: Number.isFinite(minC) ? Math.max(0, Math.floor(minC)) : 0,
+        max_distance_miles: Number.isFinite(md) && md > 0 ? md : 1,
+        max_duration_days: Number.isFinite(dur) && dur > 0 ? Math.floor(dur) : 1,
+        email_enabled: !!jobAlertForm.email_enabled,
+        sms_enabled: !!jobAlertForm.sms_enabled,
+        app_enabled: !!jobAlertForm.app_enabled,
+      };
+      await jobAlertPreferencesAPI.update(payload);
+      setAlertModal({
+        isOpen: true,
+        title: 'Saved',
+        message: 'Job alert matching preferences updated.',
+        variant: 'success',
+      });
+    } catch (err) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not save',
+        message: err.message || 'Could not update job alert preferences.',
+        variant: 'error',
+      });
+    } finally {
+      setSavingJobAlertForm(false);
+    }
+  };
+
+  const handleRedeemCoupon = async (e) => {
+    e.preventDefault();
+    const code = couponCode.trim();
+    if (!code) return;
+    setCouponBusy(true);
+    try {
+      await couponsAPI.redeem(code);
+      setCouponCode('');
+      setAlertModal({
+        isOpen: true,
+        title: 'Coupon applied',
+        message: 'Your promo code has been linked to your account.',
+        variant: 'success',
+      });
+    } catch (err) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not redeem',
+        message: err.message || 'Invalid or inactive code.',
+        variant: 'error',
+      });
+    } finally {
+      setCouponBusy(false);
     }
   };
 
@@ -1140,6 +1260,39 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 aria-labelledby="settings-tab-notifications"
                 className="space-y-6"
               >
+                {!isAdmin && (isTechnician || isCompany) && (
+                  <div className="rounded-xl border border-gray-200 p-4">
+                    <h3 className="text-base font-semibold text-gray-900 mb-1">Promo code</h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Redeem a code to attach a membership or billing promotion to your account when applicable.
+                    </p>
+                    <form onSubmit={handleRedeemCoupon} className="flex flex-col sm:flex-row gap-3 sm:items-end">
+                      <div className="flex-1 min-w-0">
+                        <label htmlFor="settings-coupon-code" className="sr-only">
+                          Promo code
+                        </label>
+                        <input
+                          id="settings-coupon-code"
+                          type="text"
+                          autoComplete="off"
+                          value={couponCode}
+                          onChange={(e) => setCouponCode(e.target.value)}
+                          placeholder="Enter code"
+                          className="w-full border rounded-lg px-3 py-2 text-sm"
+                          disabled={couponBusy}
+                        />
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={couponBusy || !couponCode.trim()}
+                        className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 shrink-0"
+                      >
+                        {couponBusy ? 'Applying…' : 'Apply'}
+                      </button>
+                    </form>
+                  </div>
+                )}
+
                 <div className="rounded-xl border border-gray-200 p-4">
                   <h3 className="text-base font-semibold text-gray-900 mb-1">Emails</h3>
                   <p className="text-sm text-gray-600 mb-4">
@@ -1180,6 +1333,121 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                     </div>
                   </details>
                 </div>
+
+                {isTechnician && (
+                  <div className="rounded-xl border border-gray-200 p-4">
+                    <h3 className="text-base font-semibold text-gray-900 mb-1">Job alert matching</h3>
+                    <p className="text-sm text-gray-600 mb-4">
+                      Filters used when evaluating new jobs for alerts (distance, pay floor, how far out jobs can start, and channels).
+                    </p>
+                    <form onSubmit={handleSaveJobAlertPreferences} className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="md:col-span-2">
+                          <label htmlFor="job-alert-trade" className="block text-xs font-medium text-gray-700 mb-1">
+                            Trade / role label (optional)
+                          </label>
+                          <input
+                            id="job-alert-trade"
+                            name="trade_label"
+                            value={jobAlertForm.trade_label}
+                            onChange={handleJobAlertFieldChange}
+                            className="w-full border rounded-lg px-3 py-2 text-sm"
+                            placeholder="e.g. Commercial electrician"
+                            disabled={savingJobAlertForm}
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="job-alert-min-rate" className="block text-xs font-medium text-gray-700 mb-1">
+                            Minimum hourly rate (cents)
+                          </label>
+                          <input
+                            id="job-alert-min-rate"
+                            type="number"
+                            min="0"
+                            name="min_hourly_rate_cents"
+                            value={jobAlertForm.min_hourly_rate_cents}
+                            onChange={handleJobAlertFieldChange}
+                            className="w-full border rounded-lg px-3 py-2 text-sm"
+                            disabled={savingJobAlertForm}
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="job-alert-max-mi" className="block text-xs font-medium text-gray-700 mb-1">
+                            Max distance (miles)
+                          </label>
+                          <input
+                            id="job-alert-max-mi"
+                            type="number"
+                            min="1"
+                            name="max_distance_miles"
+                            value={jobAlertForm.max_distance_miles}
+                            onChange={handleJobAlertFieldChange}
+                            className="w-full border rounded-lg px-3 py-2 text-sm"
+                            disabled={savingJobAlertForm}
+                          />
+                        </div>
+                        <div>
+                          <label htmlFor="job-alert-max-dur" className="block text-xs font-medium text-gray-700 mb-1">
+                            Job may start within (days)
+                          </label>
+                          <input
+                            id="job-alert-max-dur"
+                            type="number"
+                            min="1"
+                            name="max_duration_days"
+                            value={jobAlertForm.max_duration_days}
+                            onChange={handleJobAlertFieldChange}
+                            className="w-full border rounded-lg px-3 py-2 text-sm"
+                            disabled={savingJobAlertForm}
+                          />
+                        </div>
+                      </div>
+                      <div className="space-y-2 pt-1">
+                        <p className="text-xs font-medium text-gray-700">Channels</p>
+                        <label className="flex items-center justify-between gap-4">
+                          <span className="text-sm text-gray-800">Email</span>
+                          <input
+                            type="checkbox"
+                            name="email_enabled"
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            checked={jobAlertForm.email_enabled}
+                            onChange={handleJobAlertFieldChange}
+                            disabled={savingJobAlertForm}
+                          />
+                        </label>
+                        <label className="flex items-center justify-between gap-4">
+                          <span className="text-sm text-gray-800">SMS</span>
+                          <input
+                            type="checkbox"
+                            name="sms_enabled"
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            checked={jobAlertForm.sms_enabled}
+                            onChange={handleJobAlertFieldChange}
+                            disabled={savingJobAlertForm}
+                          />
+                        </label>
+                        <label className="flex items-center justify-between gap-4">
+                          <span className="text-sm text-gray-800">In-app</span>
+                          <input
+                            type="checkbox"
+                            name="app_enabled"
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                            checked={jobAlertForm.app_enabled}
+                            onChange={handleJobAlertFieldChange}
+                            disabled={savingJobAlertForm}
+                          />
+                        </label>
+                      </div>
+                      <button
+                        type="submit"
+                        disabled={savingJobAlertForm}
+                        className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {savingJobAlertForm ? 'Saving…' : 'Save matching preferences'}
+                      </button>
+                    </form>
+                  </div>
+                )}
 
                 <div className="rounded-xl border border-gray-200 p-4">
                   <h3 className="text-base font-semibold text-gray-900 mb-1">Job alerts</h3>

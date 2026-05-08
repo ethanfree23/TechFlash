@@ -84,4 +84,38 @@ class JobSerializer < ActiveModel::Serializer
 
     JobCounterOfferSerializer.new(offer, scope: scope).as_json
   end
+
+  def address
+    return object.address if participant_on_job?
+    return object.address if scope&.admin?
+
+    nil
+  end
+
+  def zip_code
+    return object.zip_code if participant_on_job?
+    return object.zip_code if scope&.admin?
+
+    nil
+  end
+
+  def latitude
+    return object.latitude if participant_on_job? || scope&.admin?
+
+    blurred_coordinates[0]
+  end
+
+  def longitude
+    return object.longitude if participant_on_job? || scope&.admin?
+
+    blurred_coordinates[1]
+  end
+
+  def blurred_coordinates
+    @blurred_coordinates ||= MapPrivacyService.blurred_coordinates(
+      latitude: object.latitude,
+      longitude: object.longitude,
+      seed_key: "#{object.share_token}:#{object.id}"
+    )
+  end
 end

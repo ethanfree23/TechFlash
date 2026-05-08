@@ -491,7 +491,22 @@ module Api
             commission_override_percent: profile.commission_override_percent,
             membership_fee_waived: profile.membership_fee_waived,
             membership_status: profile.membership_status,
-            membership_current_period_end_at: profile.membership_current_period_end_at
+            membership_current_period_end_at: profile.membership_current_period_end_at,
+            active_coupon_assignment: serialize_coupon_assignment(user)
+          }
+        end
+
+        def serialize_coupon_assignment(user)
+          assignment = CouponApplicationService.resolve_active_assignment(user: user)
+          return nil if assignment.blank?
+
+          {
+            coupon_id: assignment.coupon_id,
+            coupon_code: assignment.coupon&.code,
+            status: assignment.status,
+            starts_at: assignment.starts_at,
+            expires_at: assignment.expires_at,
+            auto_renew: assignment.auto_renew
           }
         end
 

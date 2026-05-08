@@ -3,6 +3,7 @@
 require 'net/http'
 require 'json'
 require 'set'
+require 'digest'
 
 class GeocodingService
   NOMINATIM_URL = 'https://nominatim.openstreetmap.org/search'
@@ -26,37 +27,26 @@ class GeocodingService
 
   class GeocodingError < StandardError; end
 
+  GEOCODE_CACHE_TTL = 12.hours
+  MAX_GEOCODE_ATTEMPTS = 2
+
   # Geocode an address and return [latitude, longitude] or nil
   def self.geocode(address:, city:, state: nil, zip_code: nil, country: nil)
     parts = [address, city, state, zip_code, country].compact.reject(&:blank?)
     return nil if parts.empty?
 
-    query = parts.join(', ')
-    uri = URI(NOMINATIM_URL)
-    uri.query = URI.encode_www_form(
-      q: query,
-      format: 'json',
-      limit: 1,
-      addressdetails: 0
-    )
+    query = parts.join(", ")
+    cache_key = "geocode:v2:#{Digest::SHA256.hexdigest(query.downcase)}"
+    cached = Rails.cache.read(cache_key)
+    return cached if cached.present?
 
-    http = Net::HTTP.new(uri.host, uri.port)
-    http.use_ssl = true
-    http.open_timeout = 5
-    http.read_timeout = 5
-
-    request = Net::HTTP::Get.new(uri)
-    request['User-Agent'] = USER_AGENT
-
-    response = http.request(request)
-    return nil unless response.is_a?(Net::HTTPSuccess)
-
-    results = JSON.parse(response.body)
-    return nil if results.empty?
-
-    lat = results.first['lat']&.to_f
-    lon = results.first['lon']&.to_f
-    lat && lon ? [lat, lon] : nil
+    coords =
+      if google_maps_api_key.present?
+        google_geocode(address: address, city: city, state: state, zip_code: zip_code, country: country)
+      end
+    coords ||= nominatim_geocode(address: address, city: city, state: state, zip_code: zip_code, country: country)
+    Rails.cache.write(cache_key, coords, expires_in: GEOCODE_CACHE_TTL) if coords.present?
+    coords
   rescue StandardError => e
     Rails.logger.warn("Geocoding failed: #{e.message}")
     nil
@@ -169,7 +159,8 @@ class GeocodingService
     uri.query = URI.encode_www_form(
       input: input,
       key: google_maps_api_key,
-      types: "address"
+      types: "address",
+      components: "country:us"
     )
 
     http = Net::HTTP.new(uri.host, uri.port)
@@ -202,7 +193,7 @@ class GeocodingService
     uri.query = URI.encode_www_form(
       place_id: place_id,
       key: google_maps_api_key,
-      fields: "address_component,formatted_address"
+      fields: "address_component,formatted_address,geometry"
     )
 
     http = Net::HTTP.new(uri.host, uri.port)
@@ -219,7 +210,13 @@ class GeocodingService
     result = body["result"]
     return nil unless result.is_a?(Hash)
 
-    parse_google_address_components(result["address_components"] || [], result["formatted_address"])
+    parsed = parse_google_address_components(result["address_components"] || [], result["formatted_address"])
+    location = result.dig("geometry", "location") || {}
+    if parsed.present? && location["lat"].present? && location["lng"].present?
+      parsed["latitude"] = location["lat"].to_f
+      parsed["longitude"] = location["lng"].to_f
+    end
+    parsed
   rescue StandardError => e
     Rails.logger.warn("google_resolve_place: #{e.message}")
     nil
@@ -264,7 +261,8 @@ class GeocodingService
       q: query,
       format: "json",
       limit: 10,
-      addressdetails: 1
+      addressdetails: 1,
+      countrycodes: "us"
     )
 
     http = Net::HTTP.new(uri.host, uri.port)
@@ -350,5 +348,93 @@ class GeocodingService
       "br" => "Brazil",
       "in" => "India"
     }[c] || code.to_s.upcase
+  end
+
+  def self.google_geocode(address:, city:, state:, zip_code:, country:)
+    query = [address, city, state, zip_code, country].compact.reject(&:blank?).join(", ")
+    uri = URI("https://maps.googleapis.com/maps/api/geocode/json")
+    components = []
+    components << "country:US"
+    components << "administrative_area:#{state}" if state.present?
+    components << "postal_code:#{zip_code}" if zip_code.present?
+    uri.query = URI.encode_www_form(address: query, key: google_maps_api_key, components: components.join("|"))
+
+    with_retry(MAX_GEOCODE_ATTEMPTS) do
+      res = Net::HTTP.get_response(uri)
+      return nil unless res.is_a?(Net::HTTPSuccess)
+
+      body = JSON.parse(res.body)
+      return nil unless body["status"] == "OK"
+
+      candidate = body["results"]&.find do |r|
+        loc_type = r["geometry"].to_h["location_type"].to_s
+        %w[ROOFTOP RANGE_INTERPOLATED].include?(loc_type)
+      end || body["results"]&.first
+
+      loc = candidate.dig("geometry", "location")
+      return nil if loc.blank?
+
+      [loc["lat"].to_f, loc["lng"].to_f]
+    end
+  end
+
+  def self.nominatim_geocode(address:, city:, state:, zip_code:, country:)
+    query = [address, city, state, zip_code, country].compact.reject(&:blank?).join(", ")
+    uri = URI(NOMINATIM_URL)
+    uri.query = URI.encode_www_form(
+      q: query,
+      format: "json",
+      limit: 5,
+      addressdetails: 1,
+      countrycodes: "us"
+    )
+
+    with_retry(MAX_GEOCODE_ATTEMPTS) do
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = true
+      http.open_timeout = 5
+      http.read_timeout = 5
+      req = Net::HTTP::Get.new(uri)
+      req["User-Agent"] = USER_AGENT
+      res = http.request(req)
+      return nil unless res.is_a?(Net::HTTPSuccess)
+
+      rows = JSON.parse(res.body)
+      return nil unless rows.is_a?(Array)
+
+      candidate = rows.find { |row| geocode_candidate_matches?(row, state: state, zip_code: zip_code) } || rows.first
+      lat = candidate["lat"]&.to_f
+      lon = candidate["lon"]&.to_f
+      lat && lon ? [lat, lon] : nil
+    end
+  end
+
+  def self.geocode_candidate_matches?(row, state:, zip_code:)
+    addr = row["address"] || {}
+    return false unless addr["country_code"].to_s.casecmp("us").zero?
+
+    if state.present?
+      expected_state = state.to_s.strip.downcase
+      actual = addr["state"].to_s.strip.downcase
+      short = extract_us_state_code(addr).to_s.downcase
+      return false unless [actual, short].include?(expected_state.downcase) || US_STATE_FULL_TO_ABBR[actual] == state.to_s.upcase
+    end
+
+    return true if zip_code.blank?
+
+    addr["postcode"].to_s.start_with?(zip_code.to_s.strip)
+  end
+
+  def self.with_retry(max_attempts)
+    attempts = 0
+    begin
+      attempts += 1
+      yield
+    rescue StandardError
+      raise if attempts >= max_attempts
+
+      sleep(0.15 * attempts)
+      retry
+    end
   end
 end

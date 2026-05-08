@@ -205,9 +205,12 @@ module Api
 
         job = Job.new(job_params.except(:company_profile_id, :skip_card_validation))
         job.company_profile_id = company_profile.id
+        # Mobile payloads should create posted/open jobs even if status is omitted.
+        job.status = :open if job.status.blank?
         set_go_live_at_for_post!(job)
         if job.save
           CrmProspectPromotion.promote_after_job_created!(job.company_profile_id)
+          JobAlertDispatcher.dispatch_for_job(job) if job.open?
           Rails.logger.info("[mail] job_posted_email job_id=#{job.id}") # confirm this code path + deploy hit Mailtrap
           MailDelivery.safe_deliver { UserMailer.job_posted_email(job).deliver_now }
           render json: job, serializer: JobSerializer, status: :created
@@ -224,6 +227,7 @@ module Api
         job.assign_attributes(job_params)
         set_go_live_at_for_post!(job)
         if job.save
+          JobAlertDispatcher.dispatch_for_job(job) if job.open?
           render json: job, serializer: JobSerializer, status: :ok
         else
           render json: { errors: job.errors.full_messages }, status: :unprocessable_entity
@@ -446,7 +450,7 @@ module Api
       def job_params
         params.permit(:title, :description, :required_documents, :required_certifications, :location, :status, :company_profile_id, :timeline, :skip_card_validation,
                       :scheduled_start_at, :scheduled_end_at, :price_cents, :hourly_rate_cents, :hours_per_day, :days,
-                      :address, :city, :state, :zip_code, :country,
+                      :address, :city, :state, :zip_code, :country, :latitude, :longitude,
                       :skill_class, :minimum_years_experience, :notes, :go_live_at, :start_mode,
                       :rolling_start_rule_type, :rolling_start_exact_start_at, :rolling_start_days_after_acceptance,
                       :rolling_start_weekday, :rolling_start_weekday_time)

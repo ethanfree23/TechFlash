@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_05_05_130500) do
+ActiveRecord::Schema[7.1].define(version: 2026_05_07_223500) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -37,6 +37,18 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_05_130500) do
     t.bigint "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "app_notifications", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.string "category", null: false
+    t.string "title", null: false
+    t.text "body"
+    t.json "metadata", default: {}, null: false
+    t.datetime "read_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id"], name: "index_app_notifications_on_user_id"
   end
 
   create_table "company_profiles", force: :cascade do |t|
@@ -81,6 +93,39 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_05_130500) do
     t.index ["feedback_submission_id"], name: "index_conversations_on_feedback_submission_id", unique: true
     t.index ["job_id"], name: "index_conversations_on_job_id"
     t.index ["technician_profile_id"], name: "index_conversations_on_technician_profile_id"
+  end
+
+  create_table "coupon_assignments", force: :cascade do |t|
+    t.integer "coupon_id", null: false
+    t.integer "user_id", null: false
+    t.integer "assigned_by_id"
+    t.string "status", default: "active", null: false
+    t.boolean "auto_renew", default: false, null: false
+    t.datetime "activated_at"
+    t.datetime "starts_at"
+    t.datetime "expires_at"
+    t.datetime "last_extended_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assigned_by_id"], name: "index_coupon_assignments_on_assigned_by_id"
+    t.index ["coupon_id", "user_id"], name: "index_coupon_assignments_on_coupon_id_and_user_id"
+    t.index ["coupon_id"], name: "index_coupon_assignments_on_coupon_id"
+    t.index ["user_id"], name: "index_coupon_assignments_on_user_id"
+  end
+
+  create_table "coupons", force: :cascade do |t|
+    t.string "name", null: false
+    t.string "code", null: false
+    t.string "discount_kind", default: "percent", null: false
+    t.integer "discount_value", default: 0, null: false
+    t.boolean "active", default: true, null: false
+    t.datetime "starts_at"
+    t.datetime "ends_at"
+    t.string "duration_template", default: "fixed_window", null: false
+    t.integer "duration_days"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["code"], name: "index_coupons_on_code", unique: true
   end
 
   create_table "crm_leads", force: :cascade do |t|
@@ -163,6 +208,20 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_05_130500) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["user_id"], name: "index_feedback_submissions_on_user_id"
+  end
+
+  create_table "job_alert_preferences", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.string "trade_label"
+    t.integer "min_hourly_rate_cents", default: 0, null: false
+    t.integer "max_distance_miles", default: 200, null: false
+    t.integer "max_duration_days", default: 365, null: false
+    t.boolean "email_enabled", default: true, null: false
+    t.boolean "sms_enabled", default: true, null: false
+    t.boolean "app_enabled", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id"], name: "index_job_alert_preferences_on_user_id", unique: true
   end
 
   create_table "job_applications", force: :cascade do |t|
@@ -372,6 +431,28 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_05_130500) do
     t.index ["technician_profile_id"], name: "index_saved_job_searches_on_technician_profile_id"
   end
 
+  create_table "simulated_technician_markers", force: :cascade do |t|
+    t.string "name", null: false
+    t.decimal "latitude", precision: 10, scale: 7, null: false
+    t.decimal "longitude", precision: 10, scale: 7, null: false
+    t.string "trade_label"
+    t.boolean "active", default: true, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+  end
+
+  create_table "sms_delivery_logs", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.string "category", null: false
+    t.string "destination", null: false
+    t.text "message"
+    t.string "status", default: "queued", null: false
+    t.text "error_message"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id"], name: "index_sms_delivery_logs_on_user_id"
+  end
+
   create_table "stripe_webhook_events", force: :cascade do |t|
     t.string "stripe_event_id", null: false
     t.string "event_type"
@@ -448,11 +529,15 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_05_130500) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "app_notifications", "users"
   add_foreign_key "company_profiles", "users"
   add_foreign_key "conversations", "company_profiles"
   add_foreign_key "conversations", "feedback_submissions"
   add_foreign_key "conversations", "jobs"
   add_foreign_key "conversations", "technician_profiles"
+  add_foreign_key "coupon_assignments", "coupons"
+  add_foreign_key "coupon_assignments", "users"
+  add_foreign_key "coupon_assignments", "users", column: "assigned_by_id"
   add_foreign_key "crm_leads", "company_profiles", column: "linked_company_profile_id"
   add_foreign_key "crm_leads", "users", column: "linked_user_id"
   add_foreign_key "crm_notes", "crm_leads"
@@ -461,6 +546,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_05_130500) do
   add_foreign_key "favorite_technicians", "company_profiles"
   add_foreign_key "favorite_technicians", "technician_profiles"
   add_foreign_key "feedback_submissions", "users"
+  add_foreign_key "job_alert_preferences", "users"
   add_foreign_key "job_applications", "jobs"
   add_foreign_key "job_applications", "technician_profiles"
   add_foreign_key "job_counter_offers", "company_profiles"
@@ -477,6 +563,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_05_130500) do
   add_foreign_key "referral_submissions", "users", column: "referred_user_id"
   add_foreign_key "referral_submissions", "users", column: "referrer_user_id"
   add_foreign_key "saved_job_searches", "technician_profiles"
+  add_foreign_key "sms_delivery_logs", "users"
   add_foreign_key "technician_profiles", "users"
   add_foreign_key "user_login_events", "users"
   add_foreign_key "users", "company_profiles"

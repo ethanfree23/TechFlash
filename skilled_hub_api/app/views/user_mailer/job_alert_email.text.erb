@@ -1,0 +1,5 @@
+Hi <%= @user.first_name.presence || 'there' %>,
+
+A new job matches your alert preferences: <%= @job.title %><%= @job.skill_class.present? ? " (#{@job.skill_class})" : '' %>.
+
+Open your dashboard to review and claim openings.

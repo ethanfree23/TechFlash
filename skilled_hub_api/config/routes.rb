@@ -22,6 +22,7 @@ Rails.application.routes.draw do
       post 'feedback', to: 'feedback_submissions#create'
       get 'address_suggestions', to: 'addresses#suggestions'
       get 'address_resolve', to: 'addresses#resolve'
+      get 'tech_presence_markers', to: 'tech_presence_markers#index'
       resources :users
       resources :jobs do
         collection do
@@ -86,6 +87,13 @@ Rails.application.routes.draw do
       post 'favorite_technicians', to: 'favorite_technicians#create'
       delete 'favorite_technicians/:id', to: 'favorite_technicians#destroy'
       post 'stripe/webhook', to: 'stripe_webhooks#create'
+      post "coupons/redeem", to: "coupons#redeem"
+      resource :job_alert_preference, only: %i[show update]
+      resources :app_notifications, only: %i[index] do
+        member do
+          patch :mark_read
+        end
+      end
 
       namespace :admin do
         resources :membership_tier_configs, only: %i[index create update destroy] do
@@ -93,6 +101,9 @@ Rails.application.routes.draw do
             post :provision_stripe
           end
         end
+        resources :simulated_technician_markers, only: %i[index create update destroy]
+        resources :coupons, only: %i[index show create update destroy]
+        resources :coupon_assignments, only: %i[create update destroy]
         post "masquerade", to: "masquerades#create"
         get "location_suggestions", to: "location_suggestions#index"
         post "company_accounts", to: "company_accounts#create"

@@ -156,21 +156,19 @@ class MembershipPolicy
     return 0 if profile&.membership_fee_waived?
 
     override = profile&.membership_fee_override_cents
-    return base_fee_cents if override.nil?
+    effective_base = override.nil? ? base_fee_cents : [override.to_i, 0].max
 
-    [override.to_i, 0].max
+    CouponApplicationService.apply_fee_discount(base_fee_cents: effective_base, user: profile&.user)
   end
 
   def self.effective_commission_percent(profile:, base_commission_percent:)
     return 0.0 if billing_exempt?(profile)
 
     override = profile&.commission_override_percent
-    return base_commission_percent if override.nil?
-
-    value = override.to_f
+    value = override.nil? ? base_commission_percent.to_f : override.to_f
     return 0.0 if value.negative?
 
-    value
+    CouponApplicationService.apply_commission_discount(base_commission_percent: value, user: profile&.user)
   end
 
   def self.legacy_rules_for(audience)

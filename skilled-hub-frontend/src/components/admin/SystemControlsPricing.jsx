@@ -7,6 +7,8 @@ import {
 } from '../../api/api';
 import AlertModal from '../AlertModal';
 import { auth } from '../../auth';
+import SystemControlsCoupons from './SystemControlsCoupons';
+import SystemControlsSimulatedMarkers from './SystemControlsSimulatedMarkers';
 
 /** Must match EmailQaRunner::CONFIRMATION_TEXT on the API. */
 const EMAIL_QA_PHRASE = 'SEND_TEST_EMAILS';
@@ -492,6 +494,32 @@ export default function SystemControlsPricing() {
           }`}
         >
           Email QA
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={systemSubTab === 'coupons'}
+          onClick={() => setSystemSubTab('coupons')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+            systemSubTab === 'coupons'
+              ? 'text-blue-600 border-blue-600'
+              : 'text-gray-600 border-transparent hover:text-gray-900'
+          }`}
+        >
+          Coupons
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={systemSubTab === 'map_markers'}
+          onClick={() => setSystemSubTab('map_markers')}
+          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
+            systemSubTab === 'map_markers'
+              ? 'text-blue-600 border-blue-600'
+              : 'text-gray-600 border-transparent hover:text-gray-900'
+          }`}
+        >
+          Map markers
         </button>
       </div>
 
@@ -1099,6 +1127,10 @@ export default function SystemControlsPricing() {
           )}
         </div>
       )}
+
+      {systemSubTab === 'coupons' && <SystemControlsCoupons />}
+
+      {systemSubTab === 'map_markers' && <SystemControlsSimulatedMarkers />}
 
       {addOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">

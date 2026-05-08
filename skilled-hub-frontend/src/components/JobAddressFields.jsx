@@ -46,6 +46,8 @@ const JobAddressFields = ({
         state: row.state ?? '',
         zip_code: row.zip_code ?? '',
         country: row.country ?? 'United States',
+        latitude: row.latitude ?? null,
+        longitude: row.longitude ?? null,
       });
       setPickedLabel(row.formatted || row.label || [row.address, row.city, row.state].filter(Boolean).join(', '));
       setSearchQuery('');
@@ -147,7 +149,7 @@ const JobAddressFields = ({
 
   const clearSelection = () => {
     setPickedLabel('');
-    onChange({ address: '', city: '', state: 'Texas', zip_code: '', country: 'United States' });
+    onChange({ address: '', city: '', state: 'Texas', zip_code: '', country: 'United States', latitude: null, longitude: null });
     setSearchQuery('');
     setSuggestions([]);
     setManualExpanded(false);

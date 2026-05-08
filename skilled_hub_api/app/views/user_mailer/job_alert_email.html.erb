@@ -1,0 +1,7 @@
+<p>Hi <%= @user.first_name.presence || 'there' %>,</p>
+<p>
+  A new job matches your alert preferences:
+  <strong><%= @job.title %></strong>
+  <% if @job.skill_class.present? %> · <%= @job.skill_class %><% end %>
+</p>
+<p>Open your dashboard to review and claim openings.</p>

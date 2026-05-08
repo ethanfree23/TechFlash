@@ -91,7 +91,7 @@ class Job < ApplicationRecord
 
   def geocode_address
     return unless address.present? || city.present?
-    return unless new_record? || address_changed? || city_changed? || state_changed? || zip_code_changed? || country_changed?
+    return unless latitude.blank? || longitude.blank? || new_record? || address_changed? || city_changed? || state_changed? || zip_code_changed? || country_changed?
     coords = GeocodingService.geocode(
       address: address,
       city: city,

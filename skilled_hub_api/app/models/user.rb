@@ -47,6 +47,9 @@ class User < ApplicationRecord
   has_many :user_login_events, dependent: :delete_all
   has_many :email_delivery_logs, dependent: :delete_all
   has_many :job_issue_reports, dependent: :destroy
+  has_one :job_alert_preference, dependent: :destroy
+  has_many :app_notifications, dependent: :destroy
+  has_many :sms_delivery_logs, dependent: :destroy
   has_many :sent_referrals, class_name: "ReferralSubmission", foreign_key: :referrer_user_id, dependent: :destroy, inverse_of: :referrer_user
   has_many :received_referrals, class_name: "ReferralSubmission", foreign_key: :referred_user_id, dependent: :nullify, inverse_of: :referred_user
 

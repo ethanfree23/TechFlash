@@ -10,6 +10,7 @@ class UserSerializer < ActiveModel::Serializer
              :email_notifications_enabled,
              :email_notification_preferences,
              :job_alert_notifications_enabled,
+             :job_alert_preference,
              :ui_preferences,
              :created_at,
              :updated_at
@@ -32,5 +33,20 @@ class UserSerializer < ActiveModel::Serializer
 
   def ui_preferences
     object.ui_preferences_hash
+  end
+
+  def job_alert_preference
+    pref = object.job_alert_preference
+    return nil if pref.blank?
+
+    {
+      trade_label: pref.trade_label,
+      min_hourly_rate_cents: pref.min_hourly_rate_cents,
+      max_distance_miles: pref.max_distance_miles,
+      max_duration_days: pref.max_duration_days,
+      email_enabled: pref.email_enabled,
+      sms_enabled: pref.sms_enabled,
+      app_enabled: pref.app_enabled
+    }
   end
 end 

@@ -220,6 +220,33 @@ module Api
         assert_response :created
       end
 
+      test "company create defaults status to open when omitted" do
+        user = User.create!(
+          email: "company-default-open@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "premium",
+          membership_fee_waived: true
+        )
+        user.update_column(:company_profile_id, profile.id)
+
+        post "/api/v1/jobs",
+             params: {
+               title: "Missing status job",
+               description: "Status should default to open"
+             },
+             headers: auth_header_for(user),
+             as: :json
+
+        assert_response :created
+        created_job = Job.order(:id).last
+        assert_equal "open", created_job.status
+      end
+
       test "technician can claim paid job for billing exempt company without payment method" do
         reset_technician_tier_rules!
 

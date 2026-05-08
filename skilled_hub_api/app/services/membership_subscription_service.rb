@@ -28,7 +28,7 @@ class MembershipSubscriptionService
     price_id = price_id_for(role: user.role, level: level)
     raise Error, "Price ID is not configured for #{user.role} #{level}" if price_id.blank?
 
-    session = Stripe::Checkout::Session.create(
+    session_params = {
       mode: "subscription",
       customer: customer_id,
       payment_method_types: ["card"],
@@ -40,7 +40,12 @@ class MembershipSubscriptionService
         role: user.role,
         membership_level: level
       }
-    )
+    }
+    if ActiveModel::Type::Boolean.new.cast(ENV["STRIPE_CHECKOUT_ALLOW_PROMOTION_CODES"])
+      session_params[:allow_promotion_codes] = true
+    end
+
+    session = Stripe::Checkout::Session.create(session_params)
 
     { session_id: session.id, url: session.url }
   end
