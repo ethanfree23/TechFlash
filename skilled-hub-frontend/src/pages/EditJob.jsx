@@ -8,6 +8,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
 import { companyChargeFromJobAmount, formatPlatformFeePercent } from '../utils/companyPlatformFee';
 import { auth } from '../auth';
+import { JOB_STATUS_KEYS, jobStatusLabel, normalizeJobStatusKey } from '../utils/jobStatus';
 
 const WEEKDAY_OPTIONS = [
   { value: '0', label: 'Sunday' },
@@ -65,7 +66,7 @@ const EditJob = () => {
       try {
         setLoading(true);
         const data = await jobsAPI.getById(id);
-        setJob(data);
+        setJob({ ...data, status: normalizeJobStatusKey(data) });
         const hasHourlyRate = data.hourly_rate_cents != null;
         setForm({
           title: data.title || '',
@@ -83,7 +84,7 @@ const EditJob = () => {
           state: data.state || 'Texas',
           zip_code: data.zip_code || '',
           country: data.country || 'United States',
-          status: data.status || 'open',
+          status: normalizeJobStatusKey(data),
           start_mode: data.start_mode || 'hard_start',
           hourly_rate_cents: hasHourlyRate ? (data.hourly_rate_cents / 100).toFixed(2) : '',
           hours_per_day: data.hours_per_day ?? 8,
@@ -275,6 +276,9 @@ const EditJob = () => {
       setDeleting(false);
     }
   };
+
+  const acceptedApp = job?.job_applications?.find((app) => app.status === 'accepted' || app.status === 1);
+  const hasAcceptedApplication = Boolean(acceptedApp);
 
   if (loading) return <div className="max-w-xl mx-auto mt-10">Loading...</div>;
   if (error) return <div className="max-w-xl mx-auto mt-10 text-red-600">{error}</div>;
@@ -530,18 +534,26 @@ const EditJob = () => {
         <div>
           <label className="block font-medium mb-1">Status</label>
           <select
-            className="w-full border px-3 py-2 rounded"
+            className="w-full border px-3 py-2 rounded bg-white"
             name="status"
             value={form.status}
             onChange={handleChange}
           >
-            <option value="open">Open</option>
-            <option value="draft">Draft</option>
-            <option value="filled">Filled</option>
-            <option value="finished">Finished</option>
-            <option value="closed">Closed</option>
-            <option value="expired">Expired</option>
+            {JOB_STATUS_KEYS.map((key) => (
+              <option
+                key={key}
+                value={key}
+                disabled={key === 'open' && hasAcceptedApplication && !isAdmin}
+              >
+                {jobStatusLabel(key)}
+              </option>
+            ))}
           </select>
+          {hasAcceptedApplication && !isAdmin ? (
+            <p className="text-xs text-amber-800 mt-1">
+              To set the listing back to Open, use Deny Technician first (or contact an admin).
+            </p>
+          ) : null}
           {isAdmin && (
             <p className="text-xs text-gray-500 mt-1">
               Jobs go live immediately when status is set to Open.

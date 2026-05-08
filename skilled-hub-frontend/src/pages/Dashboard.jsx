@@ -3,7 +3,13 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { jobsAPI, ratingsAPI, feedbackAPI, adminAPI, profilesAPI, techPresenceAPI } from '../api/api';
 import AlertModal from '../components/AlertModal';
 import AppHeader from '../components/AppHeader';
-import { filterJobsWithinRadius, formatDistanceMi, haversineMiles, needsTechnicianMapSetup } from '../utils/technicianMap';
+import {
+  boundingBoxForRadiusMiles,
+  filterJobsWithinRadius,
+  formatDistanceMi,
+  haversineMiles,
+  needsTechnicianMapSetup,
+} from '../utils/technicianMap';
 import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen, FaDollarSign, FaStar, FaChartLine, FaUsers, FaUserCog, FaBuilding, FaCommentDots } from 'react-icons/fa';
 
 // open, claimed (filled but not started), active (in progress), completed, expired
@@ -797,12 +803,7 @@ const TechnicianNearbyJobPreviewModal = ({
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/45 backdrop-blur-[1px]"
-        aria-label="Close job preview"
-        onClick={onClose}
-      />
+      <div className="absolute inset-0 bg-black/45 backdrop-blur-[1px]" aria-hidden="true" />
       <div
         role="dialog"
         aria-modal="true"
@@ -1208,9 +1209,21 @@ const TechnicianOpenJobsMap = ({
     fetch('http://127.0.0.1:7260/ingest/d67e1fb9-af7e-4677-9ae6-ba8bb7fc57ed',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f0f940'},body:JSON.stringify({sessionId:'f0f940',runId:'initial',hypothesisId:'H4',location:'Dashboard.jsx:TechnicianOpenJobsMap-markerEffect',message:'marker render summary',data:{mapsReady,normalizedJobsCount:normalizedJobs.length,selectedMapJobId,markerCount:markersRef.current.length,homeLatLngPresent:Boolean(homeLatLng),sample:(normalizedJobs||[]).slice(0,3).map((j)=>({id:j.id,lat:j.latitude,lng:j.longitude}))},timestamp:Date.now()})}).catch(()=>{});
     // #endregion
 
-    if (homeLatLng && (selectedLatLng || normalizedJobs.length || presenceMarkers.length)) {
+    const DEFAULT_VIEW_RADIUS_MI = 100;
+    if (homeLatLng) {
+      const box = boundingBoxForRadiusMiles(homeLatLng.lat, homeLatLng.lng, DEFAULT_VIEW_RADIUS_MI);
+      if (box) {
+        const bounds = new maps.LatLngBounds(
+          { lat: box.south, lng: box.west },
+          { lat: box.north, lng: box.east }
+        );
+        mapRef.current.fitBounds(bounds, 48);
+      } else {
+        mapRef.current.setCenter(homeLatLng);
+        mapRef.current.setZoom(11);
+      }
+    } else if (selectedLatLng || normalizedJobs.length || presenceMarkers.length) {
       const bounds = new maps.LatLngBounds();
-      bounds.extend(homeLatLng);
       if (selectedLatLng) {
         bounds.extend(selectedLatLng);
       } else {
@@ -1221,7 +1234,12 @@ const TechnicianOpenJobsMap = ({
         const lng = Number(m.longitude);
         if (Number.isFinite(lat) && Number.isFinite(lng)) bounds.extend({ lat, lng });
       });
-      mapRef.current.fitBounds(bounds, 90);
+      if (!bounds.isEmpty()) {
+        mapRef.current.fitBounds(bounds, 90);
+      } else {
+        mapRef.current.setCenter(selectedLatLng || defaultCenter);
+        mapRef.current.setZoom(normalizedJobs.length ? 9 : 6);
+      }
     } else {
       mapRef.current.setCenter(homeLatLng || selectedLatLng || defaultCenter);
       mapRef.current.setZoom(homeLatLng ? 11 : normalizedJobs.length ? 9 : 6);

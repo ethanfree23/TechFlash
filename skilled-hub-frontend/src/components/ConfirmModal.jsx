@@ -7,11 +7,7 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmLabel
 
   return (
     <div className="fixed inset-0 flex items-center justify-center z-[60] p-4">
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
-        aria-hidden="true"
-      />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" aria-hidden="true" />
       <div
         className="relative border-2 border-orange-100 rounded-2xl shadow-2xl shadow-orange-100/30 max-w-md w-full overflow-hidden backdrop-blur-md"
         style={{ background: 'linear-gradient(180deg, rgba(247, 247, 247, 0.88) 0%, rgba(254, 103, 17, 0.06) 100%)' }}

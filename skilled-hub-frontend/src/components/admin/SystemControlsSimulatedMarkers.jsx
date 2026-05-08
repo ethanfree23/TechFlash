@@ -77,8 +77,9 @@ export default function SystemControlsSimulatedMarkers() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-gray-600 max-w-3xl">
-        Fake technician pins appear on the map for techs and companies (privacy-preserving network density). Admins see
-        these in turquoise on the map.
+        <span className="font-medium text-gray-800">Where to find this:</span> Settings → System controls → Map markers
+        (this page). Fake technician pins appear on the map for techs and companies (privacy-preserving network density).
+        Admins see these in turquoise on the map.
       </p>
       {loading && <p className="text-sm text-gray-500">Loading…</p>}
       {error && <p className="text-sm text-red-600">{error}</p>}

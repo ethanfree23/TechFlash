@@ -1,3 +1,21 @@
+/** Axis-aligned bounding box (SW / NE corners) approximating a circle of radiusMiles around center. Good for map fitBounds. */
+export const boundingBoxForRadiusMiles = (centerLat, centerLng, radiusMiles) => {
+  const lat = Number(centerLat);
+  const lng = Number(centerLng);
+  const r = Number(radiusMiles);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(r) || r <= 0) return null;
+  const latRad = (lat * Math.PI) / 180;
+  const dLat = r / 69.0;
+  const cosLat = Math.cos(latRad);
+  const dLng = cosLat > 1e-6 ? r / (69.0 * cosLat) : r / 69.0;
+  return {
+    south: lat - dLat,
+    north: lat + dLat,
+    west: lng - dLng,
+    east: lng + dLng,
+  };
+};
+
 export const haversineMiles = (lat1, lon1, lat2, lon2) => {
   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return Infinity;
   const R = 3959;

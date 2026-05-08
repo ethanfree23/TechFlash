@@ -341,12 +341,8 @@ export default function AdminCreateUserModal({
       role="dialog"
       aria-modal="true"
       aria-labelledby="admin-create-user-title"
-      onClick={() => !creating && onClose()}
     >
-      <div
-        className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
         <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
           <div className="flex items-center gap-2 min-w-0">
             <FaUserPlus className="text-emerald-600 shrink-0 w-5 h-5" aria-hidden />

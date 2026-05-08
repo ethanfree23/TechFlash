@@ -10,6 +10,7 @@ import { EXPERIENCE_YEAR_OPTIONS, formatExperienceLong } from '../constants/expe
 import Modal from 'react-modal';
 import StarRating from './StarRating';
 import JobAddressFields from './JobAddressFields';
+import { JOB_STATUS_KEYS, jobStatusLabel, normalizeJobStatusKey } from '../utils/jobStatus';
 
 const toDatetimeLocal = (d) => {
   if (!d) return '';
@@ -123,6 +124,7 @@ const JobDetail = () => {
     scheduled_end_at: '',
     go_live_at: '',
     use_custom_go_live_at: false,
+    status: 'open',
   });
   const [savingEdit, setSavingEdit] = useState(false);
   const [claimedBy, setClaimedBy] = useState(null);
@@ -276,7 +278,7 @@ const JobDetail = () => {
     try {
       setLoading(true);
       const data = await jobsAPI.getById(id);
-      setJob(data);
+      setJob({ ...data, status: normalizeJobStatusKey(data) });
       setError(null);
     } catch (err) {
       setError('Failed to load job details');
@@ -426,19 +428,24 @@ const JobDetail = () => {
     navigate('/jobs');
   };
 
-  const getStatusBadge = (job) => {
-    const status = job?.status;
+  const getStatusBadge = (jobRow) => {
+    const status = normalizeJobStatusKey(jobRow);
     if (status === 'open') return <span className="px-3 py-1 text-sm font-medium rounded-full bg-blue-100 text-blue-800">Open</span>;
-    if (status === 'finished') return <span className="px-3 py-1 text-sm font-medium rounded-full bg-green-200 text-green-800">Completed</span>;
+    if (status === 'finished' || status === 'completed') {
+      return <span className="px-3 py-1 text-sm font-medium rounded-full bg-green-200 text-green-800">Completed</span>;
+    }
+    if (status === 'accepted') {
+      return <span className="px-3 py-1 text-sm font-medium rounded-full bg-purple-100 text-purple-800">Accepted</span>;
+    }
     if (status === 'reserved' || status === 'filled') {
-      const startAt = job?.scheduled_start_at ? new Date(job.scheduled_start_at).getTime() : null;
+      const startAt = jobRow?.scheduled_start_at ? new Date(jobRow.scheduled_start_at).getTime() : null;
       const now = Date.now();
       if (startAt === null || startAt > now) {
         return <span className="px-3 py-1 text-sm font-medium rounded-full bg-yellow-100 text-yellow-800">Claimed</span>;
       }
       return <span className="px-3 py-1 text-sm font-medium rounded-full bg-green-100 text-green-800">Active</span>;
     }
-    return <span className="px-3 py-1 text-sm font-medium rounded-full bg-gray-100 text-gray-800">{status || '—'}</span>;
+    return <span className="px-3 py-1 text-sm font-medium rounded-full bg-gray-100 text-gray-800">{jobStatusLabel(status)}</span>;
   };
 
   const openEditModal = () => {
@@ -465,6 +472,7 @@ const JobDetail = () => {
       scheduled_end_at: toDatetimeLocal(job.scheduled_end_at),
       go_live_at: toDatetimeLocal(job.go_live_at || new Date()),
       use_custom_go_live_at: hasCustomGoLiveAt(job),
+      status: normalizeJobStatusKey(job),
     });
     setShowEditModal(true);
   };
@@ -570,11 +578,17 @@ const JobDetail = () => {
         payload.hours_per_day = null;
         payload.days = null;
       }
+      payload.status = editData.status;
       await jobsAPI.update(job.id, payload);
       await fetchJobDetails();
       closeEditModal();
-    } catch {
-      setAlertModal({ isOpen: true, title: 'Unable to update job', message: 'Failed to update job', variant: 'error' });
+    } catch (err) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Unable to update job',
+        message: err?.message || 'Failed to update job',
+        variant: 'error',
+      });
     } finally {
       setSavingEdit(false);
     }
@@ -736,6 +750,7 @@ const JobDetail = () => {
     currentUser?.role === 'admin'
   );
   const acceptedApp = job?.job_applications?.find(app => app.status === 'accepted' || app.status === 1);
+  const hasAcceptedApplication = Boolean(acceptedApp);
   const claimedTechnician = claimedTechnicianData || acceptedApp?.technician_profile;
   const isCompanyViewingOwnClaimedJob = currentUser?.role === 'company' && job?.company_profile_id === companyProfileId && (job?.status === 'reserved' || job?.status === 'finished' || job?.status === 'filled') && (claimedTechnician || acceptedApp?.technician_profile_id);
   const isAdmin = currentUser?.role === 'admin' || auth.isAdmin();
@@ -1425,16 +1440,34 @@ const JobDetail = () => {
         </div>
       </div>
       {/* Edit Job Modal */}
-      <Modal
-        isOpen={showEditModal}
-        onRequestClose={closeEditModal}
-        shouldCloseOnOverlayClick={false}
-        ariaHideApp={false}
-        className="fixed inset-0 flex items-center justify-center z-50"
-      >
+      <Modal isOpen={showEditModal} onRequestClose={closeEditModal} ariaHideApp={false} className="fixed inset-0 flex items-center justify-center z-50">
         <div className="bg-white p-8 rounded shadow-lg w-full max-w-lg max-h-[90vh] overflow-y-auto">
           <h2 className="text-xl font-bold mb-4">Edit Job</h2>
           <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Status</label>
+              <select
+                name="status"
+                value={editData.status}
+                onChange={handleEditChange}
+                className="w-full border rounded p-2 bg-white"
+              >
+                {JOB_STATUS_KEYS.map((key) => (
+                  <option
+                    key={key}
+                    value={key}
+                    disabled={key === 'open' && hasAcceptedApplication && !isAdmin}
+                  >
+                    {jobStatusLabel(key)}
+                  </option>
+                ))}
+              </select>
+              {hasAcceptedApplication && !isAdmin ? (
+                <p className="text-xs text-amber-800 mt-1">
+                  To set the listing back to Open, use Deny Technician first (or contact an admin).
+                </p>
+              ) : null}
+            </div>
             <div>
               <label className="block text-sm font-medium mb-1">Description</label>
               <textarea name="description" value={editData.description} onChange={handleEditChange} className="w-full border rounded p-2" rows={4} required />

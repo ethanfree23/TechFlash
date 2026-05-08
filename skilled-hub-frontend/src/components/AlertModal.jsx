@@ -11,11 +11,7 @@ const AlertModal = ({ isOpen, onClose, title, message, variant = 'success' }) =>
   return (
     <div className="fixed inset-0 flex items-center justify-center z-50 p-4">
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-        onClick={onClose}
-        aria-hidden="true"
-      />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" aria-hidden="true" />
       {/* Modal */}
       <div
         className="relative border-2 border-orange-100 rounded-2xl shadow-2xl shadow-orange-100/30 max-w-md w-full overflow-hidden backdrop-blur-md"

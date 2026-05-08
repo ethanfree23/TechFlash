@@ -2343,12 +2343,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             role="dialog"
             aria-modal="true"
             aria-labelledby="crm-profile-import-title"
-            onClick={() => setProfileImportOpen(false)}
           >
-            <div
-              className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-xl w-full overflow-hidden"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-xl w-full overflow-hidden">
               <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100">
                 <h2 id="crm-profile-import-title" className="text-lg font-semibold text-gray-900">
                   Import into this company
@@ -2400,12 +2396,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             role="dialog"
             aria-modal="true"
             aria-labelledby="crm-import-title"
-            onClick={() => !importBusy && setImportModalOpen(false)}
           >
-            <div
-              className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
               <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
                 <h2 id="crm-import-title" className="text-lg font-semibold text-gray-900">
                   Import CRM companies from CSV
@@ -2658,12 +2650,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             role="dialog"
             aria-modal="true"
             aria-labelledby="crm-provision-title"
-            onClick={() => !provisionSaving && setProvisionModalOpen(false)}
           >
-            <div
-              className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
               <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
                 <h2 id="crm-provision-title" className="text-lg font-semibold text-gray-900">
                   Create platform company account
@@ -2885,17 +2873,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             role="dialog"
             aria-modal="true"
             aria-labelledby="crm-new-company-title"
-            onClick={() => {
-              if (!saving) {
-                setNewCompanyModalOpen(false);
-                setIsCreating(false);
-              }
-            }}
           >
-            <div
-              className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
               <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
                 <h2 id="crm-new-company-title" className="text-lg font-semibold text-gray-900">
                   New company
@@ -3277,14 +3256,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             role="dialog"
             aria-modal="true"
             aria-labelledby="crm-merge-title"
-            onClick={() => {
-              if (!mergeSaving) setMergeModalOpen(false);
-            }}
           >
-            <div
-              className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col"
-              onClick={(e) => e.stopPropagation()}
-            >
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-5xl w-full max-h-[90vh] overflow-hidden flex flex-col">
               <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
                 <h2 id="crm-merge-title" className="text-lg font-semibold text-gray-900">Merge CRM companies</h2>
                 <button

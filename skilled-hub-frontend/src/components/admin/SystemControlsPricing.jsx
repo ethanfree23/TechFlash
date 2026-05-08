@@ -1134,7 +1134,7 @@ export default function SystemControlsPricing() {
 
       {addOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => !creating && setAddOpen(false)} aria-hidden />
+          <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
           <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-gray-200">
             <h3 className="text-lg font-semibold text-gray-900 mb-4">New tier</h3>
             <form onSubmit={handleCreateTier} className="space-y-3">
@@ -1238,11 +1238,7 @@ export default function SystemControlsPricing() {
 
       {deleteTarget && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
-          <div
-            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
-            onClick={() => !deleting && setDeleteTarget(null)}
-            aria-hidden
-          />
+          <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" aria-hidden="true" />
           <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-red-100">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete tier?</h3>
             <p className="text-sm text-gray-600 mb-4">
