@@ -215,13 +215,13 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_08_110000) do
     t.string "trade_label"
     t.integer "min_hourly_rate_cents", default: 0, null: false
     t.integer "max_distance_miles", default: 200, null: false
-    t.integer "min_duration_weeks"
-    t.integer "max_duration_weeks"
     t.boolean "email_enabled", default: true, null: false
     t.boolean "sms_enabled", default: true, null: false
     t.boolean "app_enabled", default: true, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "min_duration_weeks"
+    t.integer "max_duration_weeks"
     t.index ["user_id"], name: "index_job_alert_preferences_on_user_id", unique: true
   end
 
