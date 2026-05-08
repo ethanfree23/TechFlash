@@ -6,6 +6,7 @@ import CardPaymentForm from './CardPaymentForm';
 import { getStripePublishableKey, isValidStripePublishableKey } from '../stripeConfig';
 import { requiresElectricalLicenseForState, setLocalOnlyLicenseStates } from '../utils/licensingRules';
 import { US_STATES } from '../data/statesByCountry';
+import { TRADE_OPTIONS } from '../constants/trades';
 
 const styles = {
   default: {
@@ -89,6 +90,7 @@ const RegisterForm = ({
     state: '',
     zip_code: '',
     electrical_license_number: '',
+    trade_type: '',
     role: initialRole,
     membership_tier: 'basic',
     role_view: initialRoleView,
@@ -179,6 +181,10 @@ const RegisterForm = ({
     }
     if (!registerData.city.trim() || !registerData.state.trim() || !registerData.zip_code.trim()) {
       setError('City, state, and zip are required.');
+      return false;
+    }
+    if (registerData.role === 'technician' && !registerData.trade_type.trim()) {
+      setError('Select at least one role/trade.');
       return false;
     }
 
@@ -534,6 +540,30 @@ const RegisterForm = ({
               />
             </div>
           )}
+          {registerData.role === 'technician' && (
+            <div>
+              <label htmlFor={`${idPrefix}-trade-type`} className={`block text-sm font-medium ${v.label}`}>
+                Trade / role
+              </label>
+              <select
+                id={`${idPrefix}-trade-type`}
+                name="trade_type"
+                value={registerData.trade_type}
+                onChange={(e) =>
+                  setRegisterData((prev) => ({ ...prev, trade_type: e.target.value }))
+                }
+                required
+                className={`mt-1 block w-full px-3 py-2.5 border rounded-xl shadow-sm ${v.input}`}
+              >
+                <option value="">Select your role</option>
+                {TRADE_OPTIONS.map((trade) => (
+                  <option key={trade} value={trade}>
+                    {trade}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
         </div>
       )}
 
@@ -573,6 +603,9 @@ const RegisterForm = ({
             <p><span className="font-semibold">City:</span> {registerData.city}</p>
             <p><span className="font-semibold">State:</span> {registerData.state}</p>
             <p><span className="font-semibold">Zip:</span> {registerData.zip_code}</p>
+            {registerData.role === 'technician' && (
+              <p><span className="font-semibold">Trade / role:</span> {registerData.trade_type}</p>
+            )}
             {registerData.role === 'company' && requiresElectricalLicenseForState(registerData.state) && (
               <p><span className="font-semibold">Electrical license:</span> {registerData.electrical_license_number}</p>
             )}

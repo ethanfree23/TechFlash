@@ -88,6 +88,7 @@ module Api
              params: base_signup_params(
                email: "tech-with-location@example.com",
                role: "technician",
+               trade_type: "Electrician",
                phone: "713-444-9988",
                address: "500 Market St",
                city: "Houston",

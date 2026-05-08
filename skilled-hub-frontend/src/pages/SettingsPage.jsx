@@ -1050,7 +1050,20 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Trade type</label>
-                    <input name="trade_type" value={form.trade_type} onChange={handleChange} className="w-full border rounded-lg px-3 py-2" placeholder="e.g. Electrician, Plumber" />
+                    <select
+                      name="trade_type"
+                      value={form.trade_type || ''}
+                      onChange={handleChange}
+                      className="w-full border rounded-lg px-3 py-2 bg-white"
+                      required
+                    >
+                      <option value="">Select trade type</option>
+                      {TRADE_OPTIONS.map((trade) => (
+                        <option key={trade} value={trade}>
+                          {trade}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Years of experience</label>

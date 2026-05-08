@@ -9,6 +9,30 @@ module Api
         admin_users_technician: %i[key visible],
         crm_pipeline: %i[key visible]
       }.freeze
+      TECHNICIAN_TRADE_OPTIONS = [
+        'Electrician',
+        'HVAC Technician',
+        'Plumber',
+        'Roofer',
+        'Carpenter',
+        'Machine Technician',
+        'Welder',
+        'Refrigeration Technician',
+        'Pipefitter',
+        'Sheet Metal Worker',
+        'Mason / Concrete Worker',
+        'Drywall / Painter',
+        'Glazier',
+        'Insulation Installer',
+        'Boilermaker',
+        'Fire Protection / Sprinkler Tech',
+        'Solar Installer',
+        'Low-Voltage / Telecom Tech',
+        'Locksmith',
+        'Appliance Repair Tech',
+        'Equipment Operator',
+        'General Laborer / Helper'
+      ].freeze
 
       before_action :authenticate_user, only: [:show, :update_me]
 
@@ -61,6 +85,7 @@ module Api
         zip_code = params[:zip_code].to_s.strip
         address = params[:address].to_s.strip
         country = params[:country].to_s.strip.presence || "United States"
+        trade_type = params[:trade_type].to_s.strip
 
         if blocked_signup_email?(email) || params[:honeypot].to_s.present?
           block_marketing_email!(email)
@@ -75,6 +100,14 @@ module Api
         return render json: { error: "city is required for signup" }, status: :unprocessable_entity if city.blank?
         return render json: { error: "state is required for signup" }, status: :unprocessable_entity if state.blank?
         return render json: { error: "zip_code is required for signup" }, status: :unprocessable_entity if zip_code.blank?
+        if permitted_role == 'technician'
+          if trade_type.blank?
+            return render json: { error: "trade_type is required for technician signup" }, status: :unprocessable_entity
+          end
+          unless TECHNICIAN_TRADE_OPTIONS.include?(trade_type)
+            return render json: { error: "trade_type must be selected from the role list" }, status: :unprocessable_entity
+          end
+        end
 
         membership_level = MembershipPolicy.normalized_level(params[:membership_tier] || params[:membership_level], audience: permitted_role)
         unless MembershipPolicy.level_valid?(membership_level, audience: permitted_role)
@@ -105,7 +138,7 @@ module Api
           elsif user.technician?
             TechnicianProfile.create!(
               user: user,
-              trade_type: 'General',
+              trade_type: trade_type,
               experience_years: 0,
               availability: 'Full-time',
               phone: phone,
@@ -118,7 +151,10 @@ module Api
             )
           end
           MailDelivery.safe_deliver { UserMailer.welcome_email(user).deliver_now }
-          JobAlertDispatcher.default_preference_for(user) if user.technician?
+          if user.technician?
+            pref = JobAlertDispatcher.default_preference_for(user)
+            pref.update!(trade_label: trade_type)
+          end
           token = JWT.encode({ user_id: user.id }, Rails.application.secret_key_base, "HS256")
           render json: { token: token, user: UserSerializer.new(user).as_json }, status: :created
         else

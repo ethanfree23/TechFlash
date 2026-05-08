@@ -4,7 +4,6 @@ import { jobsAPI, ratingsAPI, feedbackAPI, adminAPI, profilesAPI, techPresenceAP
 import AlertModal from '../components/AlertModal';
 import AppHeader from '../components/AppHeader';
 import {
-  boundingBoxForRadiusMiles,
   filterJobsWithinRadius,
   formatDistanceMi,
   haversineMiles,
@@ -1211,16 +1210,14 @@ const TechnicianOpenJobsMap = ({
 
     const DEFAULT_VIEW_RADIUS_MI = 100;
     if (homeLatLng) {
-      const box = boundingBoxForRadiusMiles(homeLatLng.lat, homeLatLng.lng, DEFAULT_VIEW_RADIUS_MI);
-      if (box) {
-        const bounds = new maps.LatLngBounds(
-          { lat: box.south, lng: box.west },
-          { lat: box.north, lng: box.east }
-        );
-        mapRef.current.fitBounds(bounds, 48);
+      const radiusMeters = DEFAULT_VIEW_RADIUS_MI * 1609.344;
+      const radiusCircle = new maps.Circle({ center: homeLatLng, radius: radiusMeters });
+      const radiusBounds = radiusCircle.getBounds();
+      if (radiusBounds) {
+        mapRef.current.fitBounds(radiusBounds, 48);
       } else {
         mapRef.current.setCenter(homeLatLng);
-        mapRef.current.setZoom(11);
+        mapRef.current.setZoom(10);
       }
     } else if (selectedLatLng || normalizedJobs.length || presenceMarkers.length) {
       const bounds = new maps.LatLngBounds();
