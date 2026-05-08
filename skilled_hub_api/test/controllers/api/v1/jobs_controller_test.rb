@@ -543,6 +543,58 @@ module Api
         end
       end
 
+      test "company cannot set job to open while accepted application exists" do
+        user = User.create!(
+          email: "company-block-open-claimed@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "premium",
+          membership_fee_waived: true
+        )
+        user.update_column(:company_profile_id, profile.id)
+
+        technician_user = User.create!(
+          email: "tech-block-open-claimed@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        technician_profile = TechnicianProfile.create!(
+          user: technician_user,
+          trade_type: "General",
+          availability: "Full-time",
+          membership_level: "basic"
+        )
+
+        job = Job.create!(
+          company_profile: profile,
+          title: "Filled job",
+          description: "desc",
+          status: :filled,
+          go_live_at: 1.day.ago,
+          scheduled_start_at: 1.day.from_now,
+          scheduled_end_at: 2.days.from_now
+        )
+        JobApplication.create!(
+          job: job,
+          technician_profile: technician_profile,
+          status: :accepted
+        )
+
+        patch "/api/v1/jobs/#{job.id}",
+              params: { status: "open" },
+              headers: auth_header_for(user),
+              as: :json
+
+        assert_response :unprocessable_entity
+        job.reload
+        assert_equal "filled", job.status
+      end
+
       test "updating an open job with a future go_live_at resets go_live_at to now" do
         user = User.create!(
           email: "company-go-live-open-update@example.com",

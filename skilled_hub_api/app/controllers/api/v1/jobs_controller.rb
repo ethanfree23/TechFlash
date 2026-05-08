@@ -225,6 +225,11 @@ module Api
           return render json: { error: 'Access denied' }, status: :forbidden
         end
         job.assign_attributes(job_params)
+        if blocking_open_while_claimed?(job)
+          return render json: {
+            error: 'Cannot set job to open while a technician claim is accepted. Use Deny Technician first, or ask an admin.'
+          }, status: :unprocessable_entity
+        end
         set_go_live_at_for_post!(job)
         if job.save
           JobAlertDispatcher.dispatch_for_job(job) if job.open?
@@ -507,6 +512,15 @@ module Api
       def can_manage_job?(job)
         return true if @current_user&.admin?
         @current_user&.company? && job.company_profile_id == @current_user.company_profile&.id
+      end
+
+      # Companies must not reopen via arbitrary PATCH while a claim is accepted (use deny flow). Admins may override.
+      def blocking_open_while_claimed?(job)
+        return false if @current_user&.admin?
+        return false unless job.status.to_s == "open"
+        return false unless job.will_save_change_to_status?
+
+        job.job_applications.where(status: :accepted).exists?
       end
 
       def debug_log(hypothesis_id:, location:, message:, data:)
