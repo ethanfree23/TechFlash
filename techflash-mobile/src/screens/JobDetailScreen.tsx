@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, ActivityIndicator, Pressable, TextI
 import { RouteProp, useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors, radii, typography } from '../theme';
-import { claimJob, denyJob, extendJob, finishJob, getJobById } from '../api/jobsApi';
+import { claimJob, denyJob, extendJob, finishJob, getJobById, reportJobIssue } from '../api/jobsApi';
 import { createConversationForJob } from '../api/conversationsApi';
 import { MapJobsPreview } from '../components/MapJobsPreview';
 import { useAuth } from '../auth/AuthContext';
@@ -29,6 +29,7 @@ export default function JobDetailScreen() {
   const [preferredStartAt, setPreferredStartAt] = useState('');
   const [extendEndAt, setExtendEndAt] = useState('');
   const [technicianProfileId, setTechnicianProfileId] = useState('');
+  const [reportBody, setReportBody] = useState('');
 
   const load = useCallback(async () => {
     setError('');
@@ -127,6 +128,24 @@ export default function JobDetailScreen() {
       navigation.navigate('Conversation', { conversationId: id });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not start conversation');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onReportJob = async () => {
+    if (!reportBody.trim()) {
+      setError('Enter report details first.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await reportJobIssue(jobId, reportBody.trim(), 'safety');
+      setReportBody('');
+      setNotice('Report submitted. Our team will review it.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not report job');
     } finally {
       setSaving(false);
     }
@@ -232,6 +251,17 @@ export default function JobDetailScreen() {
         />
         <Pressable style={styles.btnGhost} onPress={onStartConversation} disabled={saving}>
           <Text style={styles.btnGhostText}>Open conversation</Text>
+        </Pressable>
+        <TextInput
+          value={reportBody}
+          onChangeText={setReportBody}
+          placeholder="Report unsafe or abusive job content"
+          placeholderTextColor={colors.muted}
+          style={styles.input}
+          multiline
+        />
+        <Pressable style={styles.btnGhost} onPress={onReportJob} disabled={saving}>
+          <Text style={styles.btnGhostText}>Report this job</Text>
         </Pressable>
       </Card>
 

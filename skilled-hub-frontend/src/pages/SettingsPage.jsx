@@ -893,6 +893,30 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                     {savingAccount ? 'Saving...' : 'Update Account'}
                   </button>
                 </form>
+                <div className="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
+                  <p className="text-sm font-medium text-gray-900">Legal and support</p>
+                  <div className="flex flex-wrap gap-3 text-sm">
+                    <a className="text-blue-700 hover:underline" href="/privacy-policy">Privacy Policy</a>
+                    <a className="text-blue-700 hover:underline" href="/terms-of-service">Terms of Service</a>
+                    <a className="text-blue-700 hover:underline" href="mailto:support@techflash.app">Contact support</a>
+                  </div>
+                </div>
+                <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4">
+                  <p className="text-sm font-medium text-red-900 mb-2">Delete account</p>
+                  <p className="text-sm text-red-800 mb-3">This permanently removes your account and cannot be undone.</p>
+                  <button
+                    type="button"
+                    className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
+                    onClick={async () => {
+                      const confirmed = window.confirm('Delete your account permanently? This cannot be undone.');
+                      if (!confirmed) return;
+                      await authAPI.deleteMe();
+                      onLogout?.();
+                    }}
+                  >
+                    Delete account permanently
+                  </button>
+                </div>
               </div>
             )}
 

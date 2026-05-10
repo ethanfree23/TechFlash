@@ -1,11 +1,21 @@
-import React, { useState } from 'react';
-import { ScrollView, StyleSheet, Text, TextInput, Pressable } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import {
+  FlatList,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  Pressable,
+  View,
+} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { colors } from '../theme';
 import { createAdminUser } from '../api/adminApi';
 import type { AppStackParamList } from '../navigation/RootNavigator';
 import { formatUsPhone, phoneDigits } from '../utils/phone';
+import { TRADE_OPTIONS } from '../constants/trades';
 
 type Nav = NativeStackNavigationProp<AppStackParamList, 'AdminCreateUser'>;
 
@@ -26,21 +36,43 @@ export default function AdminCreateUserScreen() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
+  const [tradePickerOpen, setTradePickerOpen] = useState(false);
+  const [tradeFilter, setTradeFilter] = useState('');
+
+  const filteredTrades = useMemo(() => {
+    const q = tradeFilter.trim().toLowerCase();
+    if (!q) return [...TRADE_OPTIONS];
+    return TRADE_OPTIONS.filter((t) => t.toLowerCase().includes(q));
+  }, [tradeFilter]);
 
   const onCreate = async () => {
     setSaving(true);
     setError('');
     setNotice('');
     try {
-      const base = {
+      const pw = password.trim();
+      const pwC = passwordConfirmation.trim();
+      if ((pw || pwC) && (!pw || !pwC)) {
+        setError('Enter and confirm the password, or leave both blank to email a setup link.');
+        return;
+      }
+      if (pw && pw !== pwC) {
+        setError('Password confirmation does not match.');
+        return;
+      }
+
+      const base: Record<string, unknown> = {
         role,
         email: email.trim(),
-        password,
-        password_confirmation: passwordConfirmation,
         first_name: firstName.trim(),
         last_name: lastName.trim(),
         phone: phoneDigits(phone),
       };
+      if (pw) {
+        base.password = password;
+        base.password_confirmation = pwC;
+      }
+
       const payload =
         role === 'company'
           ? {
@@ -53,7 +85,6 @@ export default function AdminCreateUserScreen() {
               ...base,
               trade_type: tradeType.trim() || 'General',
               location: location.trim(),
-              availability: 'Full-time',
             };
       await createAdminUser(payload);
       setNotice('User created.');
@@ -81,7 +112,13 @@ export default function AdminCreateUserScreen() {
       </ScrollView>
 
       <Field label="Email" value={email} onChangeText={setEmail} />
-      <Field label="Password" value={password} onChangeText={setPassword} secure />
+      <Field
+        label="Password (optional)"
+        value={password}
+        onChangeText={setPassword}
+        secure
+        hint="Leave blank to email setup link"
+      />
       <Field label="Confirm password" value={passwordConfirmation} onChangeText={setPasswordConfirmation} secure />
       <Field label="First name" value={firstName} onChangeText={setFirstName} />
       <Field label="Last name" value={lastName} onChangeText={setLastName} />
@@ -95,7 +132,18 @@ export default function AdminCreateUserScreen() {
         </>
       ) : (
         <>
-          <Field label="Trade type" value={tradeType} onChangeText={setTradeType} />
+          <Text style={styles.label}>Trade type</Text>
+          <TextInput
+            value={tradeType}
+            onChangeText={setTradeType}
+            placeholder="Type or pick from list"
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+            autoCapitalize="words"
+          />
+          <Pressable style={styles.secondaryBtn} onPress={() => setTradePickerOpen(true)}>
+            <Text style={styles.secondaryBtnText}>Choose from list</Text>
+          </Pressable>
           <Field label="Location" value={location} onChangeText={setLocation} />
         </>
       )}
@@ -103,6 +151,43 @@ export default function AdminCreateUserScreen() {
       <Pressable style={[styles.btn, saving && { opacity: 0.7 }]} onPress={onCreate} disabled={saving}>
         <Text style={styles.btnText}>{saving ? 'Creating...' : 'Create user'}</Text>
       </Pressable>
+
+      <Modal visible={tradePickerOpen} animationType="slide" transparent onRequestClose={() => setTradePickerOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Pick a trade</Text>
+            <TextInput
+              value={tradeFilter}
+              onChangeText={setTradeFilter}
+              placeholder="Filter..."
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+              autoCapitalize="none"
+            />
+            <FlatList
+              data={filteredTrades}
+              keyExtractor={(item) => item}
+              style={styles.tradeList}
+              keyboardShouldPersistTaps="handled"
+              renderItem={({ item }) => (
+                <Pressable
+                  style={styles.tradeRow}
+                  onPress={() => {
+                    setTradeType(item);
+                    setTradePickerOpen(false);
+                    setTradeFilter('');
+                  }}
+                >
+                  <Text style={styles.tradeRowText}>{item}</Text>
+                </Pressable>
+              )}
+            />
+            <Pressable style={styles.modalCancel} onPress={() => setTradePickerOpen(false)}>
+              <Text style={styles.modalCancelText}>Cancel</Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 }
@@ -112,15 +197,18 @@ function Field({
   value,
   onChangeText,
   secure,
+  hint,
 }: {
   label: string;
   value: string;
   onChangeText: (v: string) => void;
   secure?: boolean;
+  hint?: string;
 }) {
   return (
     <>
       <Text style={styles.label}>{label}</Text>
+      {hint ? <Text style={styles.fieldHint}>{hint}</Text> : null}
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -141,6 +229,7 @@ const styles = StyleSheet.create({
   error: { color: colors.danger, marginBottom: 8 },
   notice: { color: colors.primaryBlue, marginBottom: 8 },
   label: { marginTop: 10, marginBottom: 4, color: colors.muted, textTransform: 'uppercase', fontSize: 12 },
+  fieldHint: { fontSize: 11, color: colors.muted, marginBottom: 4 },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -150,6 +239,17 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingVertical: 9,
   },
+  secondaryBtn: {
+    marginTop: 8,
+    alignSelf: 'flex-start',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+  },
+  secondaryBtnText: { color: colors.primaryBlue, fontWeight: '600', fontSize: 14 },
   chip: {
     borderWidth: 1,
     borderColor: colors.border,
@@ -169,4 +269,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   btnText: { color: colors.white, fontWeight: '700' },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  modalCard: {
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    padding: 16,
+    maxHeight: '80%',
+  },
+  modalTitle: { fontSize: 18, fontWeight: '700', marginBottom: 10, color: colors.text },
+  tradeList: { maxHeight: 280, marginTop: 8 },
+  tradeRow: {
+    paddingVertical: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  tradeRowText: { fontSize: 16, color: colors.text },
+  modalCancel: { marginTop: 12, alignItems: 'center', paddingVertical: 10 },
+  modalCancelText: { color: colors.muted, fontWeight: '600' },
 });

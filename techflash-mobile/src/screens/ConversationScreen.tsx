@@ -13,6 +13,9 @@ import { RouteProp, useFocusEffect, useRoute } from '@react-navigation/native';
 import { colors } from '../theme';
 import { getConversation } from '../api/conversationsApi';
 import { createMessage, listMessages, type MessageRow } from '../api/messagesApi';
+import { createFeedback } from '../api/feedbackApi';
+import { blockUser } from '../api/settingsApi';
+import { useAuth } from '../auth/AuthContext';
 import type { AppStackParamList } from '../navigation/RootNavigator';
 
 type ConvRoute = RouteProp<AppStackParamList, 'Conversation'>;
@@ -27,6 +30,8 @@ export default function ConversationScreen() {
   const [conversation, setConversation] = useState<Record<string, unknown>>({});
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [draft, setDraft] = useState('');
+  const [reportBody, setReportBody] = useState('');
+  const { user } = useAuth();
 
   const load = useCallback(async () => {
     setError('');
@@ -65,6 +70,49 @@ export default function ConversationScreen() {
     }
   };
 
+  const targetUserId =
+    user?.role === 'technician'
+      ? Number((conversation.company_profile as Record<string, unknown> | undefined)?.user_id || 0)
+      : Number((conversation.technician_profile as Record<string, unknown> | undefined)?.user_id || 0);
+
+  const onReport = async () => {
+    if (!reportBody.trim()) {
+      setError('Enter report details first.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await createFeedback(
+        'problem',
+        `Conversation report #${conversationId}\n${reportBody.trim()}`,
+        `/conversations/${conversationId}`
+      );
+      setReportBody('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not submit report');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const onBlock = async () => {
+    if (!targetUserId) {
+      setError('Could not determine user to block.');
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      await blockUser(targetUserId);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not block user');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   if (loading) {
     return <View style={styles.center}><ActivityIndicator size="large" color={colors.primaryOrange} /></View>;
   }
@@ -90,6 +138,25 @@ export default function ConversationScreen() {
           </View>
         )}
       />
+      {!isFeedbackThread ? (
+        <View style={styles.safetyCard}>
+          <Text style={styles.safetyTitle}>Safety</Text>
+          <TextInput
+            value={reportBody}
+            onChangeText={setReportBody}
+            placeholder="Report abusive behavior or unsafe content"
+            placeholderTextColor={colors.muted}
+            style={styles.input}
+            multiline
+          />
+          <Pressable style={styles.reportBtn} onPress={onReport} disabled={saving}>
+            <Text style={styles.reportBtnText}>Report this conversation</Text>
+          </Pressable>
+          <Pressable style={styles.blockBtn} onPress={onBlock} disabled={saving}>
+            <Text style={styles.blockBtnText}>Block this user</Text>
+          </Pressable>
+        </View>
+      ) : null}
       {!isFeedbackThread ? (
         <View style={styles.composer}>
           <TextInput
@@ -125,6 +192,33 @@ const styles = StyleSheet.create({
   },
   msgMeta: { color: colors.muted, fontSize: 12, marginBottom: 4 },
   msgBody: { color: colors.text, fontSize: 15 },
+  safetyCard: {
+    marginHorizontal: 14,
+    marginBottom: 90,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+    backgroundColor: colors.white,
+    padding: 10,
+  },
+  safetyTitle: { color: colors.text, fontWeight: '700', marginBottom: 6 },
+  reportBtn: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  reportBtnText: { color: colors.text, fontWeight: '600' },
+  blockBtn: {
+    borderWidth: 1,
+    borderColor: colors.danger,
+    borderRadius: 10,
+    paddingVertical: 8,
+    alignItems: 'center',
+  },
+  blockBtnText: { color: colors.danger, fontWeight: '700' },
   composer: {
     position: 'absolute',
     left: 0,

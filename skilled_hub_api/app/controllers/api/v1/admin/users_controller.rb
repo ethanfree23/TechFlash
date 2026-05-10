@@ -224,7 +224,7 @@ module Api
           end
 
           if params.key?(:job_alert_trade_label)
-            pref = user.job_alert_preference || user.build_job_alert_preference
+            pref = user.job_alert_preference || JobAlertDispatcher.default_preference_for(user)
             pref.update!(trade_label: params[:job_alert_trade_label].to_s.strip.presence)
           end
 
@@ -350,7 +350,8 @@ module Api
         end
 
         def user_admin_params
-          params.permit(:first_name, :last_name, :job_alert_trade_label)
+          # job_alert_trade_label is persisted on job_alert_preferences, not users (see update_profile).
+          params.permit(:first_name, :last_name)
         end
 
         def technician_profile_admin_params

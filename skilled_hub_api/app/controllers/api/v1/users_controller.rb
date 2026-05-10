@@ -34,7 +34,7 @@ module Api
         'General Laborer / Helper'
       ].freeze
 
-      before_action :authenticate_user, only: [:show, :update_me]
+      before_action :authenticate_user, only: [:show, :update_me, :destroy_me, :blocked_users, :block_user, :unblock_user]
 
       def update_me
         if params[:password].present?
@@ -61,6 +61,38 @@ module Api
         else
           render json: { errors: @current_user.errors.full_messages }, status: :unprocessable_entity
         end
+      end
+
+      def destroy_me
+        user = @current_user
+        user.destroy!
+        head :no_content
+      rescue StandardError => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      def blocked_users
+        users = User.where(id: @current_user.blocked_user_ids).select(:id, :email, :first_name, :last_name, :role)
+        render json: { blocked_users: users.as_json }, status: :ok
+      end
+
+      def block_user
+        target = User.find(params[:blocked_user_id])
+        if target.id == @current_user.id
+          return render json: { error: "You cannot block yourself" }, status: :unprocessable_entity
+        end
+
+        ids = (@current_user.blocked_user_ids + [target.id]).uniq
+        @current_user.update_blocked_user_ids!(ids)
+        render json: { blocked_user_ids: @current_user.blocked_user_ids }, status: :ok
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: "User not found" }, status: :not_found
+      end
+
+      def unblock_user
+        ids = @current_user.blocked_user_ids - [params[:id].to_i]
+        @current_user.update_blocked_user_ids!(ids)
+        render json: { blocked_user_ids: @current_user.blocked_user_ids }, status: :ok
       end
       
       def index

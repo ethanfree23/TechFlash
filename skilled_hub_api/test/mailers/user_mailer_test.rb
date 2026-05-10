@@ -58,6 +58,54 @@ class UserMailerTest < ActionMailer::TestCase
     assert payment_mail.subject.present?
   end
 
+  test "job alert email includes pay duration and distance details" do
+    tech = @fixtures[:technician_profile]
+    job = @fixtures[:job]
+
+    tech.update!(latitude: 30.2672, longitude: -97.7431)
+    job.update!(latitude: 30.3000, longitude: -97.7000, hourly_rate_cents: 3500, hours_per_day: 8, days: 7)
+
+    mail = UserMailer.job_alert_email(@fixtures[:technician_user], job, technician_profile: tech)
+
+    text_body = mail.text_part&.body&.decoded.to_s
+    html_body = mail.html_part&.body&.decoded.to_s
+
+    assert_includes text_body, "Pay: $35.00/hr"
+    assert_includes text_body, "est. total $1960.00"
+    assert_includes text_body, "Duration: 7 business days (~2 weeks)"
+    assert_match(/Distance: \d+\.\d miles away/, text_body)
+
+    assert_includes html_body, "Pay:"
+    assert_includes html_body, "$35.00/hr"
+    assert_includes html_body, "est. total $1960.00"
+    assert_includes html_body, "Duration:"
+    assert_includes html_body, "7 business days (~2 weeks)"
+    # HTML wraps the label in <strong>, so distance is not immediately after "Distance:"
+    assert_match(/Distance:.*\d+\.\d miles away/m, html_body)
+  end
+
+  test "job alert email omits distance details when coordinates are missing" do
+    tech = @fixtures[:technician_profile]
+    job = @fixtures[:job]
+
+    # Avoid callbacks that re-geocode from address when clearing coordinates
+    tech.update_columns(latitude: nil, longitude: nil)
+    tech.reload
+    job.update!(latitude: 30.3000, longitude: -97.7000, hourly_rate_cents: 3500, hours_per_day: 8, days: 7)
+
+    mail = UserMailer.job_alert_email(@fixtures[:technician_user], job, technician_profile: tech)
+    text_body = mail.text_part&.body&.decoded.to_s
+    html_body = mail.html_part&.body&.decoded.to_s
+
+    assert_includes text_body, "Pay: $35.00/hr"
+    assert_includes text_body, "Duration: 7 business days (~2 weeks)"
+    refute_includes text_body, "Distance:"
+
+    assert_includes html_body, "Pay:"
+    assert_includes html_body, "Duration:"
+    refute_includes html_body, "Distance:"
+  end
+
   private
 
   def build_all_messages

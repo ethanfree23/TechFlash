@@ -115,3 +115,10 @@ export async function extendJob(id: number, scheduledEndAt: string) {
     body: JSON.stringify({ scheduled_end_at: scheduledEndAt }),
   });
 }
+
+export async function reportJobIssue(jobId: number, body: string, category = 'general') {
+  return apiRequest<Record<string, unknown>>(`/jobs/${jobId}/issue_reports`, {
+    method: 'POST',
+    body: JSON.stringify({ body, category }),
+  });
+}

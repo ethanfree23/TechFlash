@@ -12,6 +12,8 @@ module Api
       end
 
       def show
+        return if blocked_between_participants?(@conversation)
+
         render json: @conversation, serializer: ConversationSerializer,
           include: [:job, :messages, { technician_profile: :user }, { company_profile: :user }],
           status: :ok
@@ -20,6 +22,8 @@ module Api
       def create
         job = Job.find(params[:job_id])
         conversation = find_or_create_conversation(job)
+        return if conversation.present? && blocked_between_participants?(conversation)
+
         if conversation
           render json: conversation, serializer: ConversationSerializer,
             include: [:job, :technician_profile, :company_profile],
@@ -76,6 +80,22 @@ module Api
         else
           false
         end
+      end
+
+      def blocked_between_participants?(conv)
+        tech_user_id = conv.technician_profile&.user_id
+        company_user_id = conv.company_profile&.user_id
+        return false if tech_user_id.blank? || company_user_id.blank?
+
+        tech_user = User.find_by(id: tech_user_id)
+        company_user = User.find_by(id: company_user_id)
+        blocked =
+          tech_user&.blocked_user?(company_user_id) ||
+          company_user&.blocked_user?(tech_user_id)
+        if blocked
+          render json: { error: "Messaging is unavailable because one participant has blocked the other." }, status: :forbidden
+        end
+        blocked
       end
 
       def find_or_create_conversation(job)

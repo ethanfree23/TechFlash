@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { colors, space, typography } from '../theme';
 import { Card } from '../components/ui/Card';
@@ -34,20 +34,39 @@ export function SettingsAccountPanel({
   user,
   onApplied,
   notice,
+  onDeleted,
 }: {
   user: User;
   onApplied: MeApply;
   notice: string;
+  onDeleted: () => Promise<void>;
 }) {
   const [email, setEmail] = useState(user.email || '');
   const [password, setPassword] = useState('');
   const [passwordConfirmation, setPasswordConfirmation] = useState('');
   const [saving, setSaving] = useState(false);
   const [saveErr, setSaveErr] = useState('');
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState<Array<Record<string, unknown>>>([]);
+  const [blocksLoading, setBlocksLoading] = useState(false);
 
   useEffect(() => {
     setEmail(user.email || '');
   }, [user.email]);
+
+  const loadBlocks = useCallback(async () => {
+    setBlocksLoading(true);
+    try {
+      const data = await settingsApi.listBlockedUsers();
+      setBlockedUsers(Array.isArray(data?.blocked_users) ? data.blocked_users : []);
+    } finally {
+      setBlocksLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadBlocks().catch(() => {});
+  }, [loadBlocks]);
 
   const onSave = async () => {
     setSaving(true);
@@ -79,6 +98,62 @@ export function SettingsAccountPanel({
       <PrimaryButton label={saving ? 'Saving...' : 'Update account'} onPress={onSave} loading={saving} disabled={saving} />
       {!!saveErr ? <Text style={styles.err}>{saveErr}</Text> : null}
       {!!notice && !saveErr ? <Text style={styles.notice}>{notice}</Text> : null}
+
+      <Text style={[typography.heading, { marginTop: space.lg }]}>Legal and support</Text>
+      <GhostButton label="Open Privacy Policy" onPress={() => Linking.openURL('https://techflash.app/privacy-policy')} />
+      <GhostButton label="Open Terms of Service" onPress={() => Linking.openURL('https://techflash.app/terms-of-service')} />
+      <GhostButton label="Contact support" onPress={() => Linking.openURL('mailto:support@techflash.app')} />
+
+      <Text style={[typography.heading, { marginTop: space.lg }]}>Blocked users</Text>
+      {blocksLoading ? <Text style={styles.help}>Loading blocked users...</Text> : null}
+      {!blocksLoading && blockedUsers.length === 0 ? (
+        <Text style={styles.help}>No blocked users.</Text>
+      ) : null}
+      {blockedUsers.map((row) => {
+        const id = Number(row.id);
+        const name = `${String(row.first_name || '')} ${String(row.last_name || '')}`.trim() || String(row.email || `User #${id}`);
+        return (
+          <View key={String(id)} style={styles.tplRow}>
+            <Text style={styles.tplText}>{name}</Text>
+            <Pressable
+              onPress={async () => {
+                await settingsApi.unblockUser(id);
+                await loadBlocks();
+              }}
+            >
+              <Text style={styles.remove}>Unblock</Text>
+            </Pressable>
+          </View>
+        );
+      })}
+
+      <Text style={[typography.heading, { marginTop: space.lg }]}>Account deletion</Text>
+      <Text style={styles.help}>Delete your account and profile data from the mobile app.</Text>
+      <PrimaryButton
+        label={deleteBusy ? 'Deleting account...' : 'Delete account permanently'}
+        loading={deleteBusy}
+        disabled={deleteBusy}
+        onPress={() =>
+          Alert.alert('Delete account?', 'This action cannot be undone.', [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Delete',
+              style: 'destructive',
+              onPress: async () => {
+                setDeleteBusy(true);
+                try {
+                  await settingsApi.deleteMe();
+                  await onDeleted();
+                } catch (e) {
+                  setSaveErr(e instanceof Error ? e.message : 'Could not delete account');
+                } finally {
+                  setDeleteBusy(false);
+                }
+              },
+            },
+          ])
+        }
+      />
     </Card>
   );
 }
@@ -465,6 +540,9 @@ export function SettingsNotificationsPanel({
         <Card>
           <Text style={typography.heading}>Job alert templates</Text>
           <Text style={styles.help}>Order: tags, distance from home, pay range, duration range.</Text>
+          <Text style={styles.help}>
+            Location permission is used only to estimate distance for nearby job matching when your profile address is missing.
+          </Text>
           <Text style={styles.status}>Map center for alerts: {resolvedCenter || 'Resolving...'}</Text>
           <TextField label="Tags (comma-separated)" value={tplForm.tags} onChangeText={(v) => setTplForm((p) => ({ ...p, tags: v }))} />
           <TextField
@@ -556,7 +634,12 @@ export function SettingsPaymentPanel({
       <Text style={styles.meta}>
         Monthly fee: ${(((membership.monthly_fee_cents as number) || 0) / 100).toFixed(2)}
       </Text>
-      <Text style={styles.help}>Choose tier then update — hosted checkout opens when the tier has a fee.</Text>
+      <Text style={styles.help}>
+        TechFlash memberships support a real-world labor marketplace. Hosted checkout is used for non-IAP billing flows.
+      </Text>
+      <Text style={styles.help}>
+        TODO(AppReview): legal/product must confirm whether any tier unlocks digital-only iOS functionality requiring Apple IAP.
+      </Text>
       <View style={styles.tierRow}>
         {tierOptions.map((o) => (
           <Pressable

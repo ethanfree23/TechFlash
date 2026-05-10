@@ -15,6 +15,8 @@ module Api
       def update
         profile = membership_profile
         return render json: { error: "Membership profile not found" }, status: :not_found if profile.blank?
+        # TODO(AppReview): Confirm with legal/product whether any membership tier grants digital-only iOS app
+        # functionality. If yes, Apple may require StoreKit In-App Purchase for iOS purchase flows.
 
         requested_level = params[:membership_level].to_s.downcase
         audience = @current_user.company? ? :company : :technician

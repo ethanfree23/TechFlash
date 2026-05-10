@@ -2,4 +2,16 @@ Hi <%= @user.first_name.presence || 'there' %>,
 
 A new job matches your alert preferences: <%= @job.title %><%= @job.skill_class.present? ? " (#{@job.skill_class})" : '' %>.
 
+<% if @job_alert_hourly_rate.present? || @job_alert_estimated_total.present? %>
+Pay: <% if @job_alert_hourly_rate.present? %><%= @job_alert_hourly_rate %><% end %><% if @job_alert_hourly_rate.present? && @job_alert_estimated_total.present? %> · <% end %><% if @job_alert_estimated_total.present? %>est. total <%= @job_alert_estimated_total %><% end %>
+
+<% end %>
+<% if @job_alert_duration.present? %>
+Duration: <%= @job_alert_duration %>
+
+<% end %>
+<% if @job_alert_distance.present? %>
+Distance: <%= @job_alert_distance %>
+
+<% end %>
 Open your dashboard to review and claim openings.

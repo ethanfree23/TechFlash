@@ -9,6 +9,29 @@ export async function updateMe(payload: Record<string, unknown>) {
   });
 }
 
+export async function deleteMe() {
+  return apiRequest<null>('/users/me', {
+    method: 'DELETE',
+  });
+}
+
+export async function listBlockedUsers() {
+  return apiRequest<{ blocked_users?: Array<Record<string, unknown>> }>('/users/blocks');
+}
+
+export async function blockUser(blockedUserId: number) {
+  return apiRequest<{ blocked_user_ids?: number[] }>('/users/blocks', {
+    method: 'POST',
+    body: JSON.stringify({ blocked_user_id: blockedUserId }),
+  });
+}
+
+export async function unblockUser(blockedUserId: number) {
+  return apiRequest<{ blocked_user_ids?: number[] }>(`/users/blocks/${blockedUserId}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function createCardSetupIntent() {
   return apiRequest<{ client_secret?: string }>('/settings/create_setup_intent', {
     method: 'POST',

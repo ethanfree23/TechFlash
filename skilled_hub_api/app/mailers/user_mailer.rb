@@ -34,9 +34,13 @@ class UserMailer < ApplicationMailer
     mail(to: @user.email, subject: "Job posted: #{job.title}")
   end
 
-  def job_alert_email(user, job)
+  def job_alert_email(user, job, technician_profile: nil)
     @user = user
     @job = job
+    @job_alert_hourly_rate = format_hourly_rate(@job)
+    @job_alert_estimated_total = format_estimated_total(@job)
+    @job_alert_duration = format_business_day_duration(@job)
+    @job_alert_distance = format_distance_from_technician(@job, technician_profile)
     return unless notifications_enabled_for?(user, :job_lifecycle)
 
     mail(to: user.email, subject: "New matching job: #{job.title}")
@@ -271,5 +275,43 @@ class UserMailer < ApplicationMailer
       commission_percent: commission_percent.to_f,
       commission_display: format("%.2f%%", commission_percent.to_f)
     }
+  end
+
+  def format_hourly_rate(job)
+    cents = job.hourly_rate_cents.to_i
+    return nil if cents <= 0
+
+    "$#{format('%.2f', cents / 100.0)}/hr"
+  end
+
+  def format_estimated_total(job)
+    amount_cents = job.job_amount_cents.to_i
+    return nil if amount_cents <= 0
+
+    "$#{format('%.2f', amount_cents / 100.0)}"
+  end
+
+  def format_business_day_duration(job)
+    days = job.days.to_i
+    return nil if days <= 0
+
+    weeks = (days.to_f / 5.0).ceil
+    "#{days} business #{'day'.pluralize(days)} (~#{weeks} #{'week'.pluralize(weeks)})"
+  end
+
+  def format_distance_from_technician(job, technician_profile)
+    return nil if technician_profile.blank?
+    return nil if technician_profile.latitude.blank? || technician_profile.longitude.blank?
+    return nil if job.latitude.blank? || job.longitude.blank?
+
+    miles = GeocodingService.distance_miles(
+      technician_profile.latitude.to_f,
+      technician_profile.longitude.to_f,
+      job.latitude.to_f,
+      job.longitude.to_f
+    )
+    "#{format('%.1f', miles)} miles away"
+  rescue StandardError
+    nil
   end
 end

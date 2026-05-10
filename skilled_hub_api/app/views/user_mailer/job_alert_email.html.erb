@@ -4,4 +4,18 @@
   <strong><%= @job.title %></strong>
   <% if @job.skill_class.present? %> · <%= @job.skill_class %><% end %>
 </p>
+<% if @job_alert_hourly_rate.present? || @job_alert_estimated_total.present? %>
+  <p>
+    <strong>Pay:</strong>
+    <% if @job_alert_hourly_rate.present? %><%= @job_alert_hourly_rate %><% end %>
+    <% if @job_alert_hourly_rate.present? && @job_alert_estimated_total.present? %> · <% end %>
+    <% if @job_alert_estimated_total.present? %>est. total <%= @job_alert_estimated_total %><% end %>
+  </p>
+<% end %>
+<% if @job_alert_duration.present? %>
+  <p><strong>Duration:</strong> <%= @job_alert_duration %></p>
+<% end %>
+<% if @job_alert_distance.present? %>
+  <p><strong>Distance:</strong> <%= @job_alert_distance %></p>
+<% end %>
 <p>Open your dashboard to review and claim openings.</p>

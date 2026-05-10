@@ -54,21 +54,36 @@ export default function AppHeader({
           </NavLink>
           {navPreset === 'full' && (
             <>
-              <NavLink page="messages" to="/messages">
-                Messages
-              </NavLink>
-              {showCrm && (
-                <NavLink page="users" to="/admin/users">
-                  Users
-                </NavLink>
-              )}
-              <NavLink page="settings" to="/settings">
-                Settings
-              </NavLink>
-              {!isAdmin && (
-                <NavLink page="legal" to="/legal">
-                  Legal
-                </NavLink>
+              {showCrm ? (
+                <>
+                  <NavLink page="users" to="/admin/users">
+                    Users
+                  </NavLink>
+                  <NavLink page="messages" to="/messages">
+                    Messages
+                  </NavLink>
+                  <span className="hidden sm:inline text-gray-300 px-0.5 select-none" aria-hidden>
+                    |
+                  </span>
+                  <NavLink page="crm" to="/crm">
+                    CRM
+                  </NavLink>
+                  <NavLink page="settings" to="/settings">
+                    Settings
+                  </NavLink>
+                </>
+              ) : (
+                <>
+                  <NavLink page="messages" to="/messages">
+                    Messages
+                  </NavLink>
+                  <NavLink page="settings" to="/settings">
+                    Settings
+                  </NavLink>
+                  <NavLink page="legal" to="/legal">
+                    Legal
+                  </NavLink>
+                </>
               )}
             </>
           )}
@@ -92,11 +107,6 @@ export default function AppHeader({
             >
               Send Referral
             </button>
-          )}
-          {showCrm && (
-            <NavLink page="crm" to="/crm">
-              CRM
-            </NavLink>
           )}
           {profileAvatar && (
             <Link

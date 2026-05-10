@@ -1,11 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { FaBuilding, FaTimes, FaUserPlus, FaWrench } from 'react-icons/fa';
+import { FaBuilding, FaEye, FaEyeSlash, FaTimes, FaUserPlus, FaWrench } from 'react-icons/fa';
 import { adminUsersAPI, crmAPI, licensingSettingsAPI } from '../api/api';
 import { IndustryMultiSelect, ServiceCityPicker } from './admin/AdminUserFormPickers';
 import { formatPhoneInput } from '../utils/phone';
 import { requiresElectricalLicenseForState, setLocalOnlyLicenseStates } from '../utils/licensingRules';
-
-const DEFAULT_CONTACT_PASSWORD = 'Password123$';
+import { TRADE_OPTIONS } from '../constants/trades';
 
 /**
  * Same "Create user" flow as the Admin Users list page.
@@ -25,8 +24,8 @@ export default function AdminCreateUserModal({
     email: '',
     first_name: '',
     last_name: '',
-    password: DEFAULT_CONTACT_PASSWORD,
-    password_confirmation: DEFAULT_CONTACT_PASSWORD,
+    password: '',
+    password_confirmation: '',
     company_name: '',
     contact_name: '',
     phone: '',
@@ -39,7 +38,6 @@ export default function AdminCreateUserModal({
     electrical_license_number: '',
     trade_type: '',
     experience_years: '',
-    availability: '',
     location: '',
   });
   const [serviceCities, setServiceCities] = useState([]);
@@ -51,6 +49,7 @@ export default function AdminCreateUserModal({
   const [companySearchBusy, setCompanySearchBusy] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState(null);
   const [showContactPassword, setShowContactPassword] = useState(false);
+  const [showTechPassword, setShowTechPassword] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -97,8 +96,8 @@ export default function AdminCreateUserModal({
       email: '',
       first_name: '',
       last_name: '',
-      password: DEFAULT_CONTACT_PASSWORD,
-      password_confirmation: DEFAULT_CONTACT_PASSWORD,
+      password: '',
+      password_confirmation: '',
       company_name: '',
       contact_name: '',
       phone: '',
@@ -111,13 +110,13 @@ export default function AdminCreateUserModal({
       electrical_license_number: '',
       trade_type: '',
       experience_years: '',
-      availability: '',
       location: '',
     });
     setServiceCities([]);
     setSelectedIndustries([]);
     setLogoFile(null);
     setShowContactPassword(false);
+    setShowTechPassword(false);
   }, [isOpen, presetCompanyProfile]);
 
   useEffect(() => {
@@ -149,29 +148,13 @@ export default function AdminCreateUserModal({
     };
   }, [companySearch, isOpen, createRole, useExistingCompany, presetCompanyProfile]);
 
-  useEffect(() => {
-    if (createRole === 'company') {
-      setCreateForm((f) => ({
-        ...f,
-        password: f.password || DEFAULT_CONTACT_PASSWORD,
-        password_confirmation: f.password_confirmation || DEFAULT_CONTACT_PASSWORD,
-      }));
-      return;
-    }
-    setCreateForm((f) => ({
-      ...f,
-      password: '',
-      password_confirmation: '',
-    }));
-  }, [createRole]);
-
   const resetAfterSuccess = async (kind, details = {}) => {
     setCreateForm({
       email: '',
       first_name: '',
       last_name: '',
-      password: DEFAULT_CONTACT_PASSWORD,
-      password_confirmation: DEFAULT_CONTACT_PASSWORD,
+      password: '',
+      password_confirmation: '',
       company_name: '',
       contact_name: '',
       phone: '',
@@ -184,13 +167,13 @@ export default function AdminCreateUserModal({
       electrical_license_number: '',
       trade_type: '',
       experience_years: '',
-      availability: '',
       location: '',
     });
     setServiceCities([]);
     setSelectedIndustries([]);
     setLogoFile(null);
     setShowContactPassword(false);
+    setShowTechPassword(false);
     if (!presetCompanyProfile?.id) {
       setUseExistingCompany(false);
       setCompanySearch('');
@@ -219,11 +202,8 @@ export default function AdminCreateUserModal({
       onError?.('Phone number is required.');
       return;
     }
-    const password = createRole === 'company' ? (createForm.password || DEFAULT_CONTACT_PASSWORD) : (createForm.password || '');
-    const passwordConfirmation =
-      createRole === 'company'
-        ? (createForm.password_confirmation || DEFAULT_CONTACT_PASSWORD)
-        : (createForm.password_confirmation || '');
+    const password = (createForm.password || '').trim();
+    const passwordConfirmation = (createForm.password_confirmation || '').trim();
     if (password || passwordConfirmation) {
       if (!password || !passwordConfirmation) {
         onError?.('Enter and confirm the password.');
@@ -319,7 +299,6 @@ export default function AdminCreateUserModal({
           location: createForm.location?.trim() || undefined,
           experience_years:
             createForm.experience_years === '' ? undefined : parseInt(createForm.experience_years, 10),
-          availability: createForm.availability?.trim() || undefined,
           bio: createForm.bio?.trim() || undefined,
         });
         await resetAfterSuccess('technician', { passwordSet: Boolean(password) });
@@ -583,6 +562,7 @@ export default function AdminCreateUserModal({
                   <input
                     type="email"
                     required
+                    autoComplete="email"
                     className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                     value={createForm.email}
                     onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
@@ -622,31 +602,53 @@ export default function AdminCreateUserModal({
                 </label>
                 <label className="block">
                   <span className="text-xs font-medium text-gray-500 uppercase">Set password</span>
+                  <p className="text-xs text-gray-500 mt-0.5 mb-1">Leave blank to email a setup link.</p>
                   <div className="mt-1 flex items-center gap-2">
                     <input
                       type={showContactPassword ? 'text' : 'password'}
-                      className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      autoComplete="new-password"
+                      className="w-full min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm"
                       value={createForm.password}
                       onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
                     />
                     <button
                       type="button"
                       onClick={() => setShowContactPassword((v) => !v)}
-                      className="shrink-0 px-3 py-2 border border-gray-300 rounded-lg text-sm text-gray-700 hover:bg-gray-50"
+                      className="shrink-0 p-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                      aria-label={showContactPassword ? 'Hide password' : 'Show password'}
                     >
-                      {showContactPassword ? 'Hide' : 'View'}
+                      {showContactPassword ? (
+                        <FaEyeSlash className="w-4 h-4" aria-hidden />
+                      ) : (
+                        <FaEye className="w-4 h-4" aria-hidden />
+                      )}
                     </button>
                   </div>
                 </label>
                 <label className="block">
                   <span className="text-xs font-medium text-gray-500 uppercase">Confirm password</span>
-                  <input
-                    type={showContactPassword ? 'text' : 'password'}
-                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                    value={createForm.password_confirmation}
-                    onChange={(e) => setCreateForm((f) => ({ ...f, password_confirmation: e.target.value }))}
-                    placeholder="Repeat password"
-                  />
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      type={showContactPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      className="w-full min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      value={createForm.password_confirmation}
+                      onChange={(e) => setCreateForm((f) => ({ ...f, password_confirmation: e.target.value }))}
+                      placeholder="Repeat password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowContactPassword((v) => !v)}
+                      className="shrink-0 p-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                      aria-label={showContactPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showContactPassword ? (
+                        <FaEyeSlash className="w-4 h-4" aria-hidden />
+                      ) : (
+                        <FaEye className="w-4 h-4" aria-hidden />
+                      )}
+                    </button>
+                  </div>
                 </label>
               </>
             ) : (
@@ -656,6 +658,7 @@ export default function AdminCreateUserModal({
                   <input
                     type="email"
                     required
+                    autoComplete="email"
                     className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                     value={createForm.email}
                     onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))}
@@ -693,10 +696,17 @@ export default function AdminCreateUserModal({
                 <label className="block">
                   <span className="text-xs font-medium text-gray-500 uppercase">Trade</span>
                   <input
+                    list="admin-create-user-trades"
                     className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                     value={createForm.trade_type}
                     onChange={(e) => setCreateForm((f) => ({ ...f, trade_type: e.target.value }))}
+                    placeholder="Type or pick a trade"
                   />
+                  <datalist id="admin-create-user-trades">
+                    {TRADE_OPTIONS.map((t) => (
+                      <option key={t} value={t} />
+                    ))}
+                  </datalist>
                 </label>
                 <label className="block">
                   <span className="text-xs font-medium text-gray-500 uppercase">Years experience</span>
@@ -709,16 +719,9 @@ export default function AdminCreateUserModal({
                   />
                 </label>
                 <label className="block">
-                  <span className="text-xs font-medium text-gray-500 uppercase">Availability</span>
-                  <input
-                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                    value={createForm.availability}
-                    onChange={(e) => setCreateForm((f) => ({ ...f, availability: e.target.value }))}
-                  />
-                </label>
-                <label className="block">
                   <span className="text-xs font-medium text-gray-500 uppercase">Location</span>
                   <input
+                    autoComplete="off"
                     className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                     value={createForm.location}
                     onChange={(e) => setCreateForm((f) => ({ ...f, location: e.target.value }))}
@@ -726,23 +729,53 @@ export default function AdminCreateUserModal({
                 </label>
                 <label className="block">
                   <span className="text-xs font-medium text-gray-500 uppercase">Set password</span>
-                  <input
-                    type="password"
-                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                    value={createForm.password}
-                    onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
-                    placeholder="Leave blank to send setup email"
-                  />
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      type={showTechPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      className="w-full min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      value={createForm.password}
+                      onChange={(e) => setCreateForm((f) => ({ ...f, password: e.target.value }))}
+                      placeholder="Leave blank to send setup email"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowTechPassword((v) => !v)}
+                      className="shrink-0 p-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                      aria-label={showTechPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showTechPassword ? (
+                        <FaEyeSlash className="w-4 h-4" aria-hidden />
+                      ) : (
+                        <FaEye className="w-4 h-4" aria-hidden />
+                      )}
+                    </button>
+                  </div>
                 </label>
                 <label className="block">
                   <span className="text-xs font-medium text-gray-500 uppercase">Confirm password</span>
-                  <input
-                    type="password"
-                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                    value={createForm.password_confirmation}
-                    onChange={(e) => setCreateForm((f) => ({ ...f, password_confirmation: e.target.value }))}
-                    placeholder="Repeat password"
-                  />
+                  <div className="mt-1 flex items-center gap-2">
+                    <input
+                      type={showTechPassword ? 'text' : 'password'}
+                      autoComplete="new-password"
+                      className="w-full min-w-0 border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      value={createForm.password_confirmation}
+                      onChange={(e) => setCreateForm((f) => ({ ...f, password_confirmation: e.target.value }))}
+                      placeholder="Repeat password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowTechPassword((v) => !v)}
+                      className="shrink-0 p-2.5 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50"
+                      aria-label={showTechPassword ? 'Hide password' : 'Show password'}
+                    >
+                      {showTechPassword ? (
+                        <FaEyeSlash className="w-4 h-4" aria-hidden />
+                      ) : (
+                        <FaEye className="w-4 h-4" aria-hidden />
+                      )}
+                    </button>
+                  </div>
                 </label>
               </>
             )}

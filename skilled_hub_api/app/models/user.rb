@@ -104,6 +104,20 @@ class User < ApplicationRecord
     {}
   end
 
+  def blocked_user_ids
+    Array(ui_preferences_hash["blocked_user_ids"]).map(&:to_i).uniq
+  end
+
+  def blocked_user?(other_user_id)
+    blocked_user_ids.include?(other_user_id.to_i)
+  end
+
+  def update_blocked_user_ids!(ids)
+    cleaned = Array(ids).map(&:to_i).reject(&:zero?).uniq
+    merged = ui_preferences_hash.deep_merge("blocked_user_ids" => cleaned)
+    update_columns(ui_preferences: merged, updated_at: Time.current)
+  end
+
   private
 
   def default_email_notification_preferences

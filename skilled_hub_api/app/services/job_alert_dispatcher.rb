@@ -16,7 +16,7 @@ class JobAlertDispatcher
       next unless matches_distance?(pref: pref, job: job, technician_profile: tech)
 
       delivered = false
-      delivered ||= deliver_email(user: user, job: job) if pref.email_enabled?
+      delivered ||= deliver_email(user: user, job: job, technician_profile: tech) if pref.email_enabled?
       delivered ||= deliver_sms(user: user, job: job) if pref.sms_enabled?
       delivered ||= deliver_app(user: user, job: job) if pref.app_enabled?
 
@@ -71,10 +71,10 @@ class JobAlertDispatcher
     miles <= pref.max_distance_miles.to_f
   end
 
-  def self.deliver_email(user:, job:)
+  def self.deliver_email(user:, job:, technician_profile:)
     return false unless user.email_notifications_enabled?
 
-    r = MailDelivery.safe_deliver_result { UserMailer.job_alert_email(user, job).deliver_now }
+    r = MailDelivery.safe_deliver_result { UserMailer.job_alert_email(user, job, technician_profile: technician_profile).deliver_now }
     r[:success] == true
   end
 

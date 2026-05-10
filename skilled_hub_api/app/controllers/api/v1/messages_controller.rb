@@ -6,11 +6,15 @@ module Api
       before_action :authorize_participant
 
       def index
+        return if blocked_between_participants?
+
         messages = @conversation.messages.order(created_at: :asc)
         render json: messages, each_serializer: MessageSerializer, status: :ok
       end
 
       def create
+        return if blocked_between_participants?
+
         if @conversation.feedback?
           return render json: {
             error: 'Feedback inbox items are notifications only; replies are not supported.'
@@ -65,6 +69,22 @@ module Api
 
       def message_params
         params.permit(:content)
+      end
+
+      def blocked_between_participants?
+        tech_user_id = @conversation.technician_profile&.user_id
+        company_user_id = @conversation.company_profile&.user_id
+        return false if tech_user_id.blank? || company_user_id.blank?
+
+        tech_user = User.find_by(id: tech_user_id)
+        company_user = User.find_by(id: company_user_id)
+        blocked =
+          tech_user&.blocked_user?(company_user_id) ||
+          company_user&.blocked_user?(tech_user_id)
+        if blocked
+          render json: { error: "Messaging is unavailable because one participant has blocked the other." }, status: :forbidden
+        end
+        blocked
       end
     end
   end

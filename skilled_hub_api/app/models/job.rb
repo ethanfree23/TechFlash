@@ -1,4 +1,6 @@
 class Job < ApplicationRecord
+  include ContentSafetyValidations
+
   has_secure_token :share_token
 
   enum status: { open: 0, reserved: 1, accepted: 2, completed: 3, filled: 4, finished: 5 }
@@ -45,6 +47,7 @@ class Job < ApplicationRecord
   before_save :geocode_address
 
   validates :minimum_years_experience, numericality: { only_integer: true, greater_than_or_equal_to: 0, allow_nil: true }
+  validates_safe_text :title, :description, :notes, :skill_class, max_length: 4_000
   has_many :conversations, dependent: :destroy
   has_many :ratings, dependent: :destroy
   has_many :job_issue_reports, dependent: :destroy

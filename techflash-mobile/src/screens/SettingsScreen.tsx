@@ -17,7 +17,7 @@ import type { User } from '../types/user';
 
 export default function SettingsScreen() {
   const navigation = useNavigation<NativeStackNavigationProp<AppStackParamList>>();
-  const { user, applyUserFromMeResponse } = useAuth();
+  const { user, applyUserFromMeResponse, logout } = useAuth();
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -174,7 +174,7 @@ export default function SettingsScreen() {
         expanded={!!expanded.account}
         onToggle={() => setExpanded((prev) => ({ ...prev, account: !prev.account }))}
       >
-        <SettingsAccountPanel user={user} onApplied={onApplied} notice={notice} />
+        <SettingsAccountPanel user={user} onApplied={onApplied} notice={notice} onDeleted={logout} />
       </SettingSection>
 
       <SettingSection

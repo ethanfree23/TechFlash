@@ -1,3 +1,11 @@
+/**
+ * Canonical trade labels used across the product. Keep in sync with
+ * techflash-mobile/src/constants/trades.ts (manual copy).
+ *
+ * Consumers include: technician registration (RegisterForm), profile/settings,
+ * admin create user (datalist), admin user detail job-alert trade picker,
+ * job posting flows that reference trades, etc.
+ */
 export const TRADE_OPTIONS = [
   'Electrician',
   'HVAC Technician',

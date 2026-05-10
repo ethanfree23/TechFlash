@@ -1,5 +1,6 @@
 import React from 'react';
 import { View, Text, Pressable, StyleSheet, ScrollView } from 'react-native';
+import { Linking } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useAuth } from '../auth/AuthContext';
@@ -27,8 +28,17 @@ export default function MoreScreen() {
         )}
       </View>
       <Text style={styles.hint}>
-        This mobile app now includes core admin user and CRM tools. Remaining advanced workflows are being added in phased parity.
+        Manage your account, jobs, and messages on mobile. For legal docs and support, use the links below.
       </Text>
+      <Pressable style={({ pressed }) => [styles.linkBtn, pressed && { opacity: 0.9 }]} onPress={() => Linking.openURL('https://techflash.app/privacy-policy')}>
+        <Text style={styles.linkBtnText}>Privacy Policy</Text>
+      </Pressable>
+      <Pressable style={({ pressed }) => [styles.linkBtn, pressed && { opacity: 0.9 }]} onPress={() => Linking.openURL('https://techflash.app/terms-of-service')}>
+        <Text style={styles.linkBtnText}>Terms of Service</Text>
+      </Pressable>
+      <Pressable style={({ pressed }) => [styles.linkBtn, pressed && { opacity: 0.9 }]} onPress={() => Linking.openURL('mailto:support@techflash.app')}>
+        <Text style={styles.linkBtnText}>Contact Support</Text>
+      </Pressable>
       <Pressable
         style={({ pressed }) => [styles.settings, pressed && { opacity: 0.9 }]}
         onPress={() => navigation.navigate('Settings')}
@@ -63,6 +73,16 @@ const styles = StyleSheet.create({
     color: colors.muted,
     lineHeight: 21,
   },
+  linkBtn: {
+    marginTop: 10,
+    backgroundColor: colors.white,
+    borderWidth: 1,
+    borderColor: colors.border,
+    paddingVertical: 12,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  linkBtnText: { fontSize: 15, fontWeight: '600', color: colors.text },
   logout: {
     marginTop: 28,
     backgroundColor: colors.white,

@@ -128,6 +128,10 @@ export const authAPI = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
+  deleteMe: () =>
+    apiRequest('/users/me', {
+      method: 'DELETE',
+    }),
 };
 
 export const passwordResetsAPI = {

@@ -10,6 +10,7 @@ dist-ssr/
 *.log
 npm-debug.log*
 logs/
+tmp_*.html
 
 # Rails
 skilled_hub_api/log/*
