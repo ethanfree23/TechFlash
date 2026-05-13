@@ -549,6 +549,52 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     setSearchHits([]);
   };
 
+  const openProvisionFromCrmRecord = useCallback(() => {
+    const pc = getPrimaryContactPreview({
+      ...form,
+      contact_name: form.contact_name,
+      contacts: form.contacts,
+    });
+    const tokens = String(pc.name || form.contact_name || '')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    let firstName = '';
+    let lastName = '';
+    if (tokens.length === 1) {
+      firstName = tokens[0];
+    } else if (tokens.length > 1) {
+      firstName = tokens[0];
+      lastName = tokens.slice(1).join(' ');
+    }
+    const loc = [form.city, form.state]
+      .map((x) => String(x || '').trim())
+      .filter(Boolean)
+      .join(', ');
+    const industryFirst = (form.company_types || [])[0];
+    setProvisionMode('new');
+    setSelectedCompany(null);
+    setCompanySearchQ('');
+    setCompanyHits([]);
+    setNewCompanyHits([]);
+    setProvision({
+      email: String(pc.email || form.company_email || form.email || '').trim(),
+      first_name: firstName,
+      last_name: lastName,
+      company_name: String(form.name || '').trim(),
+      phone: formatPhoneInput(String(pc.phone || form.company_phone || form.phone || '')),
+      industry: industryFirst ? String(industryFirst).replace(/_/g, ' ') : '',
+      location: loc,
+      bio:
+        String(form.bio || '').trim() ||
+        'Company profile pending — update from CRM record or complete during onboarding.',
+    });
+    setProfileImportOpen(false);
+    setNewCompanyModalOpen(false);
+    setIsCreating(false);
+    setProvisionModalOpen(true);
+  }, [form]);
+
   const selectLead = (id) => {
     const row = leads.find((l) => Number(l.id) === Number(id));
     const pid = row?.linked_company_profile_id;
@@ -1620,6 +1666,10 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       setIsRecordEditing(true);
       return;
     }
+    if (id === 'provision_account') {
+      openProvisionFromCrmRecord();
+      return;
+    }
     if (id === 'link') {
       setIsRecordEditing(true);
       setTimeout(() => document.getElementById('crm-link-platform')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
@@ -2153,6 +2203,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                 onMerge={openMergeModal}
                 onDelete={removeRecord}
                 onCreateJob={() => navigate('/create-job')}
+                onCreatePlatformAccount={openProvisionFromCrmRecord}
                 onLinkAccount={() => {
                   setIsRecordEditing(true);
                   setTimeout(() => document.getElementById('crm-link-platform')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);

@@ -335,7 +335,10 @@ export function getNextBestActions({ form, metrics, crmNotesLength, isLinked }) 
   const missing = new Set(getMissingFieldsForForm(f));
   if (missing.has('phone')) actions.push({ id: 'add_phone', label: 'Add missing phone number', priority: 1 });
   if (missing.has('primary_contact')) actions.push({ id: 'add_contact', label: 'Add primary contact', priority: 1 });
-  if (!isLinked) actions.push({ id: 'link', label: 'Link platform account', priority: 2 });
+  if (!isLinked) {
+    actions.push({ id: 'provision_account', label: 'Create platform account', priority: 2 });
+    actions.push({ id: 'link', label: 'Link platform account', priority: 2 });
+  }
   if (missing.has('trade_type')) actions.push({ id: 'trade', label: 'Set company trade types', priority: 2 });
   if (String(f.status || '') === 'lead') actions.push({ id: 'contact', label: 'Move to contacted after outreach', priority: 3 });
   if (isLinked && metrics && (metrics.jobs_posted || 0) === 0) {

@@ -9,6 +9,7 @@ import {
   FaObjectGroup,
   FaTrash,
   FaBriefcase,
+  FaUserPlus,
 } from 'react-icons/fa';
 import { CrmStatusBadge, CompanyTypeBadges } from './CrmBadges';
 import { getPrimaryContactPreview, isLinkedToPlatformAccount, formatCrmDateTime } from '../../utils/crmDisplayAdapter';
@@ -24,6 +25,7 @@ export default function CompanyRecordHeader({
   onMerge,
   onDelete,
   onCreateJob,
+  onCreatePlatformAccount,
   onLinkAccount,
   onChangeStatus,
 }) {
@@ -44,10 +46,11 @@ export default function CompanyRecordHeader({
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-6">
       <div className="border-b border-slate-100 bg-gradient-to-br from-white to-slate-50 px-4 py-4 sm:px-6">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0 space-y-2">
+        {/* Always stack meta above actions so the center column never squeezes text to one character wide */}
+        <div className="flex flex-col gap-4">
+          <div className="w-full min-w-0 space-y-2">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-xl font-bold text-slate-900 truncate">{name}</h2>
+              <h2 className="text-xl font-bold text-slate-900 break-words min-w-0">{name}</h2>
               <CrmStatusBadge status={form?.status} />
               <CompanyTypeBadges types={form?.company_types} />
               {linked ? (
@@ -61,16 +64,16 @@ export default function CompanyRecordHeader({
                 </span>
               )}
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-1 text-sm">
-              <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm min-w-0">
+              <div className="min-w-0">
                 <span className="text-xs font-medium text-slate-500">Primary contact</span>
-                <p className="text-slate-900 font-medium">{pc.name || <span className="text-slate-400 font-normal">No contact</span>}</p>
+                <p className="text-slate-900 font-medium break-words">{pc.name || <span className="text-slate-400 font-normal">No contact</span>}</p>
               </div>
-              <div>
+              <div className="min-w-0">
                 <span className="text-xs font-medium text-slate-500">Email</span>
-                <p className="text-slate-900">
+                <p className="text-slate-900 min-w-0">
                   {pc.email ? (
-                    <a href={`mailto:${pc.email}`} className="text-blue-600 hover:underline break-all">
+                    <a href={`mailto:${pc.email}`} className="text-blue-600 hover:underline break-words inline-block max-w-full">
                       {pc.email}
                     </a>
                   ) : (
@@ -78,19 +81,19 @@ export default function CompanyRecordHeader({
                   )}
                 </p>
               </div>
-              <div>
+              <div className="min-w-0">
                 <span className="text-xs font-medium text-slate-500">Phone</span>
-                <p className="text-slate-900">{pc.phone || <span className="text-slate-400">Missing</span>}</p>
+                <p className="text-slate-900 break-words">{pc.phone || <span className="text-slate-400">Missing</span>}</p>
               </div>
-              <div>
+              <div className="min-w-0">
                 <span className="text-xs font-medium text-slate-500">Website</span>
-                <p className="text-slate-900">
+                <p className="text-slate-900 min-w-0">
                   {form?.website ? (
                     <a
                       href={/^https?:\/\//i.test(form.website) ? form.website : `https://${form.website}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-blue-600 hover:underline break-all"
+                      className="text-blue-600 hover:underline break-words inline-block max-w-full"
                     >
                       {form.website}
                     </a>
@@ -105,7 +108,7 @@ export default function CompanyRecordHeader({
             </div>
             {dupProfiles && linked ? <p className="text-xs text-amber-700">{dupProfiles}</p> : null}
           </div>
-          <div className="flex flex-wrap gap-2 shrink-0">
+          <div className="flex w-full min-w-0 flex-wrap gap-2">
             <button
               type="button"
               onClick={onCall}
@@ -156,6 +159,16 @@ export default function CompanyRecordHeader({
               <FaBriefcase className="h-3.5 w-3.5" aria-hidden />
               Create job
             </button>
+            {!linked && typeof onCreatePlatformAccount === 'function' ? (
+              <button
+                type="button"
+                onClick={onCreatePlatformAccount}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+              >
+                <FaUserPlus className="h-3.5 w-3.5" aria-hidden />
+                Create platform account
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onLinkAccount}
