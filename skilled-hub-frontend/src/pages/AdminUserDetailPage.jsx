@@ -12,7 +12,7 @@ import { ServiceCityPicker } from '../components/admin/AdminUserFormPickers';
 import { adminUsersAPI, adminReferralsAPI, adminMembershipTierConfigsAPI } from '../api/api';
 import AlertModal from '../components/AlertModal';
 import { auth } from '../auth';
-import { FaEye } from 'react-icons/fa';
+import { FaEye, FaUserPlus } from 'react-icons/fa';
 import { formatPhoneInput } from '../utils/phone';
 import { TRADE_OPTIONS } from '../constants/trades';
 
@@ -31,10 +31,21 @@ function AdminUserDetailToolbar({
   startMasquerade,
   period,
   setPeriod,
+  onAddCompanyLogin,
 }) {
   const { expandAll, collapseAll } = useCollapsibleSections();
   return (
     <div className="flex flex-wrap gap-2 items-center justify-end">
+      {isCompany && u?.company_context?.company_profile_id && onAddCompanyLogin && (
+        <button
+          type="button"
+          onClick={onAddCompanyLogin}
+          className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm font-semibold border border-blue-200 text-blue-900 bg-blue-50 hover:bg-blue-100"
+        >
+          <FaUserPlus className="text-base shrink-0" aria-hidden />
+          Add company login
+        </button>
+      )}
       {(isCompany || isTech) && u?.id && (
         <button
           type="button"
@@ -617,6 +628,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               startMasquerade={startMasquerade}
               period={period}
               setPeriod={setPeriod}
+              onAddCompanyLogin={isCompany && u?.company_context?.company_profile_id ? () => setCreateUserModalOpen(true) : undefined}
             />
           </div>
 

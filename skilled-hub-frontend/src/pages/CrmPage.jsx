@@ -609,6 +609,48 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     setProvisionModalOpen(true);
   }, [form]);
 
+  /** Prefill lead-level “Create platform company account” from a specific CRM contact row (e.g. unlinked lead). */
+  const openProvisionFromCrmContact = useCallback(
+    (contact, resolved) => {
+      const rawName = String(contact.name || '').trim();
+      const tokens = rawName.split(/\s+/).filter(Boolean);
+      let firstName = '';
+      let lastName = '';
+      if (tokens.length === 1) firstName = tokens[0];
+      else if (tokens.length > 1) {
+        firstName = tokens[0];
+        lastName = tokens.slice(1).join(' ');
+      }
+      const loc = [form.city, form.state]
+        .map((x) => String(x || '').trim())
+        .filter(Boolean)
+        .join(', ');
+      const industryFirst = (form.company_types || [])[0];
+      setProvisionMode('new');
+      setSelectedCompany(null);
+      setCompanySearchQ('');
+      setCompanyHits([]);
+      setNewCompanyHits([]);
+      setProvision({
+        email: String(resolved.email || contact.email || '').trim(),
+        first_name: firstName,
+        last_name: lastName,
+        company_name: String(form.name || '').trim(),
+        phone: formatPhoneInput(String(resolved.phone || contact.phone || '')),
+        industry: industryFirst ? String(industryFirst).replace(/_/g, ' ') : '',
+        location: loc,
+        bio:
+          String(form.bio || '').trim() ||
+          'Company profile pending — update from CRM record or complete during onboarding.',
+      });
+      setProfileImportOpen(false);
+      setNewCompanyModalOpen(false);
+      setIsCreating(false);
+      setProvisionModalOpen(true);
+    },
+    [form],
+  );
+
   const selectLead = (id) => {
     const row = leads.find((l) => Number(l.id) === Number(id));
     const pid = row?.linked_company_profile_id;
@@ -3005,27 +3047,128 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                 [platformUser?.first_name, platformUser?.last_name].filter(Boolean).join(' ').trim() ||
                                 contact.name ||
                                 `Contact ${idx + 1}`;
-                              return (
+                              return platformUser ? (
+                                <div
+                                  key={`view-contact-${idx}`}
+                                  className="rounded-lg border border-gray-200 bg-gray-50 overflow-hidden shadow-sm"
+                                >
+                                  <Link
+                                    to={`/admin/users/${platformUser.id}`}
+                                    className="block px-3 py-3 hover:bg-blue-50/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-blue-400"
+                                  >
+                                    <div className="flex items-start justify-between gap-3">
+                                      <div className="min-w-0 flex-1">
+                                        <p className="text-[11px] font-semibold text-gray-500 uppercase">Platform user</p>
+                                        <p className="text-sm font-semibold text-gray-900 mt-0.5 break-words">{displayName}</p>
+                                        <p className="text-xs text-gray-600 mt-1 break-all">
+                                          {resolved.email || platformUser.email || '—'}
+                                        </p>
+                                        <p className="text-xs text-gray-600 mt-0.5">
+                                          {resolved.phone || platformUser.phone || '—'}
+                                        </p>
+                                      </div>
+                                      <span className="text-xs font-semibold text-blue-700 shrink-0 self-center">
+                                        Open profile →
+                                      </span>
+                                    </div>
+                                  </Link>
+                                  <div className="border-t border-gray-200 bg-white px-3 py-2 text-sm space-y-2">
+                                    {flags ? <div className="text-xs text-gray-500">Uses {flags}.</div> : null}
+                                    {contact.name && contact.name !== displayName ? (
+                                      <div className="text-xs text-gray-600">
+                                        CRM name: <span className="font-medium text-gray-800">{contact.name}</span>
+                                      </div>
+                                    ) : null}
+                                    {contact.job_title ? (
+                                      <div className="text-xs">
+                                        <span className="text-gray-500">Job title:</span> {contact.job_title}
+                                      </div>
+                                    ) : null}
+                                    <div className="grid grid-cols-1 gap-1 text-xs">
+                                      <div>
+                                        <span className="text-gray-500">Instagram:</span>{' '}
+                                        {resolved.instagram_url ? (
+                                          <a
+                                            href={resolved.instagram_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-blue-700 hover:underline break-all"
+                                          >
+                                            {resolved.instagram_url}
+                                          </a>
+                                        ) : (
+                                          '—'
+                                        )}
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-500">Facebook:</span>{' '}
+                                        {resolved.facebook_url ? (
+                                          <a
+                                            href={resolved.facebook_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-blue-700 hover:underline break-all"
+                                          >
+                                            {resolved.facebook_url}
+                                          </a>
+                                        ) : (
+                                          '—'
+                                        )}
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-500">LinkedIn:</span>{' '}
+                                        {resolved.linkedin_url ? (
+                                          <a
+                                            href={resolved.linkedin_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-blue-700 hover:underline break-all"
+                                          >
+                                            {resolved.linkedin_url}
+                                          </a>
+                                        ) : (
+                                          '—'
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </div>
+                              ) : (
                                 <details
                                   key={`view-contact-${idx}`}
                                   className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
                                   open={idx === 0}
                                 >
-                                  <summary className="list-none cursor-pointer flex flex-wrap items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
-                                    <span className="text-sm font-medium text-gray-900 min-w-0 break-words">{displayName}</span>
-                                    <span className="flex flex-wrap items-center gap-2 shrink-0">
-                                      {platformUser ? (
-                                        <Link
-                                          to={`/admin/users/${platformUser.id}`}
-                                          onClick={(e) => e.stopPropagation()}
-                                          className="text-xs font-semibold text-blue-700 hover:underline"
+                                  <summary className="list-none cursor-pointer flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 [&::-webkit-details-marker]:hidden">
+                                    <span className="text-sm font-medium text-gray-900 min-w-0 break-words text-left">
+                                      {displayName}
+                                    </span>
+                                    <span
+                                      className="flex flex-wrap items-center gap-2 shrink-0"
+                                      onClick={(e) => e.stopPropagation()}
+                                      onKeyDown={(e) => e.stopPropagation()}
+                                    >
+                                      <span className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
+                                        No platform login
+                                      </span>
+                                      {form.linked_company_profile_id ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => openCreateCompanyLoginForContact(idx, contact, resolved)}
+                                          className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
                                         >
-                                          User profile
-                                        </Link>
+                                          <FaUserPlus className="h-3 w-3" aria-hidden />
+                                          Create company login
+                                        </button>
                                       ) : (
-                                        <span className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
-                                          No platform login
-                                        </span>
+                                        <button
+                                          type="button"
+                                          onClick={() => openProvisionFromCrmContact(contact, resolved)}
+                                          className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700"
+                                        >
+                                          <FaUserPlus className="h-3 w-3" aria-hidden />
+                                          Create platform account
+                                        </button>
                                       )}
                                     </span>
                                   </summary>
@@ -3061,19 +3204,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                         </div>
                                       ) : null}
                                     </div>
-                                    {!platformUser && form.linked_company_profile_id ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => openCreateCompanyLoginForContact(idx, contact, resolved)}
-                                        className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
-                                      >
-                                        <FaUserPlus className="h-3 w-3" aria-hidden />
-                                        Create company login
-                                      </button>
-                                    ) : null}
-                                    {!platformUser && !form.linked_company_profile_id ? (
+                                    {!form.linked_company_profile_id ? (
                                       <p className="text-xs text-gray-500">
-                                        Link this CRM record to a company (below) to create a platform login for this person.
+                                        Or link this CRM record to an existing company (below), then use &quot;Create
+                                        company login&quot; to add this person to that account without creating a new
+                                        company.
                                       </p>
                                     ) : null}
                                     <div className="grid grid-cols-1 gap-1 text-sm">
@@ -3128,9 +3263,10 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                               );
                             })}
                             {crmContactsWithPlatformMatch.orphanPlatform.map((u) => (
-                              <div
+                              <Link
                                 key={`orphan-platform-${u.id}`}
-                                className="rounded-lg border border-dashed border-slate-300 bg-slate-50/80 px-3 py-2"
+                                to={`/admin/users/${u.id}`}
+                                className="block rounded-lg border border-dashed border-slate-300 bg-slate-50/80 px-3 py-3 hover:bg-slate-100/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
                               >
                                 <div className="text-[11px] font-semibold text-gray-500 uppercase mb-1">
                                   Company login (not in CRM contacts)
@@ -3142,14 +3278,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                     </div>
                                     <div className="text-xs text-gray-600 break-all">{u.email}</div>
                                   </div>
-                                  <Link
-                                    to={`/admin/users/${u.id}`}
-                                    className="text-xs font-semibold text-blue-700 hover:underline shrink-0"
-                                  >
-                                    User profile
-                                  </Link>
+                                  <span className="text-xs font-semibold text-blue-700 shrink-0">Open profile →</span>
                                 </div>
-                              </div>
+                              </Link>
                             ))}
                           </div>
                         )}

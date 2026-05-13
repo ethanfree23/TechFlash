@@ -5,6 +5,7 @@ import AdminCreateUserModal from '../components/AdminCreateUserModal';
 import AlertModal from '../components/AlertModal';
 import { profilesAPI, crmAPI } from '../api/api';
 import { buildImportDraftRows } from '../utils/crmImport';
+import { FaUserPlus } from 'react-icons/fa';
 
 const CRM_STATUSES = ['lead', 'contacted', 'qualified', 'proposal', 'prospect', 'customer', 'competitor', 'churned', 'lost'];
 const CRM_COMPANY_TYPES = [
@@ -447,14 +448,33 @@ const CompanyProfilePage = ({ user, onLogout }) => {
               ) : (
                 <ul className="space-y-2">
                   {companyUsers.map((member) => (
-                    <li key={member.id} className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
-                      <div>
-                        <div className="text-sm font-medium text-gray-900">{member.email}</div>
-                        <div className="text-xs text-gray-500">User #{member.id}</div>
-                      </div>
-                      <Link to={`/admin/users/${member.id}`} className="text-sm text-blue-600 hover:underline">
-                        View user
+                    <li
+                      key={member.id}
+                      className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-100 bg-gray-50 px-2 py-2 sm:px-3"
+                    >
+                      <Link
+                        to={`/admin/users/${member.id}`}
+                        className="min-w-0 flex-1 rounded-md px-2 py-1.5 hover:bg-white/80 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
+                      >
+                        <div className="text-sm font-medium text-gray-900 break-all">{member.email}</div>
+                        <div className="text-xs text-gray-500">User #{member.id} — open admin profile</div>
                       </Link>
+                      <div className="flex flex-wrap items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setCreateUserOpen(true)}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                        >
+                          <FaUserPlus className="h-3 w-3 shrink-0" aria-hidden />
+                          Add company login
+                        </button>
+                        <Link
+                          to={`/admin/users/${member.id}`}
+                          className="text-xs font-semibold text-blue-700 hover:underline px-2 py-1.5"
+                        >
+                          Profile →
+                        </Link>
+                      </div>
                     </li>
                   ))}
                 </ul>
