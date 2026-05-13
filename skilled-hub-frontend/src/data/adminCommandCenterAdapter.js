@@ -3,8 +3,6 @@
  * Merges analytics, platform insights, feedback, and conversations with null-safety.
  */
 
-const MS_DAY = 86400000;
-
 export const COMMAND_CENTER_PERIODS = [
   { id: 'today', label: 'Today' },
   { id: '24h', label: '24h' },
@@ -208,12 +206,26 @@ export function buildAdminCommandCenterModel(input) {
   const sparkJobs = trends.map((d) => ({ v: Number(d.jobs_created) || 0 }));
   const sparkApps = trends.map((d) => ({ v: Number(d.applications_created) || 0 }));
 
+  const tradeRows = buildTradeRows({
+    technicians,
+    openJobs,
+    applications,
+    completedJobs,
+  });
+
+  const marketLabel = COMMAND_CENTER_MARKETS.find((m) => m.id === market)?.label || 'All markets';
+  const tradeLabel = COMMAND_CENTER_TRADES.find((t) => t.id === trade)?.label || 'All trades';
+  const undersuppliedTrades = tradeRows.filter((r) => r.risk === 'Undersupplied').map((r) => r.trade);
+
   /** @type {{ score: number, status: string, bars: {label: string, value: number}[], insights: string[], actions: string[]}} */
   const health = computeHealthScore({
     fillRate,
     staleCount: staleOpen.length,
     appsTrend: sparkApps,
     jobsTrend: sparkJobs,
+    undersuppliedTrades,
+    marketLabel,
+    tradeLabel,
   });
 
   const supplyDemandSeries = trends.map((d, i) => ({
@@ -221,13 +233,6 @@ export function buildAdminCommandCenterModel(input) {
     openJobsTrend: Number(d.jobs_created) || 0,
     techSignups: Number(d.users_created) || 0,
   }));
-
-  const tradeRows = buildTradeRows({
-    technicians,
-    openJobs,
-    applications,
-    completedJobs,
-  });
 
   const agingJobs = openJobs
     .map((j) => {
@@ -238,8 +243,10 @@ export function buildAdminCommandCenterModel(input) {
       else if (h >= 48) tier = 'warn';
       else if (h >= 24) tier = 'aging';
       let action = 'Monitor';
-      if ((j.applications_in_period || 0) === 0 && h >= 24) action = 'Outreach to companies / boost visibility';
-      if ((j.applications_in_period || 0) > 0) action = 'Review applicants';
+      if ((j.applications_in_period || 0) === 0 && h >= 24) {
+        action = 'Company outreach · improve visibility';
+      }
+      if ((j.applications_in_period || 0) > 0) action = 'Review applications in queue';
       return {
         ...j,
         ageHours: Math.round(h),
@@ -251,8 +258,8 @@ export function buildAdminCommandCenterModel(input) {
     })
     .sort((x, y) => y.ageHours - x.ageHours);
 
-  const alerts = buildAlerts({ staleOpen, feedbackList, nowMs });
-  const tasks = buildTasks({ staleOpen });
+  const alerts = buildAlerts({ staleOpen, feedbackList, nowMs, marketLabel, tradeLabel });
+  const tasks = buildTasks({ staleOpen, marketLabel, tradeLabel });
   const activity = buildActivityFeed({ applications, feedbackList, openJobs });
 
   const markets = buildMarketCards({ openJobs, technicians, completedJobs });
@@ -321,7 +328,7 @@ export function buildAdminCommandCenterModel(input) {
       appStatusCounts,
       applications: applications.slice(0, 80),
       avgAppsPerJob: avgAppsPerJobFiltered,
-      recentApplications: applications.slice(0, 25).map((r) => ({ ...r, matchScore: null })),
+      recentApplications: applications.slice(0, 25),
     },
     revenue: {
       gmvProxyCents,
@@ -330,6 +337,7 @@ export function buildAdminCommandCenterModel(input) {
       techEarnedCents: techMoneySum,
       pendingPayoutsCents: null,
       paymentIssues: [],
+      releasedByTrade: tradeRows.map((r) => ({ trade: r.trade, tradeId: r.tradeId, releasedCents: r.releasedCents })),
     },
     markets,
     alerts,
@@ -375,7 +383,7 @@ function buildKpis(args) {
       delta: deltaPlaceholder,
       spark: [],
       tone: 'blue',
-      footnote: 'From background_verified on technician profiles (all profiles, not trade filter)',
+      footnote: 'BG-verified on loaded technician slice (trade filter does not apply)',
     },
     { id: 'companies', label: 'Companies', value: coCount, delta: deltaPlaceholder, spark: sparkUsers, tone: 'blue' },
     { id: 'open', label: 'Open jobs', value: jobsOpen, delta: deltaPlaceholder, spark: sparkJobs, tone: 'orange' },
@@ -389,7 +397,15 @@ function buildKpis(args) {
   ];
 }
 
-function computeHealthScore({ fillRate, staleCount, appsTrend, jobsTrend }) {
+function computeHealthScore({
+  fillRate,
+  staleCount,
+  appsTrend,
+  jobsTrend,
+  undersuppliedTrades = [],
+  marketLabel,
+  tradeLabel,
+}) {
   let score = 62;
   score += Math.min(18, (fillRate / 100) * 18);
   score -= Math.min(22, staleCount * 3);
@@ -411,24 +427,46 @@ function computeHealthScore({ fillRate, staleCount, appsTrend, jobsTrend }) {
     { label: 'Revenue signal', value: Math.min(100, 55 + Math.round(fillRate * 0.25)) },
   ];
 
+  const filterCtx = `${marketLabel} · ${tradeLabel}`;
   const insights = [];
   if (staleCount > 0) {
-    insights.push(`${staleCount} open job(s) in this filter are older than 48h with no applications in the selected window.`);
+    insights.push(
+      `${staleCount} open role(s) (${filterCtx}) are 48h+ old with zero applications in this period — demand may be mispriced, too narrow, or supply is absent for that trade.`
+    );
   }
   if (fillRate < 25 && fillRate > 0) {
-    insights.push('Fill rate is below typical early-marketplace targets; prioritize liquidity programs.');
+    insights.push(
+      `Fill rate ${fillRate}% is tight for a two-sided trades marketplace; focus on technician activation and reducing time-to-first-application on open work.`
+    );
+  }
+  if (undersuppliedTrades.length) {
+    insights.push(
+      `Supply gap: ${undersuppliedTrades.slice(0, 4).join(', ')}${undersuppliedTrades.length > 4 ? '…' : ''} show more open demand than bench depth in this view.`
+    );
   }
   if (appSlope < 0) {
-    insights.push('Application flow is trending down versus the start of the 30-day sparkline window.');
+    insights.push('Application volume is softening vs the first half of the 30-day trend — check whether job quality, rates, or routing changed.');
+  }
+  if (jobSlope < 0) {
+    insights.push('New job postings are cooling vs the first half of the 30-day window — pair with CRM outreach if pipeline is a goal.');
   }
   if (!insights.length) {
-    insights.push('No critical anomalies detected in the current filter — keep monitoring supply vs demand by trade.');
+    insights.push(
+      `No major red flags in ${filterCtx} for this slice. Keep watching fill rate, stale opens, and undersupplied trades in the tables below.`
+    );
   }
 
   const actions = [];
-  if (staleCount > 0) actions.push(`Follow up on ${staleCount} stale open job(s) (48h+, zero applications in window).`);
-  actions.push('Review technician verification queue in Users when workflow ships.');
-  actions.push('Invite trades in undersupplied buckets (see Supply vs demand table).');
+  if (staleCount > 0) {
+    actions.push(`Clear the ${staleCount} stale open listing(s): confirm budget/rate, widen trade or geography, or re-broadcast to qualified technicians.`);
+  }
+  if (undersuppliedTrades.length) {
+    actions.push(`Recruit or verify technicians in: ${undersuppliedTrades.slice(0, 3).join(', ')}.`);
+  }
+  actions.push('Run background-check and profile completeness review from Admin → Users for technicians touching paid work.');
+  if (!undersuppliedTrades.length && staleCount === 0) {
+    actions.push('Spot-check companies with repeat posts and no fills — early churn risk.');
+  }
 
   return { score, status, bars, insights, actions };
 }
@@ -463,10 +501,14 @@ function buildTradeRows({ technicians, openJobs, applications, completedJobs }) 
   const tradeKeys = COMMAND_CENTER_TRADES.filter((t) => t.id !== 'all').map((t) => t.id);
   return tradeKeys.map((tid) => {
     const tLabel = COMMAND_CENTER_TRADES.find((t) => t.id === tid)?.label || tid;
-    const techsN = technicians.filter((r) => rowMatchesTrade(r.trade_type, r.trade_type, tid)).length;
+    const techsForTrade = technicians.filter((r) => rowMatchesTrade(r.trade_type, r.trade_type, tid));
+    const techsN = techsForTrade.length;
+    const verifiedN = techsForTrade.filter((r) => r.background_verified).length;
     const openN = openJobs.filter((r) => rowMatchesTrade(r.skill_class, null, tid)).length;
     const appsN = applications.filter((r) => rowMatchesTrade(r.skill_class, null, tid)).length;
-    const filledN = completedJobs.filter((r) => rowMatchesTrade(r.skill_class, null, tid)).length;
+    const completedForTrade = completedJobs.filter((r) => rowMatchesTrade(r.skill_class, null, tid));
+    const filledN = completedForTrade.length;
+    const releasedCents = sumBy(completedForTrade, 'money_released_cents');
     const denom = openN + filledN;
     const fill = denom > 0 ? Math.round((filledN / denom) * 1000) / 10 : 0;
     let risk = 'Balanced';
@@ -480,11 +522,12 @@ function buildTradeRows({ technicians, openJobs, applications, completedJobs }) 
       trade: tLabel,
       tradeId: tid,
       activeTechs: techsN,
-      verifiedTechs: '—',
+      verifiedTechs: verifiedN,
       openJobs: openN,
       applications: appsN,
       fillRate: `${fill}%`,
       avgHourlyCents: avgRate,
+      releasedCents,
       risk,
     };
   });
@@ -514,15 +557,17 @@ function geoRowJob(r) {
   return { city: r.city, state: r.state, location: r.location };
 }
 
-function buildAlerts({ staleOpen, feedbackList, nowMs }) {
+function buildAlerts({ staleOpen, feedbackList, nowMs, marketLabel, tradeLabel }) {
+  const filterNote = [marketLabel, tradeLabel].filter(Boolean).join(' · ');
   const out = [];
   staleOpen.slice(0, 12).forEach((j) => {
+    const tradeHint = j.skill_class ? String(j.skill_class) : 'Trade TBD';
     out.push({
       id: `stale-${j.id}`,
       severity: 'Warning',
       entity: 'Job',
-      title: `Open job aging: ${j.title || 'Job'}`,
-      description: 'Open >48h with no applications in the selected period filter.',
+      title: `No applicants 48h+ — ${j.title || 'Open role'} (${tradeHint})`,
+      description: `Still open with zero applications in the selected period. ${filterNote}.`,
       since: j.created_at,
       cta: { label: 'Open job', href: `/jobs/${j.id}` },
     });
@@ -555,14 +600,15 @@ function buildAlerts({ staleOpen, feedbackList, nowMs }) {
   return out;
 }
 
-function buildTasks({ staleOpen }) {
+function buildTasks({ staleOpen, marketLabel, tradeLabel }) {
+  const scope = `${marketLabel} · ${tradeLabel}`;
   const tasks = [];
   if (staleOpen.length) {
     tasks.push({
       id: 't1',
       priority: 'P1',
       category: 'Liquidity',
-      title: `Contact companies behind ${staleOpen.length} stale open job(s)`,
+      title: `Unblock ${staleOpen.length} aged open role(s) — ${scope}`,
       estimate: '45m',
       due: 'Today',
       cta: { label: 'View jobs', href: '/jobs' },
@@ -571,8 +617,8 @@ function buildTasks({ staleOpen }) {
   tasks.push({
     id: 't2',
     priority: 'P2',
-    category: 'Growth',
-    title: 'Invite technicians in undersupplied trades (see supply table)',
+    category: 'Supply',
+    title: `Rebalance technician bench vs open demand (${scope})`,
     estimate: '20m',
     due: 'This week',
     cta: { label: 'Users', href: '/admin/users' },
@@ -581,7 +627,7 @@ function buildTasks({ staleOpen }) {
     id: 't3',
     priority: 'P2',
     category: 'Quality',
-    title: 'Review recent problem feedback',
+    title: 'Triage problem feedback and thread with companies if needed',
     estimate: '15m',
     due: 'Soon',
     cta: { label: 'Messages', href: '/messages' },
@@ -634,34 +680,20 @@ function buildTechVerificationFunnel(techCount, verifiedCount) {
   return [
     { label: 'Signed up (accounts)', count: techCount },
     { label: 'Background verified', count: verifiedCount },
-    { label: 'License on file', count: null, footnote: 'TODO: expose document counts in API' },
-    { label: 'Compliance pending', count: null, footnote: 'TODO: workflow API' },
-    { label: 'Trade-certified', count: null, footnote: 'TODO: API' },
-    { label: 'First job completed', count: null, footnote: 'TODO: derive from jobs' },
+    { label: 'License on file', count: null, footnote: 'Not exposed in insights yet' },
+    { label: 'Compliance pending', count: null, footnote: 'Wire when compliance workflow ships' },
+    { label: 'Trade-certified', count: null, footnote: 'Not exposed in insights yet' },
+    { label: 'First job completed', count: null, footnote: 'Derive from job history when available' },
   ];
 }
 
 function buildCompanyActivationFunnel(coCount) {
   return [
     { label: 'Signed up (accounts)', count: coCount },
-    { label: 'Profile with location', count: null, footnote: 'TODO: derive from company_profiles' },
-    { label: 'Payment method on file', count: null, footnote: 'TODO: Stripe admin aggregate' },
-    { label: 'First job posted', count: null, footnote: 'TODO: derive from jobs' },
-    { label: 'First job filled', count: null, footnote: 'TODO: derive' },
-    { label: 'Repeat job posted', count: null, footnote: 'TODO: derive' },
+    { label: 'Profile with location', count: null, footnote: 'Derive from company profiles when exposed' },
+    { label: 'Payment method on file', count: null, footnote: 'Stripe aggregate when wired' },
+    { label: 'First job posted', count: null, footnote: 'Derive from jobs when exposed' },
+    { label: 'First job filled', count: null, footnote: 'Derive from jobs when exposed' },
+    { label: 'Repeat job posted', count: null, footnote: 'Derive from jobs when exposed' },
   ];
-}
-
-/**
- * @param {ReturnType<typeof buildAdminCommandCenterModel>} model
- * @param {ReturnType<import('./adminCommandCenterMock.js').getMockAdminSupplements>} mock
- */
-export function mergeMockSupplements(model, mock) {
-  if (!model || !mock) return model;
-  const next = { ...model, revenue: { ...model.revenue } };
-  if (mock.subscriptionRevenueCents != null) {
-    next.revenue.subscriptionRevenueCents = mock.subscriptionRevenueCents;
-  }
-  next.meta = { ...model.meta, disputesOpenCount: mock.disputesOpenCount, supportOpenCount: mock.openSupportIssuesCount };
-  return next;
 }

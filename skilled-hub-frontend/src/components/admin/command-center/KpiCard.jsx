@@ -2,9 +2,9 @@ import React from 'react';
 import Sparkline from './Sparkline';
 
 const toneColors = {
-  blue: '#2563eb',
-  orange: '#ea580c',
-  teal: '#0d9488',
+  blue: '#1e40af',
+  orange: '#c2410c',
+  teal: '#0f766e',
 };
 
 function formatVal(k, format) {
@@ -20,21 +20,26 @@ function formatVal(k, format) {
 export default function KpiCard({ label, value, delta, spark, tone = 'blue', footnote, format }) {
   const c = toneColors[tone] || toneColors.blue;
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm hover:shadow-md transition-shadow">
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-          <p className="mt-1 text-2xl font-bold tabular-nums text-slate-900 truncate">{formatVal(value, format)}</p>
+    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2.5 min-h-[5.25rem] flex flex-col">
+      <div className="flex items-start justify-between gap-2 flex-1">
+        <div className="min-w-0 flex-1">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 leading-tight">{label}</p>
+          <p className="mt-1 text-lg font-semibold tabular-nums text-slate-900 truncate">{formatVal(value, format)}</p>
           {delta != null && (
-            <p className={`mt-1 text-xs font-medium ${delta >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+            <p className={`mt-0.5 text-[10px] font-medium ${delta >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
               {delta >= 0 ? '+' : ''}
               {delta}% vs prior
             </p>
           )}
-          {delta == null && <p className="mt-1 text-xs text-slate-400">Delta: —</p>}
-          {footnote && <p className="mt-2 text-[11px] leading-snug text-slate-500">{footnote}</p>}
+          {footnote && (
+            <p className="mt-1 text-[10px] leading-snug text-slate-500 line-clamp-2" title={footnote}>
+              {footnote}
+            </p>
+          )}
         </div>
-        <Sparkline data={spark} color={c} />
+        <div className="shrink-0 pt-0.5">
+          <Sparkline data={spark} color={c} />
+        </div>
       </div>
     </div>
   );

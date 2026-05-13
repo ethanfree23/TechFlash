@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import { crmAPI } from '../api/api';
 import AlertModal from '../components/AlertModal';
@@ -22,6 +22,37 @@ import {
 import { US_STATES } from '../data/statesByCountry';
 import { normalizeToUsStateName } from '../utils/crmUsState';
 import {
+  CRM_STATUSES,
+  CRM_PIPELINE_STORAGE_KEY,
+  CRM_PIPELINE_DEFAULT_COLUMNS,
+  CRM_COMPANY_TYPES,
+  CRM_NOTE_CONTACT_METHODS,
+  CRM_MERGE_FIELDS,
+  CRM_QUICK_PIPELINE_FILTERS,
+  CRM_SORT_OPTIONS,
+  CRM_NOTE_QUICK_TEMPLATES,
+  CONTACT_JOB_TITLE_SUGGESTIONS,
+} from '../utils/crmConstants';
+import {
+  filterSidebarLeads,
+  sortLeads,
+  computeCrmStatsStrip,
+  exportLeadsToCsv,
+  filterNotesForTimeline,
+  getOperationalInsights,
+  getOutreachSnapshot,
+  isValidEmail,
+  isValidPhoneLoose,
+  isValidUrlLoose,
+  getPrimaryContactPreview,
+} from '../utils/crmDisplayAdapter';
+import CrmCommandHeader from '../components/crm/CrmCommandHeader';
+import CompanyRecordHeader from '../components/crm/CompanyRecordHeader';
+import CrmRightRail from '../components/crm/CrmRightRail';
+import PipelineStageTracker from '../components/crm/PipelineStageTracker';
+import CrmBioReadMore from '../components/crm/CrmBioReadMore';
+import { CrmStatusBadge, CompanyTypeBadges } from '../components/crm/CrmBadges';
+import {
   FaBuilding,
   FaChartLine,
   FaComments,
@@ -39,62 +70,6 @@ import {
   FaChevronDown,
   FaChevronRight,
 } from 'react-icons/fa';
-
-const CRM_STATUSES = [
-  'lead',
-  'contacted',
-  'qualified',
-  'proposal',
-  'prospect',
-  'customer',
-  'competitor',
-  'churned',
-  'lost',
-];
-
-const CRM_PIPELINE_STORAGE_KEY = 'table-columns-v2-crm_pipeline';
-const CRM_PIPELINE_DEFAULT_COLUMNS = [
-  { key: 'status', label: 'Status', visible: true },
-  { key: 'linked_account', label: 'Linked account', visible: true },
-  { key: 'contact_email', label: 'Email preview', visible: true },
-];
-
-const CRM_COMPANY_TYPES = [
-  'hvac',
-  'plumbing',
-  'electrical',
-  'refrigeration',
-  'fire_protection',
-  'general_contracting',
-  'handyman',
-  'roofing',
-  'solar',
-  'appliance_repair',
-  'facility_maintenance',
-  'other',
-];
-
-const CRM_NOTE_CONTACT_METHODS = ['call', 'text', 'email', 'in_person', 'note'];
-const CRM_MERGE_FIELDS = [
-  { key: 'name', label: 'Company name' },
-  { key: 'contact_name', label: 'Primary contact name' },
-  { key: 'email', label: 'Primary email' },
-  { key: 'phone', label: 'Primary phone' },
-  { key: 'company_email', label: 'Company email' },
-  { key: 'company_phone', label: 'Company phone' },
-  { key: 'bio', label: 'Company bio' },
-  { key: 'website', label: 'Website' },
-  { key: 'street_address', label: 'Street address' },
-  { key: 'city', label: 'City' },
-  { key: 'state', label: 'State' },
-  { key: 'zip', label: 'ZIP' },
-  { key: 'instagram_url', label: 'Instagram URL' },
-  { key: 'facebook_url', label: 'Facebook URL' },
-  { key: 'linkedin_url', label: 'LinkedIn URL' },
-  { key: 'status', label: 'Status' },
-  { key: 'linked_user_id', label: 'Linked company user id' },
-  { key: 'linked_company_profile_id', label: 'Linked company profile id' },
-];
 
 const formatCurrency = (cents) => {
   if (cents == null || cents === 0) return '$0';
@@ -256,6 +231,7 @@ function buildCrmImportRowSignatures(row) {
 }
 
 const CrmPage = ({ user, onLogout, onUserUpdate }) => {
+  const navigate = useNavigate();
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [detail, setDetail] = useState(null);
@@ -340,6 +316,16 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     combine_notes: true,
     combine_timeline_notes: true,
   });
+  const [crmDateRange, setCrmDateRange] = useState('all');
+  const [crmMarketFilter, setCrmMarketFilter] = useState('all');
+  const [crmTradeFilter, setCrmTradeFilter] = useState('all');
+  const [crmSidebarSort, setCrmSidebarSort] = useState('updated_desc');
+  const [crmQuickPipeline, setCrmQuickPipeline] = useState('all');
+  const [crmLinkedFilter, setCrmLinkedFilter] = useState('all');
+  const [crmHasNotesFilter, setCrmHasNotesFilter] = useState('all');
+  const [crmHasContactFilter, setCrmHasContactFilter] = useState('all');
+  const [crmHasPhoneFilter, setCrmHasPhoneFilter] = useState('all');
+  const [timelineFilter, setTimelineFilter] = useState('all');
   const pendingAdditionalContactFocusIdx = useRef(null);
 
   const hydrateFormFromCrmLead = useCallback((c) => {
@@ -460,6 +446,10 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   useEffect(() => {
     resetNoteDraft();
     setNoteComposerOpen(false);
+  }, [selectedId, isCreating]);
+
+  useEffect(() => {
+    setTimelineFilter('all');
   }, [selectedId, isCreating]);
 
   useEffect(() => {
@@ -654,6 +644,29 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         message: 'Enter a company or account name.',
         variant: 'error',
       });
+      return;
+    }
+    const pe = String(primaryContact.email || form.email || '').trim();
+    const pph = String(primaryContact.phone || form.phone || '').trim();
+    if (pe && !isValidEmail(pe)) {
+      setAlertModal({ isOpen: true, title: 'Invalid email', message: 'Primary contact email does not look valid.', variant: 'error' });
+      return;
+    }
+    if (form.company_email?.trim() && !isValidEmail(form.company_email.trim())) {
+      setAlertModal({ isOpen: true, title: 'Invalid email', message: 'Company email format is invalid.', variant: 'error' });
+      return;
+    }
+    if (pph && !isValidPhoneLoose(pph)) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Invalid phone',
+        message: 'Primary phone should include at least 10 digits.',
+        variant: 'error',
+      });
+      return;
+    }
+    if (form.website?.trim() && !isValidUrlLoose(form.website)) {
+      setAlertModal({ isOpen: true, title: 'Invalid website', message: 'Enter a valid website URL.', variant: 'error' });
       return;
     }
     setSaving(true);
@@ -1541,12 +1554,92 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const mapsAddressUrl = fullAddress
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`
     : '';
-  const filteredLeads = leads.filter((row) => {
-    const nameOk =
-      pipelineNameFilter.trim() === '' || (row.name || '').toLowerCase().includes(pipelineNameFilter.trim().toLowerCase());
-    const statusOk = pipelineStatusFilter.trim() === '' || (row.status || '').toLowerCase() === pipelineStatusFilter.trim().toLowerCase();
-    return nameOk && statusOk;
-  });
+  const sidebarFilterPayload = useMemo(
+    () => ({
+      searchText: pipelineNameFilter,
+      statusSelect: pipelineStatusFilter,
+      quickPipeline: crmQuickPipeline,
+      linkedFilter: crmLinkedFilter,
+      hasNotes: crmHasNotesFilter,
+      hasContact: crmHasContactFilter,
+      hasPhone: crmHasPhoneFilter,
+      dateRange: crmDateRange,
+      market: crmMarketFilter,
+      trade: crmTradeFilter,
+    }),
+    [
+      pipelineNameFilter,
+      pipelineStatusFilter,
+      crmQuickPipeline,
+      crmLinkedFilter,
+      crmHasNotesFilter,
+      crmHasContactFilter,
+      crmHasPhoneFilter,
+      crmDateRange,
+      crmMarketFilter,
+      crmTradeFilter,
+    ],
+  );
+
+  const filteredLeads = useMemo(() => {
+    const raw = filterSidebarLeads(leads, sidebarFilterPayload);
+    return sortLeads(raw, crmSidebarSort);
+  }, [leads, sidebarFilterPayload, crmSidebarSort]);
+
+  const statsForHeader = useMemo(
+    () => computeCrmStatsStrip(leads, { dateRange: crmDateRange, market: crmMarketFilter, trade: crmTradeFilter }),
+    [leads, crmDateRange, crmMarketFilter, crmTradeFilter],
+  );
+
+  const lastListRefreshLabel = useMemo(() => {
+    const ts = (Array.isArray(leads) ? leads : []).map((l) => new Date(l.updated_at || l.created_at || 0).getTime());
+    const max = Math.max(0, ...ts);
+    if (!max) return '';
+    return formatDateTime(new Date(max).toISOString());
+  }, [leads]);
+
+  const exportVisibleCsv = () => {
+    const csv = exportLeadsToCsv(filteredLeads);
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `techflash-crm-export-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    setAlertModal({
+      isOpen: true,
+      title: 'Export ready',
+      message: `Downloaded ${filteredLeads.length} visible record(s).`,
+      variant: 'success',
+    });
+  };
+
+  const handleRailAction = (id) => {
+    if (id === 'add_phone' || id === 'add_contact' || id === 'trade' || id === 'contact') {
+      setIsRecordEditing(true);
+      return;
+    }
+    if (id === 'link') {
+      setIsRecordEditing(true);
+      setTimeout(() => document.getElementById('crm-link-platform')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+      return;
+    }
+    if (id === 'first_job') {
+      navigate('/create-job');
+      return;
+    }
+    if (id === 'note') {
+      setTimeout(() => document.getElementById('crm-notes-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+      startAddNote();
+      return;
+    }
+    if (id === 'call') {
+      const tel = String(form.phone || form.company_phone || '').replace(/\D/g, '');
+      if (tel) window.location.href = `tel:${tel}`;
+      return;
+    }
+  };
 
   const pipelineDisplayGroups = useMemo(() => {
     const emitted = new Set();
@@ -1584,31 +1677,49 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const visiblePipelineColumns = useMemo(() => pipelineColumns.filter((c) => c.visible), [pipelineColumns]);
 
   const renderPipelineLeadMeta = (row) => {
-    if (visiblePipelineColumns.length === 0) return null;
+    const pc = getPrimaryContactPreview(row);
+    const nc = Number(row.notes_count) || 0;
+    const warn = !pc.name && !pc.email ? 'text-amber-600' : 'text-slate-500';
     return (
-      <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-500">
-        {visiblePipelineColumns.map((col) => {
-          if (col.key === 'status') {
-            return (
-              <span key={col.key} className="capitalize px-2 py-0.5 rounded bg-gray-100 text-gray-700">
-                {row.status}
-              </span>
-            );
-          }
-          if (col.key === 'linked_account') {
-            if (!row.linked_account) return null;
-            return (
-              <span key={col.key} className="inline-flex items-center gap-1 text-emerald-700">
-                <FaLink className="text-emerald-600" aria-hidden /> Linked
-              </span>
-            );
-          }
-          if (col.key === 'contact_email') {
-            if (!row.email) return null;
-            return <span key={col.key}>{row.email}</span>;
-          }
-          return null;
-        })}
+      <div className="mt-1 space-y-1">
+        {visiblePipelineColumns.length > 0 && (
+          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+            {visiblePipelineColumns.map((col) => {
+              if (col.key === 'status') {
+                return (
+                  <span key={col.key} className="capitalize px-2 py-0.5 rounded bg-gray-100 text-gray-700">
+                    {row.status}
+                  </span>
+                );
+              }
+              if (col.key === 'linked_account') {
+                if (!row.linked_account) return null;
+                return (
+                  <span key={col.key} className="inline-flex items-center gap-1 text-emerald-700">
+                    <FaLink className="text-emerald-600" aria-hidden /> Linked
+                  </span>
+                );
+              }
+              if (col.key === 'contact_email') {
+                if (!row.email) return null;
+                return <span key={col.key}>{row.email}</span>;
+              }
+              return null;
+            })}
+          </div>
+        )}
+        <div className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] ${warn}`}>
+          <span className="font-medium text-slate-700">{pc.name || 'No contact'}</span>
+          {(row.city || row.state) && (
+            <span className="text-slate-400">
+              · {String(row.city || '').trim()}
+              {row.city && row.state ? ', ' : ''}
+              {String(row.state || '').trim()}
+            </span>
+          )}
+          <span className="text-slate-400">· {nc} notes</span>
+          {!row.linked_account && <span className="text-amber-600 font-medium">· Unlinked</span>}
+        </div>
       </div>
     );
   };
@@ -1666,74 +1777,104 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     }),
   };
 
+  const outreachSnapshot = useMemo(() => getOutreachSnapshot(crmNotes, c), [crmNotes, c]);
+  const operationalInsights = useMemo(
+    () =>
+      getOperationalInsights({
+        form,
+        metrics,
+        activity,
+        isLinked: Boolean(form.linked_user_id || form.linked_company_profile_id),
+        crmNotes,
+      }),
+    [form, metrics, activity, crmNotes],
+  );
+  const filteredTimelineNotes = useMemo(() => filterNotesForTimeline(crmNotes, timelineFilter), [crmNotes, timelineFilter]);
+
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       <AppHeader user={user} onLogout={onLogout} activePage="crm" emailVariant="crm" />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
-          <div className="min-w-0 flex-1">
-            <h1 className="text-2xl font-semibold text-gray-900">Company CRM</h1>
-            <p className="text-sm text-gray-500 mt-1">
-              Track prospects and link records to company accounts for jobs, spend, and activity.
-            </p>
-          </div>
-          <div className="flex flex-wrap gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => {
-                setImportSummary(null);
-                setPasteImportText('');
-                setImportDraftRows([]);
-                setImportRowFilter('all');
-                setImportModalOpen(true);
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-violet-600 text-white text-sm font-semibold hover:bg-violet-700 shadow-sm"
-            >
-              <FaFileUpload className="w-4 h-4" aria-hidden />
-              Import
-            </button>
-            <button
-              type="button"
-              onClick={openCreate}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 shadow-sm"
-            >
-              <FaPlus className="w-4 h-4" aria-hidden />
-              Add company
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setNewCompanyModalOpen(false);
-                setIsCreating(false);
-                setProvisionMode('new');
-                setCompanySearchQ('');
-                setCompanyHits([]);
-                setSelectedCompany(null);
-                setProvisionModalOpen(true);
-              }}
-              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 shadow-sm"
-            >
-              <FaUserPlus className="w-4 h-4" aria-hidden />
-              Create platform account
-            </button>
-          </div>
-        </div>
+      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+        <datalist id="crm-contact-job-titles">
+          {CONTACT_JOB_TITLE_SUGGESTIONS.map((t) => (
+            <option key={t} value={t} />
+          ))}
+        </datalist>
+        <CrmCommandHeader
+          stats={statsForHeader}
+          dateRange={crmDateRange}
+          onDateRange={setCrmDateRange}
+          market={crmMarketFilter}
+          onMarket={setCrmMarketFilter}
+          trade={crmTradeFilter}
+          onTrade={setCrmTradeFilter}
+          lastUpdatedLabel={lastListRefreshLabel}
+          onImport={() => {
+            setImportSummary(null);
+            setPasteImportText('');
+            setImportDraftRows([]);
+            setImportRowFilter('all');
+            setImportModalOpen(true);
+          }}
+          onAddCompany={openCreate}
+          onCreatePlatform={() => {
+            setNewCompanyModalOpen(false);
+            setIsCreating(false);
+            setProvisionMode('new');
+            setCompanySearchQ('');
+            setCompanyHits([]);
+            setSelectedCompany(null);
+            setProvisionModalOpen(true);
+          }}
+          onMerge={openMergeModal}
+          onExport={exportVisibleCsv}
+        />
 
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-          <div className="lg:col-span-2 bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
-            <div className="px-4 py-3 border-b border-gray-100 bg-gray-50">
+        {(() => {
+          const missingPhone = filteredLeads.filter((l) => {
+            const p = [l.phone, l.company_phone, ...(l.contacts || []).map((c) => c.phone)].map((x) => String(x || '').trim()).filter(Boolean);
+            return p.length === 0;
+          }).length;
+          const missingEmail = filteredLeads.filter((l) => {
+            const e = [l.email, l.company_email, ...(l.contacts || []).map((c) => c.email)].map((x) => String(x || '').trim()).filter(Boolean);
+            return e.length === 0;
+          }).length;
+          const unlinked = filteredLeads.filter((l) => !l.linked_user_id && !l.linked_company_profile_id).length;
+          return (
+            <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600 flex flex-wrap gap-x-6 gap-y-2">
+              <span>
+                <strong className="text-slate-800">In view — missing phone:</strong> {missingPhone}
+              </span>
+              <span>
+                <strong className="text-slate-800">Missing email:</strong> {missingEmail}
+              </span>
+              <span>
+                <strong className="text-slate-800">Unlinked:</strong> {unlinked}
+              </span>
+              <span className="text-slate-400">Filters apply to this prospect list and export.</span>
+            </div>
+          );
+        })()}
+
+        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
+          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden xl:col-span-4">
+            <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
               <div className="flex items-start justify-between gap-2">
-                <h2 className="text-sm font-semibold text-gray-700">Pipeline</h2>
-                <div className="relative shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setShowPipelineColumnConfig((v) => !v)}
-                    className="inline-flex items-center gap-1.5 px-2 py-1 text-xs border border-gray-300 bg-white rounded-lg hover:bg-gray-50"
-                  >
-                    <FaCog className="w-3.5 h-3.5" aria-hidden />
-                    Columns
-                  </button>
+                <div>
+                  <h2 className="text-sm font-bold text-slate-800 tracking-tight">Prospect command list</h2>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{filteredLeads.length} in view · {leads.length} total</p>
+                </div>
+                <div className="flex items-center gap-1 shrink-0">
+                  <div className="relative shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setShowPipelineColumnConfig((v) => !v)}
+                      className="inline-flex items-center gap-1.5 px-2 py-1 text-xs border border-slate-200 bg-white rounded-lg hover:bg-slate-50 text-slate-700"
+                    >
+                      <FaCog className="w-3.5 h-3.5" aria-hidden />
+                      Columns
+                    </button>
                   {showPipelineColumnConfig && (
                     <div className="absolute right-0 top-8 z-30 w-72 bg-white border border-gray-200 rounded-xl shadow-lg p-3">
                       <div className="text-xs text-gray-500 mb-2">
@@ -1768,12 +1909,82 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   )}
                 </div>
               </div>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {CRM_QUICK_PIPELINE_FILTERS.map((chip) => (
+                  <button
+                    key={chip.id}
+                    type="button"
+                    onClick={() => {
+                      setCrmQuickPipeline(chip.id);
+                      if (CRM_STATUSES.includes(chip.id)) setPipelineStatusFilter('');
+                    }}
+                    className={`rounded-full border px-2.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                      crmQuickPipeline === chip.id
+                        ? 'border-blue-600 bg-blue-600 text-white'
+                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <label className="text-[10px] font-semibold text-slate-500 uppercase col-span-2">Sort</label>
+                <select
+                  value={crmSidebarSort}
+                  onChange={(e) => setCrmSidebarSort(e.target.value)}
+                  className="col-span-2 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white text-slate-800"
+                >
+                  {CRM_SORT_OPTIONS.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={crmLinkedFilter}
+                  onChange={(e) => setCrmLinkedFilter(e.target.value)}
+                  className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
+                >
+                  <option value="all">Linked: any</option>
+                  <option value="linked">Linked only</option>
+                  <option value="unlinked">Unlinked only</option>
+                </select>
+                <select
+                  value={crmHasNotesFilter}
+                  onChange={(e) => setCrmHasNotesFilter(e.target.value)}
+                  className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
+                >
+                  <option value="all">Notes: any</option>
+                  <option value="yes">Has notes</option>
+                  <option value="no">No notes</option>
+                </select>
+                <select
+                  value={crmHasContactFilter}
+                  onChange={(e) => setCrmHasContactFilter(e.target.value)}
+                  className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
+                >
+                  <option value="all">Contact: any</option>
+                  <option value="yes">Has contact</option>
+                  <option value="no">Missing contact</option>
+                </select>
+                <select
+                  value={crmHasPhoneFilter}
+                  onChange={(e) => setCrmHasPhoneFilter(e.target.value)}
+                  className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
+                >
+                  <option value="all">Phone: any</option>
+                  <option value="yes">Has phone</option>
+                  <option value="no">Missing phone</option>
+                </select>
+              </div>
               <div className="mt-2 grid grid-cols-1 gap-2">
                 <input
                   type="search"
                   value={pipelineNameFilter}
                   onChange={(e) => setPipelineNameFilter(e.target.value)}
-                  placeholder="Filter prospect/company name"
+                  placeholder="Search name, email, phone, city, trade…"
                   className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white"
                 />
                 <select
@@ -1792,9 +2003,48 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             </div>
             <div className="max-h-[70vh] overflow-y-auto">
               {loading ? (
-                <p className="p-6 text-gray-500 text-sm">Loading…</p>
+                <div className="p-4 space-y-3 animate-pulse" aria-busy="true">
+                  {[1, 2, 3, 4, 5].map((k) => (
+                    <div key={k} className="h-14 rounded-lg bg-slate-100" />
+                  ))}
+                </div>
               ) : pipelineDisplayGroups.length === 0 ? (
-                <p className="p-6 text-gray-500 text-sm">No companies yet. Click &quot;Add company&quot; to start.</p>
+                <div className="p-8 text-center">
+                  {leads.length === 0 ? (
+                    <>
+                      <p className="text-sm font-semibold text-slate-800">Start building your company pipeline</p>
+                      <p className="text-xs text-slate-500 mt-2 max-w-sm mx-auto">
+                        Import contractor lists, add local companies manually, create platform accounts, and track calls and follow-ups.
+                      </p>
+                      <div className="mt-4 flex flex-wrap justify-center gap-2">
+                        <button
+                          type="button"
+                          className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white"
+                          onClick={() => {
+                            setImportSummary(null);
+                            setPasteImportText('');
+                            setImportDraftRows([]);
+                            setImportRowFilter('all');
+                            setImportModalOpen(true);
+                          }}
+                        >
+                          Import prospects
+                        </button>
+                        <button type="button" className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white" onClick={openCreate}>
+                          Add company
+                        </button>
+                      </div>
+                      <p className="mt-4 text-[10px] text-slate-400 font-mono break-all">
+                        name,contact_name,email,phone,website,company_types,status,notes
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-sm font-semibold text-slate-800">No companies match filters</p>
+                      <p className="text-xs text-slate-500 mt-2">Try clearing search, pipeline chips, or advanced filters.</p>
+                    </>
+                  )}
+                </div>
               ) : (
                 <ul className="divide-y divide-gray-100">
                   {pipelineDisplayGroups.map((item) => {
@@ -1873,7 +2123,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             </div>
           </div>
 
-          <div className="lg:col-span-3 space-y-6">
+          <div className="xl:col-span-5 space-y-6">
             {!selectedId && (
               <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-10 text-center text-gray-500">
                 Select a company on the left or use the buttons above to add a CRM record or create a platform account.
@@ -1881,9 +2131,52 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             )}
 
             {selectedId && !isCreating && (
+              <CompanyRecordHeader
+                form={form}
+                detailLead={c}
+                onCall={() => {
+                  const tel = String(form.phone || form.company_phone || '').replace(/\D/g, '');
+                  if (tel) window.location.href = `tel:${tel}`;
+                }}
+                onEmail={() => {
+                  const e = String(form.email || form.company_email || '').trim();
+                  if (e) window.location.href = `mailto:${e}`;
+                }}
+                onWebsite={() => {
+                  const w = String(form.website || '').trim();
+                  if (!w) return;
+                  const u = /^https?:\/\//i.test(w) ? w : `https://${w}`;
+                  window.open(u, '_blank', 'noopener,noreferrer');
+                }}
+                onAddNote={startAddNote}
+                onEdit={() => setIsRecordEditing(true)}
+                onMerge={openMergeModal}
+                onDelete={removeRecord}
+                onCreateJob={() => navigate('/create-job')}
+                onLinkAccount={() => {
+                  setIsRecordEditing(true);
+                  setTimeout(() => document.getElementById('crm-link-platform')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                }}
+                onChangeStatus={() => {
+                  setIsRecordEditing(true);
+                  setTimeout(() => document.getElementById('crm-status-select')?.focus(), 50);
+                }}
+              />
+            )}
+
+            {selectedId && !isCreating && (
               <div className="bg-white rounded-2xl shadow border border-gray-100 p-6">
                 <div className="mb-4 flex items-center justify-between gap-3">
-                  <h2 className="text-lg font-semibold text-gray-900">Edit record</h2>
+                  <div>
+                    <h2 className="text-lg font-semibold text-gray-900">Company record</h2>
+                    <p className="text-xs text-slate-500 mt-1">
+                      {isRecordEditing ? (
+                        <span className="text-amber-700 font-semibold">Editing — save or cancel before leaving.</span>
+                      ) : (
+                        'Read mode — fields are display-only until you click Edit.'
+                      )}
+                    </p>
+                  </div>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
@@ -1923,8 +2216,47 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     </button>
                   </div>
                 </div>
-                {detailLoading && (
-                  <p className="text-sm text-gray-500 mb-4">Loading details…</p>
+                {detailLoading ? (
+                  <div className="space-y-3 mb-6 animate-pulse" aria-busy="true">
+                    <div className="h-10 bg-slate-100 rounded-xl" />
+                    <div className="h-24 bg-slate-100 rounded-xl" />
+                    <div className="h-32 bg-slate-100 rounded-xl" />
+                  </div>
+                ) : (
+                  <div className="space-y-4 mb-6">
+                    <PipelineStageTracker currentStatus={form.status} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
+                        <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Outreach snapshot</h3>
+                        <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-700">
+                          <dt className="text-slate-500">First touch</dt>
+                          <dd>{outreachSnapshot.firstContactDate ? formatDateTime(outreachSnapshot.firstContactDate) : '—'}</dd>
+                          <dt className="text-slate-500">Last touch</dt>
+                          <dd>{outreachSnapshot.lastContactDate ? formatDateTime(outreachSnapshot.lastContactDate) : '—'}</dd>
+                          <dt className="text-slate-500">Calls / emails</dt>
+                          <dd>
+                            {outreachSnapshot.calls} / {outreachSnapshot.emails}
+                          </dd>
+                          <dt className="text-slate-500">Notes</dt>
+                          <dd>{outreachSnapshot.notesCount}</dd>
+                          <dt className="text-slate-500">Outreach status</dt>
+                          <dd className="font-semibold">{outreachSnapshot.outreachStatus}</dd>
+                        </dl>
+                      </div>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
+                        <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Operational insight</h3>
+                        {operationalInsights.length === 0 ? (
+                          <p className="text-xs text-slate-500">No automated insights for this record yet.</p>
+                        ) : (
+                          <ul className="list-disc pl-4 space-y-1 text-xs text-slate-700">
+                            {operationalInsights.map((line, i) => (
+                              <li key={i}>{line}</li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 )}
                 {isRecordEditing ? (
                   <div className="space-y-4">
@@ -1979,6 +2311,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                           <label className="block">
                             <span className="text-xs font-medium text-gray-500 uppercase">Status</span>
                             <select
+                              id="crm-status-select"
                               className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm capitalize bg-white"
                               value={form.status ?? 'lead'}
                               onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
@@ -2108,7 +2441,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         ) : (
                           <FaChevronRight className="text-gray-500 w-3.5 h-3.5 shrink-0" />
                         )}
-                        <span className="text-sm font-semibold text-gray-900">People / users</span>
+                        <span className="text-sm font-semibold text-gray-900">Contacts &amp; platform users</span>
                       </button>
                       {crmUsersSectionOpen && (
                         <div className="px-4 pb-4 pt-2 border-t border-gray-100 space-y-4 bg-slate-50/30">
@@ -2196,6 +2529,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                 <span className="text-xs font-medium text-gray-500 uppercase">Job title</span>
                                 <input
                                   className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                  list="crm-contact-job-titles"
                                   value={primaryContactDraft.job_title || ''}
                                   onChange={(e) => updatePrimaryContactField('job_title', e.target.value)}
                                 />
@@ -2389,12 +2723,12 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    <details className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm" open>
+                    <details className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm" open>
                       <summary className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-semibold text-gray-900 cursor-pointer hover:bg-slate-50 list-none [&::-webkit-details-marker]:hidden">
                         <FaChevronDown className="text-gray-500 w-3.5 h-3.5 shrink-0" />
                         Company information
                       </summary>
-                      <div className="px-4 pb-4 pt-2 border-t border-gray-100 bg-slate-50/20">
+                      <div className="px-4 pb-4 pt-2 border-t border-slate-100 bg-white">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
                           <div className="text-xs font-medium text-gray-500 uppercase">Company name</div>
@@ -2402,7 +2736,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         </div>
                         <div>
                           <div className="text-xs font-medium text-gray-500 uppercase">Status</div>
-                          <div className="mt-1 text-sm text-gray-900 capitalize">{form.status || '—'}</div>
+                          <div className="mt-1">
+                            <CrmStatusBadge status={form.status} />
+                          </div>
                         </div>
                         <div>
                           <div className="text-xs font-medium text-gray-500 uppercase">Company email</div>
@@ -2440,7 +2776,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         {form.bio ? (
                           <div className="md:col-span-2">
                             <div className="text-xs font-medium text-gray-500 uppercase">Company bio</div>
-                            <div className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{form.bio}</div>
+                            <CrmBioReadMore text={form.bio} className="mt-1" />
                           </div>
                         ) : null}
                         <div className="md:col-span-2">
@@ -2465,8 +2801,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         </div>
                         <div className="md:col-span-2">
                           <div className="text-xs font-medium text-gray-500 uppercase">Company types</div>
-                          <div className="mt-1 text-sm text-gray-900">
-                            {(form.company_types || []).length ? (form.company_types || []).map((t) => t.replace(/_/g, ' ')).join(', ') : '—'}
+                          <div className="mt-1">
+                            <CompanyTypeBadges types={form.company_types} />
                           </div>
                         </div>
                         <div className="md:col-span-2">
@@ -2477,12 +2813,12 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       </div>
                     </details>
 
-                    <details className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm" open>
+                    <details className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm" open>
                       <summary className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-semibold text-gray-900 cursor-pointer hover:bg-slate-50 list-none [&::-webkit-details-marker]:hidden">
                         <FaChevronDown className="text-gray-500 w-3.5 h-3.5 shrink-0" />
-                        People / users
+                        Contacts &amp; platform users
                       </summary>
-                      <div className="px-4 pb-4 pt-2 border-t border-gray-100 bg-slate-50/20">
+                      <div className="px-4 pb-4 pt-2 border-t border-slate-100 bg-white">
                       {displayContacts.length === 0 ? (
                         <div className="text-sm text-gray-500">No contacts yet.</div>
                       ) : (
@@ -2574,7 +2910,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   </div>
                 )}
 
-                <div className="mt-6 pt-6 border-t border-gray-100">
+                <div id="crm-link-platform" className="mt-6 pt-6 border-t border-slate-100">
                   <h3 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
                     <FaBuilding className="text-amber-600" /> Link platform account
                   </h3>
@@ -2625,7 +2961,16 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       <button
                         type="button"
                         className="text-red-600 hover:underline inline-flex items-center gap-1"
-                        onClick={() => setForm((f) => ({ ...f, linked_user_id: null, linked_company_profile_id: null }))}
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              'Unlink this CRM record from the platform company account? This does not delete the company account on TechFlash.',
+                            )
+                          ) {
+                            return;
+                          }
+                          setForm((f) => ({ ...f, linked_user_id: null, linked_company_profile_id: null }));
+                        }}
                       >
                         Unlink
                       </button>
@@ -2654,20 +2999,55 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             )}
 
             {selectedId && !isCreating && (
-              <div className="bg-white rounded-2xl shadow border border-gray-100 p-6">
-                <div className="flex items-center justify-between gap-3 mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900">Notes Timeline</h2>
-                  <button
-                    type="button"
-                    onClick={startAddNote}
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
-                  >
-                    <FaPlus className="w-3.5 h-3.5" /> Add note
-                  </button>
+              <div id="crm-notes-section" className="bg-white rounded-2xl shadow border border-gray-100 p-6">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
+                  <h2 className="text-lg font-semibold text-gray-900">Activity &amp; notes</h2>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="text-xs text-gray-500 flex items-center gap-1">
+                      Filter
+                      <select
+                        value={timelineFilter}
+                        onChange={(e) => setTimelineFilter(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-2 py-1 text-xs bg-white"
+                      >
+                        <option value="all">All activity</option>
+                        <option value="calls">Calls</option>
+                        <option value="emails">Emails</option>
+                        <option value="notes">Notes</option>
+                      </select>
+                    </label>
+                    <button
+                      type="button"
+                      onClick={startAddNote}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
+                    >
+                      <FaPlus className="w-3.5 h-3.5" /> Add note
+                    </button>
+                  </div>
                 </div>
 
                 {noteComposerOpen ? (
                 <div className="rounded-xl border border-gray-200 p-4 bg-gray-50 mb-4">
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    <span className="text-[10px] font-semibold uppercase text-gray-500 w-full">Quick templates</span>
+                    {CRM_NOTE_QUICK_TEMPLATES.map((tpl) => (
+                      <button
+                        key={tpl.id}
+                        type="button"
+                        className="rounded-full border border-violet-200 bg-white px-2.5 py-1 text-[11px] font-medium text-violet-800 hover:bg-violet-50"
+                        onClick={() =>
+                          setNoteDraft((n) => ({
+                            ...n,
+                            contact_method: tpl.method,
+                            title: tpl.title,
+                            body: tpl.body,
+                          }))
+                        }
+                      >
+                        {tpl.label}
+                      </button>
+                    ))}
+                  </div>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                     <label className="block">
                       <span className="text-xs font-medium text-gray-500 uppercase">Type</span>
@@ -2735,10 +3115,12 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                 ) : null}
 
                 {crmNotes.length === 0 ? (
-                  <p className="text-sm text-gray-500">No notes yet. Click "Add note" to log the first activity.</p>
+                  <p className="text-sm text-gray-500">No notes yet. Click &quot;Add note&quot; to log the first activity.</p>
+                ) : filteredTimelineNotes.length === 0 ? (
+                  <p className="text-sm text-gray-500">No items match this filter.</p>
                 ) : (
                   <div className="space-y-3">
-                    {crmNotes.map((note) => {
+                    {filteredTimelineNotes.map((note) => {
                       const wasEdited = noteWasEdited(note);
                       return (
                         <div key={note.id} className="rounded-xl border border-gray-200 bg-white p-4">
@@ -2900,6 +3282,18 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
               </div>
             )}
           </div>
+
+          {selectedId && !isCreating ? (
+            <div className="hidden xl:block xl:col-span-3">
+              <CrmRightRail
+                form={form}
+                metrics={metrics}
+                crmNotesLength={crmNotes.length}
+                isLinked={Boolean(form.linked_user_id || form.linked_company_profile_id)}
+                onAction={handleRailAction}
+              />
+            </div>
+          ) : null}
         </div>
 
         {profileImportOpen ? (
@@ -3859,7 +4253,16 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       <button
                         type="button"
                         className="text-red-600 hover:underline inline-flex items-center gap-1"
-                        onClick={() => setForm((f) => ({ ...f, linked_user_id: null, linked_company_profile_id: null }))}
+                        onClick={() => {
+                          if (
+                            !window.confirm(
+                              'Unlink this CRM record from the platform company account? This does not delete the company account on TechFlash.',
+                            )
+                          ) {
+                            return;
+                          }
+                          setForm((f) => ({ ...f, linked_user_id: null, linked_company_profile_id: null }));
+                        }}
                       >
                         Unlink
                       </button>

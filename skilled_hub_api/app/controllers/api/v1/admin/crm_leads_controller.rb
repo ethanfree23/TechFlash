@@ -9,8 +9,17 @@ module Api
         before_action :set_lead, only: %i[show update destroy]
 
         def index
-          leads = CrmLead.order(updated_at: :desc)
-          render json: { crm_leads: leads.map { |l| lead_json(l) } }, status: :ok
+          leads = CrmLead.order(updated_at: :desc).to_a
+          lead_ids = leads.map(&:id)
+          notes_counts =
+            if lead_ids.empty?
+              {}
+            else
+              CrmNote.where(crm_lead_id: lead_ids).group(:crm_lead_id).count
+            end
+          render json: {
+            crm_leads: leads.map { |l| lead_json(l).merge(notes_count: notes_counts[l.id].to_i) }
+          }, status: :ok
         end
 
         def show

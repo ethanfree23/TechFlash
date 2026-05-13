@@ -6,44 +6,53 @@ export default function MarketplaceHealthCard({ health }) {
   const badge =
     health.status === 'Healthy' ? 'success' : health.status === 'Critical' ? 'danger' : 'warning';
   return (
-    <div className="rounded-2xl border border-slate-200/90 bg-white p-5 shadow-sm lg:col-span-5">
-      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 lg:col-span-5 flex flex-col min-h-[22rem]">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Marketplace health</h2>
-          <div className="mt-2 flex items-baseline gap-3">
-            <span className="text-4xl font-bold text-slate-900 tabular-nums">{health.score}</span>
+          <h2 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Marketplace health</h2>
+          <div className="mt-1.5 flex items-baseline gap-2 flex-wrap">
+            <span className="text-3xl font-semibold text-slate-900 tabular-nums leading-none">{health.score}</span>
             <StatusBadge variant={badge}>{health.status}</StatusBadge>
           </div>
-          <p className="mt-2 text-xs text-slate-500">Heuristic score from fill rate, stale listings, and 30-day activity slopes (see adapter).</p>
+          <p className="mt-1.5 text-[10px] text-slate-500 leading-snug max-w-prose">
+            Composite index from fill rate, stale opens without applicants, and 30-day job/application slopes (see adapter).
+          </p>
         </div>
       </div>
-      <div className="mt-5 space-y-3">
+      <div className="mt-4 space-y-2 flex-1">
         {(health.bars || []).map((b) => (
           <div key={b.label}>
-            <div className="flex justify-between text-xs text-slate-600 mb-1">
-              <span>{b.label}</span>
-              <span className="tabular-nums font-medium">{b.value}</span>
+            <div className="flex justify-between text-[10px] text-slate-600 mb-0.5">
+              <span className="truncate pr-2">{b.label}</span>
+              <span className="tabular-nums font-medium shrink-0">{b.value}</span>
             </div>
-            <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-              <div className="h-full rounded-full bg-gradient-to-r from-blue-600 to-[#FE6711]" style={{ width: `${Math.min(100, b.value)}%` }} />
+            <div className="h-1.5 rounded-sm bg-slate-100 overflow-hidden">
+              <div
+                className="h-full rounded-sm bg-slate-800"
+                style={{ width: `${Math.min(100, b.value)}%` }}
+              />
             </div>
           </div>
         ))}
       </div>
-      <div className="mt-5 grid sm:grid-cols-2 gap-3 text-sm text-slate-700">
-        <div className="rounded-xl bg-slate-50 border border-slate-100 p-3">
-          <p className="text-xs font-semibold text-slate-500 uppercase mb-2">Signals</p>
-          <ul className="list-disc pl-4 space-y-1 text-xs leading-relaxed">
+      <div className="mt-4 grid sm:grid-cols-2 gap-2 text-xs text-slate-700">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Signals</p>
+          <ul className="space-y-1 text-[10px] leading-snug text-slate-600">
             {(health.insights || []).map((t, i) => (
-              <li key={i}>{t}</li>
+              <li key={i} className="pl-2 border-l-2 border-slate-300">
+                {t}
+              </li>
             ))}
           </ul>
         </div>
-        <div className="rounded-xl bg-blue-50/60 border border-blue-100 p-3">
-          <p className="text-xs font-semibold text-blue-800 uppercase mb-2">Recommended actions</p>
-          <ul className="list-disc pl-4 space-y-1 text-xs leading-relaxed text-blue-950">
+        <div className="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 mb-1">Recommended actions</p>
+          <ul className="space-y-1 text-[10px] leading-snug text-slate-700">
             {(health.actions || []).map((t, i) => (
-              <li key={i}>{t}</li>
+              <li key={i} className="pl-2 border-l-2 border-slate-400">
+                {t}
+              </li>
             ))}
           </ul>
         </div>
