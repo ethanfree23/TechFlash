@@ -108,6 +108,7 @@ const emptyProvisionState = () => ({
   instagram_url: '',
   linkedin_url: '',
   contact_name: '',
+  electrical_license_number: '',
 });
 
 /** CRM lead → create-platform modal: company profile fields (login email/phone optional overrides). */
@@ -141,6 +142,7 @@ function companyProvisionFieldsFromLeadForm(form, overrides = {}) {
     instagram_url: String(form.instagram_url || '').trim(),
     linkedin_url: String(form.linkedin_url || '').trim(),
     contact_name: String(form.name || '').trim(),
+    electrical_license_number: '',
   };
 }
 
@@ -356,8 +358,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [companyHits, setCompanyHits] = useState([]);
   const [companySearchBusy, setCompanySearchBusy] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState(null);
-  const [newCompanyHits, setNewCompanyHits] = useState([]);
-  const [newCompanySearchBusy, setNewCompanySearchBusy] = useState(false);
   const [crmNotes, setCrmNotes] = useState([]);
   const [noteDraft, setNoteDraft] = useState(emptyNoteDraft());
   const [noteSaving, setNoteSaving] = useState(false);
@@ -565,31 +565,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   }, [companySearchQ, provisionMode, provisionModalOpen]);
 
   useEffect(() => {
-    if (!provisionModalOpen || provisionMode !== 'new') return undefined;
-    const q = provision.company_name?.trim() || '';
-    if (q.length < 2) {
-      setNewCompanyHits([]);
-      return undefined;
-    }
-    let cancelled = false;
-    const t = setTimeout(async () => {
-      setNewCompanySearchBusy(true);
-      try {
-        const res = await crmAPI.searchCompanies(q);
-        if (!cancelled) setNewCompanyHits(res.companies || []);
-      } catch {
-        if (!cancelled) setNewCompanyHits([]);
-      } finally {
-        if (!cancelled) setNewCompanySearchBusy(false);
-      }
-    }, 280);
-    return () => {
-      cancelled = true;
-      clearTimeout(t);
-    };
-  }, [provision.company_name, provisionMode, provisionModalOpen]);
-
-  useEffect(() => {
     const modalOpen = provisionModalOpen || newCompanyModalOpen;
     if (!modalOpen) return undefined;
     const onKey = (e) => {
@@ -619,7 +594,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     setSelectedCompany(null);
     setCompanySearchQ('');
     setCompanyHits([]);
-    setNewCompanyHits([]);
     setProvision(companyProvisionFieldsFromLeadForm(form));
     setProfileImportOpen(false);
     setNewCompanyModalOpen(false);
@@ -643,7 +617,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       setSelectedCompany(null);
       setCompanySearchQ('');
       setCompanyHits([]);
-      setNewCompanyHits([]);
       setProvision(
         companyProvisionFieldsFromLeadForm(form, { email: loginEmail, phone: loginPhone }),
       );
@@ -970,6 +943,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         payload.instagram_url = provision.instagram_url?.trim() || undefined;
         payload.linkedin_url = provision.linkedin_url?.trim() || undefined;
         payload.contact_name = provision.contact_name?.trim() || undefined;
+        payload.electrical_license_number = provision.electrical_license_number?.trim() || undefined;
       }
       await crmAPI.createCompanyAccount(payload);
       setProvision(emptyProvisionState());
@@ -977,7 +951,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       setCompanySearchQ('');
       setCompanyHits([]);
       setSelectedCompany(null);
-      setNewCompanyHits([]);
       setProvisionModalOpen(false);
       setAlertModal({
         isOpen: true,
@@ -4029,7 +4002,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         onClick={() => {
                           setProvisionMode('new');
                           setSelectedCompany(null);
-                          setNewCompanyHits([]);
                         }}
                         className={`px-3 py-2 rounded-lg text-sm font-medium border ${
                           provisionMode === 'new' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700'
@@ -4123,30 +4095,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       onChange={(e) => setProvision((p) => ({ ...p, company_name: e.target.value }))}
                       placeholder="Registered business or DBA"
                     />
-                    <div className="mt-2 border border-gray-200 rounded-lg max-h-40 overflow-auto bg-white">
-                      {newCompanySearchBusy ? (
-                        <div className="px-3 py-2 text-xs text-gray-500">Checking for possible duplicates…</div>
-                      ) : newCompanyHits.length === 0 ? (
-                        <div className="px-3 py-2 text-xs text-gray-500">No likely duplicates found.</div>
-                      ) : (
-                        newCompanyHits.map((cp) => (
-                          <button
-                            key={cp.id}
-                            type="button"
-                            className="w-full text-left px-3 py-2 border-b border-gray-100 last:border-b-0 hover:bg-amber-50"
-                            onClick={() => {
-                              setProvisionMode('existing');
-                              setSelectedCompany(cp);
-                              setCompanySearchQ(cp.company_name || `Company #${cp.id}`);
-                              setCompanyHits([]);
-                            }}
-                          >
-                            <div className="text-sm font-medium text-gray-900">{cp.company_name || `Company #${cp.id}`}</div>
-                            <div className="text-xs text-amber-700">Possible duplicate - {cp.company_users_count || 0} login account(s)</div>
-                          </button>
-                        ))
-                      )}
-                    </div>
                   </label>
                   <label className="block">
                     <span className="text-xs font-medium text-gray-500 uppercase">Industry</span>
@@ -4184,6 +4132,17 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         </option>
                       ))}
                     </select>
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Electrical license # (optional)</span>
+                    <input
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      value={provision.electrical_license_number}
+                      onChange={(e) =>
+                        setProvision((p) => ({ ...p, electrical_license_number: e.target.value }))
+                      }
+                      placeholder="TECL or other state license ID if you have it"
+                    />
                   </label>
                   <label className="block sm:col-span-2">
                     <span className="text-xs font-medium text-gray-500 uppercase">Website</span>

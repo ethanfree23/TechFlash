@@ -19,7 +19,6 @@ class CompanyProfile < ApplicationRecord
   has_many :favorite_technician_profiles, through: :favorite_technician_entries, source: :technician_profile
 
   validate :membership_level_must_be_configured
-  validate :state_and_license_requirements
   validates :phone, presence: true, on: :update
 
   def average_rating
@@ -59,46 +58,6 @@ class CompanyProfile < ApplicationRecord
   def normalize_state_and_license
     self.state = state.to_s.strip.presence
     self.electrical_license_number = electrical_license_number.to_s.strip.presence
-  end
-
-  def normalized_state_code
-    value = state.to_s.strip
-    return nil if value.blank?
-
-    state_map = {
-      "alabama" => "AL", "alaska" => "AK", "arizona" => "AZ", "arkansas" => "AR",
-      "california" => "CA", "colorado" => "CO", "connecticut" => "CT", "delaware" => "DE",
-      "florida" => "FL", "georgia" => "GA", "hawaii" => "HI", "idaho" => "ID",
-      "illinois" => "IL", "indiana" => "IN", "iowa" => "IA", "kansas" => "KS",
-      "kentucky" => "KY", "louisiana" => "LA", "maine" => "ME", "maryland" => "MD",
-      "massachusetts" => "MA", "michigan" => "MI", "minnesota" => "MN", "mississippi" => "MS",
-      "missouri" => "MO", "montana" => "MT", "nebraska" => "NE", "nevada" => "NV",
-      "new hampshire" => "NH", "new jersey" => "NJ", "new mexico" => "NM", "new york" => "NY",
-      "north carolina" => "NC", "north dakota" => "ND", "ohio" => "OH", "oklahoma" => "OK",
-      "oregon" => "OR", "pennsylvania" => "PA", "rhode island" => "RI", "south carolina" => "SC",
-      "south dakota" => "SD", "tennessee" => "TN", "texas" => "TX", "utah" => "UT",
-      "vermont" => "VT", "virginia" => "VA", "washington" => "WA", "west virginia" => "WV",
-      "wisconsin" => "WI", "wyoming" => "WY", "district of columbia" => "DC", "dc" => "DC"
-    }
-    upper = value.upcase
-    return upper if state_map.value?(upper)
-
-    state_map[value.downcase]
-  end
-
-  def requires_statewide_electrical_license?
-    code = normalized_state_code
-    return false if code.blank?
-
-    !PlatformSetting.local_only_license_state_codes.include?(code)
-  end
-
-  def state_and_license_requirements
-    return if state.blank?
-    return unless requires_statewide_electrical_license?
-    return if electrical_license_number.present?
-
-    errors.add(:electrical_license_number, "is required for companies in #{state}")
   end
 
   def membership_level_must_be_configured
