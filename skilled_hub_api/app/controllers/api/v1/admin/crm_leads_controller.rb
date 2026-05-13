@@ -18,7 +18,7 @@ module Api
               CrmNote.where(crm_lead_id: lead_ids).group(:crm_lead_id).count
             end
           render json: {
-            crm_leads: leads.map { |l| lead_json(l).merge(notes_count: notes_counts[l.id].to_i) }
+            crm_leads: leads.map { |l| lead_json(l, include_platform_users: false).merge(notes_count: notes_counts[l.id].to_i) }
           }, status: :ok
         end
 
@@ -182,7 +182,7 @@ module Api
             :linked_company_profile_id,
             company_types: [],
             contacts: [
-              :name, :email, :phone, :job_title, :extension,
+              :name, :email, :phone, :job_title, :extension, :linked_user_id,
               :instagram_url, :facebook_url, :linkedin_url,
               { same_as_company: %i[email phone socials] }
             ]
@@ -332,12 +332,19 @@ module Api
             end
             out["same_as_company"] = sac if sac.any? { |_, v| v }
           end
+
+          lid_raw = h["linked_user_id"] || h[:linked_user_id]
+          if lid_raw.present?
+            lid = lid_raw.to_i
+            out["linked_user_id"] = lid if lid.positive?
+          end
+
           out
         end
 
         def dedupe_contacts(contacts)
-          seen = {}
-          contacts.filter_map do |entry|
+          by_key = {}
+          contacts.each do |entry|
             compact = compact_contact_entry(entry)
             next unless compact
 
@@ -346,11 +353,16 @@ module Api
             phone_digits = compact["phone"].to_s.gsub(/\D/, "")
             phone_digits = phone_digits[-10, 10] if phone_digits.present?
             key = [name.to_s.downcase, email.to_s.downcase, phone_digits.to_s].join("|")
-            next if seen[key]
-
-            seen[key] = true
-            compact
+            prev = by_key[key]
+            if prev.nil?
+              by_key[key] = compact
+            else
+              prev_lid = prev["linked_user_id"].present?
+              new_lid = compact["linked_user_id"].present?
+              by_key[key] = compact if new_lid && !prev_lid
+            end
           end
+          by_key.values
         end
 
         def merge_text_notes(current_notes, selected_notes)
@@ -365,7 +377,22 @@ module Api
           CrmNote.where(crm_lead_id: source.id).update_all(crm_lead_id: target.id, updated_at: now)
         end
 
-        def lead_json(lead)
+        def platform_company_users_payload(lead)
+          cp = lead.linked_company_profile || lead.linked_user&.company_profile
+          return [] unless cp
+
+          User.where(company_profile_id: cp.id, role: :company).order(:id).map do |u|
+            {
+              id: u.id,
+              email: u.email,
+              first_name: u.first_name,
+              last_name: u.last_name,
+              phone: u.phone
+            }
+          end
+        end
+
+        def lead_json(lead, include_platform_users: true)
           lu = lead.linked_user
           linked_profile = lead.linked_company_profile || lu&.company_profile
           {
@@ -393,7 +420,8 @@ module Api
             linked_company_profile_id: linked_profile&.id,
             created_at: lead.created_at,
             updated_at: lead.updated_at,
-            linked_account: linked_account_json(lu, linked_profile)
+            linked_account: linked_account_json(lu, linked_profile),
+            platform_company_users: include_platform_users ? platform_company_users_payload(lead) : []
           }
         end
 

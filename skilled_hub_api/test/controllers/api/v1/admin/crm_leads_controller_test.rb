@@ -240,6 +240,71 @@ module Api
           assert_equal "office@updatefields.com", lead.company_email
           assert_equal "Regional HVAC partner.", lead.bio
         end
+
+        test "show includes platform_company_users when linked to company profile" do
+          admin = User.create!(
+            email: "admin+crm_show_users@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+
+          owner = User.create!(
+            email: "owner+crm_show_users@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :company
+          )
+          profile = CompanyProfile.create!(
+            user: owner,
+            company_name: "Show Users Co",
+            phone: "555-444-3333",
+            bio: "Test profile"
+          )
+          owner.update_column(:company_profile_id, profile.id)
+
+          second = User.create!(
+            email: "second+crm_show_users@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :company,
+            company_profile_id: profile.id
+          )
+
+          lead = CrmLead.create!(
+            name: "Show Users Co",
+            status: "lead",
+            linked_company_profile_id: profile.id,
+            linked_user_id: owner.id
+          )
+
+          get "/api/v1/admin/crm_leads/#{lead.id}", headers: auth_header_for(admin), as: :json
+
+          assert_response :ok
+          body = JSON.parse(response.body)
+          users = body.fetch("crm_lead").fetch("platform_company_users")
+          assert_equal 2, users.length
+          ids = users.map { |u| u.fetch("id") }.sort
+          assert_equal [owner.id, second.id].sort, ids
+        end
+
+        test "index crm_lead json omits platform user list for performance" do
+          admin = User.create!(
+            email: "admin+crm_index_users@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+
+          CrmLead.create!(name: "Index Co", status: "lead")
+
+          get "/api/v1/admin/crm_leads", headers: auth_header_for(admin), as: :json
+
+          assert_response :ok
+          body = JSON.parse(response.body)
+          row = body.fetch("crm_leads").find { |r| r.fetch("name") == "Index Co" }
+          assert_equal [], row.fetch("platform_company_users")
+        end
       end
     end
   end

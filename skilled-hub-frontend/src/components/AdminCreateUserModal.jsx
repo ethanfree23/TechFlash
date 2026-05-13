@@ -9,12 +9,14 @@ import { TRADE_OPTIONS } from '../constants/trades';
 /**
  * Same "Create user" flow as the Admin Users list page.
  * @param {null | { id: number, company_name?: string, company_users_count?: number }} presetCompanyProfile — when set, creates a company login on that profile only (simplified path).
- * @param {(detail: { kind: 'company_new'|'company_link'|'technician' }) => void} onCompleted — called after successful API create (modal already reset).
+ * @param {null | { name?: string, email?: string, phone?: string }} prefillContact — optional CRM row to prefill name/email/phone when opening the modal.
+ * @param {(detail: { kind: 'company_new'|'company_link'|'technician', createdUser?: object }) => void} onCompleted — called after successful API create (modal already reset).
  */
 export default function AdminCreateUserModal({
   isOpen,
   onClose,
   presetCompanyProfile = null,
+  prefillContact = null,
   onCompleted,
   onError,
 }) {
@@ -96,7 +98,7 @@ export default function AdminCreateUserModal({
       setCompanySearch('');
       setCompanyOptions([]);
     }
-    setCreateForm({
+    const baseForm = {
       email: '',
       first_name: '',
       last_name: '',
@@ -119,13 +121,31 @@ export default function AdminCreateUserModal({
       city: '',
       zip_code: '',
       country: '',
-    });
+    };
+    if (prefillContact && (prefillContact.name || prefillContact.email || prefillContact.phone)) {
+      const tokens = String(prefillContact.name || '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+      let first = '';
+      let last = '';
+      if (tokens.length === 1) first = tokens[0];
+      else if (tokens.length > 1) {
+        first = tokens[0];
+        last = tokens.slice(1).join(' ');
+      }
+      baseForm.email = String(prefillContact.email || '').trim();
+      baseForm.phone = formatPhoneInput(String(prefillContact.phone || '').trim());
+      baseForm.first_name = first;
+      baseForm.last_name = last;
+    }
+    setCreateForm(baseForm);
     setServiceCities([]);
     setSelectedIndustries([]);
     setLogoFile(null);
     setShowContactPassword(false);
     setShowTechPassword(false);
-  }, [isOpen, presetCompanyProfile]);
+  }, [isOpen, presetCompanyProfile, prefillContact]);
 
   useEffect(() => {
     if (!isOpen || createRole !== 'company' || !useExistingCompany || presetCompanyProfile?.id) {
@@ -244,7 +264,7 @@ export default function AdminCreateUserModal({
             setCreating(false);
             return;
           }
-          await adminUsersAPI.create({
+          const res = await adminUsersAPI.create({
             role: 'company',
             email,
             company_profile_id: effectiveCompany.id,
@@ -254,7 +274,7 @@ export default function AdminCreateUserModal({
             password: password || undefined,
             password_confirmation: passwordConfirmation || undefined,
           });
-          await resetAfterSuccess('company_link', { passwordSet: Boolean(password) });
+          await resetAfterSuccess('company_link', { passwordSet: Boolean(password), createdUser: res?.user });
         } else {
           if (!createForm.company_name?.trim() || !createForm.phone?.trim() || !createForm.bio?.trim()) {
             onError?.('Company name, phone number, and bio are required.');

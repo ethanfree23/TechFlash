@@ -10,8 +10,8 @@ import { useTableColumnPreferences } from '../hooks/useTableColumnPreferences';
 import { adminUsersTableId } from '../utils/tableColumnPrefs';
 
 const ROLE_TABS = [
-  { id: 'all', label: 'All' },
-  { id: 'company', label: 'Companies' },
+  { id: 'all', label: 'All accounts' },
+  { id: 'company', label: 'Company logins' },
   { id: 'technician', label: 'Technicians' },
 ];
 const COLUMN_STORAGE_KEY = 'admin-users-table-columns-v2';
@@ -249,7 +249,9 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
           <div className="min-w-0 flex-1">
             <h1 className="text-2xl font-semibold text-gray-900">Users</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Browse technicians and companies, or open analytics for any account.
+              One row per login account. Technicians and company contact logins are listed here; several employees at the
+              same company each appear as their own row when they have separate logins. Open a row for analytics and admin
+              actions.
             </p>
           </div>
           <button

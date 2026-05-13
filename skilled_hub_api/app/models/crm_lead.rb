@@ -2,7 +2,7 @@
 
 class CrmLead < ApplicationRecord
   CONTACT_ALLOWED_ROOT_KEYS = %w[
-    name email phone job_title extension
+    name email phone job_title extension linked_user_id
     instagram_url facebook_url linkedin_url same_as_company
   ].freeze
   SAME_AS_COMPANY_KEYS = %w[email phone socials].freeze
@@ -33,11 +33,41 @@ class CrmLead < ApplicationRecord
 
   validate :linked_target_must_be_company
   validate :contacts_must_be_supported
+  validate :contact_linked_users_must_match_company
 
   before_validation :normalize_company_types!
   before_validation :normalize_contacts!
 
   private
+
+  def resolved_company_profile_id_for_contacts
+    linked_company_profile_id.presence || linked_user&.company_profile&.id
+  end
+
+  def contact_linked_users_must_match_company
+    return if contacts.blank?
+
+    profile_id = resolved_company_profile_id_for_contacts
+    contacts.each_with_index do |raw, idx|
+      next unless raw.is_a?(Hash)
+
+      lid_raw = raw["linked_user_id"] || raw[:linked_user_id]
+      next if lid_raw.blank?
+
+      lid = lid_raw.to_i
+      next if lid <= 0
+
+      if profile_id.blank?
+        errors.add(:contacts, "entry #{idx + 1} cannot set linked_user_id before this CRM record is linked to a company")
+        next
+      end
+
+      u = User.find_by(id: lid)
+      unless u&.company? && u.company_profile_id == profile_id
+        errors.add(:contacts, "entry #{idx + 1} linked_user_id must be a company login for this CRM lead's company")
+      end
+    end
+  end
 
   def linked_target_must_be_company
     return if linked_user_id.blank? && linked_company_profile_id.blank?
@@ -166,6 +196,12 @@ class CrmLead < ApplicationRecord
           sac[k] = ActiveModel::Type::Boolean.new.cast(val)
         end
         out["same_as_company"] = sac if sac.any? { |_, v| v }
+      end
+
+      lid_raw = hash["linked_user_id"] || hash[:linked_user_id]
+      if lid_raw.present?
+        lid = lid_raw.to_i
+        out["linked_user_id"] = lid if lid.positive?
       end
 
       out

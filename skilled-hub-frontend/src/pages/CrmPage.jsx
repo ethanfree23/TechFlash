@@ -52,6 +52,7 @@ import CrmRightRail from '../components/crm/CrmRightRail';
 import PipelineStageTracker from '../components/crm/PipelineStageTracker';
 import CrmBioReadMore from '../components/crm/CrmBioReadMore';
 import { CrmStatusBadge, CompanyTypeBadges } from '../components/crm/CrmBadges';
+import AdminCreateUserModal from '../components/AdminCreateUserModal';
 import {
   FaBuilding,
   FaChartLine,
@@ -117,6 +118,11 @@ const normalizeContactEntry = (entry) => {
       ...(sameAs.socials ? { socials: true } : {}),
     };
   }
+  const lid = entry.linked_user_id ?? entry.linked_userId;
+  if (lid != null && lid !== '') {
+    const n = Number(lid);
+    if (Number.isFinite(n) && n > 0) out.linked_user_id = n;
+  }
   return out;
 };
 
@@ -132,6 +138,7 @@ const normalizeContactDraftEntry = (entry) => {
       facebook_url: '',
       linkedin_url: '',
       same_as_company: defaultSameAsCompany(),
+      linked_user_id: '',
     };
   }
   return {
@@ -144,6 +151,10 @@ const normalizeContactDraftEntry = (entry) => {
     facebook_url: String(entry.facebook_url || '').trim(),
     linkedin_url: String(entry.linkedin_url || '').trim(),
     same_as_company: normalizeSameAsCompany(entry.same_as_company),
+    linked_user_id:
+      entry?.linked_user_id != null && entry.linked_user_id !== ''
+        ? Number(entry.linked_user_id)
+        : '',
   };
 };
 
@@ -327,6 +338,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [crmHasPhoneFilter, setCrmHasPhoneFilter] = useState('all');
   const [timelineFilter, setTimelineFilter] = useState('all');
   const pendingAdditionalContactFocusIdx = useRef(null);
+  const crmAddUserContactIdxRef = useRef(null);
+  const [crmContactUserModalOpen, setCrmContactUserModalOpen] = useState(false);
+  const [crmAddUserPrefill, setCrmAddUserPrefill] = useState(null);
 
   const hydrateFormFromCrmLead = useCallback((c) => {
     if (!c) return;
@@ -646,6 +660,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         ...(sac.phone ? { phone: true } : {}),
         ...(sac.socials ? { socials: true } : {}),
       };
+    }
+    const lid = entry.linked_user_id ?? entry.linked_userId;
+    if (lid != null && lid !== '') {
+      const n = Number(lid);
+      if (Number.isFinite(n) && n > 0) row.linked_user_id = n;
     }
     return row;
   };
@@ -1592,6 +1611,93 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     job_title: '',
     extension: '',
   });
+  const platformCompanyUsers = useMemo(() => {
+    const list = c?.platform_company_users;
+    return Array.isArray(list) ? list : [];
+  }, [c?.platform_company_users]);
+
+  const crmContactsWithPlatformMatch = useMemo(() => {
+    const matchedIds = new Set();
+    const rows = displayContacts.map((contact, idx) => {
+      const resolved = resolveContactForDisplay(contact, form);
+      let platformUser = null;
+      const lid = contact.linked_user_id;
+      if (lid != null && lid !== '') {
+        const n = Number(lid);
+        if (Number.isFinite(n) && n > 0) {
+          platformUser = platformCompanyUsers.find((u) => u.id === n) || null;
+        }
+      }
+      if (!platformUser && resolved.email) {
+        const em = resolved.email.trim().toLowerCase();
+        platformUser = platformCompanyUsers.find((u) => u.email && String(u.email).trim().toLowerCase() === em) || null;
+      }
+      if (platformUser) matchedIds.add(platformUser.id);
+      return { contact, idx, resolved, platformUser };
+    });
+    const orphanPlatform = platformCompanyUsers.filter((u) => !matchedIds.has(u.id));
+    return { rows, orphanPlatform };
+  }, [displayContacts, form, platformCompanyUsers]);
+
+  const startAddCrmContactFromReadMode = useCallback(() => {
+    setForm((f) => {
+      const fb = { name: f.contact_name, email: f.email, phone: f.phone || '', job_title: '', extension: '' };
+      const contacts = editableContacts(f.contacts, fb);
+      const baseContacts = contacts.length > 0 ? contacts : [normalizeContactDraftEntry({})];
+      return { ...f, contacts: [...baseContacts, normalizeContactDraftEntry({})] };
+    });
+    setIsRecordEditing(true);
+    setTimeout(() => document.getElementById('crm-contacts-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+  }, []);
+
+  const openCreateCompanyLoginForContact = useCallback((idx, contact, resolved) => {
+    if (!form.linked_company_profile_id) return;
+    crmAddUserContactIdxRef.current = idx;
+    setCrmAddUserPrefill({
+      name: contact.name || '',
+      email: resolved.email || contact.email || '',
+      phone: resolved.phone || contact.phone || '',
+    });
+    setCrmContactUserModalOpen(true);
+  }, [form.linked_company_profile_id]);
+
+  const handleCrmContactUserModalCompleted = useCallback(
+    async ({ kind, createdUser }) => {
+      setCrmContactUserModalOpen(false);
+      setCrmAddUserPrefill(null);
+      if (kind !== 'company_link' || !createdUser?.id || selectedId == null) return;
+      const idx = crmAddUserContactIdxRef.current;
+      crmAddUserContactIdxRef.current = null;
+      if (idx == null || idx < 0) {
+        await loadDetail(selectedId);
+        return;
+      }
+      const fb = { name: form.contact_name, email: form.email, phone: form.phone || '', job_title: '', extension: '' };
+      const list = editableContacts(form.contacts, fb);
+      const nextList = list.map((row, i) =>
+        i === idx ? { ...row, linked_user_id: createdUser.id, email: row.email || createdUser.email || '' } : row,
+      );
+      const mergedForm = { ...form, contacts: nextList };
+      const base = normalizeContacts(nextList, fb);
+      const normalizedContacts = base.map((row) => resolveContactRowForPayload(row, mergedForm));
+      try {
+        await crmAPI.update(selectedId, {
+          name: form.name?.trim(),
+          contacts: normalizedContacts,
+        });
+        await loadDetail(selectedId);
+      } catch (e) {
+        setAlertModal({
+          isOpen: true,
+          title: 'Could not link contact',
+          message: e.message || 'Update failed',
+          variant: 'error',
+        });
+      }
+    },
+    [form, selectedId, loadDetail],
+  );
+
   const primaryContactDraft = displayContacts[0] || normalizeContactDraftEntry({});
   const primarySameAs = normalizeSameAsCompany(primaryContactDraft.same_as_company);
   const normalizedFormState = normalizeToUsStateName(form.state || '');
@@ -2495,7 +2601,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         <span className="text-sm font-semibold text-gray-900">Contacts &amp; platform users</span>
                       </button>
                       {crmUsersSectionOpen && (
-                        <div className="px-4 pb-4 pt-2 border-t border-gray-100 space-y-4 bg-slate-50/30">
+                        <div id="crm-contacts-editor" className="px-4 pb-4 pt-2 border-t border-gray-100 space-y-4 bg-slate-50/30">
                           <div className="rounded-lg border border-gray-200 p-3 bg-white space-y-3">
                             <div className="text-xs font-semibold text-gray-500 uppercase">Primary contact</div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -2869,93 +2975,184 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         <FaChevronDown className="text-gray-500 w-3.5 h-3.5 shrink-0" />
                         Contacts &amp; platform users
                       </summary>
-                      <div className="px-4 pb-4 pt-2 border-t border-slate-100 bg-white">
-                      {displayContacts.length === 0 ? (
-                        <div className="text-sm text-gray-500">No contacts yet.</div>
-                      ) : (
-                        <div className="space-y-2">
-                          {displayContacts.map((contact, idx) => {
-                            const resolved = resolveContactForDisplay(contact, form);
-                            const sac = resolved.same_as_company;
-                            const flags = [sac.email && 'company email', sac.phone && 'company phone', sac.socials && 'company socials']
-                              .filter(Boolean)
-                              .join(', ');
-                            return (
-                              <details
-                                key={`view-contact-${idx}`}
-                                className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
-                                open={idx === 0}
-                              >
-                                <summary className="cursor-pointer text-sm font-medium text-gray-900">
-                                  {contact.name || `Contact ${idx + 1}`}
-                                </summary>
-                                <div className="mt-2 space-y-2 text-sm">
-                                  {flags ? (
-                                    <div className="text-xs text-gray-500">Uses {flags}.</div>
-                                  ) : null}
-                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                    <div>
-                                      <span className="text-gray-500">Email:</span>{' '}
-                                      {resolved.email ? (
-                                        <a href={`mailto:${resolved.email}`} className="text-blue-700 hover:underline break-all">
-                                          {resolved.email}
-                                        </a>
-                                      ) : (
-                                        '—'
-                                      )}
-                                    </div>
-                                    <div>
-                                      <span className="text-gray-500">Phone:</span> {resolved.phone || '—'}
-                                    </div>
-                                    {contact.job_title ? (
-                                      <div>
-                                        <span className="text-gray-500">Job title:</span> {contact.job_title}
-                                      </div>
-                                    ) : null}
-                                    {contact.extension ? (
-                                      <div>
-                                        <span className="text-gray-500">Extension:</span> {contact.extension}
-                                      </div>
-                                    ) : null}
-                                  </div>
-                                  <div className="grid grid-cols-1 gap-1 text-sm">
-                                    <div>
-                                      <span className="text-gray-500">Instagram:</span>{' '}
-                                      {resolved.instagram_url ? (
-                                        <a href={resolved.instagram_url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all">
-                                          {resolved.instagram_url}
-                                        </a>
-                                      ) : (
-                                        '—'
-                                      )}
-                                    </div>
-                                    <div>
-                                      <span className="text-gray-500">Facebook:</span>{' '}
-                                      {resolved.facebook_url ? (
-                                        <a href={resolved.facebook_url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all">
-                                          {resolved.facebook_url}
-                                        </a>
-                                      ) : (
-                                        '—'
-                                      )}
-                                    </div>
-                                    <div>
-                                      <span className="text-gray-500">LinkedIn:</span>{' '}
-                                      {resolved.linkedin_url ? (
-                                        <a href={resolved.linkedin_url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all">
-                                          {resolved.linkedin_url}
-                                        </a>
-                                      ) : (
-                                        '—'
-                                      )}
-                                    </div>
-                                  </div>
-                                </div>
-                              </details>
-                            );
-                          })}
+                      <div className="px-4 pb-4 pt-2 border-t border-slate-100 bg-white" id="crm-contacts-section">
+                        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                          <p className="text-xs text-gray-500 max-w-xl">
+                            {form.linked_company_profile_id
+                              ? 'CRM contacts and live company logins for this linked account.'
+                              : 'CRM contacts. Link this record to a company to create additional platform logins from here.'}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={startAddCrmContactFromReadMode}
+                            className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50"
+                          >
+                            <FaPlus className="h-3 w-3" aria-hidden />
+                            Add contact
+                          </button>
                         </div>
-                      )}
+                        {crmContactsWithPlatformMatch.rows.length === 0 &&
+                        crmContactsWithPlatformMatch.orphanPlatform.length === 0 ? (
+                          <div className="text-sm text-gray-500">No contacts yet.</div>
+                        ) : (
+                          <div className="space-y-2">
+                            {crmContactsWithPlatformMatch.rows.map(({ contact, idx, resolved, platformUser }) => {
+                              const sac = resolved.same_as_company;
+                              const flags = [sac.email && 'company email', sac.phone && 'company phone', sac.socials && 'company socials']
+                                .filter(Boolean)
+                                .join(', ');
+                              const displayName =
+                                [platformUser?.first_name, platformUser?.last_name].filter(Boolean).join(' ').trim() ||
+                                contact.name ||
+                                `Contact ${idx + 1}`;
+                              return (
+                                <details
+                                  key={`view-contact-${idx}`}
+                                  className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
+                                  open={idx === 0}
+                                >
+                                  <summary className="list-none cursor-pointer flex flex-wrap items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+                                    <span className="text-sm font-medium text-gray-900 min-w-0 break-words">{displayName}</span>
+                                    <span className="flex flex-wrap items-center gap-2 shrink-0">
+                                      {platformUser ? (
+                                        <Link
+                                          to={`/admin/users/${platformUser.id}`}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="text-xs font-semibold text-blue-700 hover:underline"
+                                        >
+                                          User profile
+                                        </Link>
+                                      ) : (
+                                        <span className="text-xs font-medium text-amber-800 bg-amber-50 border border-amber-200 rounded px-2 py-0.5">
+                                          No platform login
+                                        </span>
+                                      )}
+                                    </span>
+                                  </summary>
+                                  <div className="mt-2 space-y-2 text-sm">
+                                    {flags ? <div className="text-xs text-gray-500">Uses {flags}.</div> : null}
+                                    {contact.name && contact.name !== displayName ? (
+                                      <div className="text-xs text-gray-600">
+                                        CRM name: <span className="font-medium text-gray-800">{contact.name}</span>
+                                      </div>
+                                    ) : null}
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                      <div>
+                                        <span className="text-gray-500">Email:</span>{' '}
+                                        {resolved.email ? (
+                                          <a href={`mailto:${resolved.email}`} className="text-blue-700 hover:underline break-words">
+                                            {resolved.email}
+                                          </a>
+                                        ) : (
+                                          '—'
+                                        )}
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-500">Phone:</span> {resolved.phone || '—'}
+                                      </div>
+                                      {contact.job_title ? (
+                                        <div>
+                                          <span className="text-gray-500">Job title:</span> {contact.job_title}
+                                        </div>
+                                      ) : null}
+                                      {contact.extension ? (
+                                        <div>
+                                          <span className="text-gray-500">Extension:</span> {contact.extension}
+                                        </div>
+                                      ) : null}
+                                    </div>
+                                    {!platformUser && form.linked_company_profile_id ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => openCreateCompanyLoginForContact(idx, contact, resolved)}
+                                        className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+                                      >
+                                        <FaUserPlus className="h-3 w-3" aria-hidden />
+                                        Create company login
+                                      </button>
+                                    ) : null}
+                                    {!platformUser && !form.linked_company_profile_id ? (
+                                      <p className="text-xs text-gray-500">
+                                        Link this CRM record to a company (below) to create a platform login for this person.
+                                      </p>
+                                    ) : null}
+                                    <div className="grid grid-cols-1 gap-1 text-sm">
+                                      <div>
+                                        <span className="text-gray-500">Instagram:</span>{' '}
+                                        {resolved.instagram_url ? (
+                                          <a
+                                            href={resolved.instagram_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-blue-700 hover:underline break-all"
+                                          >
+                                            {resolved.instagram_url}
+                                          </a>
+                                        ) : (
+                                          '—'
+                                        )}
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-500">Facebook:</span>{' '}
+                                        {resolved.facebook_url ? (
+                                          <a
+                                            href={resolved.facebook_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-blue-700 hover:underline break-all"
+                                          >
+                                            {resolved.facebook_url}
+                                          </a>
+                                        ) : (
+                                          '—'
+                                        )}
+                                      </div>
+                                      <div>
+                                        <span className="text-gray-500">LinkedIn:</span>{' '}
+                                        {resolved.linkedin_url ? (
+                                          <a
+                                            href={resolved.linkedin_url}
+                                            target="_blank"
+                                            rel="noreferrer"
+                                            className="text-blue-700 hover:underline break-all"
+                                          >
+                                            {resolved.linkedin_url}
+                                          </a>
+                                        ) : (
+                                          '—'
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                </details>
+                              );
+                            })}
+                            {crmContactsWithPlatformMatch.orphanPlatform.map((u) => (
+                              <div
+                                key={`orphan-platform-${u.id}`}
+                                className="rounded-lg border border-dashed border-slate-300 bg-slate-50/80 px-3 py-2"
+                              >
+                                <div className="text-[11px] font-semibold text-gray-500 uppercase mb-1">
+                                  Company login (not in CRM contacts)
+                                </div>
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="min-w-0">
+                                    <div className="text-sm font-medium text-gray-900 break-words">
+                                      {[u.first_name, u.last_name].filter(Boolean).join(' ') || u.email || `User #${u.id}`}
+                                    </div>
+                                    <div className="text-xs text-gray-600 break-all">{u.email}</div>
+                                  </div>
+                                  <Link
+                                    to={`/admin/users/${u.id}`}
+                                    className="text-xs font-semibold text-blue-700 hover:underline shrink-0"
+                                  >
+                                    User profile
+                                  </Link>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </details>
                   </div>
@@ -4502,6 +4699,34 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           </div>
         ) : null}
       </main>
+
+      <AdminCreateUserModal
+        isOpen={crmContactUserModalOpen}
+        onClose={() => {
+          setCrmContactUserModalOpen(false);
+          setCrmAddUserPrefill(null);
+          crmAddUserContactIdxRef.current = null;
+        }}
+        presetCompanyProfile={
+          form.linked_company_profile_id
+            ? {
+                id: form.linked_company_profile_id,
+                company_name: form.name,
+                company_users_count: platformCompanyUsers.length,
+              }
+            : null
+        }
+        prefillContact={crmAddUserPrefill}
+        onCompleted={handleCrmContactUserModalCompleted}
+        onError={(msg) =>
+          setAlertModal({
+            isOpen: true,
+            title: 'Create user',
+            message: msg,
+            variant: 'error',
+          })
+        }
+      />
 
       <AlertModal
         isOpen={alertModal.isOpen}
