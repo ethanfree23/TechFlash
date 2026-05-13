@@ -133,7 +133,7 @@ module Api
         assert_match(/77007/i, profile.location.to_s)
       end
 
-      test "company signup in statewide-license state requires electrical license number" do
+      test "company signup allows missing electrical license number in statewide-license state" do
         post "/api/v1/users",
              params: base_signup_params(
                email: "company-california-no-license@example.com",
@@ -144,10 +144,11 @@ module Api
              ),
              as: :json
 
-        assert_response :unprocessable_entity
-        body = JSON.parse(response.body)
-        error_text = Array(body["errors"]).join(" ")
-        assert_match(/electrical license number/i, error_text)
+        assert_response :created
+        user = User.find_by!(email: "company-california-no-license@example.com")
+        profile = user.company_profile
+        assert_not_nil profile
+        assert_nil profile.electrical_license_number
       end
 
       test "company signup in local-license state does not require electrical license number" do
