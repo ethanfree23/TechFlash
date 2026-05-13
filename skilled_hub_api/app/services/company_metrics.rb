@@ -32,6 +32,8 @@ class CompanyMetrics
       .uniq
       .count
 
+    jobs_created_by_day = DashboardTrends.counts_per_day_by_created_at(jobs)
+
     {
       total_spent_cents: total_spent_cents,
       jobs_posted: jobs.count,
@@ -40,7 +42,8 @@ class CompanyMetrics
       jobs_expired: expired_open.count,
       jobs_active: active_jobs.count,
       unique_technicians_hired: unique_technicians,
-      total_jobs: jobs.count
+      total_jobs: jobs.count,
+      jobs_created_by_day: jobs_created_by_day
     }
   end
 
@@ -53,7 +56,8 @@ class CompanyMetrics
       jobs_expired: 0,
       jobs_active: 0,
       unique_technicians_hired: 0,
-      total_jobs: 0
+      total_jobs: 0,
+      jobs_created_by_day: DashboardTrends.counts_per_day_by_created_at(Job.none)
     }
   end
 end

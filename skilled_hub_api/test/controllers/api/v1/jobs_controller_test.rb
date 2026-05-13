@@ -6,7 +6,8 @@ module Api
       include AuthTestHelper
 
       def reset_technician_tier_rules!(overrides = {})
-        MembershipTierConfig.delete_all
+        # Preserve company tier rows — deleting all audiences breaks company pricing and can skew API behavior.
+        MembershipTierConfig.where(audience: "technician").delete_all
         MembershipTierConfig.create!({
           audience: "technician",
           slug: "basic",
@@ -794,6 +795,100 @@ module Api
         ids = JSON.parse(response.body).map { |row| row["id"] }
         assert_includes ids, eligible_job.id
         assert_not_includes ids, ineligible_job.id
+      end
+
+      test "premium technician excluded from open index until experience_years meets job minimum_years_experience" do
+        MembershipTierConfig.where(audience: "technician").delete_all
+        MembershipTierConfig.create!(
+          audience: "technician",
+          slug: "premium",
+          display_name: "Premium",
+          monthly_fee_cents: 24_900,
+          commission_percent: 10,
+          early_access_delay_hours: 0,
+          job_access_min_experience_years: 0,
+          job_access_min_jobs_completed: 0,
+          job_access_min_successful_jobs: 0,
+          job_access_min_profile_completeness_percent: 0,
+          job_access_requires_verified_background: false,
+          sort_order: 0
+        )
+        MembershipTierConfig.create!(
+          audience: "technician",
+          slug: "pro",
+          display_name: "Pro",
+          monthly_fee_cents: 4900,
+          commission_percent: 20,
+          early_access_delay_hours: 12,
+          job_access_min_experience_years: 0,
+          sort_order: 1
+        )
+        MembershipTierConfig.create!(
+          audience: "technician",
+          slug: "basic",
+          display_name: "Basic",
+          monthly_fee_cents: 0,
+          commission_percent: 20,
+          early_access_delay_hours: 24,
+          job_access_min_experience_years: 0,
+          sort_order: 2
+        )
+        MembershipPolicy.invalidate_cache!
+
+        company_user = User.create!(
+          email: "company-premium-exp-gate@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        company_profile = CompanyProfile.create!(
+          user: company_user,
+          membership_level: "basic"
+        )
+        company_user.update_column(:company_profile_id, company_profile.id)
+
+        job = Job.create!(
+          company_profile: company_profile,
+          title: "Electrician five plus years",
+          description: "desc",
+          status: :open,
+          minimum_years_experience: 5,
+          go_live_at: 1.hour.ago,
+          scheduled_start_at: 12.hours.from_now,
+          scheduled_end_at: 14.hours.from_now
+        )
+
+        technician_user = User.create!(
+          email: "premium-tech-exp-gate@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        TechnicianProfile.create!(
+          user: technician_user,
+          trade_type: "Electrician",
+          availability: "Full-time",
+          membership_level: "premium",
+          experience_years: 1
+        )
+
+        get "/api/v1/jobs",
+            params: { status: "open", include_past: "true" },
+            headers: auth_header_for(technician_user).merge("Accept" => "application/json")
+
+        assert_response :ok
+        ids = JSON.parse(response.body).map { |row| row["id"] }
+        assert_not_includes ids, job.id
+
+        technician_user.technician_profile.update_column(:experience_years, 5)
+
+        get "/api/v1/jobs",
+            params: { status: "open", include_past: "true" },
+            headers: auth_header_for(technician_user).merge("Accept" => "application/json")
+
+        assert_response :ok
+        ids = JSON.parse(response.body).map { |row| row["id"] }
+        assert_includes ids, job.id
       end
     end
   end

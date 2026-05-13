@@ -9,7 +9,8 @@ import {
   haversineMiles,
   needsTechnicianMapSetup,
 } from '../utils/technicianMap';
-import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen, FaDollarSign, FaStar, FaChartLine, FaUsers, FaUserCog, FaBuilding, FaCommentDots } from 'react-icons/fa';
+import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen, FaBuilding, FaCommentDots } from 'react-icons/fa';
+import { AdminPlatformCharts, CompanyAnalyticsCharts, TechnicianAnalyticsCharts } from '../components/dashboard/RoleDashboardCharts';
 
 // open, claimed (filled but not started), active (in progress), completed, expired
 const statusLabel = (job) => {
@@ -424,9 +425,6 @@ const Dashboard = ({ user, onLogout }) => {
           const endAt = job?.scheduled_end_at ? new Date(job.scheduled_end_at).getTime() : null;
           return endAt == null || endAt >= now;
         });
-        // #region agent log
-        fetch('http://127.0.0.1:7260/ingest/d67e1fb9-af7e-4677-9ae6-ba8bb7fc57ed',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f0f940'},body:JSON.stringify({sessionId:'f0f940',runId:'initial',hypothesisId:'H1',location:'Dashboard.jsx:fetchDashboard-technician',message:'technician open jobs payload summary',data:{openJobsCount:Array.isArray(openJobsRes)?openJobsRes.length:-1,liveOpenJobsCount:liveOpenJobs.length,sample:(liveOpenJobs||[]).slice(0,3).map((j)=>({id:j?.id,title:j?.title,lat:j?.latitude,lng:j?.longitude,location:j?.location,address:j?.address}))},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         setJobs(jobsRes);
         setOpenJobs(liveOpenJobs);
         setTechnicianProfile(technicianProfileRes);
@@ -567,97 +565,10 @@ const AdminDashboardContent = ({ analytics, feedbackList }) => {
     setInsightCategory((prev) => (prev === cat ? null : cat));
   };
 
-  const ringIf = (cat) => (insightCategory === cat ? 'ring-2 ring-blue-500 ring-offset-2' : '');
-
   return (
   <>
     <h2 className="text-xl font-semibold text-gray-800 mb-6">Platform Overview</h2>
-    {analytics && (
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4 mb-8">
-        <button
-          type="button"
-          onClick={() => toggleInsight('total_users')}
-          className={`text-left bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-2xl shadow-lg p-5 text-white ${ringIf('total_users')} hover:brightness-105 transition`}
-        >
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="text-indigo-100 text-sm font-medium">Total Users</p>
-              <p className="text-2xl font-bold mt-1">{analytics.total_users ?? 0}</p>
-              <p className="text-indigo-200/90 text-xs mt-2">Click for list and metrics</p>
-            </div>
-            <FaUsers className="text-3xl text-indigo-200/80" />
-          </div>
-        </button>
-        <button
-          type="button"
-          onClick={() => toggleInsight('technicians')}
-          className={`text-left bg-white rounded-2xl shadow flex flex-col justify-center p-5 border-l-4 border-blue-500 ${ringIf('technicians')} hover:shadow-md transition`}
-        >
-          <div className="flex items-center gap-2">
-            <FaUserCog className="text-blue-500" />
-            <div>
-              <p className="text-gray-500 text-sm font-medium">Technicians</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1">{analytics.technicians_count ?? 0}</p>
-            </div>
-          </div>
-        </button>
-        <button
-          type="button"
-          onClick={() => toggleInsight('companies')}
-          className={`text-left bg-white rounded-2xl shadow flex flex-col justify-center p-5 border-l-4 border-amber-500 ${ringIf('companies')} hover:shadow-md transition`}
-        >
-          <div className="flex items-center gap-2">
-            <FaBuilding className="text-amber-500" />
-            <div>
-              <p className="text-gray-500 text-sm font-medium">Companies</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1">{analytics.companies_count ?? 0}</p>
-            </div>
-          </div>
-        </button>
-        <button
-          type="button"
-          onClick={() => toggleInsight('total_jobs')}
-          className={`text-left bg-white rounded-2xl shadow flex flex-col justify-center p-5 border-l-4 border-teal-500 ${ringIf('total_jobs')} hover:shadow-md transition`}
-        >
-          <p className="text-gray-500 text-sm font-medium">Total Jobs</p>
-          <p className="text-2xl font-bold text-gray-800 mt-1">{analytics.total_jobs ?? 0}</p>
-        </button>
-        <button
-          type="button"
-          onClick={() => toggleInsight('job_applications')}
-          className={`text-left bg-white rounded-2xl shadow flex flex-col justify-center p-5 border-l-4 border-emerald-500 ${ringIf('job_applications')} hover:shadow-md transition`}
-        >
-          <p className="text-gray-500 text-sm font-medium">Job Applications</p>
-          <p className="text-2xl font-bold text-gray-800 mt-1">{analytics.total_job_applications ?? 0}</p>
-        </button>
-      </div>
-    )}
-    <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-      <button
-        type="button"
-        onClick={() => toggleInsight('open_jobs')}
-        className={`text-left bg-white rounded-2xl shadow p-5 border-l-4 border-blue-400 ${ringIf('open_jobs')} hover:shadow-md transition`}
-      >
-        <p className="text-gray-500 text-sm font-medium">Open Jobs</p>
-        <p className="text-2xl font-bold text-gray-800 mt-1">{analytics?.jobs_open ?? 0}</p>
-      </button>
-      <button
-        type="button"
-        onClick={() => toggleInsight('jobs_in_progress')}
-        className={`text-left bg-white rounded-2xl shadow p-5 border-l-4 border-yellow-400 ${ringIf('jobs_in_progress')} hover:shadow-md transition`}
-      >
-        <p className="text-gray-500 text-sm font-medium">In Progress</p>
-        <p className="text-2xl font-bold text-gray-800 mt-1">{analytics?.jobs_in_progress ?? 0}</p>
-      </button>
-      <button
-        type="button"
-        onClick={() => toggleInsight('completed')}
-        className={`text-left bg-white rounded-2xl shadow p-5 border-l-4 border-green-400 ${ringIf('completed')} hover:shadow-md transition`}
-      >
-        <p className="text-gray-500 text-sm font-medium">Completed</p>
-        <p className="text-2xl font-bold text-gray-800 mt-1">{analytics?.jobs_finished ?? 0}</p>
-      </button>
-    </div>
+    <AdminPlatformCharts analytics={analytics} insightCategory={insightCategory} onOpenInsight={toggleInsight} />
 
     {insightCategory && (
       <section className="mt-8 bg-white rounded-2xl shadow border border-gray-100 p-5 sm:p-6">
@@ -1067,9 +978,6 @@ const TechnicianOpenJobsMap = ({
       const hasFallback = Number.isFinite(Number(fallbackCoordsByJobId[job?.id]?.lat)) && Number.isFinite(Number(fallbackCoordsByJobId[job?.id]?.lng));
       return !hasCoords && !hasFallback;
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7260/ingest/d67e1fb9-af7e-4677-9ae6-ba8bb7fc57ed',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f0f940'},body:JSON.stringify({sessionId:'f0f940',runId:'initial',hypothesisId:'H2',location:'Dashboard.jsx:TechnicianOpenJobsMap-geocodeEffect',message:'geocode fallback eligibility',data:{mapsReady,jobsCount:(jobs||[]).length,needsResolutionCount:needsResolution.length,sample:(needsResolution||[]).slice(0,3).map((j)=>({id:j?.id,title:j?.title,location:j?.location,address:j?.address,city:j?.city,state:j?.state}))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     if (!needsResolution.length) return;
 
     const geocoder = new window.google.maps.Geocoder();
@@ -1091,9 +999,6 @@ const TechnicianOpenJobsMap = ({
       geocodeInFlightRef.current.add(query);
       geocoder.geocode({ address: query, region: 'us', componentRestrictions: { country: 'US' } }, (results, status) => {
         if (cancelled) return;
-        // #region agent log
-        fetch('http://127.0.0.1:7260/ingest/d67e1fb9-af7e-4677-9ae6-ba8bb7fc57ed',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f0f940'},body:JSON.stringify({sessionId:'f0f940',runId:'initial',hypothesisId:'H3',location:'Dashboard.jsx:TechnicianOpenJobsMap-geocodeCallback',message:'geocode callback result',data:{jobId:job?.id,status,hasResult:Boolean(results?.[0]?.geometry?.location),queryPreview:query.slice(0,120)},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
         if (status !== 'OK' || !results?.[0]?.geometry?.location) {
           geocodeCacheRef.current.set(query, null);
           geocodeInFlightRef.current.delete(query);
@@ -1204,9 +1109,6 @@ const TechnicianOpenJobsMap = ({
       });
       markersRef.current.push(marker);
     });
-    // #region agent log
-    fetch('http://127.0.0.1:7260/ingest/d67e1fb9-af7e-4677-9ae6-ba8bb7fc57ed',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f0f940'},body:JSON.stringify({sessionId:'f0f940',runId:'initial',hypothesisId:'H4',location:'Dashboard.jsx:TechnicianOpenJobsMap-markerEffect',message:'marker render summary',data:{mapsReady,normalizedJobsCount:normalizedJobs.length,selectedMapJobId,markerCount:markersRef.current.length,homeLatLngPresent:Boolean(homeLatLng),sample:(normalizedJobs||[]).slice(0,3).map((j)=>({id:j.id,lat:j.latitude,lng:j.longitude}))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     const DEFAULT_VIEW_RADIUS_MI = 100;
     if (homeLatLng) {
@@ -1344,40 +1246,7 @@ const CompanyDashboardContent = ({ jobs, analytics, onFinish, onRefresh, navigat
         </div>
       )}
       {/* Analytics Section */}
-      {analytics && (
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <FaChartLine className="text-blue-600" /> Analytics
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-            <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl shadow-lg p-5 text-white">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-emerald-100 text-sm font-medium">Total Spent</p>
-                  <p className="text-2xl font-bold mt-1">{formatCurrency(analytics.total_spent_cents)}</p>
-                </div>
-                <FaDollarSign className="text-3xl text-emerald-200/80" />
-              </div>
-            </div>
-            <div className="bg-white rounded-2xl shadow flex flex-col justify-center p-5 border-l-4 border-blue-500">
-              <p className="text-gray-500 text-sm font-medium">Jobs Completed</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1">{analytics.jobs_completed ?? completedCount}</p>
-            </div>
-            <div className="bg-white rounded-2xl shadow flex flex-col justify-center p-5 border-l-4 border-amber-500">
-              <p className="text-gray-500 text-sm font-medium">Technicians Hired</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1">{analytics.unique_technicians_hired ?? 0}</p>
-            </div>
-            <div className="bg-white rounded-2xl shadow flex flex-col justify-center p-5 border-l-4 border-indigo-500">
-              <p className="text-gray-500 text-sm font-medium">Total Jobs Posted</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1">{analytics.jobs_posted ?? allJobs.length}</p>
-            </div>
-            <div className="bg-white rounded-2xl shadow flex flex-col justify-center p-5 border-l-4 border-teal-500">
-              <p className="text-gray-500 text-sm font-medium">Active Jobs</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1">{analytics.jobs_active ?? activeCount}</p>
-            </div>
-          </div>
-        </div>
-      )}
+      {analytics && <CompanyAnalyticsCharts analytics={analytics} />}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
         <Link
@@ -1557,12 +1426,6 @@ const TechnicianDashboardContent = ({ jobs, openJobs, technicianProfile, analyti
     setMapPanNonce((n) => n + 1);
   };
 
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7260/ingest/d67e1fb9-af7e-4677-9ae6-ba8bb7fc57ed',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'f0f940'},body:JSON.stringify({sessionId:'f0f940',runId:'initial',hypothesisId:'H5',location:'Dashboard.jsx:TechnicianDashboardContent-nearbyJobs',message:'nearby jobs computed',data:{openJobsCount:(openJobs||[]).length,nearbyOpenJobsCount:nearbyOpenJobs.length,selectedMapJobId,technicianLat,technicianLng,sample:(nearbyOpenJobs||[]).slice(0,3).map((j)=>({id:j?.id,title:j?.title,distanceMiles:j?.distanceMiles,lat:j?.latitude,lng:j?.longitude}))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-  }, [openJobs, nearbyOpenJobs, selectedMapJobId, technicianLat, technicianLng]);
-
   return (
     <>
       <TechnicianNearbyJobPreviewModal
@@ -1602,8 +1465,9 @@ const TechnicianDashboardContent = ({ jobs, openJobs, technicianProfile, analyti
             />
             {openJobs.length === 0 && (
               <div className="pointer-events-none absolute inset-x-0 top-4 flex justify-center px-4">
-                <div className="rounded-full bg-slate-900/45 text-white text-xs sm:text-sm px-4 py-2 backdrop-blur-[1px]">
-                  No jobs available in your area right now
+                <div className="rounded-full bg-slate-900/45 text-white text-xs sm:text-sm px-4 py-2 backdrop-blur-[1px] max-w-md text-center leading-snug">
+                  No open jobs match your account yet (not only distance—tier timing, experience vs. each job, and profile
+                  rules apply)
                 </div>
               </div>
             )}
@@ -1623,8 +1487,9 @@ const TechnicianDashboardContent = ({ jobs, openJobs, technicianProfile, analyti
               </span>
             </div>
             <p className="text-sm text-gray-600 mb-4">
-              Open listings here refresh every 30 seconds without reloading the rest of the dashboard. We prioritize jobs within{' '}
-              {searchRadiusMiles} miles of your profile.
+              Open listings refresh every 30 seconds. Jobs are filtered server-side by membership rules (including experience
+              vs. each posting); we then prioritize pins within {searchRadiusMiles} miles of your profile when coordinates are
+              available.
             </p>
             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
               {mapDisplayJobs.map((job) => (
@@ -1648,61 +1513,26 @@ const TechnicianDashboardContent = ({ jobs, openJobs, technicianProfile, analyti
                   </div>
                 </button>
               ))}
-              {!mapDisplayJobs.length && <p className="text-sm text-gray-500">No open jobs available right now.</p>}
+              {!mapDisplayJobs.length && (
+                <div className="text-sm text-gray-500 space-y-2">
+                  <p>No open jobs to show on the map right now.</p>
+                  <p className="text-xs text-gray-500">
+                    If the jobs board looks quiet but companies have postings, confirm your years of experience and profile in
+                    Settings meet each listing&apos;s requirements. Premium speeds tier timing—it does not skip job minimum
+                    experience.
+                  </p>
+                  <Link to="/settings" className="inline-block text-xs font-medium text-blue-700 hover:underline">
+                    Open Settings
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         </div>
       </section>
 
       {/* Analytics Section */}
-      {analytics && (
-        <div className="mb-8">
-          <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center gap-2">
-            <FaChartLine className="text-blue-600" /> Analytics
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
-            <div className="bg-gradient-to-br from-emerald-500 to-emerald-700 rounded-2xl shadow-lg p-5 text-white">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-emerald-100 text-sm font-medium">Total Earned</p>
-                  <p className="text-2xl font-bold mt-1">{formatCurrency(analytics.total_earned_cents)}</p>
-                </div>
-                <FaDollarSign className="text-3xl text-emerald-200/80" />
-              </div>
-            </div>
-            <div className="bg-white rounded-2xl shadow flex flex-col justify-center p-5 border-l-4 border-amber-500">
-              <p className="text-gray-500 text-sm font-medium">Pending Earnings</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1">{formatCurrency(analytics.pending_earned_cents)}</p>
-            </div>
-            <div className="bg-white rounded-2xl shadow flex flex-col justify-center p-5 border-l-4 border-cyan-500">
-              <p className="text-gray-500 text-sm font-medium">Earned (7 days)</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1">{formatCurrency(analytics.earned_this_week_cents)}</p>
-            </div>
-            <div className="bg-white rounded-2xl shadow flex flex-col justify-center p-5 border-l-4 border-blue-500">
-              <p className="text-gray-500 text-sm font-medium">Jobs Completed</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1">{analytics.jobs_completed ?? completed.length}</p>
-            </div>
-            <div className="bg-white rounded-2xl shadow flex flex-col justify-center p-5 border-l-4 border-indigo-500">
-              <div className="flex items-center gap-2">
-                <FaStar className="text-amber-500" />
-                <div>
-                  <p className="text-gray-500 text-sm font-medium">Average Rating</p>
-                  <p className="text-2xl font-bold text-gray-800 mt-1">
-                    {analytics.average_rating != null ? `${Number(analytics.average_rating).toFixed(1)} / 5` : '—'}
-                  </p>
-                </div>
-              </div>
-              {analytics.reviews_count > 0 && (
-                <p className="text-xs text-gray-500 mt-1">{analytics.reviews_count} review{analytics.reviews_count !== 1 ? 's' : ''}</p>
-              )}
-            </div>
-            <div className="bg-white rounded-2xl shadow flex flex-col justify-center p-5 border-l-4 border-teal-500">
-              <p className="text-gray-500 text-sm font-medium">Total Jobs</p>
-              <p className="text-2xl font-bold text-gray-800 mt-1">{analytics.total_jobs ?? (inProgress.length + completed.length)}</p>
-            </div>
-          </div>
-        </div>
-      )}
+      {analytics && <TechnicianAnalyticsCharts analytics={analytics} />}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
         <Link

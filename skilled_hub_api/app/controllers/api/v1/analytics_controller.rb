@@ -56,6 +56,11 @@ module Api
         average_rating = Rating.average_for(technician_profile)
         reviews_count = Rating.where(reviewee: technician_profile).count
 
+        released_scope = Payment.joins(:job)
+          .joins('INNER JOIN job_applications ON job_applications.job_id = jobs.id')
+          .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })
+          .where(payments: { status: 'released' })
+
         {
           total_earned_cents: total_earned_cents,
           pending_earned_cents: pending_earned_cents,
@@ -64,7 +69,8 @@ module Api
           jobs_in_progress: in_progress_jobs.count,
           average_rating: average_rating,
           reviews_count: reviews_count,
-          total_jobs: completed_jobs.count + in_progress_jobs.count
+          total_jobs: completed_jobs.count + in_progress_jobs.count,
+          released_earnings_by_day: DashboardTrends.released_payment_cents_per_day(released_scope)
         }
       end
 
@@ -77,7 +83,8 @@ module Api
           jobs_in_progress: 0,
           average_rating: nil,
           reviews_count: 0,
-          total_jobs: 0
+          total_jobs: 0,
+          released_earnings_by_day: DashboardTrends.released_payment_cents_per_day(Payment.none)
         }
       end
 
@@ -91,11 +98,13 @@ module Api
           total_users: User.count,
           technicians_count: User.technician.count,
           companies_count: User.company.count,
+          admins_count: User.admin.count,
           total_jobs: Job.count,
           jobs_open: Job.where(status: :open).count,
           jobs_finished: Job.where(status: :finished).count,
           jobs_in_progress: Job.where(status: [:reserved, :filled]).count,
-          total_job_applications: JobApplication.count
+          total_job_applications: JobApplication.count,
+          trends_last_30d: DashboardTrends.admin_platform_trends
         }
       end
     end

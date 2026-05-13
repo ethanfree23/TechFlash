@@ -2,8 +2,7 @@ module Api
   module V1
     class JobsController < ApplicationController
       before_action :authenticate_user
-      before_action :require_company_or_admin, only: [:create]
-      
+
       def index
         Job.auto_complete_expired!
         jobs = Job.all
@@ -194,6 +193,10 @@ module Api
       end
 
       def create
+        unless @current_user&.company? || @current_user&.admin?
+          return render json: { error: 'Access denied. Company or admin role required.' }, status: :forbidden
+        end
+
         company_profile = resolve_company_profile_for_create
         return if performed?
 
@@ -427,12 +430,6 @@ module Api
       end
 
       private
-
-      def require_company_or_admin
-        return if @current_user&.company? || @current_user&.admin?
-
-        render json: { error: 'Access denied. Company or admin role required.' }, status: :forbidden
-      end
 
       def resolve_company_profile_for_create
         if @current_user&.company?

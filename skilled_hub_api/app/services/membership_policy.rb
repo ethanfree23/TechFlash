@@ -225,12 +225,16 @@ class MembershipPolicy
   end
 
   def self.technician_profile_completeness_percent(technician_profile)
+    # City OR legacy location counts once toward "service area" so admin-created profiles
+    # with only a location string still satisfy tier gates that use completeness.
+    service_area =
+      technician_profile.city.presence || technician_profile.location.presence
     fields = [
       technician_profile.trade_type,
       technician_profile.availability,
       technician_profile.bio,
       technician_profile.phone,
-      technician_profile.city
+      service_area
     ]
     present_count = fields.count { |value| value.present? }
     ((present_count.to_f / fields.length) * 100).floor

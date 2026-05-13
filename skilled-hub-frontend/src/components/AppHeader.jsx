@@ -56,11 +56,11 @@ export default function AppHeader({
             <>
               {showCrm ? (
                 <>
-                  <NavLink page="users" to="/admin/users">
-                    Users
-                  </NavLink>
                   <NavLink page="messages" to="/messages">
                     Messages
+                  </NavLink>
+                  <NavLink page="users" to="/admin/users">
+                    Users
                   </NavLink>
                   <span className="hidden sm:inline text-gray-300 px-0.5 select-none" aria-hidden>
                     |

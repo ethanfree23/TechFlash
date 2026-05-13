@@ -35,6 +35,34 @@ module Api
           technician.reload
           assert_equal "Electrician", technician.job_alert_preference&.trade_label
         end
+
+        test "admin clears job_alert_trade_label" do
+          admin = User.create!(
+            email: "admin-job-alert-clear@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin,
+            phone: "713-555-0500"
+          )
+          technician = User.create!(
+            email: "tech-job-alert-clear@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :technician,
+            phone: "713-555-0501"
+          )
+          TechnicianProfile.create!(user: technician, trade_type: "General", phone: "713-555-0501")
+          JobAlertPreference.create!(user: technician, trade_label: "Plumber")
+
+          patch "/api/v1/admin/users/#{technician.id}/profile",
+                params: { job_alert_trade_label: "" },
+                headers: auth_header_for(admin),
+                as: :json
+
+          assert_response :ok
+          technician.reload
+          assert_nil technician.job_alert_preference&.trade_label
+        end
       end
     end
   end

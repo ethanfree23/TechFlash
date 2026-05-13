@@ -135,6 +135,36 @@ class MembershipPolicyTest < ActiveSupport::TestCase
     assert_not MembershipPolicy.job_visible_to_technician?(job: visible_job, technician_profile: unqualified_profile)
   end
 
+  test "profile completeness counts city or legacy location as service area" do
+    with_city = TechnicianProfile.new(
+      trade_type: "G",
+      availability: "A",
+      bio: "B",
+      phone: "P",
+      city: "Austin"
+    )
+    with_location = TechnicianProfile.new(
+      trade_type: "G",
+      availability: "A",
+      bio: "B",
+      phone: "P",
+      location: "Dallas, TX",
+      city: nil
+    )
+    missing_area = TechnicianProfile.new(
+      trade_type: "G",
+      availability: "A",
+      bio: "B",
+      phone: "P",
+      city: nil,
+      location: nil
+    )
+
+    assert_equal 100, MembershipPolicy.technician_profile_completeness_percent(with_city)
+    assert_equal 100, MembershipPolicy.technician_profile_completeness_percent(with_location)
+    assert_equal 80, MembershipPolicy.technician_profile_completeness_percent(missing_area)
+  end
+
   test "enforces verified background additional feature gate" do
     MembershipTierConfig.delete_all
     MembershipTierConfig.create!(

@@ -5,12 +5,18 @@ import MessageModal from './MessageModal';
 import AlertModal from './AlertModal';
 import ConfirmModal from './ConfirmModal';
 import { auth } from '../auth';
-import { companyChargeFromJobAmount, formatPlatformFeePercent, resolvedCompanyFeePercentFromJob } from '../utils/companyPlatformFee';
+import {
+  companyChargeFromJobAmount,
+  formatPlatformFeePercent,
+  resolvedCompanyFeePercentFromJob,
+  technicianTakeHomeCents,
+} from '../utils/companyPlatformFee';
 import { EXPERIENCE_YEAR_OPTIONS, formatExperienceLong } from '../constants/experienceSelect';
 import Modal from 'react-modal';
 import StarRating from './StarRating';
 import JobAddressFields from './JobAddressFields';
 import { JOB_STATUS_KEYS, jobStatusLabel, normalizeJobStatusKey } from '../utils/jobStatus';
+import { FormattedJobDescription } from '../utils/formattedJobText';
 
 const toDatetimeLocal = (d) => {
   if (!d) return '';
@@ -131,6 +137,9 @@ const JobDetail = () => {
   const [loadingClaimed, setLoadingClaimed] = useState(false);
   const [claimedTechnicianData, setClaimedTechnicianData] = useState(null);
   const [technicianProfileId, setTechnicianProfileId] = useState(null);
+  /** Set when technician profile fetch completes; number includes 0% */
+  const [viewerTechCommissionPercent, setViewerTechCommissionPercent] = useState(null);
+  const [viewerTechCommissionKnown, setViewerTechCommissionKnown] = useState(false);
   const [companyProfileId, setCompanyProfileId] = useState(null);
   const [ratings, setRatings] = useState([]);
   const [otherPartyHasReviewed, setOtherPartyHasReviewed] = useState(false);
@@ -190,11 +199,26 @@ const JobDetail = () => {
 
   useEffect(() => {
     if (user?.role === 'technician') {
-      profilesAPI.getTechnicianProfile()
-        .then(p => setTechnicianProfileId(p?.id))
-        .catch(() => setTechnicianProfileId(null));
+      setViewerTechCommissionKnown(false);
+      profilesAPI
+        .getTechnicianProfile()
+        .then((p) => {
+          setTechnicianProfileId(p?.id ?? null);
+          const raw = p?.effective_commission_percent;
+          setViewerTechCommissionPercent(
+            raw != null && Number.isFinite(Number(raw)) ? Number(raw) : null
+          );
+          setViewerTechCommissionKnown(true);
+        })
+        .catch(() => {
+          setTechnicianProfileId(null);
+          setViewerTechCommissionPercent(null);
+          setViewerTechCommissionKnown(true);
+        });
     } else {
       setTechnicianProfileId(null);
+      setViewerTechCommissionPercent(null);
+      setViewerTechCommissionKnown(false);
     }
     if (user?.role === 'company') {
       profilesAPI.getCompanyProfile()
@@ -972,16 +996,33 @@ const JobDetail = () => {
                   <div>
                     <p className="text-sm text-gray-500">Job amount</p>
                     <p className="font-medium">${((job?.job_amount_cents ?? job?.price_cents ?? 0) / 100).toFixed(2)}</p>
-                    {(job?.company_charge_cents ?? 0) > 0 && (() => {
-                      const pct = resolvedCompanyFeePercentFromJob(job);
-                      const pctLabel = pct != null ? formatPlatformFeePercent(pct) : null;
-                      return (
-                        <p className="text-xs text-gray-500">
-                          You pay ${((job.company_charge_cents) / 100).toFixed(2)}
-                          {pctLabel != null ? ` (incl. ${pctLabel}% platform fee)` : ' (incl. platform fee)'}
-                        </p>
-                      );
-                    })()}
+                    {currentUser?.role === 'technician' &&
+                      viewerTechCommissionKnown &&
+                      viewerTechCommissionPercent != null &&
+                      (() => {
+                        const jobAmountCents = job?.job_amount_cents ?? job?.price_cents ?? 0;
+                        const takeHomeCents = technicianTakeHomeCents(jobAmountCents, viewerTechCommissionPercent);
+                        const earnLabel = (takeHomeCents / 100).toFixed(2);
+                        const pctLabel = formatPlatformFeePercent(viewerTechCommissionPercent);
+                        return (
+                          <p className="text-xs text-gray-500">
+                            You earn ${earnLabel}
+                            {` (includes ${pctLabel}% platform fee)`}
+                          </p>
+                        );
+                      })()}
+                    {currentUser?.role !== 'technician' &&
+                      (job?.company_charge_cents ?? 0) > 0 &&
+                      (() => {
+                        const pct = resolvedCompanyFeePercentFromJob(job);
+                        const pctLabel = pct != null ? formatPlatformFeePercent(pct) : null;
+                        return (
+                          <p className="text-xs text-gray-500">
+                            You pay ${((job.company_charge_cents) / 100).toFixed(2)}
+                            {pctLabel != null ? ` (incl. ${pctLabel}% platform fee)` : ' (incl. platform fee)'}
+                          </p>
+                        );
+                      })()}
                   </div>
                 </div>
               )}
@@ -1203,7 +1244,7 @@ const JobDetail = () => {
 
             <div className="mb-6">
               <h3 className="text-xl font-semibold text-gray-900 mb-3">Job Description</h3>
-              <p className="text-gray-700 leading-relaxed">{job.description}</p>
+              {job.description ? <FormattedJobDescription text={job.description} /> : null}
             </div>
 
             {(job.skill_class || job.minimum_years_experience != null) && (
@@ -1226,7 +1267,7 @@ const JobDetail = () => {
             {job.notes && (
               <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
                 <h3 className="text-sm font-bold uppercase tracking-wide text-gray-800 mb-2">Notes and conditions</h3>
-                <p className="text-gray-800 whitespace-pre-wrap leading-relaxed">{job.notes}</p>
+                <FormattedJobDescription text={job.notes} className="[&_p]:text-gray-800 [&_li]:text-gray-800" />
               </div>
             )}
 

@@ -63,6 +63,49 @@ const looksLikePersonName = (value) => {
   return words.every((word) => /^[A-Z][a-z.'-]+$/.test(word));
 };
 
+/** 2–5 word person-like token (allows lowercase before title-casing), no digits/URLs */
+const looksLikeLoosePersonNameWords = (value) => {
+  const name = cleanLooseValue(value);
+  if (!name || name.length < 3 || name.length > 80) return false;
+  if (/\d|@|https?:\/\//i.test(name)) return false;
+  const words = name.split(/\s+/).filter(Boolean);
+  if (words.length < 2 || words.length > 5) return false;
+  return words.every((w) => /^[A-Za-z][A-Za-z'.-]*$/i.test(w));
+};
+
+const PHONE_IN_TEXT_RE = /(?:\+?1[\s.-]*)?(?:\(?\d{3}\)?[\s.-]*)\d{3}[\s.-]*\d{4}/;
+const EMAIL_IN_TEXT_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
+
+/** True when a line is clearly a contact snippet, not a company name */
+export const lineLooksLikeContactBlob = (line) => {
+  const v = String(line || '').trim();
+  if (!v) return false;
+  if (v.includes('@')) return true;
+  const hasEmail = EMAIL_IN_TEXT_RE.test(v);
+  const hasPhone = PHONE_IN_TEXT_RE.test(v);
+  return Boolean(hasEmail && hasPhone);
+};
+
+const extractParentheticalPersonName = (lines) => {
+  const text = lines.join('\n');
+  const re = /\(([^)]+)\)/g;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    const inner = cleanLooseValue(m[1]);
+    if (looksLikeLoosePersonNameWords(inner)) return toTitleCase(inner);
+  }
+  return '';
+};
+
+const extractNameBetweenEmailAndPhone = (line, email) => {
+  if (!line || !email || !String(line).includes(email)) return '';
+  const after = String(line).split(email)[1] || '';
+  const stripped = after.replace(PHONE_IN_TEXT_RE, ' ').replace(/[(),]/g, ' ');
+  const collapsed = cleanLooseValue(stripped.replace(/\s+/g, ' '));
+  if (looksLikeLoosePersonNameWords(collapsed)) return toTitleCase(collapsed);
+  return '';
+};
+
 const uniqueValues = (values) => Array.from(new Set(values.map((v) => cleanLooseValue(v)).filter(Boolean)));
 
 const extractNameFromLine = (value) => {
@@ -168,6 +211,7 @@ const inferMultipleImportRowsFromUnstructuredText = (text, statuses = [], compan
 export const inferSingleImportRowFromUnstructuredText = (text, statuses = [], companyTypes = [], options = {}) => {
   const raw = String(text || '').trim();
   const includeDiagnostics = Boolean(options.includeDiagnostics);
+  const knownCompanyName = cleanLooseValue(options.knownCompanyName || '');
   if (!raw) return includeDiagnostics ? { row: null, diagnostics: { confidence: 'low', warnings: ['No text provided'] } } : null;
   const lines = raw
     .replace(/\r\n/g, '\n')
@@ -211,11 +255,28 @@ export const inferSingleImportRowFromUnstructuredText = (text, statuses = [], co
   const secondLine = lines[1] || '';
   const likelyPersonLine = lines.find((line) => looksLikePersonName(line));
   const likelyCompanyLine = lines.find((line) => COMPANY_NAME_HINT_RE.test(line) && !looksLikePersonName(line));
-  const companyName =
+
+  let companyName =
     cleanLooseValue(companyNameLabeled) ||
     cleanLooseValue(likelyCompanyLine) ||
-    (firstLine.toLowerCase().includes('contact') && secondLine ? cleanLooseValue(secondLine) : cleanLooseValue(firstLine));
-  const contactName = cleanLooseValue(contactNameLabeled || likelyPersonLine);
+    (firstLine.toLowerCase().includes('contact') && secondLine ? cleanLooseValue(secondLine) : '');
+
+  if (!companyName && firstLine) {
+    const fl = cleanLooseValue(firstLine);
+    if (!lineLooksLikeContactBlob(firstLine) && !/@/.test(fl)) {
+      companyName = fl;
+    }
+  }
+
+  if (!companyName && knownCompanyName) companyName = knownCompanyName;
+  if (!companyName && emails.length) companyName = inferCompanyNameFromEmailDomain(emails);
+  if (!companyName) companyName = cleanLooseValue(extractExplicitCompanyName(lines));
+
+  const parentheticalName = extractParentheticalPersonName(lines);
+  const betweenName = lines.map((ln) => extractNameBetweenEmailAndPhone(ln, emails[0] || '')).find(Boolean) || '';
+  let contactName = cleanLooseValue(contactNameLabeled || likelyPersonLine);
+  if (!contactName) contactName = parentheticalName;
+  if (!contactName) contactName = betweenName;
 
   const notesFromLeftovers = lines
     .filter((line) => !/^([a-zA-Z _-]{2,40})\s*[:=-]\s*(.+)$/.test(line))
@@ -342,7 +403,7 @@ export const makeDraftRow = (row, index, statuses, companyTypes) => {
   };
 };
 
-export const buildImportDraftRows = (content, statuses, companyTypes) => {
+export const buildImportDraftRows = (content, statuses, companyTypes, options = {}) => {
   const parsed = parseCsv(content);
   if (parsed.length < 1) return [];
 
@@ -374,10 +435,20 @@ export const buildImportDraftRows = (content, statuses, companyTypes) => {
   const headerlessRows = normalizedLines.map((line) => parseCsv(line)[0] || []);
   const rows = mapRowsToObjects(headerlessRows, CRM_IMPORT_HEADERS);
   if (rows.length > 0) {
+    const first = rows[0];
+    const singleBlob =
+      rows.length === 1 &&
+      lineLooksLikeContactBlob(first.name) &&
+      !(first.contact_name || '').trim() &&
+      !(first.email || '').trim();
+    if (singleBlob) {
+      const inferred = inferSingleImportRowFromUnstructuredText(content, statuses, companyTypes, options);
+      if (inferred) return [makeDraftRow(inferred, 0, statuses, companyTypes)];
+    }
     return rows.map((r, idx) => makeDraftRow(r, idx, statuses, companyTypes));
   }
 
-  const inferred = inferSingleImportRowFromUnstructuredText(content, statuses, companyTypes);
+  const inferred = inferSingleImportRowFromUnstructuredText(content, statuses, companyTypes, options);
   if (!inferred) return [];
   return [makeDraftRow(inferred, 0, statuses, companyTypes)];
 };

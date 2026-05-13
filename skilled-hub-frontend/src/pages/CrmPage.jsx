@@ -11,6 +11,7 @@ import {
   autoFixDraftRows as autoFixImportDraftRows,
   makeDraftRow,
   inferSingleImportRowFromUnstructuredText,
+  lineLooksLikeContactBlob,
 } from '../utils/crmImport';
 import {
   emptyNoteDraft,
@@ -33,6 +34,8 @@ import {
   FaUserPlus,
   FaFileUpload,
   FaCog,
+  FaChevronDown,
+  FaChevronRight,
 } from 'react-icons/fa';
 
 const CRM_STATUSES = [
@@ -187,6 +190,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [draggingPipelineColumnKey, setDraggingPipelineColumnKey] = useState(null);
   const [pipelineNameFilter, setPipelineNameFilter] = useState('');
   const [pipelineStatusFilter, setPipelineStatusFilter] = useState('');
+  const [pipelineExpandedByProfileId, setPipelineExpandedByProfileId] = useState({});
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
   const [importSummary, setImportSummary] = useState(null);
@@ -444,6 +448,15 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   };
 
   const selectLead = (id) => {
+    const row = leads.find((l) => Number(l.id) === Number(id));
+    const pid = row?.linked_company_profile_id;
+    if (pid != null && pid !== '') {
+      const k = String(pid);
+      const mates = leads.filter((r) => String(r.linked_company_profile_id) === k);
+      if (mates.length > 1) {
+        setPipelineExpandedByProfileId((p) => ({ ...p, [k]: true }));
+      }
+    }
     setIsCreating(false);
     setNewCompanyModalOpen(false);
     setProfileImportOpen(false);
@@ -528,13 +541,14 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       return;
     }
 
+    const knownCompanyName = String(form.name || '').trim();
     const inferred = inferSingleImportRowFromUnstructuredText(
       profileImportText,
       CRM_STATUSES,
       CRM_COMPANY_TYPES,
-      { includeDiagnostics: true },
+      { includeDiagnostics: true, knownCompanyName },
     );
-    const draft = buildImportDraftRows(profileImportText, CRM_STATUSES, CRM_COMPANY_TYPES);
+    const draft = buildImportDraftRows(profileImportText, CRM_STATUSES, CRM_COMPANY_TYPES, { knownCompanyName });
     if (!draft.length) {
       setAlertModal({
         isOpen: true,
@@ -562,9 +576,18 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const mergedContacts = importedPrimary
         ? [importedPrimary, ...existingContacts.slice(1)]
         : existingContacts;
+      const incomingCompany = String(row.name || '').trim();
+      const incomingCompanyIsContactShaped =
+        Boolean(incomingCompany) &&
+        (lineLooksLikeContactBlob(incomingCompany) || incomingCompany.includes('@'));
+      const existingCompany = String(f.name || '').trim();
+      const nextCompanyName =
+        incomingCompanyIsContactShaped && existingCompany
+          ? existingCompany
+          : incomingCompany || existingCompany || '';
       return {
         ...f,
-        name: row.name || f.name || '',
+        name: nextCompanyName,
         contact_name: importedPrimary?.name || f.contact_name || '',
         email: importedPrimary?.email || f.email || '',
         phone: importedPrimary?.phone || f.phone || '',
@@ -1403,7 +1426,70 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     return nameOk && statusOk;
   });
 
+  const pipelineDisplayGroups = useMemo(() => {
+    const emitted = new Set();
+    const out = [];
+    filteredLeads.forEach((row) => {
+      const pid = row.linked_company_profile_id;
+      if (pid == null || pid === '') {
+        out.push({ kind: 'single', lead: row });
+        return;
+      }
+      const k = String(pid);
+      if (emitted.has(k)) return;
+      emitted.add(k);
+      const groupLeads = filteredLeads.filter((r) => String(r.linked_company_profile_id) === k);
+      if (groupLeads.length === 1) {
+        out.push({ kind: 'single', lead: groupLeads[0] });
+      } else {
+        const displayName =
+          groupLeads[0].linked_account?.company_name?.trim() ||
+          groupLeads[0].name ||
+          'Company';
+        out.push({ kind: 'group', profileId: pid, displayName, leads: groupLeads });
+      }
+    });
+    return out;
+  }, [filteredLeads]);
+
+  const togglePipelineGroupHeader = (group) => {
+    const k = String(group.profileId);
+    const next = !pipelineExpandedByProfileId[k];
+    setPipelineExpandedByProfileId((prev) => ({ ...prev, [k]: next }));
+    if (next) selectLead(group.leads[0].id);
+  };
+
   const visiblePipelineColumns = useMemo(() => pipelineColumns.filter((c) => c.visible), [pipelineColumns]);
+
+  const renderPipelineLeadMeta = (row) => {
+    if (visiblePipelineColumns.length === 0) return null;
+    return (
+      <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-500">
+        {visiblePipelineColumns.map((col) => {
+          if (col.key === 'status') {
+            return (
+              <span key={col.key} className="capitalize px-2 py-0.5 rounded bg-gray-100 text-gray-700">
+                {row.status}
+              </span>
+            );
+          }
+          if (col.key === 'linked_account') {
+            if (!row.linked_account) return null;
+            return (
+              <span key={col.key} className="inline-flex items-center gap-1 text-emerald-700">
+                <FaLink className="text-emerald-600" aria-hidden /> Linked
+              </span>
+            );
+          }
+          if (col.key === 'contact_email') {
+            if (!row.email) return null;
+            return <span key={col.key}>{row.email}</span>;
+          }
+          return null;
+        })}
+      </div>
+    );
+  };
 
   const movePipelineColumn = (fromKey, toKey) => {
     if (!fromKey || !toKey || fromKey === toKey) return;
@@ -1585,52 +1671,81 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             <div className="max-h-[70vh] overflow-y-auto">
               {loading ? (
                 <p className="p-6 text-gray-500 text-sm">Loading…</p>
-              ) : filteredLeads.length === 0 ? (
+              ) : pipelineDisplayGroups.length === 0 ? (
                 <p className="p-6 text-gray-500 text-sm">No companies yet. Click &quot;Add company&quot; to start.</p>
               ) : (
                 <ul className="divide-y divide-gray-100">
-                  {filteredLeads.map((row) => (
-                    <li key={row.id}>
-                      <button
-                        type="button"
-                        onClick={() => selectLead(row.id)}
-                        className={`w-full text-left px-4 py-3 hover:bg-blue-50/60 transition-colors ${
-                          selectedId === row.id && !isCreating ? 'bg-blue-50 border-l-4 border-blue-600' : 'border-l-4 border-transparent'
-                        }`}
-                      >
-                        <div className="font-medium text-gray-900">{row.name}</div>
-                        {visiblePipelineColumns.length > 0 && (
-                          <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-gray-500">
-                            {visiblePipelineColumns.map((col) => {
-                              if (col.key === 'status') {
-                                return (
-                                  <span
-                                    key={col.key}
-                                    className="capitalize px-2 py-0.5 rounded bg-gray-100 text-gray-700"
-                                  >
-                                    {row.status}
-                                  </span>
-                                );
-                              }
-                              if (col.key === 'linked_account') {
-                                if (!row.linked_account) return null;
-                                return (
-                                  <span key={col.key} className="inline-flex items-center gap-1 text-emerald-700">
-                                    <FaLink className="text-emerald-600" aria-hidden /> Linked
-                                  </span>
-                                );
-                              }
-                              if (col.key === 'contact_email') {
-                                if (!row.email) return null;
-                                return <span key={col.key}>{row.email}</span>;
-                              }
-                              return null;
-                            })}
+                  {pipelineDisplayGroups.map((item) => {
+                    if (item.kind === 'single') {
+                      const row = item.lead;
+                      return (
+                        <li key={row.id}>
+                          <button
+                            type="button"
+                            onClick={() => selectLead(row.id)}
+                            className={`w-full text-left px-4 py-3 hover:bg-blue-50/60 transition-colors ${
+                              selectedId === row.id && !isCreating ? 'bg-blue-50 border-l-4 border-blue-600' : 'border-l-4 border-transparent'
+                            }`}
+                          >
+                            <div className="font-medium text-gray-900">{row.name}</div>
+                            {renderPipelineLeadMeta(row)}
+                          </button>
+                        </li>
+                      );
+                    }
+                    const group = item;
+                    const k = String(group.profileId);
+                    const isExpanded = Boolean(pipelineExpandedByProfileId[k]);
+                    const groupHasSelection = group.leads.some((l) => Number(l.id) === Number(selectedId));
+                    return (
+                      <li key={`grp-${k}`}>
+                        <button
+                          type="button"
+                          onClick={() => togglePipelineGroupHeader(group)}
+                          className={`w-full text-left px-4 py-3 hover:bg-blue-50/60 transition-colors ${
+                            groupHasSelection && !isCreating ? 'bg-blue-50 border-l-4 border-blue-600' : 'border-l-4 border-transparent'
+                          }`}
+                        >
+                          <div className="flex items-start gap-2">
+                            <span className="shrink-0 text-gray-500 mt-0.5" aria-hidden>
+                              {isExpanded ? <FaChevronDown className="w-3 h-3" /> : <FaChevronRight className="w-3 h-3" />}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="font-medium text-gray-900">{group.displayName}</span>
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
+                                  {group.leads.length} accounts
+                                </span>
+                              </div>
+                              {!isExpanded && (
+                                <p className="mt-1 text-xs text-gray-500">Click to expand and choose a linked account.</p>
+                              )}
+                            </div>
                           </div>
+                        </button>
+                        {isExpanded && (
+                          <ul className="border-t border-gray-100 bg-slate-50/60">
+                            {group.leads.map((row) => (
+                              <li key={row.id}>
+                                <button
+                                  type="button"
+                                  onClick={() => selectLead(row.id)}
+                                  className={`w-full text-left pl-10 pr-4 py-2.5 text-sm hover:bg-blue-50/60 transition-colors ${
+                                    selectedId === row.id && !isCreating ? 'bg-blue-50 border-l-4 border-blue-600' : 'border-l-4 border-transparent'
+                                  }`}
+                                >
+                                  <div className="font-medium text-gray-900">
+                                    {row.linked_account?.email || row.email || row.name || `CRM #${row.id}`}
+                                  </div>
+                                  {renderPipelineLeadMeta(row)}
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
                         )}
-                      </button>
-                    </li>
-                  ))}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>

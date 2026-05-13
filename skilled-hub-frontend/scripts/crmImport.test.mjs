@@ -93,11 +93,33 @@ admin@neylandelectrical.com`;
   assert.strictEqual(draft[1].name, 'Neyland Electrical');
 }
 
+function testUnstructuredSingleLineEmailParensPhone() {
+  const line = 'ssosa@refinedelectricalservices.com (sabre sosa) 2813579790';
+  const draft = buildImportDraftRows(line, CRM_STATUSES, CRM_COMPANY_TYPES);
+  assert.strictEqual(draft.length, 1, 'should parse one row from single-line contact blob');
+  assert.strictEqual(draft[0].contact_name, 'Sabre Sosa');
+  assert.strictEqual(draft[0].email, 'ssosa@refinedelectricalservices.com');
+  assert.ok(draft[0].phone?.includes('281'), 'should parse phone');
+  assert.ok(draft[0].name && !draft[0].name.includes('@'), 'company name must not be the raw contact line');
+}
+
+function testKnownCompanyNameOption() {
+  const line = 'ssosa@refinedelectricalservices.com (sabre sosa) 2813579790';
+  const draft = buildImportDraftRows(line, CRM_STATUSES, CRM_COMPANY_TYPES, {
+    knownCompanyName: 'Refined Electrical Services',
+  });
+  assert.strictEqual(draft.length, 1);
+  assert.strictEqual(draft[0].name, 'Refined Electrical Services');
+  assert.strictEqual(draft[0].contact_name, 'Sabre Sosa');
+}
+
 function run() {
   testWrappedHeaderlessRows();
   testHeaderCsvRows();
   testAutoFix();
   testUnstructuredMultipleContacts();
+  testUnstructuredSingleLineEmailParensPhone();
+  testKnownCompanyNameOption();
   // eslint-disable-next-line no-console
   console.log('crmImport tests passed');
 }

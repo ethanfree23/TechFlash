@@ -13,6 +13,21 @@ export function companyChargeFromJobAmount(jobAmount, effectiveCommissionPercent
   return jobAmount * companyPayMultiplier(effectiveCommissionPercent);
 }
 
+/**
+ * Technician take-home after platform commission (matches Job#tech_payout_cents).
+ * @param {number} jobAmountCents
+ * @param {number|null|undefined} effectiveCommissionPercent technician tier commission %
+ * @returns {number} cents, rounded
+ */
+export function technicianTakeHomeCents(jobAmountCents, effectiveCommissionPercent) {
+  const cents = Number(jobAmountCents);
+  const p = Number(effectiveCommissionPercent);
+  if (!Number.isFinite(cents) || cents <= 0) return 0;
+  if (!Number.isFinite(p) || p < 0) return Math.round(cents);
+  const mult = 1 - p / 100;
+  return Math.round(cents * mult);
+}
+
 /** Display string for percent (e.g. 10, 4.5) */
 export function formatPlatformFeePercent(effectiveCommissionPercent) {
   const n = Number(effectiveCommissionPercent);

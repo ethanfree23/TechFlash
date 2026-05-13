@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { jobsAPI } from '../api/api';
 import { formatExperienceLong } from '../constants/experienceSelect';
+import { FormattedJobDescription } from '../utils/formattedJobText';
 
 const STATUS_LABELS = {
   open: 'Open',
@@ -133,7 +134,7 @@ export default function PublicJobSharePage() {
               {preview.description && (
                 <section>
                   <h2 className="text-sm font-semibold text-gray-900 uppercase tracking-wide mb-2">Description</h2>
-                  <p className="text-gray-700 whitespace-pre-wrap">{preview.description}</p>
+                  <FormattedJobDescription text={preview.description} />
                 </section>
               )}
 

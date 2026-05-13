@@ -181,7 +181,9 @@ const CompanyProfilePage = ({ user, onLogout }) => {
       });
       return;
     }
-    const draft = buildImportDraftRows(contactImportText, CRM_STATUSES, CRM_COMPANY_TYPES);
+    const draft = buildImportDraftRows(contactImportText, CRM_STATUSES, CRM_COMPANY_TYPES, {
+      knownCompanyName: (profile?.company_name || '').trim(),
+    });
     const contacts = draft
       .map((row) => ({
         name: String(row.contact_name || '').trim(),

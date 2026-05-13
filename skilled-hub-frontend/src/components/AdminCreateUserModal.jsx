@@ -39,6 +39,10 @@ export default function AdminCreateUserModal({
     trade_type: '',
     experience_years: '',
     location: '',
+    address: '',
+    city: '',
+    zip_code: '',
+    country: '',
   });
   const [serviceCities, setServiceCities] = useState([]);
   const [selectedIndustries, setSelectedIndustries] = useState([]);
@@ -111,6 +115,10 @@ export default function AdminCreateUserModal({
       trade_type: '',
       experience_years: '',
       location: '',
+      address: '',
+      city: '',
+      zip_code: '',
+      country: '',
     });
     setServiceCities([]);
     setSelectedIndustries([]);
@@ -168,6 +176,10 @@ export default function AdminCreateUserModal({
       trade_type: '',
       experience_years: '',
       location: '',
+      address: '',
+      city: '',
+      zip_code: '',
+      country: '',
     });
     setServiceCities([]);
     setSelectedIndustries([]);
@@ -297,6 +309,11 @@ export default function AdminCreateUserModal({
           password_confirmation: passwordConfirmation || undefined,
           trade_type: createForm.trade_type?.trim() || undefined,
           location: createForm.location?.trim() || undefined,
+          address: createForm.address?.trim() || undefined,
+          city: createForm.city?.trim() || undefined,
+          state: createForm.state?.trim() || undefined,
+          zip_code: createForm.zip_code?.trim() || undefined,
+          country: createForm.country?.trim() || undefined,
           experience_years:
             createForm.experience_years === '' ? undefined : parseInt(createForm.experience_years, 10),
           bio: createForm.bio?.trim() || undefined,
@@ -718,15 +735,72 @@ export default function AdminCreateUserModal({
                     onChange={(e) => setCreateForm((f) => ({ ...f, experience_years: e.target.value }))}
                   />
                 </label>
-                <label className="block">
-                  <span className="text-xs font-medium text-gray-500 uppercase">Location</span>
+                <label className="block sm:col-span-2">
+                  <span className="text-xs font-medium text-gray-500 uppercase">Location summary</span>
                   <input
                     autoComplete="off"
                     className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                     value={createForm.location}
                     onChange={(e) => setCreateForm((f) => ({ ...f, location: e.target.value }))}
+                    placeholder="e.g. Houston, TX (optional if address below is filled)"
                   />
                 </label>
+                <div className="sm:col-span-2 rounded-xl border border-gray-200 p-3 bg-gray-50">
+                  <div className="text-xs font-medium text-gray-500 uppercase mb-2">Service address</div>
+                  <p className="text-xs text-gray-600 mb-3">
+                    Structured street and city are saved to the technician profile for maps, distance matching, and the dashboard address banner.
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <label className="block sm:col-span-2">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Street address</span>
+                      <input
+                        autoComplete="street-address"
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                        value={createForm.address}
+                        onChange={(e) => setCreateForm((f) => ({ ...f, address: e.target.value }))}
+                        placeholder="123 Main St"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">City</span>
+                      <input
+                        autoComplete="address-level2"
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                        value={createForm.city}
+                        onChange={(e) => setCreateForm((f) => ({ ...f, city: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">State</span>
+                      <input
+                        autoComplete="address-level1"
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                        value={createForm.state}
+                        onChange={(e) => setCreateForm((f) => ({ ...f, state: e.target.value }))}
+                        placeholder="TX"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">ZIP</span>
+                      <input
+                        autoComplete="postal-code"
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                        value={createForm.zip_code}
+                        onChange={(e) => setCreateForm((f) => ({ ...f, zip_code: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Country</span>
+                      <input
+                        autoComplete="country"
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                        value={createForm.country}
+                        onChange={(e) => setCreateForm((f) => ({ ...f, country: e.target.value }))}
+                        placeholder="United States"
+                      />
+                    </label>
+                  </div>
+                </div>
                 <label className="block">
                   <span className="text-xs font-medium text-gray-500 uppercase">Set password</span>
                   <div className="mt-1 flex items-center gap-2">
