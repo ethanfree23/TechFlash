@@ -84,6 +84,66 @@ const formatDateTime = (value) => {
   return d.toLocaleString();
 };
 
+/** First company login: derive User first/last from company display name (API still requires them). */
+function splitDisplayNameFromCompanyName(companyName) {
+  const tokens = String(companyName || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (tokens.length === 0) return { first_name: 'Company', last_name: 'Account' };
+  if (tokens.length === 1) return { first_name: tokens[0], last_name: 'Account' };
+  return { first_name: tokens[0], last_name: tokens.slice(1).join(' ') };
+}
+
+const emptyProvisionState = () => ({
+  email: '',
+  company_name: '',
+  phone: '',
+  industry: '',
+  location: '',
+  bio: '',
+  state: '',
+  website_url: '',
+  facebook_url: '',
+  instagram_url: '',
+  linkedin_url: '',
+  contact_name: '',
+});
+
+/** CRM lead → create-platform modal: company profile fields (login email/phone optional overrides). */
+function companyProvisionFieldsFromLeadForm(form, overrides = {}) {
+  const loc = [form.city, form.state]
+    .map((x) => String(x || '').trim())
+    .filter(Boolean)
+    .join(', ');
+  const industryFirst = (form.company_types || [])[0];
+  const st = normalizeToUsStateName(form.state || '');
+  const email =
+    overrides.email !== undefined
+      ? String(overrides.email || '').trim()
+      : String(form.company_email || form.email || '').trim();
+  const phoneRaw =
+    overrides.phone !== undefined
+      ? String(overrides.phone || '')
+      : String(form.company_phone || form.phone || '');
+  return {
+    email,
+    company_name: String(form.name || '').trim(),
+    phone: formatPhoneInput(phoneRaw),
+    industry: industryFirst ? String(industryFirst).replace(/_/g, ' ') : '',
+    location: loc,
+    bio:
+      String(form.bio || '').trim() ||
+      'Company profile pending — update from CRM record or complete during onboarding.',
+    state: st,
+    website_url: String(form.website || '').trim(),
+    facebook_url: String(form.facebook_url || '').trim(),
+    instagram_url: String(form.instagram_url || '').trim(),
+    linkedin_url: String(form.linkedin_url || '').trim(),
+    contact_name: String(form.name || '').trim(),
+  };
+}
+
 const defaultSameAsCompany = () => ({ email: false, phone: false, socials: false });
 
 const normalizeSameAsCompany = (raw) => {
@@ -287,16 +347,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [importDraftRows, setImportDraftRows] = useState([]);
   const [importRowFilter, setImportRowFilter] = useState('all');
 
-  const [provision, setProvision] = useState({
-    email: '',
-    first_name: '',
-    last_name: '',
-    company_name: '',
-    phone: '',
-    industry: '',
-    location: '',
-    bio: '',
-  });
+  const [provision, setProvision] = useState(emptyProvisionState);
   const [provisionSaving, setProvisionSaving] = useState(false);
   const [provisionModalOpen, setProvisionModalOpen] = useState(false);
   const [newCompanyModalOpen, setNewCompanyModalOpen] = useState(false);
@@ -564,45 +615,12 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   };
 
   const openProvisionFromCrmRecord = useCallback(() => {
-    const pc = getPrimaryContactPreview({
-      ...form,
-      contact_name: form.contact_name,
-      contacts: form.contacts,
-    });
-    const tokens = String(pc.name || form.contact_name || '')
-      .trim()
-      .split(/\s+/)
-      .filter(Boolean);
-    let firstName = '';
-    let lastName = '';
-    if (tokens.length === 1) {
-      firstName = tokens[0];
-    } else if (tokens.length > 1) {
-      firstName = tokens[0];
-      lastName = tokens.slice(1).join(' ');
-    }
-    const loc = [form.city, form.state]
-      .map((x) => String(x || '').trim())
-      .filter(Boolean)
-      .join(', ');
-    const industryFirst = (form.company_types || [])[0];
     setProvisionMode('new');
     setSelectedCompany(null);
     setCompanySearchQ('');
     setCompanyHits([]);
     setNewCompanyHits([]);
-    setProvision({
-      email: String(pc.email || form.company_email || form.email || '').trim(),
-      first_name: firstName,
-      last_name: lastName,
-      company_name: String(form.name || '').trim(),
-      phone: formatPhoneInput(String(pc.phone || form.company_phone || form.phone || '')),
-      industry: industryFirst ? String(industryFirst).replace(/_/g, ' ') : '',
-      location: loc,
-      bio:
-        String(form.bio || '').trim() ||
-        'Company profile pending — update from CRM record or complete during onboarding.',
-    });
+    setProvision(companyProvisionFieldsFromLeadForm(form));
     setProfileImportOpen(false);
     setNewCompanyModalOpen(false);
     setIsCreating(false);
@@ -612,37 +630,23 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   /** Prefill lead-level “Create platform company account” from a specific CRM contact row (e.g. unlinked lead). */
   const openProvisionFromCrmContact = useCallback(
     (contact, resolved) => {
-      const rawName = String(contact.name || '').trim();
-      const tokens = rawName.split(/\s+/).filter(Boolean);
-      let firstName = '';
-      let lastName = '';
-      if (tokens.length === 1) firstName = tokens[0];
-      else if (tokens.length > 1) {
-        firstName = tokens[0];
-        lastName = tokens.slice(1).join(' ');
-      }
-      const loc = [form.city, form.state]
-        .map((x) => String(x || '').trim())
-        .filter(Boolean)
-        .join(', ');
-      const industryFirst = (form.company_types || [])[0];
+      const companyEmail = String(form.company_email || '').trim();
+      const contactEmail = String(resolved.email || contact.email || '').trim();
+      const loginEmail = companyEmail || contactEmail || String(form.email || '').trim();
+      const companyPhone = formatPhoneInput(String(form.company_phone || '').trim());
+      const contactPhone = formatPhoneInput(String(resolved.phone || contact.phone || '').trim());
+      const loginPhone =
+        companyPhone ||
+        contactPhone ||
+        formatPhoneInput(String(form.phone || '').trim());
       setProvisionMode('new');
       setSelectedCompany(null);
       setCompanySearchQ('');
       setCompanyHits([]);
       setNewCompanyHits([]);
-      setProvision({
-        email: String(resolved.email || contact.email || '').trim(),
-        first_name: firstName,
-        last_name: lastName,
-        company_name: String(form.name || '').trim(),
-        phone: formatPhoneInput(String(resolved.phone || contact.phone || '')),
-        industry: industryFirst ? String(industryFirst).replace(/_/g, ' ') : '',
-        location: loc,
-        bio:
-          String(form.bio || '').trim() ||
-          'Company profile pending — update from CRM record or complete during onboarding.',
-      });
+      setProvision(
+        companyProvisionFieldsFromLeadForm(form, { email: loginEmail, phone: loginPhone }),
+      );
       setProfileImportOpen(false);
       setNewCompanyModalOpen(false);
       setIsCreating(false);
@@ -896,23 +900,18 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const provisionCompanyAccount = async (e) => {
     e.preventDefault();
     const email = provision.email?.trim();
-    const firstName = provision.first_name?.trim();
-    const lastName = provision.last_name?.trim();
     const phone = provision.phone?.trim();
+    const nameSource =
+      provisionMode === 'existing'
+        ? String(selectedCompany?.company_name || '').trim()
+        : String(provision.company_name || '').trim();
+    const { first_name: derivedFirst, last_name: derivedLast } =
+      splitDisplayNameFromCompanyName(nameSource);
     if (!email) {
       setAlertModal({
         isOpen: true,
         title: 'Email required',
         message: 'Enter the company login email.',
-        variant: 'error',
-      });
-      return;
-    }
-    if (!firstName || !lastName) {
-      setAlertModal({
-        isOpen: true,
-        title: 'Name required',
-        message: 'First name and last name are required.',
         variant: 'error',
       });
       return;
@@ -926,11 +925,17 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       });
       return;
     }
-    if (provisionMode === 'new' && (!provision.company_name?.trim() || !provision.phone?.trim() || !provision.bio?.trim())) {
+    if (
+      provisionMode === 'new' &&
+      (!provision.company_name?.trim() ||
+        !provision.phone?.trim() ||
+        !provision.bio?.trim() ||
+        !provision.state?.trim())
+    ) {
       setAlertModal({
         isOpen: true,
         title: 'Missing required fields',
-        message: 'Company name, phone number, and bio are required.',
+        message: 'Company name, US state, phone number, and bio are required.',
         variant: 'error',
       });
       return;
@@ -948,8 +953,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     try {
       const payload = {
         email,
-        first_name: firstName,
-        last_name: lastName,
+        first_name: derivedFirst,
+        last_name: derivedLast,
         phone,
       };
       if (provisionMode === 'existing') {
@@ -959,9 +964,15 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         payload.industry = provision.industry?.trim() || undefined;
         payload.location = provision.location?.trim() || undefined;
         payload.bio = provision.bio.trim();
+        payload.state = normalizeToUsStateName(provision.state || '');
+        payload.website_url = provision.website_url?.trim() || undefined;
+        payload.facebook_url = provision.facebook_url?.trim() || undefined;
+        payload.instagram_url = provision.instagram_url?.trim() || undefined;
+        payload.linkedin_url = provision.linkedin_url?.trim() || undefined;
+        payload.contact_name = provision.contact_name?.trim() || undefined;
       }
       await crmAPI.createCompanyAccount(payload);
-      setProvision({ email: '', first_name: '', last_name: '', company_name: '', phone: '', industry: '', location: '', bio: '' });
+      setProvision(emptyProvisionState());
       setProvisionMode('new');
       setCompanySearchQ('');
       setCompanyHits([]);
@@ -1744,6 +1755,10 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const primarySameAs = normalizeSameAsCompany(primaryContactDraft.same_as_company);
   const normalizedFormState = normalizeToUsStateName(form.state || '');
   const stateSelectValue = US_STATES.includes(normalizedFormState) ? normalizedFormState : '';
+  const normalizedProvisionState = normalizeToUsStateName(provision.state || '');
+  const provisionStateSelectValue = US_STATES.includes(normalizedProvisionState)
+    ? normalizedProvisionState
+    : '';
   const fullAddress = [form.street_address, form.city, form.state, form.zip].map((v) => String(v || '').trim()).filter(Boolean).join(', ');
   const mapsAddressUrl = fullAddress
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`
@@ -2019,11 +2034,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           onCreatePlatform={() => {
             setNewCompanyModalOpen(false);
             setIsCreating(false);
-            setProvisionMode('new');
-            setCompanySearchQ('');
-            setCompanyHits([]);
-            setSelectedCompany(null);
-            setProvisionModalOpen(true);
+            openProvisionFromCrmRecord();
           }}
           onMerge={openMergeModal}
           onExport={exportVisibleCsv}
@@ -4006,7 +4017,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
               </div>
               <div className="overflow-y-auto px-6 py-5">
                 <p className="text-sm text-gray-500 mb-4">
-                  Create a login for a new company profile or add another login to an existing company.
+                  Prefills from this CRM company profile. You are creating a company platform login (and a new company
+                  profile when you choose &quot;New company&quot;), not a personal contact record.
                 </p>
                 <form onSubmit={provisionCompanyAccount} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="sm:col-span-2">
@@ -4044,26 +4056,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                       value={provision.email}
                       onChange={(e) => setProvision((p) => ({ ...p, email: e.target.value }))}
-                      placeholder="contact@theirbusiness.com"
+                      placeholder="sales@company.com (from CRM company email when set)"
                       autoComplete="off"
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-500 uppercase">First name *</span>
-                    <input
-                      required
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={provision.first_name}
-                      onChange={(e) => setProvision((p) => ({ ...p, first_name: e.target.value }))}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Last name *</span>
-                    <input
-                      required
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={provision.last_name}
-                      onChange={(e) => setProvision((p) => ({ ...p, last_name: e.target.value }))}
                     />
                   </label>
                   <label className="block sm:col-span-2">
@@ -4168,6 +4162,36 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                       value={provision.location}
                       onChange={(e) => setProvision((p) => ({ ...p, location: e.target.value }))}
+                    />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs font-medium text-gray-500 uppercase">State (US) *</span>
+                    <select
+                      required
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      value={provisionStateSelectValue}
+                      onChange={(e) =>
+                        setProvision((p) => ({
+                          ...p,
+                          state: e.target.value ? normalizeToUsStateName(e.target.value) : '',
+                        }))
+                      }
+                    >
+                      <option value="">Select state</option>
+                      {US_STATES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Website</span>
+                    <input
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      value={provision.website_url}
+                      onChange={(e) => setProvision((p) => ({ ...p, website_url: e.target.value }))}
+                      placeholder="https://"
                     />
                   </label>
                   <label className="block sm:col-span-2">

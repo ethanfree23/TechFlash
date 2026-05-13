@@ -32,6 +32,8 @@ module Api
                 company_name: provision_params[:company_name],
                 industry: provision_params[:industry],
                 bio: provision_params[:bio],
+                state: provision_params[:state],
+                electrical_license_number: provision_params[:electrical_license_number],
                 phone: provision_params[:phone],
                 website_url: provision_params[:website_url],
                 facebook_url: provision_params[:facebook_url],
@@ -107,6 +109,7 @@ module Api
           params.permit(
             :email, :company_name, :industry, :location, :bio, :phone, :website_url, :company_profile_id,
             :facebook_url, :instagram_url, :linkedin_url, :contact_name, :first_name, :last_name,
+            :state, :electrical_license_number,
             service_cities: []
           )
         end
