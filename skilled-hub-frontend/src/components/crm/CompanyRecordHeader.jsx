@@ -26,6 +26,7 @@ export default function CompanyRecordHeader({
   onDelete,
   onCreateJob,
   onCreatePlatformAccount,
+  onAddCompanyLogin,
   onLinkAccount,
   onChangeStatus,
 }) {
@@ -159,6 +160,16 @@ export default function CompanyRecordHeader({
               <FaBriefcase className="h-3.5 w-3.5" aria-hidden />
               Create job
             </button>
+            {linked && typeof onAddCompanyLogin === 'function' ? (
+              <button
+                type="button"
+                onClick={onAddCompanyLogin}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
+              >
+                <FaUserPlus className="h-3.5 w-3.5" aria-hidden />
+                Add company login
+              </button>
+            ) : null}
             {!linked && typeof onCreatePlatformAccount === 'function' ? (
               <button
                 type="button"

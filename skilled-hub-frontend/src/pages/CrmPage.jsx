@@ -628,6 +628,39 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     [form],
   );
 
+  /** Add another company-role login under the CRM lead's already-linked platform company. */
+  const openAddCompanyLoginForLinkedLead = useCallback(() => {
+    const rawPid = form.linked_company_profile_id;
+    if (rawPid == null || rawPid === '') return;
+    const pid = Number(rawPid);
+    if (!Number.isFinite(pid) || pid <= 0) return;
+
+    const lead = detail?.crm_lead;
+    const la = lead?.linked_account;
+    const companyName =
+      (la && la.company_name) || String(form.name || '').trim() || `Company #${pid}`;
+    const countRaw = la?.company_user_count;
+    const company_users_count = typeof countRaw === 'number' ? countRaw : 0;
+
+    setProvisionMode('existing');
+    setSelectedCompany({
+      id: pid,
+      company_name: companyName,
+      company_users_count,
+    });
+    setCompanySearchQ(companyName);
+    setCompanyHits([]);
+    setProvision({
+      ...companyProvisionFieldsFromLeadForm(form),
+      email: '',
+      phone: '',
+    });
+    setProfileImportOpen(false);
+    setNewCompanyModalOpen(false);
+    setIsCreating(false);
+    setProvisionModalOpen(true);
+  }, [detail, form]);
+
   const selectLead = (id) => {
     const row = leads.find((l) => Number(l.id) === Number(id));
     const pid = row?.linked_company_profile_id;
@@ -924,6 +957,15 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     }
     setProvisionSaving(true);
     try {
+      const prevProvisionMode = provisionMode;
+      const prevSelectedCompanyId = selectedCompany?.id;
+      const prevLinkedProfileId = form.linked_company_profile_id;
+      const wasAddLoginForLinkedCrm =
+        prevProvisionMode === 'existing' &&
+        prevSelectedCompanyId != null &&
+        prevLinkedProfileId != null &&
+        Number(prevSelectedCompanyId) === Number(prevLinkedProfileId);
+
       const payload = {
         email,
         first_name: derivedFirst,
@@ -945,6 +987,14 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         payload.contact_name = provision.contact_name?.trim() || undefined;
         payload.electrical_license_number = provision.electrical_license_number?.trim() || undefined;
       }
+      const sid =
+        selectedId != null && selectedId !== ''
+          ? Number(selectedId)
+          : null;
+      const crmLeadId = Number.isFinite(sid) && sid > 0 ? sid : null;
+      if (crmLeadId != null) {
+        payload.crm_lead_id = crmLeadId;
+      }
       await crmAPI.createCompanyAccount(payload);
       setProvision(emptyProvisionState());
       setProvisionMode('new');
@@ -952,11 +1002,18 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       setCompanyHits([]);
       setSelectedCompany(null);
       setProvisionModalOpen(false);
+      if (crmLeadId != null) {
+        await loadDetail(crmLeadId);
+        await loadList();
+      }
       setAlertModal({
         isOpen: true,
-        title: 'Company account created',
-        message:
-          'Company account created successfully.',
+        title: wasAddLoginForLinkedCrm ? 'Company login created' : 'Company account created',
+        message: wasAddLoginForLinkedCrm
+          ? 'Another company login was created and the welcome email was sent when applicable.'
+          : crmLeadId != null
+            ? 'Company account created and this CRM record is now linked.'
+            : 'Company account created successfully.',
         variant: 'success',
       });
     } catch (err) {
@@ -1642,6 +1699,12 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     return Array.isArray(list) ? list : [];
   }, [c?.platform_company_users]);
 
+  const provisionModalIsAddLoginForLinkedCrm =
+    Boolean(form.linked_company_profile_id) &&
+    provisionMode === 'existing' &&
+    selectedCompany?.id != null &&
+    Number(selectedCompany.id) === Number(form.linked_company_profile_id);
+
   const crmContactsWithPlatformMatch = useMemo(() => {
     const matchedIds = new Set();
     const rows = displayContacts.map((contact, idx) => {
@@ -2007,7 +2070,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           onCreatePlatform={() => {
             setNewCompanyModalOpen(false);
             setIsCreating(false);
-            openProvisionFromCrmRecord();
+            if (selectedId && form.linked_company_profile_id) {
+              openAddCompanyLoginForLinkedLead();
+            } else {
+              openProvisionFromCrmRecord();
+            }
           }}
           onMerge={openMergeModal}
           onExport={exportVisibleCsv}
@@ -2336,6 +2403,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                 onDelete={removeRecord}
                 onCreateJob={() => navigate('/create-job')}
                 onCreatePlatformAccount={openProvisionFromCrmRecord}
+                onAddCompanyLogin={openAddCompanyLoginForLinkedLead}
                 onLinkAccount={() => {
                   setIsRecordEditing(true);
                   setTimeout(() => document.getElementById('crm-link-platform')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
@@ -3976,7 +4044,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             <div className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
               <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
                 <h2 id="crm-provision-title" className="text-lg font-semibold text-gray-900">
-                  Create platform company account
+                  {provisionModalIsAddLoginForLinkedCrm ? 'Add company login' : 'Create platform company account'}
                 </h2>
                 <button
                   type="button"
@@ -3990,8 +4058,17 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
               </div>
               <div className="overflow-y-auto px-6 py-5">
                 <p className="text-sm text-gray-500 mb-4">
-                  Prefills from this CRM company profile. You are creating a company platform login (and a new company
-                  profile when you choose &quot;New company&quot;), not a personal contact record.
+                  {provisionModalIsAddLoginForLinkedCrm ? (
+                    <>
+                      Add another company-role login for this CRM record&apos;s linked platform company. Enter a new
+                      email and phone for the additional user.
+                    </>
+                  ) : (
+                    <>
+                      Prefills from this CRM company profile. You are creating a company platform login (and a new
+                      company profile when you choose &quot;New company&quot;), not a personal contact record.
+                    </>
+                  )}
                 </p>
                 <form onSubmit={provisionCompanyAccount} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="sm:col-span-2">
@@ -4003,18 +4080,20 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                           setProvisionMode('new');
                           setSelectedCompany(null);
                         }}
+                        disabled={provisionModalIsAddLoginForLinkedCrm}
                         className={`px-3 py-2 rounded-lg text-sm font-medium border ${
                           provisionMode === 'new' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700'
-                        }`}
+                        } ${provisionModalIsAddLoginForLinkedCrm ? 'opacity-40 cursor-not-allowed' : ''}`}
                       >
                         New company
                       </button>
                       <button
                         type="button"
                         onClick={() => setProvisionMode('existing')}
+                        disabled={provisionModalIsAddLoginForLinkedCrm}
                         className={`px-3 py-2 rounded-lg text-sm font-medium border ${
                           provisionMode === 'existing' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700'
-                        }`}
+                        } ${provisionModalIsAddLoginForLinkedCrm ? 'opacity-40 cursor-not-allowed' : ''}`}
                       >
                         Existing company
                       </button>
@@ -4171,7 +4250,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       disabled={provisionSaving}
                       className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium disabled:opacity-50"
                     >
-                      {provisionSaving ? 'Creating…' : 'Create account & send email'}
+                      {provisionSaving ? 'Creating…' : provisionModalIsAddLoginForLinkedCrm ? 'Create login & send email' : 'Create account & send email'}
                     </button>
                     <button
                       type="button"

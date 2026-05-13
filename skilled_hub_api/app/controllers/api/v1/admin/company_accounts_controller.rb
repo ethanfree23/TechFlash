@@ -12,39 +12,42 @@ module Api
         # - a new company user + company profile, or
         # - an additional company user under an existing company_profile_id.
         def create
+          p = provision_params
           result =
-            if provision_params[:company_profile_id].present?
+            if p[:company_profile_id].present?
               AdminAccountProvisioner.provision_company_login!(
-                email: provision_params[:email],
-                company_profile_id: provision_params[:company_profile_id],
-                phone: provision_params[:phone],
-                first_name: provision_params[:first_name],
-                last_name: provision_params[:last_name]
+                email: p[:email],
+                company_profile_id: p[:company_profile_id],
+                phone: p[:phone],
+                first_name: p[:first_name],
+                last_name: p[:last_name]
               )
             else
-              cities = provision_params[:service_cities]
-              if cities.blank? && provision_params[:location].present?
-                cities = provision_params[:location].to_s.split(",").map(&:strip).reject(&:blank?)
+              cities = p[:service_cities]
+              if cities.blank? && p[:location].present?
+                cities = p[:location].to_s.split(",").map(&:strip).reject(&:blank?)
               end
 
               AdminAccountProvisioner.provision_company!(
-                email: provision_params[:email],
-                company_name: provision_params[:company_name],
-                industry: provision_params[:industry],
-                bio: provision_params[:bio],
-                state: provision_params[:state],
-                electrical_license_number: provision_params[:electrical_license_number],
-                phone: provision_params[:phone],
-                website_url: provision_params[:website_url],
-                facebook_url: provision_params[:facebook_url],
-                instagram_url: provision_params[:instagram_url],
-                linkedin_url: provision_params[:linkedin_url],
+                email: p[:email],
+                company_name: p[:company_name],
+                industry: p[:industry],
+                bio: p[:bio],
+                state: p[:state],
+                electrical_license_number: p[:electrical_license_number],
+                phone: p[:phone],
+                website_url: p[:website_url],
+                facebook_url: p[:facebook_url],
+                instagram_url: p[:instagram_url],
+                linkedin_url: p[:linkedin_url],
                 service_cities: cities,
-                contact_name: provision_params[:contact_name],
-                first_name: provision_params[:first_name],
-                last_name: provision_params[:last_name]
+                contact_name: p[:contact_name],
+                first_name: p[:first_name],
+                last_name: p[:last_name]
               )
             end
+
+          link_crm_lead_after_provision!(result, p[:crm_lead_id]) if p[:crm_lead_id].present?
 
           render json: {
             user: UserSerializer.new(result[:user]).as_json,
@@ -109,8 +112,24 @@ module Api
           params.permit(
             :email, :company_name, :industry, :location, :bio, :phone, :website_url, :company_profile_id,
             :facebook_url, :instagram_url, :linkedin_url, :contact_name, :first_name, :last_name,
-            :state, :electrical_license_number,
+            :state, :electrical_license_number, :crm_lead_id,
             service_cities: []
+          )
+        end
+
+        # When CRM provisions from a lead row, persist the link on the lead in the same request.
+        def link_crm_lead_after_provision!(result, crm_lead_id_raw)
+          lead_id = crm_lead_id_raw.to_s.strip.to_i
+          raise AdminAccountProvisioner::Error, "CRM lead not found" if lead_id <= 0
+
+          lead = CrmLead.find_by(id: lead_id)
+          raise AdminAccountProvisioner::Error, "CRM lead not found" unless lead
+
+          user = result[:user]
+          profile = result[:profile]
+          lead.update!(
+            linked_user_id: user.id,
+            linked_company_profile_id: profile.id
           )
         end
 
