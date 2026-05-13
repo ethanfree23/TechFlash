@@ -10,7 +10,7 @@ module Api
         # GET /api/v1/admin/users?q=&role=
         # role: all | technician | company (default all)
         def index
-          scope = User.where(role: %i[technician company]).includes(:technician_profile, :company_profile).order(:email)
+          scope = User.where(role: %i[technician company]).includes(:technician_profile, :company_profile, :shared_company_profile).order(:email)
           scope = filter_by_role(scope)
           scope = filter_by_search(scope)
 
@@ -229,8 +229,9 @@ module Api
           end
 
           if params.key?(:job_alert_trade_label)
+            label = params.permit(:job_alert_trade_label)[:job_alert_trade_label].to_s.strip
             pref = user.job_alert_preference || JobAlertDispatcher.default_preference_for(user)
-            pref.update!(trade_label: params[:job_alert_trade_label].to_s.strip.presence)
+            pref.update!(trade_label: label.presence)
           end
 
           render json: { message: "Profile updated" }, status: :ok
@@ -455,7 +456,18 @@ module Api
 
           like = "%#{ActiveRecord::Base.sanitize_sql_like(q.downcase)}%"
           scope.left_joins(:company_profile, :technician_profile).where(
-            "LOWER(users.email) LIKE :like OR LOWER(COALESCE(users.first_name, '')) LIKE :like OR LOWER(COALESCE(users.last_name, '')) LIKE :like OR LOWER(COALESCE(company_profiles.company_name, '')) LIKE :like OR LOWER(COALESCE(technician_profiles.trade_type, '')) LIKE :like",
+            <<~SQL.squish,
+              LOWER(users.email) LIKE :like
+              OR LOWER(COALESCE(users.first_name, '')) LIKE :like
+              OR LOWER(COALESCE(users.last_name, '')) LIKE :like
+              OR LOWER(COALESCE(company_profiles.company_name, '')) LIKE :like
+              OR LOWER(COALESCE(technician_profiles.trade_type, '')) LIKE :like
+              OR EXISTS (
+                SELECT 1 FROM company_profiles shared_co
+                WHERE shared_co.id = users.company_profile_id
+                  AND LOWER(shared_co.company_name) LIKE :like
+              )
+            SQL
             like: like
           )
         end

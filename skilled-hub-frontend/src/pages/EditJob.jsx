@@ -113,7 +113,7 @@ const EditJob = () => {
           }
         }
         setPlatformFeePercent(pct != null ? Number(pct) : 10);
-      } catch (err) {
+      } catch {
         setError('Failed to load job details');
       } finally {
         setLoading(false);

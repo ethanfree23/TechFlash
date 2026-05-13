@@ -190,6 +190,56 @@ module Api
           assert_equal 2, CrmNote.where(crm_lead_id: current.id).count
           assert_equal current.id, body.fetch("merged").fetch("target_crm_lead_id")
         end
+
+        test "update persists company bio, company contact fields, and same_as_company on contacts" do
+          admin = User.create!(
+            email: "admin+crm_update_fields_test@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+
+          lead = CrmLead.create!(
+            name: "Update Fields Co",
+            contact_name: "Pat Smith",
+            email: "pat@example.com",
+            phone: "555-111-2222",
+            status: "lead",
+            contacts: [{ "name" => "Pat Smith", "email" => "pat@example.com", "phone" => "555-111-2222" }]
+          )
+
+          patch "/api/v1/admin/crm_leads/#{lead.id}",
+                params: {
+                  name: "Update Fields Co",
+                  company_email: "office@updatefields.com",
+                  company_phone: "555-999-0000",
+                  bio: "Regional HVAC partner.",
+                  contacts: [
+                    {
+                      name: "Pat Smith",
+                      email: "pat@example.com",
+                      phone: "555-111-2222",
+                      same_as_company: { email: true, phone: true }
+                    }
+                  ]
+                },
+                headers: auth_header_for(admin),
+                as: :json
+
+          assert_response :ok
+          body = JSON.parse(response.body)
+          cl = body.fetch("crm_lead")
+          assert_equal "office@updatefields.com", cl.fetch("company_email")
+          assert_equal "555-999-0000", cl.fetch("company_phone")
+          assert_equal "Regional HVAC partner.", cl.fetch("bio")
+          sac = cl.fetch("contacts").first.fetch("same_as_company")
+          assert sac["email"]
+          assert sac["phone"]
+
+          lead.reload
+          assert_equal "office@updatefields.com", lead.company_email
+          assert_equal "Regional HVAC partner.", lead.bio
+        end
       end
     end
   end

@@ -120,7 +120,6 @@ async function run() {
   await testJobsFilterSerialization();
   await testConversationsNormalization();
   await testSettingsFallbackBaseUrl();
-  // eslint-disable-next-line no-console
   console.log('api tests passed');
 }
 

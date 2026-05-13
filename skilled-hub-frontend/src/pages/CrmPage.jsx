@@ -19,6 +19,8 @@ import {
   noteDraftForEdit,
   noteWasEdited,
 } from '../utils/crmNotes';
+import { US_STATES } from '../data/statesByCountry';
+import { normalizeToUsStateName } from '../utils/crmUsState';
 import {
   FaBuilding,
   FaChartLine,
@@ -78,6 +80,9 @@ const CRM_MERGE_FIELDS = [
   { key: 'contact_name', label: 'Primary contact name' },
   { key: 'email', label: 'Primary email' },
   { key: 'phone', label: 'Primary phone' },
+  { key: 'company_email', label: 'Company email' },
+  { key: 'company_phone', label: 'Company phone' },
+  { key: 'bio', label: 'Company bio' },
   { key: 'website', label: 'Website' },
   { key: 'street_address', label: 'Street address' },
   { key: 'city', label: 'City' },
@@ -103,6 +108,17 @@ const formatDateTime = (value) => {
   return d.toLocaleString();
 };
 
+const defaultSameAsCompany = () => ({ email: false, phone: false, socials: false });
+
+const normalizeSameAsCompany = (raw) => {
+  if (!raw || typeof raw !== 'object') return defaultSameAsCompany();
+  return {
+    email: Boolean(raw.email),
+    phone: Boolean(raw.phone),
+    socials: Boolean(raw.socials),
+  };
+};
+
 const normalizeContactEntry = (entry) => {
   if (!entry || typeof entry !== 'object') return null;
   const name = String(entry.name || '').trim();
@@ -110,20 +126,49 @@ const normalizeContactEntry = (entry) => {
   const phone = formatPhoneInput(String(entry.phone || '').trim());
   const jobTitle = String(entry.job_title || '').trim();
   const extension = String(entry.extension || '').trim();
+  const instagramUrl = String(entry.instagram_url || '').trim();
+  const facebookUrl = String(entry.facebook_url || '').trim();
+  const linkedinUrl = String(entry.linkedin_url || '').trim();
+  const sameAs = normalizeSameAsCompany(entry.same_as_company);
   if (!name && !email && !phone) return null;
-  return { name, email, phone, job_title: jobTitle, extension };
+  const out = { name, email, phone, job_title: jobTitle, extension };
+  if (instagramUrl) out.instagram_url = instagramUrl;
+  if (facebookUrl) out.facebook_url = facebookUrl;
+  if (linkedinUrl) out.linkedin_url = linkedinUrl;
+  if (sameAs.email || sameAs.phone || sameAs.socials) {
+    out.same_as_company = {
+      ...(sameAs.email ? { email: true } : {}),
+      ...(sameAs.phone ? { phone: true } : {}),
+      ...(sameAs.socials ? { socials: true } : {}),
+    };
+  }
+  return out;
 };
 
 const normalizeContactDraftEntry = (entry) => {
-  if (!entry || typeof entry !== 'object') return {
-    name: '', email: '', phone: '', job_title: '', extension: '',
-  };
+  if (!entry || typeof entry !== 'object') {
+    return {
+      name: '',
+      email: '',
+      phone: '',
+      job_title: '',
+      extension: '',
+      instagram_url: '',
+      facebook_url: '',
+      linkedin_url: '',
+      same_as_company: defaultSameAsCompany(),
+    };
+  }
   return {
     name: String(entry.name || '').trim(),
     email: String(entry.email || '').trim(),
     phone: formatPhoneInput(String(entry.phone || '').trim()),
     job_title: String(entry.job_title || '').trim(),
     extension: String(entry.extension || '').trim(),
+    instagram_url: String(entry.instagram_url || '').trim(),
+    facebook_url: String(entry.facebook_url || '').trim(),
+    linkedin_url: String(entry.linkedin_url || '').trim(),
+    same_as_company: normalizeSameAsCompany(entry.same_as_company),
   };
 };
 
@@ -154,6 +199,61 @@ const mergeFieldDisplayValue = (lead, key) => {
   if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : '—';
   return String(value);
 };
+
+/** Resolved values for read-only CRM UI (mirrors save payload resolution). */
+const resolveContactForDisplay = (entry, f) => {
+  if (!entry || typeof entry !== 'object') {
+    return {
+      email: '',
+      phone: '',
+      instagram_url: '',
+      facebook_url: '',
+      linkedin_url: '',
+      same_as_company: defaultSameAsCompany(),
+    };
+  }
+  const sac = normalizeSameAsCompany(entry.same_as_company);
+  const ce = (f.company_email || '').trim();
+  const cp = formatPhoneInput((f.company_phone || '').trim());
+  const email = sac.email && ce ? ce : String(entry.email || '').trim();
+  const phone = sac.phone && cp ? cp : formatPhoneInput(String(entry.phone || '').trim());
+  const fig = (f.instagram_url || '').trim();
+  const ffb = (f.facebook_url || '').trim();
+  const fli = (f.linkedin_url || '').trim();
+  const ig = sac.socials ? fig || String(entry.instagram_url || '').trim() : String(entry.instagram_url || '').trim();
+  const fb = sac.socials ? ffb || String(entry.facebook_url || '').trim() : String(entry.facebook_url || '').trim();
+  const li = sac.socials ? fli || String(entry.linkedin_url || '').trim() : String(entry.linkedin_url || '').trim();
+  return { email, phone, instagram_url: ig, facebook_url: fb, linkedin_url: li, same_as_company: sac };
+};
+
+function normalizeCrmImportMatchValue(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function normalizeCrmImportPhoneMatch(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return '';
+  return digits.length > 10 ? digits.slice(-10) : digits;
+}
+
+function normalizeCrmImportWebsiteMatch(value) {
+  const normalized = normalizeCrmImportMatchValue(value);
+  if (!normalized) return '';
+  return normalized.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
+}
+
+function buildCrmImportRowSignatures(row) {
+  const signatures = [];
+  const name = normalizeCrmImportMatchValue(row.name);
+  const email = normalizeCrmImportMatchValue(row.email);
+  const phone = normalizeCrmImportPhoneMatch(row.phone);
+  const website = normalizeCrmImportWebsiteMatch(row.website);
+  if (name) signatures.push({ key: `name:${name}`, label: 'name' });
+  if (email) signatures.push({ key: `email:${email}`, label: 'email' });
+  if (phone) signatures.push({ key: `phone:${phone}`, label: 'phone' });
+  if (website) signatures.push({ key: `website:${website}`, label: 'website' });
+  return signatures;
+}
 
 const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [leads, setLeads] = useState([]);
@@ -191,6 +291,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [pipelineNameFilter, setPipelineNameFilter] = useState('');
   const [pipelineStatusFilter, setPipelineStatusFilter] = useState('');
   const [pipelineExpandedByProfileId, setPipelineExpandedByProfileId] = useState({});
+  const [crmCompanyInfoOpen, setCrmCompanyInfoOpen] = useState(true);
+  const [crmUsersSectionOpen, setCrmUsersSectionOpen] = useState(true);
   const [importModalOpen, setImportModalOpen] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
   const [importSummary, setImportSummary] = useState(null);
@@ -240,6 +342,39 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   });
   const pendingAdditionalContactFocusIdx = useRef(null);
 
+  const hydrateFormFromCrmLead = useCallback((c) => {
+    if (!c) return;
+    const contacts = normalizeContacts(c.contacts, {
+      name: c.contact_name || '',
+      email: c.email || '',
+      phone: c.phone || '',
+    });
+    const primaryContact = contacts[0] || { name: '', email: '', phone: '' };
+    setForm({
+      name: c.name || '',
+      contact_name: primaryContact.name || '',
+      email: primaryContact.email || '',
+      phone: primaryContact.phone || '',
+      contacts,
+      website: c.website || '',
+      street_address: c.street_address || '',
+      city: c.city || '',
+      state: normalizeToUsStateName(c.state || ''),
+      zip: c.zip || '',
+      instagram_url: c.instagram_url || '',
+      facebook_url: c.facebook_url || '',
+      linkedin_url: c.linkedin_url || '',
+      company_types: c.company_types || [],
+      status: c.status || 'lead',
+      notes: c.notes || '',
+      bio: c.bio || '',
+      company_email: c.company_email || '',
+      company_phone: c.company_phone || '',
+      linked_user_id: c.linked_user_id ?? null,
+      linked_company_profile_id: c.linked_company_profile_id ?? null,
+    });
+  }, []);
+
   const loadList = useCallback(async () => {
     setLoading(true);
     try {
@@ -272,33 +407,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const res = await crmAPI.get(id);
       setDetail(res);
       setCrmNotes(res.crm_notes || []);
-      const c = res.crm_lead;
-      const contacts = normalizeContacts(c.contacts, {
-        name: c.contact_name || '',
-        email: c.email || '',
-        phone: c.phone || '',
-      });
-      const primaryContact = contacts[0] || { name: '', email: '', phone: '' };
-      setForm({
-        name: c.name || '',
-        contact_name: primaryContact.name || '',
-        email: primaryContact.email || '',
-        phone: primaryContact.phone || '',
-        contacts,
-        website: c.website || '',
-        street_address: c.street_address || '',
-        city: c.city || '',
-        state: c.state || '',
-        zip: c.zip || '',
-        instagram_url: c.instagram_url || '',
-        facebook_url: c.facebook_url || '',
-        linkedin_url: c.linkedin_url || '',
-        company_types: c.company_types || [],
-        status: c.status || 'lead',
-        notes: c.notes || '',
-        linked_user_id: c.linked_user_id ?? null,
-        linked_company_profile_id: c.linked_company_profile_id ?? null,
-      });
+      hydrateFormFromCrmLead(res.crm_lead);
     } catch (e) {
       setAlertModal({
         isOpen: true,
@@ -309,7 +418,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     } finally {
       setDetailLoading(false);
     }
-  }, []);
+  }, [hydrateFormFromCrmLead]);
 
   useEffect(() => {
     if (isCreating) {
@@ -332,6 +441,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         company_types: [],
         status: 'lead',
         notes: '',
+        bio: '',
+        company_email: '',
+        company_phone: '',
         linked_user_id: null,
         linked_company_profile_id: null,
       });
@@ -465,20 +577,61 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     setSearchHits([]);
   };
 
+  const resolveContactRowForPayload = (entry, f) => {
+    const sac = normalizeSameAsCompany(entry.same_as_company);
+    const companyEmail = (f.company_email || '').trim();
+    const companyPhone = formatPhoneInput((f.company_phone || '').trim());
+    const email = sac.email && companyEmail ? companyEmail : String(entry.email || '').trim();
+    const phone = sac.phone && companyPhone ? companyPhone : formatPhoneInput(String(entry.phone || '').trim());
+    let ig = String(entry.instagram_url || '').trim();
+    let fb = String(entry.facebook_url || '').trim();
+    let li = String(entry.linkedin_url || '').trim();
+    if (sac.socials) {
+      ig = (f.instagram_url || '').trim() || ig;
+      fb = (f.facebook_url || '').trim() || fb;
+      li = (f.linkedin_url || '').trim() || li;
+    }
+    const row = {
+      name: String(entry.name || '').trim(),
+      email,
+      phone,
+      job_title: String(entry.job_title || '').trim() || undefined,
+      extension: String(entry.extension || '').trim() || undefined,
+      instagram_url: ig || undefined,
+      facebook_url: fb || undefined,
+      linkedin_url: li || undefined,
+    };
+    Object.keys(row).forEach((k) => {
+      if (row[k] === undefined || row[k] === '') delete row[k];
+    });
+    if (sac.email || sac.phone || sac.socials) {
+      row.same_as_company = {
+        ...(sac.email ? { email: true } : {}),
+        ...(sac.phone ? { phone: true } : {}),
+        ...(sac.socials ? { socials: true } : {}),
+      };
+    }
+    return row;
+  };
+
   const saveRecord = async () => {
-    const normalizedContacts = normalizeContacts(form.contacts, {
+    const base = normalizeContacts(form.contacts, {
       name: form.contact_name || '',
       email: form.email || '',
-      phone: '',
+      phone: form.phone || '',
       job_title: '',
       extension: '',
     });
+    const normalizedContacts = base.map((c) => resolveContactRowForPayload(c, form));
     const primaryContact = normalizedContacts[0] || {};
     const payload = {
       name: form.name?.trim(),
       contact_name: (primaryContact.name || form.contact_name || '').trim() || undefined,
       email: (primaryContact.email || form.email || '').trim() || undefined,
-      phone: formatPhoneInput((form.phone || '').trim()) || undefined,
+      phone: formatPhoneInput(String(primaryContact.phone || form.phone || '').trim()) || undefined,
+      company_email: form.company_email?.trim() || undefined,
+      company_phone: formatPhoneInput((form.company_phone || '').trim()) || undefined,
+      bio: form.bio?.trim() || undefined,
       contacts: normalizedContacts,
       website: form.website?.trim() || undefined,
       street_address: form.street_address?.trim() || undefined,
@@ -512,9 +665,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         setNewCompanyModalOpen(false);
         setSelectedId(res.crm_lead.id);
         setDetail(res);
+        hydrateFormFromCrmLead(res.crm_lead);
       } else if (selectedId) {
         const res = await crmAPI.update(selectedId, payload);
         setDetail(res);
+        hydrateFormFromCrmLead(res.crm_lead);
         await loadList();
         setIsRecordEditing(false);
       }
@@ -564,7 +719,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const existingContacts = normalizeContacts(f.contacts, {
         name: f.contact_name || '',
         email: f.email || '',
-        phone: '',
+        phone: f.phone || '',
         job_title: '',
         extension: '',
       });
@@ -592,6 +747,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         email: importedPrimary?.email || f.email || '',
         phone: importedPrimary?.phone || f.phone || '',
         website: row.website || f.website || '',
+        bio: (row.bio && String(row.bio).trim()) || f.bio || '',
+        company_email: (row.company_email && String(row.company_email).trim()) || f.company_email || '',
+        company_phone: row.company_phone && String(row.company_phone).trim() ? formatPhoneInput(String(row.company_phone).trim()) : f.company_phone || '',
         company_types: row.company_types
           ? Array.from(new Set([...(f.company_types || []), ...row.company_types.split(/[,|;]/).map((t) => t.trim()).filter(Boolean)]))
           : (f.company_types || []),
@@ -753,32 +911,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       setDetail(res);
       setCrmNotes(res.crm_notes || []);
       const mergedLead = res.crm_lead;
-      const contacts = normalizeContacts(mergedLead.contacts, {
-        name: mergedLead.contact_name || '',
-        email: mergedLead.email || '',
-        phone: mergedLead.phone || '',
-      });
-      const primaryContact = contacts[0] || { name: '', email: '', phone: '' };
-      setForm({
-        name: mergedLead.name || '',
-        contact_name: primaryContact.name || '',
-        email: primaryContact.email || '',
-        phone: primaryContact.phone || '',
-        contacts,
-        website: mergedLead.website || '',
-        street_address: mergedLead.street_address || '',
-        city: mergedLead.city || '',
-        state: mergedLead.state || '',
-        zip: mergedLead.zip || '',
-        instagram_url: mergedLead.instagram_url || '',
-        facebook_url: mergedLead.facebook_url || '',
-        linkedin_url: mergedLead.linkedin_url || '',
-        company_types: mergedLead.company_types || [],
-        status: mergedLead.status || 'lead',
-        notes: mergedLead.notes || '',
-        linked_user_id: mergedLead.linked_user_id ?? null,
-        linked_company_profile_id: mergedLead.linked_company_profile_id ?? null,
-      });
+      hydrateFormFromCrmLead(mergedLead);
       setSelectedId(mergedLead.id);
       setIsRecordEditing(false);
       setMergeModalOpen(false);
@@ -832,13 +965,16 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const contacts = editableContacts(f.contacts, {
         name: f.contact_name || '',
         email: f.email || '',
-        phone: '',
+        phone: f.phone || '',
         job_title: '',
         extension: '',
       });
-      const first = contacts[0] || {
-        name: '', email: '', phone: '', job_title: '', extension: '',
-      };
+      const first = contacts[0] || normalizeContactDraftEntry({});
+      const socialKeys = ['instagram_url', 'facebook_url', 'linkedin_url'];
+      if (socialKeys.includes(field)) {
+        const nextContacts = [{ ...first, [field]: value }, ...contacts.slice(1)];
+        return { ...f, contacts: nextContacts };
+      }
       const formattedValue = field === 'phone' ? formatPhoneInput(value) : value;
       const nextContacts = [{ ...first, [field]: formattedValue }, ...contacts.slice(1)];
       return {
@@ -856,13 +992,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const contacts = editableContacts(f.contacts, {
         name: f.contact_name || '',
         email: f.email || '',
-        phone: '',
+        phone: f.phone || '',
         job_title: '',
         extension: '',
       });
-      const first = contacts[0] || {
-        name: '', email: '', phone: '', job_title: '', extension: '',
-      };
+      const first = contacts[0] || normalizeContactDraftEntry({});
       const tokens = String(first.name || '').trim().split(/\s+/).filter(Boolean);
       const current = {
         firstName: tokens.length > 0 ? tokens[0] : '',
@@ -884,19 +1018,15 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const contacts = editableContacts(f.contacts, {
         name: f.contact_name || '',
         email: f.email || '',
-        phone: '',
+        phone: f.phone || '',
         job_title: '',
         extension: '',
       });
-      const baseContacts = contacts.length > 0 ? contacts : [{
-        name: '', email: '', phone: '', job_title: '', extension: '',
-      }];
+      const baseContacts = contacts.length > 0 ? contacts : [normalizeContactDraftEntry({})];
       pendingAdditionalContactFocusIdx.current = baseContacts.length;
       return {
         ...f,
-        contacts: [...baseContacts, {
-          name: '', email: '', phone: '', job_title: '', extension: '',
-        }],
+        contacts: [...baseContacts, normalizeContactDraftEntry({})],
       };
     });
   };
@@ -913,7 +1043,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const contacts = editableContacts(f.contacts, {
         name: f.contact_name || '',
         email: f.email || '',
-        phone: '',
+        phone: f.phone || '',
         job_title: '',
         extension: '',
       });
@@ -931,7 +1061,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const contacts = editableContacts(f.contacts, {
         name: f.contact_name || '',
         email: f.email || '',
-        phone: '',
+        phone: f.phone || '',
         job_title: '',
         extension: '',
       });
@@ -945,7 +1075,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const contacts = editableContacts(f.contacts, {
         name: f.contact_name || '',
         email: f.email || '',
-        phone: '',
+        phone: f.phone || '',
         job_title: '',
         extension: '',
       });
@@ -972,17 +1102,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         const contacts = editableContacts(f.contacts, {
           name: f.contact_name || '',
           email: f.email || '',
-          phone: '',
+          phone: f.phone || '',
           job_title: '',
           extension: '',
         });
-        const first = contacts[0] || {
-          name: '',
-          email: '',
-          phone: '',
-          job_title: '',
-          extension: '',
-        };
+        const first = contacts[0] || normalizeContactDraftEntry({});
         const nextPrimary = {
           ...first,
           name: String(chosen.name || '').trim(),
@@ -995,6 +1119,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           ...f,
           contact_name: nextPrimary.name,
           email: nextPrimary.email,
+          phone: nextPrimary.phone,
           contacts: [nextPrimary, ...contacts.slice(1)],
         };
       });
@@ -1003,31 +1128,24 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
-  const normalizeMatchValue = (value) => String(value || '').trim().toLowerCase();
-
-  const normalizePhoneMatch = (value) => {
-    const digits = String(value || '').replace(/\D/g, '');
-    if (!digits) return '';
-    return digits.length > 10 ? digits.slice(-10) : digits;
-  };
-
-  const normalizeWebsiteMatch = (value) => {
-    const normalized = normalizeMatchValue(value);
-    if (!normalized) return '';
-    return normalized.replace(/^https?:\/\//, '').replace(/^www\./, '').replace(/\/+$/, '');
-  };
-
-  const buildRowSignatures = (row) => {
-    const signatures = [];
-    const name = normalizeMatchValue(row.name);
-    const email = normalizeMatchValue(row.email);
-    const phone = normalizePhoneMatch(row.phone);
-    const website = normalizeWebsiteMatch(row.website);
-    if (name) signatures.push({ key: `name:${name}`, label: 'name' });
-    if (email) signatures.push({ key: `email:${email}`, label: 'email' });
-    if (phone) signatures.push({ key: `phone:${phone}`, label: 'phone' });
-    if (website) signatures.push({ key: `website:${website}`, label: 'website' });
-    return signatures;
+  const updateContactSameAsCompany = (contactIdx, flagKey, checked) => {
+    setForm((f) => {
+      const contacts = editableContacts(f.contacts, {
+        name: f.contact_name || '',
+        email: f.email || '',
+        phone: f.phone || '',
+        job_title: '',
+        extension: '',
+      });
+      if (contactIdx < 0 || contactIdx >= contacts.length) return f;
+      const cur = contacts[contactIdx];
+      const sac = normalizeSameAsCompany(cur.same_as_company);
+      const nextSac = { ...sac, [flagKey]: Boolean(checked) };
+      const nextContacts = contacts.map((c, idx) =>
+        idx === contactIdx ? { ...c, same_as_company: nextSac } : c,
+      );
+      return { ...f, contacts: nextContacts };
+    });
   };
 
   const withDuplicateMetadata = useCallback((rows) => {
@@ -1035,7 +1153,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
 
     const crmSignatureMap = new Map();
     leads.forEach((lead) => {
-      buildRowSignatures(lead).forEach((sig) => {
+      buildCrmImportRowSignatures(lead).forEach((sig) => {
         const entries = crmSignatureMap.get(sig.key) || [];
         entries.push(sig.label);
         crmSignatureMap.set(sig.key, entries);
@@ -1044,7 +1162,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
 
     const batchSignatureMap = new Map();
     rows.forEach((row, idx) => {
-      buildRowSignatures(row).forEach((sig) => {
+      buildCrmImportRowSignatures(row).forEach((sig) => {
         const entries = batchSignatureMap.get(sig.key) || [];
         entries.push(idx);
         batchSignatureMap.set(sig.key, entries);
@@ -1053,7 +1171,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
 
     return rows.map((row) => {
       const duplicateReasons = [];
-      buildRowSignatures(row).forEach((sig) => {
+      buildCrmImportRowSignatures(row).forEach((sig) => {
         const batchHits = batchSignatureMap.get(sig.key) || [];
         if (batchHits.length > 1) {
           duplicateReasons.push(`Duplicate ${sig.label} in this import list`);
@@ -1411,10 +1529,14 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const displayContacts = editableContacts(form.contacts, {
     name: form.contact_name || '',
     email: form.email || '',
-    phone: '',
+    phone: form.phone || '',
     job_title: '',
     extension: '',
   });
+  const primaryContactDraft = displayContacts[0] || normalizeContactDraftEntry({});
+  const primarySameAs = normalizeSameAsCompany(primaryContactDraft.same_as_company);
+  const normalizedFormState = normalizeToUsStateName(form.state || '');
+  const stateSelectValue = US_STATES.includes(normalizedFormState) ? normalizedFormState : '';
   const fullAddress = [form.street_address, form.city, form.state, form.zip].map((v) => String(v || '').trim()).filter(Boolean).join(', ');
   const mapsAddressUrl = fullAddress
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`
@@ -1805,322 +1927,650 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   <p className="text-sm text-gray-500 mb-4">Loading details…</p>
                 )}
                 {isRecordEditing ? (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <label className="block sm:col-span-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Company name *</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.name ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
-                      readOnly={!isRecordEditing}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-500 uppercase">First name</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={splitContactName(form.contact_name).firstName}
-                      onChange={(e) => updatePrimaryContactNamePart('firstName', e.target.value)}
-                      readOnly={!isRecordEditing}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Last name</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={splitContactName(form.contact_name).lastName}
-                      onChange={(e) => updatePrimaryContactNamePart('lastName', e.target.value)}
-                      readOnly={!isRecordEditing}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Status</span>
-                    <select
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm capitalize"
-                      value={form.status ?? 'lead'}
-                      onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-                      disabled={!isRecordEditing}
-                    >
-                      {CRM_STATUSES.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Email</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      type="email"
-                      value={form.email ?? ''}
-                      onChange={(e) => updatePrimaryContactField('email', e.target.value)}
-                      readOnly={!isRecordEditing}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Phone</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.phone ?? ''}
-                      onChange={(e) => updatePrimaryContactField('phone', e.target.value)}
-                      readOnly={!isRecordEditing}
-                    />
-                  </label>
-                  <div className="block sm:col-span-2 rounded-lg border border-gray-200 p-3 bg-gray-50">
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-xs font-medium text-gray-500 uppercase">Additional contacts</span>
+                  <div className="space-y-4">
+                    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+                      <button
+                        type="button"
+                        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+                        onClick={() => setCrmCompanyInfoOpen((o) => !o)}
+                      >
+                        {crmCompanyInfoOpen ? (
+                          <FaChevronDown className="text-gray-500 w-3.5 h-3.5 shrink-0" />
+                        ) : (
+                          <FaChevronRight className="text-gray-500 w-3.5 h-3.5 shrink-0" />
+                        )}
+                        <span className="text-sm font-semibold text-gray-900">Company information</span>
+                      </button>
+                      {crmCompanyInfoOpen && (
+                        <div className="px-4 pb-4 pt-2 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/30">
+                          <label className="block sm:col-span-2">
+                            <span className="text-xs font-medium text-gray-500 uppercase">Company name *</span>
+                            <input
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                              value={form.name ?? ''}
+                              onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-xs font-medium text-gray-500 uppercase">Company email</span>
+                            <input
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                              type="email"
+                              value={form.company_email ?? ''}
+                              onChange={(e) => setForm((f) => ({ ...f, company_email: e.target.value }))}
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-xs font-medium text-gray-500 uppercase">Company phone</span>
+                            <input
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                              value={form.company_phone ?? ''}
+                              onChange={(e) => setForm((f) => ({ ...f, company_phone: formatPhoneInput(e.target.value) }))}
+                            />
+                          </label>
+                          <label className="block sm:col-span-2">
+                            <span className="text-xs font-medium text-gray-500 uppercase">Website</span>
+                            <input
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                              value={form.website ?? ''}
+                              onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-xs font-medium text-gray-500 uppercase">Status</span>
+                            <select
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm capitalize bg-white"
+                              value={form.status ?? 'lead'}
+                              onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
+                            >
+                              {CRM_STATUSES.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <div className="hidden sm:block" aria-hidden />
+                          <label className="block sm:col-span-2">
+                            <span className="text-xs font-medium text-gray-500 uppercase">Company bio</span>
+                            <textarea
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[88px] bg-white"
+                              value={form.bio ?? ''}
+                              onChange={(e) => setForm((f) => ({ ...f, bio: e.target.value }))}
+                            />
+                          </label>
+                          <label className="block sm:col-span-2">
+                            <span className="text-xs font-medium text-gray-500 uppercase">Street address</span>
+                            <input
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                              value={form.street_address ?? ''}
+                              onChange={(e) => setForm((f) => ({ ...f, street_address: e.target.value }))}
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-xs font-medium text-gray-500 uppercase">City</span>
+                            <input
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                              value={form.city ?? ''}
+                              onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-xs font-medium text-gray-500 uppercase">State (US)</span>
+                            <select
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                              value={stateSelectValue}
+                              onChange={(e) =>
+                                setForm((f) => ({ ...f, state: e.target.value ? normalizeToUsStateName(e.target.value) : '' }))
+                              }
+                            >
+                              <option value="">Select state</option>
+                              {US_STATES.map((s) => (
+                                <option key={s} value={s}>
+                                  {s}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          <label className="block">
+                            <span className="text-xs font-medium text-gray-500 uppercase">ZIP</span>
+                            <input
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                              value={form.zip ?? ''}
+                              onChange={(e) => setForm((f) => ({ ...f, zip: e.target.value }))}
+                            />
+                          </label>
+                          <div className="hidden sm:block" aria-hidden />
+                          <label className="block sm:col-span-2">
+                            <span className="text-xs font-medium text-gray-500 uppercase">Instagram URL</span>
+                            <input
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                              value={form.instagram_url ?? ''}
+                              onChange={(e) => setForm((f) => ({ ...f, instagram_url: e.target.value }))}
+                            />
+                          </label>
+                          <label className="block sm:col-span-2">
+                            <span className="text-xs font-medium text-gray-500 uppercase">Facebook URL</span>
+                            <input
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                              value={form.facebook_url ?? ''}
+                              onChange={(e) => setForm((f) => ({ ...f, facebook_url: e.target.value }))}
+                            />
+                          </label>
+                          <label className="block sm:col-span-2">
+                            <span className="text-xs font-medium text-gray-500 uppercase">LinkedIn URL</span>
+                            <input
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                              value={form.linkedin_url ?? ''}
+                              onChange={(e) => setForm((f) => ({ ...f, linkedin_url: e.target.value }))}
+                            />
+                          </label>
+                          <div className="block sm:col-span-2">
+                            <span className="text-xs font-medium text-gray-500 uppercase">Company types</span>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {CRM_COMPANY_TYPES.map((type) => {
+                                const active = (form.company_types || []).includes(type);
+                                return (
+                                  <button
+                                    key={type}
+                                    type="button"
+                                    onClick={() => toggleCompanyType(type)}
+                                    className={`px-2.5 py-1 rounded-full border text-xs capitalize ${
+                                      active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
+                                    }`}
+                                  >
+                                    {type.replace(/_/g, ' ')}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                          <label className="block sm:col-span-2">
+                            <span className="text-xs font-medium text-gray-500 uppercase">Notes</span>
+                            <textarea
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[88px] bg-white"
+                              value={form.notes ?? ''}
+                              onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
+                            />
+                          </label>
+                        </div>
+                      )}
                     </div>
-                    {editableContacts(form.contacts, { name: form.contact_name, email: form.email, phone: '' })
-                      .slice(1)
-                      .map((contact, idx) => {
-                        const contactIndex = idx + 1;
-                        const splitName = splitContactName(contact.name);
-                        return (
-                          <div key={`extra-contact-${contactIndex}`} className="mt-2 grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
-                            <input
-                              className="sm:col-span-3 border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
-                              placeholder="First name"
-                              value={splitName.firstName}
-                              ref={focusAdditionalContactNameInput(contactIndex)}
-                              onChange={(e) => updateAdditionalContactNamePart(contactIndex, 'firstName', e.target.value)}
-                              readOnly={!isRecordEditing}
-                            />
-                            <input
-                              className="sm:col-span-3 border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
-                              placeholder="Last name"
-                              value={splitName.lastName}
-                              onChange={(e) => updateAdditionalContactNamePart(contactIndex, 'lastName', e.target.value)}
-                              readOnly={!isRecordEditing}
-                            />
-                            <input
-                              className="sm:col-span-3 border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
-                              placeholder="Email"
-                              value={contact.email || ''}
-                              onChange={(e) => updateAdditionalContactField(contactIndex, 'email', e.target.value)}
-                              readOnly={!isRecordEditing}
-                            />
-                            <input
-                              className="sm:col-span-2 border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
-                              placeholder="Phone"
-                              value={contact.phone || ''}
-                              onChange={(e) => updateAdditionalContactField(contactIndex, 'phone', e.target.value)}
-                              readOnly={!isRecordEditing}
-                            />
+
+                    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+                      <button
+                        type="button"
+                        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+                        onClick={() => setCrmUsersSectionOpen((o) => !o)}
+                      >
+                        {crmUsersSectionOpen ? (
+                          <FaChevronDown className="text-gray-500 w-3.5 h-3.5 shrink-0" />
+                        ) : (
+                          <FaChevronRight className="text-gray-500 w-3.5 h-3.5 shrink-0" />
+                        )}
+                        <span className="text-sm font-semibold text-gray-900">People / users</span>
+                      </button>
+                      {crmUsersSectionOpen && (
+                        <div className="px-4 pb-4 pt-2 border-t border-gray-100 space-y-4 bg-slate-50/30">
+                          <div className="rounded-lg border border-gray-200 p-3 bg-white space-y-3">
+                            <div className="text-xs font-semibold text-gray-500 uppercase">Primary contact</div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <label className="block">
+                                <span className="text-xs font-medium text-gray-500 uppercase">First name</span>
+                                <input
+                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                  value={splitContactName(form.contact_name).firstName}
+                                  onChange={(e) => updatePrimaryContactNamePart('firstName', e.target.value)}
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="text-xs font-medium text-gray-500 uppercase">Last name</span>
+                                <input
+                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                  value={splitContactName(form.contact_name).lastName}
+                                  onChange={(e) => updatePrimaryContactNamePart('lastName', e.target.value)}
+                                />
+                              </label>
+                            </div>
+                            <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-600">
+                              <label className="inline-flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={primarySameAs.email}
+                                  onChange={(e) => updateContactSameAsCompany(0, 'email', e.target.checked)}
+                                />
+                                Same as company email
+                              </label>
+                              <label className="inline-flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={primarySameAs.phone}
+                                  onChange={(e) => updateContactSameAsCompany(0, 'phone', e.target.checked)}
+                                />
+                                Same as company phone
+                              </label>
+                              <label className="inline-flex items-center gap-2 cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={primarySameAs.socials}
+                                  onChange={(e) => updateContactSameAsCompany(0, 'socials', e.target.checked)}
+                                />
+                                Same as company socials
+                              </label>
+                            </div>
+                            {(primarySameAs.email || primarySameAs.phone || primarySameAs.socials) && (
+                              <p className="text-xs text-gray-500 -mt-1">
+                                When enabled, fields follow the company values above; the saved CRM record stores the
+                                resolved values.
+                              </p>
+                            )}
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <label className="block">
+                                <span className="text-xs font-medium text-gray-500 uppercase">Email</span>
+                                <input
+                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-600"
+                                  type="email"
+                                  disabled={primarySameAs.email}
+                                  value={primarySameAs.email ? (form.company_email ?? '') : (form.email ?? '')}
+                                  onChange={(e) => updatePrimaryContactField('email', e.target.value)}
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="text-xs font-medium text-gray-500 uppercase">Phone</span>
+                                <input
+                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-600"
+                                  disabled={primarySameAs.phone}
+                                  value={primarySameAs.phone ? (form.company_phone ?? '') : (form.phone ?? '')}
+                                  onChange={(e) => updatePrimaryContactField('phone', e.target.value)}
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="text-xs font-medium text-gray-500 uppercase">Extension</span>
+                                <input
+                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                  value={primaryContactDraft.extension || ''}
+                                  onChange={(e) => updatePrimaryContactField('extension', e.target.value)}
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="text-xs font-medium text-gray-500 uppercase">Job title</span>
+                                <input
+                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                                  value={primaryContactDraft.job_title || ''}
+                                  onChange={(e) => updatePrimaryContactField('job_title', e.target.value)}
+                                />
+                              </label>
+                            </div>
+                            <div className="grid grid-cols-1 gap-3">
+                              <label className="block">
+                                <span className="text-xs font-medium text-gray-500 uppercase">Instagram URL</span>
+                                <input
+                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-600"
+                                  disabled={primarySameAs.socials}
+                                  value={
+                                    primarySameAs.socials ? (form.instagram_url ?? '') : (primaryContactDraft.instagram_url || '')
+                                  }
+                                  onChange={(e) => updatePrimaryContactField('instagram_url', e.target.value)}
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="text-xs font-medium text-gray-500 uppercase">Facebook URL</span>
+                                <input
+                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-600"
+                                  disabled={primarySameAs.socials}
+                                  value={
+                                    primarySameAs.socials ? (form.facebook_url ?? '') : (primaryContactDraft.facebook_url || '')
+                                  }
+                                  onChange={(e) => updatePrimaryContactField('facebook_url', e.target.value)}
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="text-xs font-medium text-gray-500 uppercase">LinkedIn URL</span>
+                                <input
+                                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-600"
+                                  disabled={primarySameAs.socials}
+                                  value={
+                                    primarySameAs.socials ? (form.linkedin_url ?? '') : (primaryContactDraft.linkedin_url || '')
+                                  }
+                                  onChange={(e) => updatePrimaryContactField('linkedin_url', e.target.value)}
+                                />
+                              </label>
+                            </div>
+                          </div>
+
+                          <div className="rounded-lg border border-gray-200 p-3 bg-gray-50">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-medium text-gray-500 uppercase">Additional contacts</span>
+                            </div>
+                            {displayContacts.slice(1).map((contact, idx) => {
+                              const contactIndex = idx + 1;
+                              const sac = normalizeSameAsCompany(contact.same_as_company);
+                              const splitName = splitContactName(contact.name);
+                              return (
+                                <details
+                                  key={`extra-contact-${contactIndex}`}
+                                  className="mt-3 rounded-lg border border-gray-200 bg-white overflow-hidden group"
+                                  open={idx === 0}
+                                >
+                                  <summary className="list-none flex flex-wrap items-center justify-between gap-2 px-3 py-2 cursor-pointer text-xs font-semibold text-gray-600 uppercase bg-gray-50 border-b border-gray-100 hover:bg-gray-100 [&::-webkit-details-marker]:hidden">
+                                    <span className="select-none">
+                                      {contact.name?.trim() || `Contact ${contactIndex + 1}`}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        e.stopPropagation();
+                                        removeAdditionalContact(contactIndex);
+                                      }}
+                                      className="text-xs px-2 py-1 rounded border border-red-300 text-red-700 hover:bg-red-50 normal-case font-medium"
+                                    >
+                                      Remove
+                                    </button>
+                                  </summary>
+                                  <div className="p-3 space-y-3">
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <input
+                                      className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                                      placeholder="First name"
+                                      value={splitName.firstName}
+                                      ref={focusAdditionalContactNameInput(contactIndex)}
+                                      onChange={(e) => updateAdditionalContactNamePart(contactIndex, 'firstName', e.target.value)}
+                                    />
+                                    <input
+                                      className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                                      placeholder="Last name"
+                                      value={splitName.lastName}
+                                      onChange={(e) => updateAdditionalContactNamePart(contactIndex, 'lastName', e.target.value)}
+                                    />
+                                  </div>
+                                  <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-600">
+                                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={sac.email}
+                                        onChange={(e) => updateContactSameAsCompany(contactIndex, 'email', e.target.checked)}
+                                      />
+                                      Same as company email
+                                    </label>
+                                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={sac.phone}
+                                        onChange={(e) => updateContactSameAsCompany(contactIndex, 'phone', e.target.checked)}
+                                      />
+                                      Same as company phone
+                                    </label>
+                                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                                      <input
+                                        type="checkbox"
+                                        checked={sac.socials}
+                                        onChange={(e) => updateContactSameAsCompany(contactIndex, 'socials', e.target.checked)}
+                                      />
+                                      Same as company socials
+                                    </label>
+                                  </div>
+                                  {(sac.email || sac.phone || sac.socials) && (
+                                    <p className="text-xs text-gray-500">
+                                      When enabled, fields follow company values; the saved record stores resolved
+                                      values.
+                                    </p>
+                                  )}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <input
+                                      className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-gray-100"
+                                      placeholder="Email"
+                                      type="email"
+                                      disabled={sac.email}
+                                      value={sac.email ? (form.company_email ?? '') : (contact.email || '')}
+                                      onChange={(e) => updateAdditionalContactField(contactIndex, 'email', e.target.value)}
+                                    />
+                                    <input
+                                      className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-gray-100"
+                                      placeholder="Phone"
+                                      disabled={sac.phone}
+                                      value={sac.phone ? (form.company_phone ?? '') : (contact.phone || '')}
+                                      onChange={(e) => updateAdditionalContactField(contactIndex, 'phone', e.target.value)}
+                                    />
+                                    <input
+                                      className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                                      placeholder="Extension"
+                                      value={contact.extension || ''}
+                                      onChange={(e) => updateAdditionalContactField(contactIndex, 'extension', e.target.value)}
+                                    />
+                                    <input
+                                      className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                                      placeholder="Job title"
+                                      value={contact.job_title || ''}
+                                      onChange={(e) => updateAdditionalContactField(contactIndex, 'job_title', e.target.value)}
+                                    />
+                                  </div>
+                                  <div className="grid grid-cols-1 gap-2">
+                                    <input
+                                      className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-gray-100"
+                                      placeholder="Instagram URL"
+                                      disabled={sac.socials}
+                                      value={sac.socials ? (form.instagram_url ?? '') : (contact.instagram_url || '')}
+                                      onChange={(e) => updateAdditionalContactField(contactIndex, 'instagram_url', e.target.value)}
+                                    />
+                                    <input
+                                      className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-gray-100"
+                                      placeholder="Facebook URL"
+                                      disabled={sac.socials}
+                                      value={sac.socials ? (form.facebook_url ?? '') : (contact.facebook_url || '')}
+                                      onChange={(e) => updateAdditionalContactField(contactIndex, 'facebook_url', e.target.value)}
+                                    />
+                                    <input
+                                      className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm disabled:bg-gray-100"
+                                      placeholder="LinkedIn URL"
+                                      disabled={sac.socials}
+                                      value={sac.socials ? (form.linkedin_url ?? '') : (contact.linkedin_url || '')}
+                                      onChange={(e) => updateAdditionalContactField(contactIndex, 'linkedin_url', e.target.value)}
+                                    />
+                                  </div>
+                                  </div>
+                                </details>
+                              );
+                            })}
+                            {displayContacts.length <= 1 && (
+                              <p className="mt-2 text-xs text-gray-500">No additional contacts yet.</p>
+                            )}
                             <button
                               type="button"
-                              disabled={!isRecordEditing}
-                              onClick={() => removeAdditionalContact(contactIndex)}
-                              className="sm:col-span-1 h-[34px] px-2 rounded border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50"
+                              onClick={addAdditionalContact}
+                              className="mt-2 text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-100"
                             >
-                              Remove
+                              Add contact
                             </button>
                           </div>
-                        );
-                      })}
-                    {editableContacts(form.contacts, { name: form.contact_name, email: form.email, phone: '' }).length <= 1 && (
-                      <p className="mt-2 text-xs text-gray-500">No additional contacts yet.</p>
-                    )}
-                    <button
-                      type="button"
-                      disabled={!isRecordEditing}
-                      onClick={addAdditionalContact}
-                      className="mt-2 text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50"
-                    >
-                      Add contact
-                    </button>
-                  </div>
-                  <label className="block sm:col-span-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Website</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.website ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
-                      readOnly={!isRecordEditing}
-                    />
-                  </label>
-                  <label className="block sm:col-span-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Street address</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.street_address ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, street_address: e.target.value }))}
-                      readOnly={!isRecordEditing}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-500 uppercase">City</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.city ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-                      readOnly={!isRecordEditing}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-500 uppercase">State</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.state ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))}
-                      readOnly={!isRecordEditing}
-                    />
-                  </label>
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-500 uppercase">ZIP</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.zip ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, zip: e.target.value }))}
-                      readOnly={!isRecordEditing}
-                    />
-                  </label>
-                  <div className="hidden sm:block" aria-hidden />
-                  <label className="block sm:col-span-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Instagram URL</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.instagram_url ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, instagram_url: e.target.value }))}
-                      readOnly={!isRecordEditing}
-                    />
-                  </label>
-                  <label className="block sm:col-span-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Facebook URL</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.facebook_url ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, facebook_url: e.target.value }))}
-                      readOnly={!isRecordEditing}
-                    />
-                  </label>
-                  <label className="block sm:col-span-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase">LinkedIn URL</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.linkedin_url ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, linkedin_url: e.target.value }))}
-                      readOnly={!isRecordEditing}
-                    />
-                  </label>
-                  <div className="block sm:col-span-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Company types</span>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {CRM_COMPANY_TYPES.map((type) => {
-                        const active = (form.company_types || []).includes(type);
-                        return (
-                          <button
-                            key={type}
-                            type="button"
-                            disabled={!isRecordEditing}
-                            onClick={() => toggleCompanyType(type)}
-                            className={`px-2.5 py-1 rounded-full border text-xs capitalize ${
-                              active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300'
-                            }`}
-                          >
-                            {type.replace(/_/g, ' ')}
-                          </button>
-                        );
-                      })}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                  <label className="block sm:col-span-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Notes</span>
-                    <textarea
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[88px]"
-                      value={form.notes ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                      readOnly={!isRecordEditing}
-                    />
-                  </label>
                   </div>
                 ) : (
-                  <div className="space-y-5">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <div className="text-xs font-medium text-gray-500 uppercase">Company name</div>
-                        <div className="mt-1 text-sm text-gray-900 font-medium">{form.name || '—'}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-medium text-gray-500 uppercase">Website</div>
-                        <div className="mt-1 text-sm text-gray-900">
-                          {form.website ? (
-                            <a
-                              href={/^https?:\/\//i.test(form.website) ? form.website : `https://${form.website}`}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="text-blue-700 hover:underline break-all"
-                            >
-                              {form.website}
-                            </a>
-                          ) : '—'}
+                  <div className="space-y-4">
+                    <details className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm" open>
+                      <summary className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-semibold text-gray-900 cursor-pointer hover:bg-slate-50 list-none [&::-webkit-details-marker]:hidden">
+                        <FaChevronDown className="text-gray-500 w-3.5 h-3.5 shrink-0" />
+                        Company information
+                      </summary>
+                      <div className="px-4 pb-4 pt-2 border-t border-gray-100 bg-slate-50/20">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <div className="text-xs font-medium text-gray-500 uppercase">Company name</div>
+                          <div className="mt-1 text-sm text-gray-900 font-medium">{form.name || '—'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium text-gray-500 uppercase">Status</div>
+                          <div className="mt-1 text-sm text-gray-900 capitalize">{form.status || '—'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium text-gray-500 uppercase">Company email</div>
+                          <div className="mt-1 text-sm text-gray-900">
+                            {form.company_email ? (
+                              <a href={`mailto:${form.company_email}`} className="text-blue-700 hover:underline break-all">
+                                {form.company_email}
+                              </a>
+                            ) : (
+                              '—'
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium text-gray-500 uppercase">Company phone</div>
+                          <div className="mt-1 text-sm text-gray-900">{form.company_phone || '—'}</div>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="text-xs font-medium text-gray-500 uppercase">Website</div>
+                          <div className="mt-1 text-sm text-gray-900">
+                            {form.website ? (
+                              <a
+                                href={/^https?:\/\//i.test(form.website) ? form.website : `https://${form.website}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-blue-700 hover:underline break-all"
+                              >
+                                {form.website}
+                              </a>
+                            ) : (
+                              '—'
+                            )}
+                          </div>
+                        </div>
+                        {form.bio ? (
+                          <div className="md:col-span-2">
+                            <div className="text-xs font-medium text-gray-500 uppercase">Company bio</div>
+                            <div className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{form.bio}</div>
+                          </div>
+                        ) : null}
+                        <div className="md:col-span-2">
+                          <div className="text-xs font-medium text-gray-500 uppercase">Company address</div>
+                          <div className="mt-1 text-sm text-gray-900">
+                            {fullAddress ? (
+                              <a href={mapsAddressUrl} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-words">
+                                {fullAddress}
+                              </a>
+                            ) : (
+                              '—'
+                            )}
+                          </div>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="text-xs font-medium text-gray-500 uppercase">Social</div>
+                          <div className="mt-1 text-sm text-gray-900 space-y-1">
+                            <div>Instagram: {form.instagram_url || '—'}</div>
+                            <div>Facebook: {form.facebook_url || '—'}</div>
+                            <div>LinkedIn: {form.linkedin_url || '—'}</div>
+                          </div>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="text-xs font-medium text-gray-500 uppercase">Company types</div>
+                          <div className="mt-1 text-sm text-gray-900">
+                            {(form.company_types || []).length ? (form.company_types || []).map((t) => t.replace(/_/g, ' ')).join(', ') : '—'}
+                          </div>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="text-xs font-medium text-gray-500 uppercase">Notes</div>
+                          <div className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{form.notes || '—'}</div>
                         </div>
                       </div>
-                    </div>
+                      </div>
+                    </details>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <div className="text-xs font-medium text-gray-500 uppercase">Company phone</div>
-                        <div className="mt-1 text-sm text-gray-900">{form.phone || '—'}</div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-medium text-gray-500 uppercase">Company email</div>
-                        <div className="mt-1 text-sm text-gray-900">
-                          {form.email ? (
-                            <a href={`mailto:${form.email}`} className="text-blue-700 hover:underline break-all">
-                              {form.email}
-                            </a>
-                          ) : '—'}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="text-xs font-medium text-gray-500 uppercase">Company address</div>
-                      <div className="mt-1 text-sm text-gray-900">
-                        {fullAddress ? (
-                          <a href={mapsAddressUrl} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-words">
-                            {fullAddress}
-                          </a>
-                        ) : '—'}
-                      </div>
-                    </div>
-
-                    <div>
-                      <div className="text-xs font-medium text-gray-500 uppercase mb-2">
-                        Contacts ({displayContacts.length})
-                      </div>
+                    <details className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm" open>
+                      <summary className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-semibold text-gray-900 cursor-pointer hover:bg-slate-50 list-none [&::-webkit-details-marker]:hidden">
+                        <FaChevronDown className="text-gray-500 w-3.5 h-3.5 shrink-0" />
+                        People / users
+                      </summary>
+                      <div className="px-4 pb-4 pt-2 border-t border-gray-100 bg-slate-50/20">
                       {displayContacts.length === 0 ? (
                         <div className="text-sm text-gray-500">No contacts yet.</div>
                       ) : (
                         <div className="space-y-2">
-                          {displayContacts.map((contact, idx) => (
-                            <details
-                              key={`view-contact-${idx}`}
-                              className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
-                              open={idx === 0}
-                            >
-                              <summary className="cursor-pointer text-sm font-medium text-gray-900">
-                                {contact.name || `Contact ${idx + 1}`}
-                              </summary>
-                              <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-                                <div>
-                                  <span className="text-gray-500">Email:</span>{' '}
-                                  {contact.email ? (
-                                    <a href={`mailto:${contact.email}`} className="text-blue-700 hover:underline break-all">
-                                      {contact.email}
-                                    </a>
-                                  ) : '—'}
+                          {displayContacts.map((contact, idx) => {
+                            const resolved = resolveContactForDisplay(contact, form);
+                            const sac = resolved.same_as_company;
+                            const flags = [sac.email && 'company email', sac.phone && 'company phone', sac.socials && 'company socials']
+                              .filter(Boolean)
+                              .join(', ');
+                            return (
+                              <details
+                                key={`view-contact-${idx}`}
+                                className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2"
+                                open={idx === 0}
+                              >
+                                <summary className="cursor-pointer text-sm font-medium text-gray-900">
+                                  {contact.name || `Contact ${idx + 1}`}
+                                </summary>
+                                <div className="mt-2 space-y-2 text-sm">
+                                  {flags ? (
+                                    <div className="text-xs text-gray-500">Uses {flags}.</div>
+                                  ) : null}
+                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                    <div>
+                                      <span className="text-gray-500">Email:</span>{' '}
+                                      {resolved.email ? (
+                                        <a href={`mailto:${resolved.email}`} className="text-blue-700 hover:underline break-all">
+                                          {resolved.email}
+                                        </a>
+                                      ) : (
+                                        '—'
+                                      )}
+                                    </div>
+                                    <div>
+                                      <span className="text-gray-500">Phone:</span> {resolved.phone || '—'}
+                                    </div>
+                                    {contact.job_title ? (
+                                      <div>
+                                        <span className="text-gray-500">Job title:</span> {contact.job_title}
+                                      </div>
+                                    ) : null}
+                                    {contact.extension ? (
+                                      <div>
+                                        <span className="text-gray-500">Extension:</span> {contact.extension}
+                                      </div>
+                                    ) : null}
+                                  </div>
+                                  <div className="grid grid-cols-1 gap-1 text-sm">
+                                    <div>
+                                      <span className="text-gray-500">Instagram:</span>{' '}
+                                      {resolved.instagram_url ? (
+                                        <a href={resolved.instagram_url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all">
+                                          {resolved.instagram_url}
+                                        </a>
+                                      ) : (
+                                        '—'
+                                      )}
+                                    </div>
+                                    <div>
+                                      <span className="text-gray-500">Facebook:</span>{' '}
+                                      {resolved.facebook_url ? (
+                                        <a href={resolved.facebook_url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all">
+                                          {resolved.facebook_url}
+                                        </a>
+                                      ) : (
+                                        '—'
+                                      )}
+                                    </div>
+                                    <div>
+                                      <span className="text-gray-500">LinkedIn:</span>{' '}
+                                      {resolved.linkedin_url ? (
+                                        <a href={resolved.linkedin_url} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-all">
+                                          {resolved.linkedin_url}
+                                        </a>
+                                      ) : (
+                                        '—'
+                                      )}
+                                    </div>
+                                  </div>
                                 </div>
-                                <div>
-                                  <span className="text-gray-500">Phone:</span> {contact.phone || '—'}
-                                </div>
-                              </div>
-                            </details>
-                          ))}
+                              </details>
+                            );
+                          })}
                         </div>
                       )}
-                    </div>
+                      </div>
+                    </details>
                   </div>
                 )}
 
@@ -3021,11 +3471,28 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     />
                   </label>
                   <label className="block">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Company email</span>
+                    <input
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      type="email"
+                      value={form.company_email ?? ''}
+                      onChange={(e) => setForm((f) => ({ ...f, company_email: e.target.value }))}
+                    />
+                  </label>
+                  <label className="block">
                     <span className="text-xs font-medium text-gray-500 uppercase">Company phone</span>
                     <input
                       className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.phone ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, phone: formatPhoneInput(e.target.value) }))}
+                      value={form.company_phone ?? ''}
+                      onChange={(e) => setForm((f) => ({ ...f, company_phone: formatPhoneInput(e.target.value) }))}
+                    />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Company bio</span>
+                    <textarea
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[72px]"
+                      value={form.bio ?? ''}
+                      onChange={(e) => setForm((f) => ({ ...f, bio: e.target.value }))}
                     />
                   </label>
                   <label className="block">
@@ -3042,6 +3509,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       ))}
                     </select>
                   </label>
+                  <div className="hidden sm:block" aria-hidden />
                   <div className="block sm:col-span-2">
                     <span className="text-xs font-medium text-gray-500 uppercase">Company types</span>
                     <div className="mt-2 flex flex-wrap gap-2">
@@ -3120,20 +3588,48 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       onChange={(e) => updatePrimaryContactNamePart('lastName', e.target.value)}
                     />
                   </label>
+                  <div className="sm:col-span-2 flex flex-wrap gap-x-4 gap-y-2 text-xs text-gray-600">
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={primarySameAs.email}
+                        onChange={(e) => updateContactSameAsCompany(0, 'email', e.target.checked)}
+                      />
+                      Same as company email
+                    </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={primarySameAs.phone}
+                        onChange={(e) => updateContactSameAsCompany(0, 'phone', e.target.checked)}
+                      />
+                      Same as company phone
+                    </label>
+                    <label className="inline-flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={primarySameAs.socials}
+                        onChange={(e) => updateContactSameAsCompany(0, 'socials', e.target.checked)}
+                      />
+                      Same as company socials
+                    </label>
+                  </div>
                   <label className="block">
                     <span className="text-xs font-medium text-gray-500 uppercase">Email</span>
                     <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-600"
                       type="email"
-                      value={form.email ?? ''}
+                      disabled={primarySameAs.email}
+                      value={primarySameAs.email ? (form.company_email ?? '') : (form.email ?? '')}
                       onChange={(e) => updatePrimaryContactField('email', e.target.value)}
                     />
                   </label>
                   <label className="block">
                     <span className="text-xs font-medium text-gray-500 uppercase">Personal phone</span>
                     <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={editableContacts(form.contacts, { name: form.contact_name, email: form.email, phone: '', job_title: '', extension: '' })[0]?.phone || ''}
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100 disabled:text-gray-600"
+                      disabled={primarySameAs.phone}
+                      value={primarySameAs.phone ? (form.company_phone ?? '') : (form.phone ?? '')}
                       onChange={(e) => updatePrimaryContactField('phone', e.target.value)}
                     />
                   </label>
@@ -3141,7 +3637,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     <span className="text-xs font-medium text-gray-500 uppercase">Extension</span>
                     <input
                       className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={editableContacts(form.contacts, { name: form.contact_name, email: form.email, phone: '', job_title: '', extension: '' })[0]?.extension || ''}
+                      value={primaryContactDraft.extension || ''}
                       onChange={(e) => updatePrimaryContactField('extension', e.target.value)}
                     />
                   </label>
@@ -3149,15 +3645,38 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     <span className="text-xs font-medium text-gray-500 uppercase">Job title</span>
                     <input
                       className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={editableContacts(form.contacts, { name: form.contact_name, email: form.email, phone: '', job_title: '', extension: '' })[0]?.job_title || ''}
+                      value={primaryContactDraft.job_title || ''}
                       onChange={(e) => updatePrimaryContactField('job_title', e.target.value)}
                     />
                   </label>
+                  <div className="sm:col-span-2 grid grid-cols-1 gap-2">
+                    <input
+                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"
+                      placeholder="Instagram URL"
+                      disabled={primarySameAs.socials}
+                      value={primarySameAs.socials ? (form.instagram_url ?? '') : (primaryContactDraft.instagram_url || '')}
+                      onChange={(e) => updatePrimaryContactField('instagram_url', e.target.value)}
+                    />
+                    <input
+                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"
+                      placeholder="Facebook URL"
+                      disabled={primarySameAs.socials}
+                      value={primarySameAs.socials ? (form.facebook_url ?? '') : (primaryContactDraft.facebook_url || '')}
+                      onChange={(e) => updatePrimaryContactField('facebook_url', e.target.value)}
+                    />
+                    <input
+                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm disabled:bg-gray-100"
+                      placeholder="LinkedIn URL"
+                      disabled={primarySameAs.socials}
+                      value={primarySameAs.socials ? (form.linkedin_url ?? '') : (primaryContactDraft.linkedin_url || '')}
+                      onChange={(e) => updatePrimaryContactField('linkedin_url', e.target.value)}
+                    />
+                  </div>
                   <div className="block sm:col-span-2 rounded-lg border border-gray-200 p-3 bg-gray-50">
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs font-medium text-gray-500 uppercase">Additional contacts</span>
                     </div>
-                    {editableContacts(form.contacts, { name: form.contact_name, email: form.email, phone: '' })
+                    {editableContacts(form.contacts, { name: form.contact_name, email: form.email, phone: form.phone || '' })
                       .slice(1)
                       .map((contact, idx) => {
                         const contactIndex = idx + 1;
@@ -3199,7 +3718,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                           </div>
                         );
                       })}
-                    {editableContacts(form.contacts, { name: form.contact_name, email: form.email, phone: '' }).length <= 1 && (
+                    {editableContacts(form.contacts, { name: form.contact_name, email: form.email, phone: form.phone || '' }).length <= 1 && (
                       <p className="mt-2 text-xs text-gray-500">No additional contacts yet.</p>
                     )}
                     <button
@@ -3235,12 +3754,21 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     />
                   </label>
                   <label className="block">
-                    <span className="text-xs font-medium text-gray-500 uppercase">State</span>
-                    <input
+                    <span className="text-xs font-medium text-gray-500 uppercase">State (US)</span>
+                    <select
                       className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.state ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))}
-                    />
+                      value={stateSelectValue}
+                      onChange={(e) =>
+                        setForm((f) => ({ ...f, state: e.target.value ? normalizeToUsStateName(e.target.value) : '' }))
+                      }
+                    >
+                      <option value="">Select state</option>
+                      {US_STATES.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
                   </label>
                   <label className="block">
                     <span className="text-xs font-medium text-gray-500 uppercase">ZIP</span>

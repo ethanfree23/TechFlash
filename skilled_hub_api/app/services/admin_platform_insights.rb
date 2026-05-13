@@ -27,9 +27,12 @@ class AdminPlatformInsights
 
   def parse_since(period)
     case period
+    when "today" then Time.zone.now.beginning_of_day
     when "24h", "1d" then 24.hours.ago
     when "7d", "7" then 7.days.ago
     when "30d", "30" then 30.days.ago
+    when "90d", "90" then 90.days.ago
+    when "ytd" then Time.zone.now.beginning_of_year
     when "all", "" then nil
     else 7.days.ago
     end
@@ -184,6 +187,10 @@ class AdminPlatformInsights
         user_id: u.id,
         email: u.email,
         trade_type: tp.trade_type,
+        city: tp.city,
+        state: tp.state,
+        location: tp.location,
+        background_verified: tp.background_verified,
         logins: logins[u.id].to_i,
         messages_sent: messages_sent_by_user(u),
         money_earned_cents: money_earned_cents_technician(tp),
@@ -220,6 +227,8 @@ class AdminPlatformInsights
         user_id: u.id,
         email: u.email,
         company_name: cp.company_name,
+        state: cp.state,
+        location: cp.location,
         logins: logins[u.id].to_i,
         messages_sent: messages_sent_by_user(u),
         money_spent_cents: money_spent_cents_company(cp),
@@ -304,6 +313,12 @@ class AdminPlatformInsights
         status: job.status,
         company_name: job.company_profile&.company_name,
         created_at: job.created_at&.iso8601,
+        scheduled_end_at: job.scheduled_end_at&.iso8601,
+        skill_class: job.skill_class,
+        city: job.city,
+        state: job.state,
+        location: job.location,
+        hourly_rate_cents: job.hourly_rate_cents,
         applications_in_period: app_counts[jid].to_i,
         messages_in_period: msg_counts[jid].to_i,
         money_released_cents: pay_sums[jid].to_i,
@@ -356,7 +371,11 @@ class AdminPlatformInsights
         job_id: job.id,
         job_title: job.title,
         technician_email: u&.email,
-        company_name: job.company_profile&.company_name
+        company_name: job.company_profile&.company_name,
+        skill_class: job.skill_class,
+        city: job.city,
+        state: job.state,
+        location: job.location
       }
     end
 

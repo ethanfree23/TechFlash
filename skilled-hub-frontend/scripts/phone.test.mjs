@@ -20,7 +20,6 @@ function run() {
   testEmptyPhone();
   testBasicFormatting();
   testLeadingOneAndTrim();
-  // eslint-disable-next-line no-console
   console.log('phone tests passed');
 }
 

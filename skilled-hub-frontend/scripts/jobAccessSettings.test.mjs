@@ -58,7 +58,6 @@ function run() {
   testRowFromTierMapsBackendFields();
   testBuildTierUpdatePayloadUsesSupportedKeysOnly();
   testDefaultsAreSafe();
-  // eslint-disable-next-line no-console
   console.log('job access settings tests passed');
 }
 

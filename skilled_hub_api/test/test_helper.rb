@@ -4,11 +4,30 @@ require "rails/test_help"
 require "jwt"
 
 class ActiveSupport::TestCase
+  MEMBERSHIP_SEED_LOCK = Mutex.new
+
   setup :ensure_membership_tier_configs
 
   def ensure_membership_tier_configs
-    seed_membership_audience!("technician") unless MembershipTierConfig.where(audience: "technician").exists?
-    seed_membership_audience!("company") unless MembershipTierConfig.where(audience: "company").exists?
+    MEMBERSHIP_SEED_LOCK.synchronize do
+      with_sqlite_busy_retry do
+        seed_membership_audience!("technician")
+        seed_membership_audience!("company")
+      end
+    end
+  end
+
+  def with_sqlite_busy_retry(max_attempts = 10)
+    attempts = 0
+    begin
+      yield
+    rescue ActiveRecord::StatementInvalid => e
+      attempts += 1
+      raise e if attempts >= max_attempts || e.message !~ /locked|busy/i
+
+      sleep(0.05 * attempts)
+      retry
+    end
   end
 
   def seed_membership_audience!(audience)
@@ -27,7 +46,11 @@ class ActiveSupport::TestCase
           { audience: "company", slug: "premium", display_name: "Premium", monthly_fee_cents: 100_000, commission_percent: 0.0, early_access_delay_hours: nil, sort_order: 2, stripe_price_id: nil }
         ]
       end
-    MembershipTierConfig.insert_all!(rows.map { |r| r.merge(created_at: now, updated_at: now) })
+    # Idempotent under transactional tests and safe if two connections race (unique index on audience + slug).
+    MembershipTierConfig.insert_all(
+      rows.map { |r| r.merge(created_at: now, updated_at: now) },
+      unique_by: %i[audience slug]
+    )
   end
 end
 

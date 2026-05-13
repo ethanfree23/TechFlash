@@ -31,7 +31,6 @@ for (const testFile of testFiles) {
   }
 }
 
-// eslint-disable-next-line no-console
 console.log(`successfull = ${successful}; failure = ${failure}`);
 
 if (failure > 0) {

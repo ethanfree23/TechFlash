@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { jobsAPI, profilesAPI, ratingsAPI, conversationsAPI, jobIssueReportsAPI } from '../api/api';
 import MessageModal from './MessageModal';
@@ -177,7 +177,6 @@ const JobDetail = () => {
   }, []);
 
   useEffect(() => {
-    // Read user from localStorage on mount
     const storedUser = localStorage.getItem('user');
     if (storedUser && storedUser !== 'undefined') {
       try {
@@ -190,12 +189,38 @@ const JobDetail = () => {
     }
   }, []);
 
+  const fetchJobDetails = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await jobsAPI.getById(id);
+      setJob({ ...data, status: normalizeJobStatusKey(data) });
+      setError(null);
+    } catch (err) {
+      setError('Failed to load job details');
+      console.error('Error fetching job details:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [id]);
+
+  const fetchCounterOffers = useCallback(async () => {
+    try {
+      setLoadingCounterOffers(true);
+      const data = await jobsAPI.getCounterOffers(id);
+      setCounterOffers(Array.isArray(data) ? data : []);
+    } catch {
+      setCounterOffers([]);
+    } finally {
+      setLoadingCounterOffers(false);
+    }
+  }, [id]);
+
   useEffect(() => {
     if (id) {
       fetchJobDetails();
       fetchCounterOffers();
     }
-  }, [id]);
+  }, [id, fetchJobDetails, fetchCounterOffers]);
 
   useEffect(() => {
     if (user?.role === 'technician') {
@@ -298,32 +323,6 @@ const JobDetail = () => {
     }
   }, [job?.job_applications, job?.status]);
 
-  const fetchJobDetails = async () => {
-    try {
-      setLoading(true);
-      const data = await jobsAPI.getById(id);
-      setJob({ ...data, status: normalizeJobStatusKey(data) });
-      setError(null);
-    } catch (err) {
-      setError('Failed to load job details');
-      console.error('Error fetching job details:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchCounterOffers = async () => {
-    try {
-      setLoadingCounterOffers(true);
-      const data = await jobsAPI.getCounterOffers(id);
-      setCounterOffers(Array.isArray(data) ? data : []);
-    } catch {
-      setCounterOffers([]);
-    } finally {
-      setLoadingCounterOffers(false);
-    }
-  };
-
   const handleClaimJob = async (preferredStartAt = null) => {
     if (!user || user.role !== 'technician') return;
     const rollingRuleType = job?.rolling_start_rule_type || 'none';
@@ -406,7 +405,7 @@ const JobDetail = () => {
     const defaults = buildCounterDefaultsFromJob(job);
     setCounterForm(defaults);
     setCounterOriginalValues(defaults);
-  }, [job?.id, job?.hourly_rate_cents, job?.hours_per_day, job?.days, job?.scheduled_start_at, job?.scheduled_end_at]);
+  }, [job]);
 
   const isCounterFieldEdited = (field) =>
     normalizeCounterFieldValue(field, counterForm[field]) !== normalizeCounterFieldValue(field, counterOriginalValues[field]);

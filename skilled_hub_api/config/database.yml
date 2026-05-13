@@ -10,6 +10,8 @@ test:
   <<: *default
   adapter: sqlite3
   database: db/test.sqlite3
+  # SQLite busy_handler wait (ms) — reduces flaky "database is locked" on WSL / shared test.sqlite3
+  timeout: 10_000
 
 production:
   <<: *default

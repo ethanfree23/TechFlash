@@ -15,7 +15,7 @@ module Api
         'Plumber',
         'Roofer',
         'Carpenter',
-        'Machine Technician',
+        'Machine Technician (Industrial Maintenance)',
         'Welder',
         'Refrigeration Technician',
         'Pipefitter',

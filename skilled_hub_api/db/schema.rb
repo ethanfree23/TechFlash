@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_05_08_110000) do
+ActiveRecord::Schema[7.1].define(version: 2026_05_13_190000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -149,6 +149,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_08_110000) do
     t.string "facebook_url"
     t.string "linkedin_url"
     t.json "contacts", default: [], null: false
+    t.text "bio"
+    t.string "company_email"
+    t.string "company_phone"
     t.index ["linked_company_profile_id"], name: "index_crm_leads_on_linked_company_profile_id"
     t.index ["linked_user_id"], name: "index_crm_leads_on_linked_user_id"
     t.index ["status"], name: "index_crm_leads_on_status"

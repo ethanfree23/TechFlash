@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { jobsAPI, profilesAPI, crmAPI } from '../api/api';
 import DateTimeInput from '../components/DateTimeInput';
@@ -81,7 +81,7 @@ const CreateJob = () => {
   const DRAFT_KEY = 'web_create_job_draft_v1';
   const user = auth.getUser();
   const isAdmin = user?.role === 'admin';
-  const defaultStart = getDefaultStart();
+  const defaultStart = useMemo(() => getDefaultStart(), []);
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [skillClass, setSkillClass] = useState("");
@@ -154,7 +154,7 @@ const CreateJob = () => {
     } catch {
       /* ignore bad draft */
     }
-  }, []);
+  }, [defaultStart]);
 
   useEffect(() => {
     try {

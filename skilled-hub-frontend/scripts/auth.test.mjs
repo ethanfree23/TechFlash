@@ -64,7 +64,6 @@ function run() {
   testTokenAuth();
   testUserRoleHelpers();
   testMasqueradeRoundTrip();
-  // eslint-disable-next-line no-console
   console.log('auth tests passed');
 }
 

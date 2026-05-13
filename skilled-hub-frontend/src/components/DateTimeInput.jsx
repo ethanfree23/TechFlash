@@ -65,7 +65,7 @@ const DateTimeInput = ({ value, onChange, id, className = '', disabled = false }
   };
 
   return (
-    <div className={`space-y-2 ${className}`}>
+    <div id={id} className={`space-y-2 ${className}`}>
       <button
         type="button"
         disabled={disabled}

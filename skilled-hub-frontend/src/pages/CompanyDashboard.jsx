@@ -22,23 +22,10 @@ const statusLabel = (job) => {
   return <span className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-800 capitalize">{status}</span>;
 };
 
-const summaryCards = [
-  { label: 'Active Jobs', value: 3, icon: <FaBriefcase className="text-2xl text-blue-600" /> },
-  { label: 'Applicants', value: 42, icon: <FaUser className="text-2xl text-blue-600" /> },
-  { label: 'Interviews Scheduled', value: 5, icon: <FaCalendarAlt className="text-2xl text-blue-600" /> },
-  { label: 'Jobs Filled', value: 12, icon: <FaCheckSquare className="text-2xl text-blue-600" /> },
-];
-
 const mockActivity = [
   { text: 'New applicant, John Doe applied for Electrical Technician', time: '2 hours ago' },
   { text: 'Interview scheduled with Maria Gomez', time: 'Yesterday' },
   { text: 'Job posted: Welder - Houston', time: '2 days ago' },
-];
-
-const mockJobs = [
-  { title: 'Electrician Needed', applicants: 5, status: 'Open', created: '2 days ago' },
-  { title: 'HVAC Installer', applicants: 12, status: 'Interviewing', created: '1 week ago' },
-  { title: 'Forklift Operator', applicants: 0, status: 'Draft', created: 'Just now' },
 ];
 
 const CompanyDashboard = ({ user, onLogout }) => {
@@ -54,7 +41,7 @@ const CompanyDashboard = ({ user, onLogout }) => {
     try {
       const res = await apiRequest('/dashboard/jobs');
       setJobs(res);
-    } catch (err) {
+    } catch {
       setError('Failed to load dashboard jobs');
     } finally {
       setLoading(false);
@@ -69,7 +56,7 @@ const CompanyDashboard = ({ user, onLogout }) => {
     try {
       await apiRequest(`/jobs/${jobId}/finish`, { method: 'PATCH' });
       fetchDashboardJobs();
-    } catch (err) {
+    } catch {
       setAlertModal({ isOpen: true, title: 'Unable to complete', message: 'Failed to mark job as finished', variant: 'error' });
     }
   };
@@ -96,10 +83,21 @@ const CompanyDashboard = ({ user, onLogout }) => {
     </div>
   );
 
-  // Example summary data (replace with real data if available)
-  const jobsCreated = jobs.requested.length + jobs.unrequested.length + jobs.expired.length;
-  const pendingTasks = jobs.requested.length; // Example: requested jobs as pending
-  const completed = jobs.expired.length; // Example: expired jobs as completed
+  // Summary counts from loaded dashboard jobs
+  const requested = jobs.requested || [];
+  const unrequested = jobs.unrequested || [];
+  const expired = jobs.expired || [];
+  const jobsCreated = requested.length + unrequested.length + expired.length;
+  const pendingTasks = requested.length;
+  const openListings = unrequested.length;
+  const completed = expired.length;
+
+  const summaryCardsData = [
+    { label: 'Jobs on dashboard', value: jobsCreated, icon: <FaBriefcase className="text-2xl text-blue-600" /> },
+    { label: 'Claimed / in progress', value: pendingTasks, icon: <FaUser className="text-2xl text-blue-600" /> },
+    { label: 'Open postings', value: openListings, icon: <FaCalendarAlt className="text-2xl text-blue-600" /> },
+    { label: 'Archived / ended', value: completed, icon: <FaCheckSquare className="text-2xl text-blue-600" /> },
+  ];
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -129,7 +127,7 @@ const CompanyDashboard = ({ user, onLogout }) => {
         <div className="max-w-7xl mx-auto px-4">
           {/* Summary Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {summaryCards.map((card, idx) => (
+            {summaryCardsData.map((card, idx) => (
               <div key={idx} className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4">
                 <div>{card.icon}</div>
                 <div>

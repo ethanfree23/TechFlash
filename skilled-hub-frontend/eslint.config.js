@@ -13,6 +13,21 @@ export default [
     ],
   },
   {
+    files: ['tailwind.config.js', 'postcss.config.js', 'vite.config.js'],
+    languageOptions: {
+      ecmaVersion: 2020,
+      globals: globals.node,
+      parserOptions: { ecmaVersion: 'latest', sourceType: 'script' },
+    },
+    rules: {
+      ...js.configs.recommended.rules,
+      'no-unused-vars': [
+        'error',
+        { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^[A-Z_]' },
+      ],
+    },
+  },
+  {
     files: ['**/*.{js,jsx}'],
     languageOptions: {
       ecmaVersion: 2020,
@@ -30,7 +45,10 @@ export default [
     rules: {
       ...js.configs.recommended.rules,
       ...reactHooks.configs.recommended.rules,
-      'no-unused-vars': ['error', { varsIgnorePattern: '^[A-Z_]' }],
+      'no-unused-vars': [
+        'error',
+        { varsIgnorePattern: '^[A-Z_]', argsIgnorePattern: '^[A-Z_]' },
+      ],
       'react-refresh/only-export-components': [
         'warn',
         { allowConstantExport: true },

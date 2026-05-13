@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
-import AdminCollapsibleCard, {
+import AdminCollapsibleCard from '../components/AdminCollapsibleCard';
+import {
   CollapsibleSectionsProvider,
   useCollapsibleSections,
-} from '../components/AdminCollapsibleCard';
+} from '../components/CollapsibleSectionsContext';
 import AdminCreateUserModal from '../components/AdminCreateUserModal';
 import JobAddressFields from '../components/JobAddressFields';
 import { ServiceCityPicker } from '../components/admin/AdminUserFormPickers';
@@ -216,6 +217,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
         profile.commission_override_percent == null ? '' : String(profile.commission_override_percent),
     });
   }, [
+    profile,
     profile?.id,
     profile?.membership_level,
     profile?.membership_fee_waived,

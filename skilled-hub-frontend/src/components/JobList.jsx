@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { jobsAPI, profilesAPI, ratingsAPI, savedJobSearchesAPI } from '../api/api';
 import { auth } from '../auth';
@@ -97,19 +97,45 @@ const JobList = () => {
   const [saveSearchBusy, setSaveSearchBusy] = useState(false);
   const [showReferralModal, setShowReferralModal] = useState(false);
 
-  const user = auth.getUser();
-
   useEffect(() => {
     const status = searchParams.get('status') || '';
     setFilters(prev => ({ ...prev, status }));
   }, [searchParams]);
+
+  const fetchTechnicianProfile = useCallback(async () => {
+    try {
+      const profile = await profilesAPI.getTechnicianProfile();
+      setTechnicianProfile(profile);
+    } catch {
+      setTechnicianProfile(null);
+    }
+  }, []);
+
+  const fetchJobs = useCallback(async () => {
+    try {
+      setLoading(true);
+      const apiFilters = { location: filters.location || undefined, keyword: filters.keyword || undefined };
+      if (filters.status) {
+        apiFilters.status = filters.status;
+      }
+      const data = await jobsAPI.getAll(apiFilters);
+      setJobs(Array.isArray(data) ? data : []);
+      setError(null);
+      setCurrentPage(1);
+    } catch (err) {
+      setError('Failed to load jobs');
+      console.error('Error fetching jobs:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [filters]);
 
   useEffect(() => {
     fetchJobs();
     if (auth.isTechnician()) {
       fetchTechnicianProfile();
     }
-  }, [filters]);
+  }, [fetchJobs, fetchTechnicianProfile]);
 
   useEffect(() => {
     jobsAPI.getLocations()
@@ -148,25 +174,6 @@ const JobList = () => {
     }
   }, []);
 
-  const fetchJobs = async () => {
-    try {
-      setLoading(true);
-      const apiFilters = { location: filters.location || undefined, keyword: filters.keyword || undefined };
-      if (filters.status) {
-        apiFilters.status = filters.status;
-      }
-      const data = await jobsAPI.getAll(apiFilters);
-      setJobs(Array.isArray(data) ? data : []);
-      setError(null);
-      setCurrentPage(1);
-    } catch (err) {
-      setError('Failed to load jobs');
-      console.error('Error fetching jobs:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const sortJobs = (jobList) => {
     const sorted = [...jobList];
     const jobAmount = (j) => (j.job_amount_cents ?? j.price_cents ?? 0);
@@ -186,7 +193,7 @@ const JobList = () => {
         return sorted.sort((a, b) => totalHours(b) - totalHours(a));
       case 'shortest_job':
         return sorted.sort((a, b) => totalHours(a) - totalHours(b));
-      case 'distance':
+      case 'distance': {
         if (technicianProfile?.latitude != null && technicianProfile?.longitude != null) {
           const dist = (j) => haversineMiles(
             technicianProfile.latitude, technicianProfile.longitude,
@@ -205,17 +212,9 @@ const JobList = () => {
           if (aMatch !== bMatch) return aMatch - bMatch;
           return aLoc.localeCompare(bLoc);
         });
+      }
       default:
         return sorted.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-    }
-  };
-
-  const fetchTechnicianProfile = async () => {
-    try {
-      const profile = await profilesAPI.getTechnicianProfile();
-      setTechnicianProfile(profile);
-    } catch {
-      setTechnicianProfile(null);
     }
   };
 

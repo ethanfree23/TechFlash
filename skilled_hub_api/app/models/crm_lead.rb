@@ -1,6 +1,12 @@
 # frozen_string_literal: true
 
 class CrmLead < ApplicationRecord
+  CONTACT_ALLOWED_ROOT_KEYS = %w[
+    name email phone job_title extension
+    instagram_url facebook_url linkedin_url same_as_company
+  ].freeze
+  SAME_AS_COMPANY_KEYS = %w[email phone socials].freeze
+
   STATUSES = %w[lead contacted qualified proposal prospect customer competitor churned lost].freeze
   COMPANY_TYPES = [
     "hvac",
@@ -87,8 +93,19 @@ class CrmLead < ApplicationRecord
         next
       end
 
-      unsupported = contact.keys.map(&:to_s) - %w[name email phone]
+      unsupported = contact.keys.map(&:to_s) - CONTACT_ALLOWED_ROOT_KEYS
       errors.add(:contacts, "entry #{idx + 1} has unsupported keys: #{unsupported.join(', ')}") if unsupported.any?
+
+      sac = contact["same_as_company"] || contact[:same_as_company]
+      next if sac.blank?
+
+      unless sac.is_a?(Hash)
+        errors.add(:contacts, "entry #{idx + 1} same_as_company must be an object")
+        next
+      end
+
+      bad_sac = sac.keys.map(&:to_s) - SAME_AS_COMPANY_KEYS
+      errors.add(:contacts, "entry #{idx + 1} same_as_company has unsupported keys: #{bad_sac.join(', ')}") if bad_sac.any?
     end
   end
 
@@ -128,7 +145,30 @@ class CrmLead < ApplicationRecord
       phone = hash["phone"].to_s.strip.presence || hash[:phone].to_s.strip.presence
       next if name.blank? && email.blank? && phone.blank?
 
-      { name: name, email: email, phone: phone }.compact
+      out = {
+        "name" => name,
+        "email" => email,
+        "phone" => phone
+      }.compact
+
+      %w[job_title extension instagram_url facebook_url linkedin_url].each do |k|
+        v = hash[k].to_s.strip.presence || hash[k.to_sym].to_s.strip.presence
+        out[k] = v if v.present?
+      end
+
+      sac_raw = hash["same_as_company"] || hash[:same_as_company]
+      if sac_raw.is_a?(Hash)
+        sac = {}
+        SAME_AS_COMPANY_KEYS.each do |k|
+          val = sac_raw[k] || sac_raw[k.to_sym]
+          next if val.nil?
+
+          sac[k] = ActiveModel::Type::Boolean.new.cast(val)
+        end
+        out["same_as_company"] = sac if sac.any? { |_, v| v }
+      end
+
+      out
     end
   end
 end

@@ -39,7 +39,6 @@ function run() {
   testExperienceOptions();
   testCountryData();
   testStatesData();
-  // eslint-disable-next-line no-console
   console.log('data/constants tests passed');
 }
 

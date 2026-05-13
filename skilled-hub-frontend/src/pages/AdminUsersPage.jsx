@@ -99,6 +99,14 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
     loadUsers();
   }, [loadUsers]);
 
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') loadUsers();
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
+  }, [loadUsers]);
+
   const visibleColumns = useMemo(() => columns.filter((c) => c.visible), [columns]);
   const primarySortKey = visibleColumns[0]?.key;
 
@@ -231,7 +239,6 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const toggleColumnVisible = (key) => {
     setColumns((prev) => prev.map((c) => (c.key === key ? { ...c, visible: !c.visible } : c)));
   };
-  const columnLabel = (key) => columns.find((c) => c.key === key)?.label || key;
 
   return (
     <div className="min-h-screen bg-gray-50">

@@ -156,6 +156,9 @@ module Api
             :contact_name,
             :email,
             :phone,
+            :company_email,
+            :company_phone,
+            :bio,
             :website,
             :street_address,
             :city,
@@ -169,7 +172,11 @@ module Api
             :linked_user_id,
             :linked_company_profile_id,
             company_types: [],
-            contacts: %i[name email phone job_title extension]
+            contacts: [
+              :name, :email, :phone, :job_title, :extension,
+              :instagram_url, :facebook_url, :linkedin_url,
+              { same_as_company: %i[email phone socials] }
+            ]
           )
           p[:linked_user_id] = nil if p.key?(:linked_user_id) && p[:linked_user_id].blank?
           p[:linked_company_profile_id] = nil if p.key?(:linked_company_profile_id) && p[:linked_company_profile_id].blank?
@@ -187,6 +194,9 @@ module Api
             :contact_name,
             :email,
             :phone,
+            :company_email,
+            :company_phone,
+            :bio,
             :website,
             :street_address,
             :city,
@@ -215,6 +225,9 @@ module Api
             contact_name
             email
             phone
+            company_email
+            company_phone
+            bio
             website
             street_address
             city
@@ -273,9 +286,9 @@ module Api
             end
 
           primary = Array(attrs[:contacts]).first || {}
-          attrs[:contact_name] = primary[:name].presence || attrs[:contact_name]
-          attrs[:email] = primary[:email].presence || attrs[:email]
-          attrs[:phone] = primary[:phone].presence || attrs[:phone]
+          attrs[:contact_name] = primary[:name].presence || primary["name"].presence || attrs[:contact_name]
+          attrs[:email] = primary[:email].presence || primary["email"].presence || attrs[:email]
+          attrs[:phone] = primary[:phone].presence || primary["phone"].presence || attrs[:phone]
 
           target.update!(attrs)
         end
@@ -287,26 +300,47 @@ module Api
           dedupe_contacts(contacts)
         end
 
+        def compact_contact_entry(entry)
+          h = entry.respond_to?(:to_h) ? entry.to_h : {}
+          name = h["name"].to_s.strip.presence || h[:name].to_s.strip.presence
+          email = h["email"].to_s.strip.presence || h[:email].to_s.strip.presence
+          phone = h["phone"].to_s.strip.presence || h[:phone].to_s.strip.presence
+          return nil if name.blank? && email.blank? && phone.blank?
+
+          out = { "name" => name, "email" => email, "phone" => phone }
+          %w[job_title extension instagram_url facebook_url linkedin_url].each do |k|
+            v = h[k].to_s.strip.presence || h[k.to_sym].to_s.strip.presence
+            out[k] = v if v.present?
+          end
+          sac_raw = h["same_as_company"] || h[:same_as_company]
+          if sac_raw.is_a?(Hash)
+            sac = {}
+            %w[email phone socials].each do |k|
+              val = sac_raw[k] || sac_raw[k.to_sym]
+              next if val.nil?
+
+              sac[k] = ActiveModel::Type::Boolean.new.cast(val)
+            end
+            out["same_as_company"] = sac if sac.any? { |_, v| v }
+          end
+          out
+        end
+
         def dedupe_contacts(contacts)
           seen = {}
           contacts.filter_map do |entry|
-            hash = entry.respond_to?(:to_h) ? entry.to_h : {}
-            name = hash["name"].to_s.strip.presence || hash[:name].to_s.strip.presence
-            email = hash["email"].to_s.strip.presence || hash[:email].to_s.strip.presence
-            phone = hash["phone"].to_s.gsub(/\D/, "") || hash[:phone].to_s.gsub(/\D/, "")
-            phone = phone[-10, 10] if phone.present?
-            next if name.blank? && email.blank? && phone.blank?
-            key = [name.to_s.downcase, email.to_s.downcase, phone.to_s].join("|")
+            compact = compact_contact_entry(entry)
+            next unless compact
+
+            name = compact["name"].to_s.strip.presence
+            email = compact["email"].to_s.strip.presence
+            phone_digits = compact["phone"].to_s.gsub(/\D/, "")
+            phone_digits = phone_digits[-10, 10] if phone_digits.present?
+            key = [name.to_s.downcase, email.to_s.downcase, phone_digits.to_s].join("|")
             next if seen[key]
 
             seen[key] = true
-            {
-              name: name,
-              email: email,
-              phone: (hash["phone"].presence || hash[:phone].presence),
-              job_title: hash["job_title"].to_s.strip.presence || hash[:job_title].to_s.strip.presence,
-              extension: hash["extension"].to_s.strip.presence || hash[:extension].to_s.strip.presence
-            }.compact
+            compact
           end
         end
 
@@ -339,6 +373,9 @@ module Api
             instagram_url: lead.instagram_url,
             facebook_url: lead.facebook_url,
             linkedin_url: lead.linkedin_url,
+            bio: lead.bio,
+            company_email: lead.company_email,
+            company_phone: lead.company_phone,
             status: lead.status,
             company_types: lead.company_types || [],
             contacts: lead.contacts || [],
@@ -420,7 +457,8 @@ module Api
           normalized = row.transform_keys(&:to_s)
 
           allowed = %w[
-            name contact_name email phone website street_address city state zip instagram_url facebook_url linkedin_url
+            name contact_name email phone company_email company_phone bio website street_address city state zip
+            instagram_url facebook_url linkedin_url
             status notes linked_user_id linked_company_profile_id company_types contacts
           ]
           payload = normalized.slice(*allowed).symbolize_keys
@@ -468,7 +506,8 @@ module Api
           merged = company_rows.first.dup
           company_rows.drop(1).each do |row|
             %i[
-              name contact_name email phone website street_address city state zip instagram_url facebook_url linkedin_url
+              name contact_name email phone company_email company_phone bio website street_address city state zip
+              instagram_url facebook_url linkedin_url
               status notes linked_user_id linked_company_profile_id
             ].each do |field|
               merged[field] = row[field] if merged[field].blank? && row[field].present?
@@ -482,21 +521,7 @@ module Api
 
         def apply_contacts_from_company_rows(merged_row, company_rows)
           contacts = company_rows.flat_map do |row|
-            from_contacts = Array(row[:contacts]).filter_map do |entry|
-              hash = entry.respond_to?(:to_h) ? entry.to_h : {}
-              name = hash["name"].to_s.strip.presence || hash[:name].to_s.strip.presence
-              email = hash["email"].to_s.strip.presence || hash[:email].to_s.strip.presence
-              phone = hash["phone"].to_s.strip.presence || hash[:phone].to_s.strip.presence
-              next if name.blank? && email.blank? && phone.blank?
-
-              {
-                name: name,
-                email: email,
-                phone: phone,
-                job_title: hash["job_title"].to_s.strip.presence || hash[:job_title].to_s.strip.presence,
-                extension: hash["extension"].to_s.strip.presence || hash[:extension].to_s.strip.presence
-              }.compact
-            end
+            from_contacts = Array(row[:contacts]).filter_map { |entry| compact_contact_entry(entry) }
             next from_contacts if from_contacts.any?
 
             name = row[:contact_name].to_s.strip
@@ -509,9 +534,9 @@ module Api
 
           primary_contact = contacts.first
           if primary_contact
-            merged_row[:contact_name] = primary_contact[:name].presence || merged_row[:contact_name]
-            merged_row[:email] = primary_contact[:email].presence || merged_row[:email]
-            merged_row[:phone] = primary_contact[:phone].presence || merged_row[:phone]
+            merged_row[:contact_name] = primary_contact["name"].presence || primary_contact[:name].presence || merged_row[:contact_name]
+            merged_row[:email] = primary_contact["email"].presence || primary_contact[:email].presence || merged_row[:email]
+            merged_row[:phone] = primary_contact["phone"].presence || primary_contact[:phone].presence || merged_row[:phone]
           end
           merged_row[:contacts] = contacts
           merged_row
@@ -532,36 +557,20 @@ module Api
               []
             end
 
-          normalized = contacts.filter_map do |entry|
-            hash = entry.respond_to?(:to_h) ? entry.to_h : {}
-            name = hash["name"].to_s.strip.presence || hash[:name].to_s.strip.presence
-            email = hash["email"].to_s.strip.presence || hash[:email].to_s.strip.presence
-            phone = hash["phone"].to_s.strip.presence || hash[:phone].to_s.strip.presence
-            next if name.blank? && email.blank? && phone.blank?
+          normalized = contacts.filter_map { |entry| compact_contact_entry(entry) }
 
-            {
-              name: name,
-              email: email,
-              phone: phone,
-              job_title: hash["job_title"].to_s.strip.presence || hash[:job_title].to_s.strip.presence,
-              extension: hash["extension"].to_s.strip.presence || hash[:extension].to_s.strip.presence
-            }.compact
-          end
-
-          if normalized.empty?
-            fallback = {
-              name: row_payload[:contact_name].to_s.strip.presence,
-              email: row_payload[:email].to_s.strip.presence,
-              phone: row_payload[:phone].to_s.strip.presence
-            }.compact
-            normalized = [fallback] if fallback.present?
-          end
+          fallback = {
+            name: row_payload[:contact_name].to_s.strip.presence,
+            email: row_payload[:email].to_s.strip.presence,
+            phone: row_payload[:phone].to_s.strip.presence
+          }.compact
+          normalized = [compact_contact_entry(fallback)].compact if normalized.empty? && fallback.present?
 
           primary = normalized.first
           if primary
-            row_payload[:contact_name] = primary[:name].presence || row_payload[:contact_name]
-            row_payload[:email] = primary[:email].presence || row_payload[:email]
-            row_payload[:phone] = primary[:phone].presence || row_payload[:phone]
+            row_payload[:contact_name] = primary["name"].presence || primary[:name].presence || row_payload[:contact_name]
+            row_payload[:email] = primary["email"].presence || primary[:email].presence || row_payload[:email]
+            row_payload[:phone] = primary["phone"].presence || primary[:phone].presence || row_payload[:phone]
           end
           normalized
         end

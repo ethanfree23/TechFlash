@@ -120,7 +120,6 @@ function run() {
   testUnstructuredMultipleContacts();
   testUnstructuredSingleLineEmailParensPhone();
   testKnownCompanyNameOption();
-  // eslint-disable-next-line no-console
   console.log('crmImport tests passed');
 }
 

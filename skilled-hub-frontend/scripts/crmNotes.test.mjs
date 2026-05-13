@@ -60,7 +60,6 @@ function run() {
   testReplyDraft();
   testEditDraft();
   testEditedDetection();
-  // eslint-disable-next-line no-console
   console.log('crmNotes tests passed');
 }
 

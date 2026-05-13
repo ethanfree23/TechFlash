@@ -62,7 +62,6 @@ function run() {
   testFilterJobsWithinRadius();
   testFilterWithoutCoordinatesFallsBack();
   testNeedsTechnicianMapSetup();
-  // eslint-disable-next-line no-console
   console.log('technician map tests passed');
 }
 

@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { jobsAPI, ratingsAPI, feedbackAPI, adminAPI, profilesAPI, techPresenceAPI } from '../api/api';
+import { jobsAPI, ratingsAPI, feedbackAPI, profilesAPI, techPresenceAPI, conversationsAPI } from '../api/api';
 import AlertModal from '../components/AlertModal';
 import AppHeader from '../components/AppHeader';
 import {
@@ -9,8 +9,10 @@ import {
   haversineMiles,
   needsTechnicianMapSetup,
 } from '../utils/technicianMap';
-import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen, FaBuilding, FaCommentDots } from 'react-icons/fa';
+import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen, FaBuilding } from 'react-icons/fa';
 import { AdminPlatformCharts, CompanyAnalyticsCharts, TechnicianAnalyticsCharts } from '../components/dashboard/RoleDashboardCharts';
+import AdminCommandCenter from '../components/admin/command-center/AdminCommandCenter';
+import { fetchAdminCommandCenterInsights } from '../services/fetchAdminCommandCenterData';
 
 // open, claimed (filled but not started), active (in progress), completed, expired
 const statusLabel = (job) => {
@@ -46,12 +48,6 @@ const formatCurrency = (cents) => {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
 };
 
-const PERIOD_OPTIONS = [
-  { id: '24h', label: '24 hours' },
-  { id: '7d', label: '7 days' },
-  { id: '30d', label: '30 days' },
-  { id: 'all', label: 'All time' },
-];
 
 const GOOGLE_MAPS_API_KEY = import.meta.env?.VITE_GOOGLE_MAPS_API_KEY || '';
 let googleMapsScriptPromise = null;
@@ -107,256 +103,6 @@ const loadGoogleMapsScript = () => {
   return googleMapsScriptPromise;
 };
 
-const humanizeStatus = (s) => (s == null ? '—' : String(s).replace(/_/g, ' '));
-
-const AdminInsightTable = ({ category, items }) => {
-  const classifyTableValue = (value) => {
-    const normalized = String(value ?? '').trim();
-    if (!normalized || normalized === '-' || normalized === '—') return 2;
-    if (/^\d+(\.\d+)?$/.test(normalized)) return 1;
-    return 0;
-  };
-
-  const compareBaseColumnValues = (leftValue, rightValue) => {
-    const leftClass = classifyTableValue(leftValue);
-    const rightClass = classifyTableValue(rightValue);
-    if (leftClass !== rightClass) return leftClass - rightClass;
-
-    if (leftClass === 1) {
-      return Number(leftValue) - Number(rightValue);
-    }
-
-    return String(leftValue ?? '').localeCompare(String(rightValue ?? ''), undefined, {
-      sensitivity: 'base',
-    });
-  };
-
-  const firstColumnValueForCategory = (row) => {
-    if (category === 'total_users' || category === 'technicians') return row?.email ?? '';
-    if (category === 'companies') return row?.company_name ?? '';
-    return '';
-  };
-
-  const sortedItems = [...(items || [])].sort((a, b) =>
-    compareBaseColumnValues(firstColumnValueForCategory(a), firstColumnValueForCategory(b))
-  );
-
-  if (!items?.length) {
-    return <p className="text-gray-500 text-sm py-8 text-center">No rows for this time range.</p>;
-  }
-
-  if (category === 'total_users') {
-    return (
-      <div className="overflow-x-auto max-h-[min(70vh,28rem)] overflow-y-auto">
-        <table className="min-w-full divide-y divide-gray-200 text-sm">
-          <thead className="bg-gray-50 sticky top-0 z-10">
-            <tr>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Role</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Logins</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Msgs</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Money</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Rev. out</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Rev. in</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {sortedItems.map((row) => (
-              <tr key={row.id} className="hover:bg-gray-50/80">
-                <td className="px-3 py-2 text-gray-800">{row.email}</td>
-                <td className="px-3 py-2 capitalize text-gray-600">{row.role}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{row.logins}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{row.messages_sent}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(row.money_cents)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{row.reviews_given}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{row.reviews_received}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
-  if (category === 'technicians') {
-    return (
-      <div className="overflow-x-auto max-h-[min(70vh,28rem)] overflow-y-auto">
-        <table className="min-w-full divide-y divide-gray-200 text-sm">
-          <thead className="bg-gray-50 sticky top-0 z-10">
-            <tr>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Trade</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Logins</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Msgs</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Earned</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Rev. out</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Rev. in</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {sortedItems.map((row) => (
-              <tr key={row.id} className="hover:bg-gray-50/80">
-                <td className="px-3 py-2 text-gray-800">{row.email}</td>
-                <td className="px-3 py-2 text-gray-600">{row.trade_type || '—'}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{row.logins}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{row.messages_sent}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(row.money_earned_cents)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{row.reviews_given}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{row.reviews_received}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
-  if (category === 'companies') {
-    return (
-      <div className="overflow-x-auto max-h-[min(70vh,28rem)] overflow-y-auto">
-        <table className="min-w-full divide-y divide-gray-200 text-sm">
-          <thead className="bg-gray-50 sticky top-0 z-10">
-            <tr>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Email</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Logins</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Msgs</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Spent</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Rev. out</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Rev. in</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {sortedItems.map((row) => (
-              <tr key={row.id} className="hover:bg-gray-50/80">
-                <td className="px-3 py-2 font-medium text-gray-800">{row.company_name || '—'}</td>
-                <td className="px-3 py-2 text-gray-600">{row.email}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{row.logins}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{row.messages_sent}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(row.money_spent_cents)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{row.reviews_given}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{row.reviews_received}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
-  if (['total_jobs', 'open_jobs', 'jobs_in_progress', 'completed'].includes(category)) {
-    return (
-      <div className="overflow-x-auto max-h-[min(70vh,28rem)] overflow-y-auto">
-        <table className="min-w-full divide-y divide-gray-200 text-sm">
-          <thead className="bg-gray-50 sticky top-0 z-10">
-            <tr>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Job</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Apps</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Msgs</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Paid</th>
-              <th className="px-3 py-2 text-right text-xs font-medium text-gray-500 uppercase">Reviews</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {items.map((row) => (
-              <tr key={row.id} className="hover:bg-gray-50/80">
-                <td className="px-3 py-2">
-                  <button
-                    type="button"
-                    className="text-left font-medium text-blue-700 hover:underline"
-                    onClick={() => window.open(`/jobs/${row.id}`, '_blank', 'noopener,noreferrer')}
-                  >
-                    {row.title || `Job #${row.id}`}
-                  </button>
-                </td>
-                <td className="px-3 py-2 text-gray-600">{row.company_name || '—'}</td>
-                <td className="px-3 py-2 capitalize text-gray-700">{humanizeStatus(row.status)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{row.applications_in_period}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{row.messages_in_period}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{formatCurrency(row.money_released_cents)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{row.ratings_in_period}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
-  if (category === 'job_applications') {
-    return (
-      <div className="overflow-x-auto max-h-[min(70vh,28rem)] overflow-y-auto">
-        <table className="min-w-full divide-y divide-gray-200 text-sm">
-          <thead className="bg-gray-50 sticky top-0 z-10">
-            <tr>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Job</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Technician</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Company</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Status</th>
-              <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase">Created</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {items.map((row) => (
-              <tr key={row.id} className="hover:bg-gray-50/80">
-                <td className="px-3 py-2">
-                  <button
-                    type="button"
-                    className="text-left font-medium text-blue-700 hover:underline"
-                    onClick={() => window.open(`/jobs/${row.job_id}`, '_blank', 'noopener,noreferrer')}
-                  >
-                    {row.job_title}
-                  </button>
-                </td>
-                <td className="px-3 py-2 text-gray-700">{row.technician_email || '—'}</td>
-                <td className="px-3 py-2 text-gray-600">{row.company_name || '—'}</td>
-                <td className="px-3 py-2 capitalize">{row.status}</td>
-                <td className="px-3 py-2 text-gray-600 whitespace-nowrap">
-                  {row.created_at ? new Date(row.created_at).toLocaleString() : '—'}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-
-  return null;
-};
-
-const AdminTotalsStrip = ({ totals, category }) => {
-  if (!totals) return null;
-  const chips = [];
-  if (totals.count != null) {
-    chips.push({
-      label: category === 'job_applications' ? 'Applications' : 'Rows',
-      value: totals.count,
-    });
-  }
-  if (totals.logins != null) chips.push({ label: 'Logins', value: totals.logins });
-  if (totals.messages_sent != null) chips.push({ label: 'Messages (job threads)', value: totals.messages_sent });
-  if (totals.money_cents != null) chips.push({ label: 'Money', value: formatCurrency(totals.money_cents) });
-  if (totals.reviews != null) chips.push({ label: 'Reviews', value: totals.reviews });
-  if (totals.applications != null && ['total_jobs', 'open_jobs', 'jobs_in_progress', 'completed'].includes(category)) {
-    chips.push({ label: 'Applications (period)', value: totals.applications });
-  }
-
-  if (!chips.length) return null;
-
-  return (
-    <div className="flex flex-wrap gap-3 mb-4">
-      {chips.map((c) => (
-        <div key={c.label} className="inline-flex items-baseline gap-2 rounded-lg bg-slate-100 px-3 py-2 text-sm">
-          <span className="text-gray-500">{c.label}</span>
-          <span className="font-semibold text-gray-900 tabular-nums">{c.value}</span>
-        </div>
-      ))}
-    </div>
-  );
-};
 
 const Dashboard = ({ user, onLogout }) => {
   const [searchParams] = useSearchParams();
@@ -371,36 +117,7 @@ const Dashboard = ({ user, onLogout }) => {
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'error' });
   const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchDashboard();
-  }, [user?.role]);
-
-  useEffect(() => {
-    if (user?.role !== 'technician') return undefined;
-    loadGoogleMapsScript().catch(() => {});
-    return undefined;
-  }, [user?.role]);
-
-  useEffect(() => {
-    if (user?.role !== 'technician') return undefined;
-    const refreshOpenJobsOnly = async () => {
-      try {
-        const openJobsRes = await jobsAPI.getAll({ status: 'open', include_past: 'true' }).catch(() => []);
-        const now = Date.now();
-        const liveOpenJobs = (Array.isArray(openJobsRes) ? openJobsRes : []).filter((job) => {
-          const endAt = job?.scheduled_end_at ? new Date(job.scheduled_end_at).getTime() : null;
-          return endAt == null || endAt >= now;
-        });
-        setOpenJobs(liveOpenJobs);
-      } catch {
-        /* ignore background refresh errors */
-      }
-    };
-    const intervalId = window.setInterval(refreshOpenJobsOnly, 30000);
-    return () => window.clearInterval(intervalId);
-  }, [user?.role]);
-
-  const fetchDashboard = async () => {
+  const fetchDashboard = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
@@ -438,7 +155,7 @@ const Dashboard = ({ user, onLogout }) => {
         setOpenJobs([]);
         setTechnicianProfile(null);
         setAnalytics(analyticsRes);
-          setFeedbackList(feedbackRes?.feedback_submissions ?? []);
+        setFeedbackList(feedbackRes?.feedback_submissions ?? []);
       } else {
         setFeedbackList(null);
         setJobs(null);
@@ -446,19 +163,48 @@ const Dashboard = ({ user, onLogout }) => {
         setTechnicianProfile(null);
         setAnalytics(null);
       }
-    } catch (err) {
+    } catch {
       setError('Failed to load dashboard');
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    fetchDashboard();
+  }, [fetchDashboard]);
+
+  useEffect(() => {
+    if (user?.role !== 'technician') return undefined;
+    loadGoogleMapsScript().catch(() => {});
+    return undefined;
+  }, [user?.role]);
+
+  useEffect(() => {
+    if (user?.role !== 'technician') return undefined;
+    const refreshOpenJobsOnly = async () => {
+      try {
+        const openJobsRes = await jobsAPI.getAll({ status: 'open', include_past: 'true' }).catch(() => []);
+        const now = Date.now();
+        const liveOpenJobs = (Array.isArray(openJobsRes) ? openJobsRes : []).filter((job) => {
+          const endAt = job?.scheduled_end_at ? new Date(job.scheduled_end_at).getTime() : null;
+          return endAt == null || endAt >= now;
+        });
+        setOpenJobs(liveOpenJobs);
+      } catch {
+        /* ignore background refresh errors */
+      }
+    };
+    const intervalId = window.setInterval(refreshOpenJobsOnly, 30000);
+    return () => window.clearInterval(intervalId);
+  }, [user?.role]);
 
   const handleFinish = async (jobId) => {
     try {
       await jobsAPI.finish(jobId);
       fetchDashboard();
       window.open(`/jobs/${jobId}`, '_blank', 'noopener,noreferrer');
-    } catch (err) {
+    } catch {
       setAlertModal({ isOpen: true, title: 'Unable to complete', message: 'Failed to mark job as finished', variant: 'error' });
     }
   };
@@ -511,7 +257,7 @@ const Dashboard = ({ user, onLogout }) => {
             />
           )}
           {user?.role === 'admin' && (
-            <AdminDashboardContent analytics={analytics} feedbackList={feedbackList} />
+            <AdminDashboardContent analytics={analytics} feedbackList={feedbackList} onDashboardReload={fetchDashboard} />
           )}
           {user?.role !== 'company' && user?.role !== 'technician' && user?.role !== 'admin' && (
             <p className="text-gray-500">Dashboard not available for your role.</p>
@@ -530,161 +276,74 @@ const Dashboard = ({ user, onLogout }) => {
   );
 };
 
-const AdminDashboardContent = ({ analytics, feedbackList }) => {
-  const [insightCategory, setInsightCategory] = useState(null);
-  const [period, setPeriod] = useState('7d');
-  const [insight, setInsight] = useState(null);
-  const [insightLoading, setInsightLoading] = useState(false);
-  const [insightError, setInsightError] = useState(null);
+const AdminDashboardContent = ({ analytics, feedbackList, onDashboardReload }) => {
+  const [filters, setFilters] = useState({
+    period: '30d',
+    market: 'all',
+    trade: 'all',
+    search: '',
+  });
+  const [insightsByCategory, setInsightsByCategory] = useState(null);
+  const [conversations, setConversations] = useState([]);
+  const [insightsLoading, setInsightsLoading] = useState(false);
+  const [insightsError, setInsightsError] = useState(null);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdatedMs, setLastUpdatedMs] = useState(null);
+
+  const loadInsights = useCallback(async () => {
+    setInsightsLoading(true);
+    setInsightsError(null);
+    try {
+      const [ins, conv] = await Promise.all([
+        fetchAdminCommandCenterInsights(filters.period),
+        conversationsAPI.getAll().catch(() => []),
+      ]);
+      setInsightsByCategory(ins);
+      setConversations(Array.isArray(conv) ? conv : []);
+      setLastUpdatedMs(Date.now());
+    } catch (err) {
+      setInsightsError(err.message || 'Failed to load command center data');
+    } finally {
+      setInsightsLoading(false);
+      setRefreshing(false);
+    }
+  }, [filters.period]);
 
   useEffect(() => {
-    if (!insightCategory) {
-      setInsight(null);
-      return undefined;
-    }
-    let cancelled = false;
-    setInsightLoading(true);
-    setInsightError(null);
-    adminAPI
-      .getPlatformInsights(insightCategory, period)
-      .then((data) => {
-        if (!cancelled) setInsight(data);
-      })
-      .catch((err) => {
-        if (!cancelled) setInsightError(err.message || 'Failed to load details');
-      })
-      .finally(() => {
-        if (!cancelled) setInsightLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [insightCategory, period]);
+    loadInsights();
+  }, [loadInsights]);
 
-  const toggleInsight = (cat) => {
-    setInsightCategory((prev) => (prev === cat ? null : cat));
-  };
+  const handleRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadInsights();
+  }, [loadInsights]);
+
+  const combinedError = insightsError;
+  const showBlockingError = combinedError && !analytics;
+  const loading = insightsLoading && insightsByCategory === null;
 
   return (
-  <>
-    <h2 className="text-xl font-semibold text-gray-800 mb-6">Platform Overview</h2>
-    <AdminPlatformCharts analytics={analytics} insightCategory={insightCategory} onOpenInsight={toggleInsight} />
-
-    {insightCategory && (
-      <section className="mt-8 bg-white rounded-2xl shadow border border-gray-100 p-5 sm:p-6">
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-900">{insight?.label || 'Details'}</h3>
-            <p className="text-sm text-gray-500 mt-1">
-              Metrics below respect the selected time window. Logins are counted from successful sign-ins (tracked from deployment of login history).
-              {insight?.since ? (
-                <span className="block mt-1">Window start: {new Date(insight.since).toLocaleString()}</span>
-              ) : (
-                <span className="block mt-1">All time — no start filter.</span>
-              )}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {PERIOD_OPTIONS.map((opt) => (
-              <button
-                key={opt.id}
-                type="button"
-                onClick={() => setPeriod(opt.id)}
-                className={`px-3 py-1.5 rounded-lg text-sm font-medium border transition ${
-                  period === opt.id
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-50'
-                }`}
-              >
-                {opt.label}
-              </button>
-            ))}
-            <button
-              type="button"
-              onClick={() => setInsightCategory(null)}
-              className="px-3 py-1.5 rounded-lg text-sm text-gray-600 hover:bg-gray-100"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-
-        {insightLoading && <p className="text-gray-500 text-sm py-6">Loading…</p>}
-        {insightError && <p className="text-red-600 text-sm py-2">{insightError}</p>}
-        {!insightLoading && insight && !insightError && (
-          <>
-            <AdminTotalsStrip totals={insight.totals} category={insight.category} />
-            <AdminInsightTable category={insight.category} items={insight.items} />
-          </>
-        )}
-      </section>
-    )}
-
-    <div className="mt-8 flex flex-wrap gap-4">
-      <Link
-        to="/crm"
-        className="inline-flex items-center gap-2 px-6 py-3 bg-slate-700 text-white rounded-lg hover:bg-slate-800 font-medium"
-      >
-        <FaBuilding /> Company CRM
-      </Link>
-      <Link
-        to="/jobs"
-        className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium"
-      >
-        <FaBriefcase /> View All Jobs
-      </Link>
+    <div className="bg-[#F7F8FA] -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-6 min-h-[60vh]">
+      <AdminCommandCenter
+        analytics={analytics}
+        insightsByCategory={insightsByCategory}
+        feedbackList={feedbackList ?? []}
+        conversations={conversations}
+        filters={filters}
+        onFiltersChange={setFilters}
+        loading={loading && !showBlockingError}
+        error={showBlockingError ? combinedError : null}
+        onRetry={() => {
+          setInsightsError(null);
+          loadInsights();
+          onDashboardReload?.();
+        }}
+        lastUpdatedMs={lastUpdatedMs}
+        refreshing={refreshing}
+        onRefresh={handleRefresh}
+        dataError={combinedError && analytics ? combinedError : null}
+      />
     </div>
-
-    <section className="mt-12 border-t border-gray-200 pt-10">
-      <h2 className="text-xl font-semibold text-gray-800 mb-2 flex items-center gap-2">
-        <FaCommentDots className="text-orange-500" /> User feedback
-      </h2>
-      <p className="text-sm text-gray-500 mb-4">
-        Messages sent from the Feedback button (logged-in technicians and companies). Submissions are also emailed to admin accounts when mail is configured.
-      </p>
-      {feedbackList === null ? (
-        <p className="text-gray-500 text-sm">Loading feedback…</p>
-      ) : feedbackList.length === 0 ? (
-        <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-8 text-center text-gray-500">
-          No feedback yet.
-        </div>
-      ) : (
-        <div className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
-          <div className="overflow-x-auto max-h-[min(70vh,32rem)] overflow-y-auto">
-            <table className="min-w-full divide-y divide-gray-200 text-sm">
-              <thead className="bg-gray-50 sticky top-0 z-10">
-                <tr>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">When</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">From</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Type</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Page</th>
-                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Message</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100">
-                {feedbackList.map((row) => (
-                  <tr key={row.id} className="align-top hover:bg-gray-50/80">
-                    <td className="px-4 py-3 text-gray-600 whitespace-nowrap">
-                      {row.created_at ? new Date(row.created_at).toLocaleString() : '—'}
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-gray-800">{row.user_email || '—'}</div>
-                      <div className="text-xs text-gray-500 capitalize">{row.user_role || '-'}</div>
-                    </td>
-                    <td className="px-4 py-3 capitalize text-gray-700">{row.kind || '—'}</td>
-                    <td className="px-4 py-3 text-gray-600 max-w-[12rem] truncate" title={row.page_path || ''}>
-                      {row.page_path || '—'}
-                    </td>
-                    <td className="px-4 py-3 text-gray-800 whitespace-pre-wrap max-w-xl">{row.body}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-    </section>
-  </>
   );
 };
 
@@ -880,7 +539,10 @@ const TechnicianOpenJobsMap = ({
   const technicianLat = Number(technicianProfile?.latitude);
   const technicianLng = Number(technicianProfile?.longitude);
   const hasTechnicianCoords = Number.isFinite(technicianLat) && Number.isFinite(technicianLng);
-  const homeLatLng = hasTechnicianCoords ? { lat: technicianLat, lng: technicianLng } : null;
+  const homeLatLng = useMemo(
+    () => (hasTechnicianCoords ? { lat: technicianLat, lng: technicianLng } : null),
+    [hasTechnicianCoords, technicianLat, technicianLng]
+  );
 
   const homeAddressQuery = useMemo(
     () =>
@@ -925,10 +587,10 @@ const TechnicianOpenJobsMap = ({
     [normalizedJobs, selectedMapJobId]
   );
 
-  const selectedLatLng =
-    Number.isFinite(selectedMapJob?.latitude) && Number.isFinite(selectedMapJob?.longitude)
-      ? { lat: selectedMapJob.latitude, lng: selectedMapJob.longitude }
-      : null;
+  const selectedLatLng = useMemo(() => {
+    if (!Number.isFinite(selectedMapJob?.latitude) || !Number.isFinite(selectedMapJob?.longitude)) return null;
+    return { lat: selectedMapJob.latitude, lng: selectedMapJob.longitude };
+  }, [selectedMapJob?.latitude, selectedMapJob?.longitude]);
 
   const fallbackQuery = hasTechnicianCoords
     ? `${technicianLat},${technicianLng}`
@@ -1207,7 +869,7 @@ const TechnicianOpenJobsMap = ({
   return <div ref={mapContainerRef} className="h-full w-full min-h-[24rem]" />;
 };
 
-const CompanyDashboardContent = ({ jobs, analytics, onFinish, onRefresh, navigate, user, showWelcome = false }) => {
+const CompanyDashboardContent = ({ jobs, analytics, onFinish, navigate, showWelcome = false }) => {
   const now = Date.now();
   const requested = sortByMostRecent(jobs?.requested || []);
   const unrequested = jobs?.unrequested || [];
@@ -1416,7 +1078,6 @@ const TechnicianDashboardContent = ({ jobs, openJobs, technicianProfile, analyti
     }
   }, [user?.role]);
 
-  const selectedMapJob = mapDisplayJobs.find((job) => job.id === selectedMapJobId) || null;
   const nearbyPreviewDistance = mapDisplayJobs.find((job) => job.id === nearbyJobPreviewId)?.distanceMiles;
   const needsExactAddressPrompt = needsTechnicianMapSetup(technicianProfile);
 

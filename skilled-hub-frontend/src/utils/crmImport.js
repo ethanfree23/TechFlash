@@ -247,6 +247,9 @@ export const inferSingleImportRowFromUnstructuredText = (text, statuses = [], co
   const companyNameLabeled = pickLabel(['company', 'business', 'organization', 'org']);
   const contactNameLabeled = pickLabel(['contact', 'owner', 'person', 'name']);
   const notesLabeled = pickLabel(['note', 'details', 'summary', 'context']);
+  const bioLabeled = pickLabel(['bio', 'about', 'description']);
+  const companyEmailLabeled = pickLabel(['company email', 'office email', 'business email', 'main email']);
+  const companyPhoneLabeled = pickLabel(['company phone', 'office phone', 'business phone', 'main phone']);
   const websiteValue = cleanLooseValue(pickLabel(['website', 'site', 'url'])) || websites[0] || '';
   const emailValue = cleanLooseValue(pickLabel(['email', 'mail'])) || emails[0] || '';
   const phoneValue = cleanLooseValue(pickLabel(['phone', 'mobile', 'cell', 'tel'])) || phones[0] || '';
@@ -298,6 +301,9 @@ export const inferSingleImportRowFromUnstructuredText = (text, statuses = [], co
     company_types: inferredTypes.join('|'),
     status: statuses.includes(statusCandidate) ? statusCandidate : 'lead',
     notes: combinedNotes,
+    bio: bioLabeled,
+    company_email: companyEmailLabeled,
+    company_phone: companyPhoneLabeled ? formatPhoneInput(companyPhoneLabeled) : '',
   };
 
   const warnings = [];
@@ -370,6 +376,9 @@ export const normalizeImportRow = (row) => {
     company_types: (row.company_types || '').trim(),
     status: (row.status || 'lead').trim().toLowerCase() || 'lead',
     notes: (row.notes || '').trim(),
+    bio: (row.bio || '').trim(),
+    company_email: (row.company_email || '').trim(),
+    company_phone: formatPhoneInput((row.company_phone || '').trim()),
   };
 
   if (normalized.website && !/^https?:\/\//i.test(normalized.website)) {

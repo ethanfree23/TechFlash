@@ -90,6 +90,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   });
   const [savingJobAlertForm, setSavingJobAlertForm] = useState(false);
   const [tradeQueryOpen, setTradeQueryOpen] = useState(false);
+  const [tradeOtherNoteOpen, setTradeOtherNoteOpen] = useState(false);
   const [jobAlertTradeNote, setJobAlertTradeNote] = useState('');
   const [sendingTradeSuggestion, setSendingTradeSuggestion] = useState(false);
   const [tradeSuggestionSent, setTradeSuggestionSent] = useState(false);
@@ -556,8 +557,10 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     setTradeSuggestionSent(false);
     if (label === TRADE_OTHER_SENTINEL) {
       setTradeQueryOpen(true);
+      setTradeOtherNoteOpen(true);
       return;
     }
+    setTradeOtherNoteOpen(false);
     setTradeQueryOpen(false);
     setJobAlertForm((prev) => ({ ...prev, trade_label: label }));
   };
@@ -570,12 +573,13 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     try {
       await feedbackAPI.create({
         kind: 'suggestion',
-        body: `Trade suggestion from Job alerts\nTyped value: "${typed}"\nNote: ${note}`,
+        body: `Trade suggestion from Job alert matching:\nTyped: "${typed}"\nNote: ${note}`,
         page_path: '/settings',
       });
       setTradeSuggestionSent(true);
       setJobAlertTradeNote('');
       setTradeQueryOpen(false);
+      setTradeOtherNoteOpen(false);
     } catch (err) {
       setAlertModal({
         isOpen: true,
@@ -1395,6 +1399,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                             value={jobAlertForm.trade_label}
                             onChange={(e) => {
                               setTradeSuggestionSent(false);
+                              setTradeOtherNoteOpen(false);
                               handleJobAlertFieldChange(e);
                               setTradeQueryOpen(true);
                             }}
@@ -1421,15 +1426,21 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                                   onClick={() => handlePickTrade(TRADE_OTHER_SENTINEL)}
                                   className="w-full text-left px-3 py-2 text-sm text-blue-700 hover:bg-blue-50"
                                 >
-                                  Other - suggest this trade to admin
+                                  Other — suggest a new trade
                                 </button>
                               )}
                             </div>
                           )}
-                          {tradeQueryOpen && matchingTradeOptions.length === 0 && (
+                          {tradeQueryOpen && tradeOtherNoteOpen && matchingTradeOptions.length === 0 && (
                             <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
+                              <p className="text-xs text-gray-600 mb-2">
+                                Typed:{' '}
+                                <span className="font-medium text-gray-800">
+                                  &quot;{(jobAlertForm.trade_label || '').trim()}&quot;
+                                </span>
+                              </p>
                               <p className="text-xs text-gray-700 mb-2">
-                                If this trade is missing, send it to admin and we can add it to the list.
+                                Add details for the admin (max 1000 characters).
                               </p>
                               <textarea
                                 rows={3}
@@ -1446,6 +1457,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                                   className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg text-gray-700"
                                   onClick={() => {
                                     setTradeQueryOpen(false);
+                                    setTradeOtherNoteOpen(false);
                                     setJobAlertTradeNote('');
                                   }}
                                   disabled={sendingTradeSuggestion}
@@ -1464,7 +1476,9 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                             </div>
                           )}
                           {tradeSuggestionSent && (
-                            <p className="mt-2 text-xs text-green-700">Suggestion sent to admin for review.</p>
+                            <p className="mt-2 text-xs text-green-700">
+                              Sent to admin — we&apos;ll review and add it to the list.
+                            </p>
                           )}
                         </div>
                         <div>

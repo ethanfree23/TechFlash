@@ -1,7 +1,7 @@
 import React from 'react';
 
 /** Inline **bold** segments (common in job descriptions edited as Markdown-like text). */
-export function renderInlineJobMarkdown(text) {
+function renderInlineJobMarkdown(text) {
   if (text == null || text === '') return null;
   const parts = String(text).split(/(\*\*[^*]+\*\*)/g);
   return parts.map((part, i) => {
