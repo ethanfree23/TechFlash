@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import { crmAPI } from '../api/api';
@@ -85,6 +85,32 @@ const formatDateTime = (value) => {
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleString();
 };
+
+/** Persisted per admin user + CRM lead: main collapsible regions on the CRM record view. */
+const CRM_LEAD_COLLAPSIBLE_KEY_PREFIX = 'crm_lead_collapsibles_v1';
+
+function crmLeadCollapsibleStorageKey(userId, leadId) {
+  return `${CRM_LEAD_COLLAPSIBLE_KEY_PREFIX}_${userId}_${leadId}`;
+}
+
+const CRM_LEAD_COLLAPSIBLE_DEFAULTS = {
+  recordBody: true,
+  companyInfo: true,
+  users: true,
+  activity: true,
+  pipelineSidebarCollapsed: false,
+};
+
+function mergeCrmLeadCollapsibleState(raw) {
+  const base = { ...CRM_LEAD_COLLAPSIBLE_DEFAULTS };
+  if (!raw || typeof raw !== 'object') return base;
+  if (typeof raw.recordBody === 'boolean') base.recordBody = raw.recordBody;
+  if (typeof raw.companyInfo === 'boolean') base.companyInfo = raw.companyInfo;
+  if (typeof raw.users === 'boolean') base.users = raw.users;
+  if (typeof raw.activity === 'boolean') base.activity = raw.activity;
+  if (typeof raw.pipelineSidebarCollapsed === 'boolean') base.pipelineSidebarCollapsed = raw.pipelineSidebarCollapsed;
+  return base;
+}
 
 /** First company login: derive User first/last from company display name (API still requires them). */
 function splitDisplayNameFromCompanyName(companyName) {
@@ -296,6 +322,46 @@ const editableContacts = (contacts, fallback = null) => {
   return hasContactValue(fallbackNormalized) ? [fallbackNormalized] : [];
 };
 
+function companyFieldsSnapshotFromLead(c) {
+  if (!c) return {};
+  return {
+    name: c.name || '',
+    website: c.website || '',
+    street_address: c.street_address || '',
+    city: c.city || '',
+    state: normalizeToUsStateName(c.state || ''),
+    zip: c.zip || '',
+    instagram_url: c.instagram_url || '',
+    facebook_url: c.facebook_url || '',
+    linkedin_url: c.linkedin_url || '',
+    company_types: c.company_types || [],
+    status: c.status || 'lead',
+    notes: c.notes || '',
+    bio: c.bio || '',
+    company_email: c.company_email || '',
+    company_phone: c.company_phone || '',
+  };
+}
+
+function contactsFieldsSnapshotFromLead(c) {
+  if (!c) return {};
+  const rawContacts = normalizeContacts(c.contacts, {
+    name: c.contact_name || '',
+    email: c.email || '',
+    phone: c.phone || '',
+    job_title: '',
+    extension: '',
+  });
+  const contacts = ensurePrimaryContactFlagsOnArray(rawContacts);
+  const primaryContact = contacts[0] || {};
+  return {
+    contacts,
+    contact_name: primaryContact.name || '',
+    email: primaryContact.email || '',
+    phone: primaryContact.phone || '',
+  };
+}
+
 const mergeFieldDisplayValue = (lead, key) => {
   if (!lead) return '—';
   const value = lead[key];
@@ -418,7 +484,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [noteDraft, setNoteDraft] = useState(emptyNoteDraft());
   const [noteSaving, setNoteSaving] = useState(false);
   const [noteComposerOpen, setNoteComposerOpen] = useState(false);
-  const [isRecordEditing, setIsRecordEditing] = useState(false);
+  const [companyInfoEditing, setCompanyInfoEditing] = useState(false);
+  const [contactsEditing, setContactsEditing] = useState(false);
   const [profileImportOpen, setProfileImportOpen] = useState(false);
   const [profileImportText, setProfileImportText] = useState('');
   const [mergeModalOpen, setMergeModalOpen] = useState(false);
@@ -455,40 +522,127 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const crmAddUserContactIdxRef = useRef(null);
   const [crmContactUserModalOpen, setCrmContactUserModalOpen] = useState(false);
   const [crmAddUserPrefill, setCrmAddUserPrefill] = useState(null);
+  const crmLeadCollapsibleHydratedKeyRef = useRef(null);
+  const crmLeadCollapsiblePersistTimerRef = useRef(null);
+
+  useLayoutEffect(() => {
+    if (crmLeadCollapsiblePersistTimerRef.current) {
+      clearTimeout(crmLeadCollapsiblePersistTimerRef.current);
+      crmLeadCollapsiblePersistTimerRef.current = null;
+    }
+    if (!user?.id) {
+      crmLeadCollapsibleHydratedKeyRef.current = null;
+      return;
+    }
+    if (!selectedId || isCreating) {
+      crmLeadCollapsibleHydratedKeyRef.current = null;
+      if (isCreating) {
+        const d = { ...CRM_LEAD_COLLAPSIBLE_DEFAULTS };
+        setCrmCompanyRecordBodyOpen(d.recordBody);
+        setCrmCompanyInfoOpen(d.companyInfo);
+        setCrmUsersSectionOpen(d.users);
+        setCrmActivitySectionOpen(d.activity);
+      }
+      return;
+    }
+    let raw = null;
+    try {
+      const s = localStorage.getItem(crmLeadCollapsibleStorageKey(user.id, selectedId));
+      raw = s ? JSON.parse(s) : null;
+    } catch {
+      raw = null;
+    }
+    const d = mergeCrmLeadCollapsibleState(raw);
+    setPipelineSidebarCollapsed(d.pipelineSidebarCollapsed);
+    setCrmCompanyRecordBodyOpen(d.recordBody);
+    setCrmCompanyInfoOpen(d.companyInfo);
+    setCrmUsersSectionOpen(d.users);
+    setCrmActivitySectionOpen(d.activity);
+    crmLeadCollapsibleHydratedKeyRef.current = `${user.id}:${selectedId}`;
+  }, [user?.id, selectedId, isCreating]);
+
+  useEffect(() => {
+    if (!user?.id || !selectedId || isCreating) return;
+    const expected = `${user.id}:${selectedId}`;
+    if (crmLeadCollapsibleHydratedKeyRef.current !== expected) return;
+    if (crmLeadCollapsiblePersistTimerRef.current) clearTimeout(crmLeadCollapsiblePersistTimerRef.current);
+    crmLeadCollapsiblePersistTimerRef.current = setTimeout(() => {
+      crmLeadCollapsiblePersistTimerRef.current = null;
+      try {
+        localStorage.setItem(
+          crmLeadCollapsibleStorageKey(user.id, selectedId),
+          JSON.stringify({
+            recordBody: crmCompanyRecordBodyOpen,
+            companyInfo: crmCompanyInfoOpen,
+            users: crmUsersSectionOpen,
+            activity: crmActivitySectionOpen,
+            pipelineSidebarCollapsed,
+          }),
+        );
+      } catch {
+        /* ignore quota / private mode */
+      }
+    }, 0);
+    return () => {
+      if (crmLeadCollapsiblePersistTimerRef.current) {
+        clearTimeout(crmLeadCollapsiblePersistTimerRef.current);
+        crmLeadCollapsiblePersistTimerRef.current = null;
+      }
+    };
+  }, [
+    user?.id,
+    selectedId,
+    isCreating,
+    crmCompanyRecordBodyOpen,
+    crmCompanyInfoOpen,
+    crmUsersSectionOpen,
+    crmActivitySectionOpen,
+    pipelineSidebarCollapsed,
+  ]);
+
+  const expandAllCrmCollapsibles = useCallback(() => {
+    setCrmCompanyRecordBodyOpen(true);
+    setCrmCompanyInfoOpen(true);
+    setCrmUsersSectionOpen(true);
+    setCrmActivitySectionOpen(true);
+    setPipelineSidebarCollapsed(false);
+  }, []);
+
+  const collapseAllCrmCollapsibles = useCallback(() => {
+    setCrmCompanyRecordBodyOpen(false);
+    setCrmCompanyInfoOpen(false);
+    setCrmUsersSectionOpen(false);
+    setCrmActivitySectionOpen(false);
+    setPipelineSidebarCollapsed(true);
+  }, []);
 
   const hydrateFormFromCrmLead = useCallback((c) => {
     if (!c) return;
-    const rawContacts = normalizeContacts(c.contacts, {
-      name: c.contact_name || '',
-      email: c.email || '',
-      phone: c.phone || '',
-    });
-    const contacts = ensurePrimaryContactFlagsOnArray(rawContacts);
-    const primaryContact = contacts[0] || { name: '', email: '', phone: '' };
     setForm({
-      name: c.name || '',
-      contact_name: primaryContact.name || '',
-      email: primaryContact.email || '',
-      phone: primaryContact.phone || '',
-      contacts,
-      website: c.website || '',
-      street_address: c.street_address || '',
-      city: c.city || '',
-      state: normalizeToUsStateName(c.state || ''),
-      zip: c.zip || '',
-      instagram_url: c.instagram_url || '',
-      facebook_url: c.facebook_url || '',
-      linkedin_url: c.linkedin_url || '',
-      company_types: c.company_types || [],
-      status: c.status || 'lead',
-      notes: c.notes || '',
-      bio: c.bio || '',
-      company_email: c.company_email || '',
-      company_phone: c.company_phone || '',
+      ...companyFieldsSnapshotFromLead(c),
+      ...contactsFieldsSnapshotFromLead(c),
       linked_user_id: c.linked_user_id ?? null,
       linked_company_profile_id: c.linked_company_profile_id ?? null,
     });
   }, []);
+
+  const cancelCompanyInfoEdit = useCallback(() => {
+    const c = detail?.crm_lead;
+    if (c) {
+      const snap = companyFieldsSnapshotFromLead(c);
+      setForm((f) => ({ ...f, ...snap }));
+    }
+    setCompanyInfoEditing(false);
+  }, [detail?.crm_lead]);
+
+  const cancelContactsEdit = useCallback(() => {
+    const c = detail?.crm_lead;
+    if (c) {
+      const snap = contactsFieldsSnapshotFromLead(c);
+      setForm((f) => ({ ...f, ...snap }));
+    }
+    setContactsEditing(false);
+  }, [detail?.crm_lead]);
 
   const loadList = useCallback(async () => {
     setLoading(true);
@@ -584,7 +738,10 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   }, [selectedId, isCreating]);
 
   useEffect(() => {
-    if (!isCreating) setIsRecordEditing(false);
+    if (!isCreating) {
+      setCompanyInfoEditing(false);
+      setContactsEditing(false);
+    }
   }, [selectedId, isCreating]);
 
   useEffect(() => {
@@ -805,17 +962,20 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         job_title: '',
         extension: '',
       });
-      const next = contacts.map((row, i) => ({
+      if (idx < 0 || idx >= contacts.length) return f;
+      const chosen = contacts[idx];
+      const rest = contacts.filter((_, i) => i !== idx);
+      const reordered = [chosen, ...rest].map((row, i) => ({
         ...row,
-        is_primary: i === idx,
+        is_primary: i === 0,
       }));
-      const primary = next[idx] || next[0] || {};
+      const primary = reordered[0] || {};
       return {
         ...f,
-        contacts: next,
-        contact_name: primary.name || f.contact_name,
-        email: primary.email || f.email,
-        phone: primary.phone || f.phone,
+        contacts: reordered,
+        contact_name: primary.name || '',
+        email: primary.email || '',
+        phone: primary.phone || '',
       };
     });
   };
@@ -901,7 +1061,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         setDetail(res);
         hydrateFormFromCrmLead(res.crm_lead);
         await loadList();
-        setIsRecordEditing(false);
+        setCompanyInfoEditing(false);
+        setContactsEditing(false);
       }
     } catch (e) {
       setAlertModal({
@@ -990,7 +1151,12 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     });
     setProfileImportOpen(false);
     setProfileImportText('');
-    if (!isRecordEditing) setIsRecordEditing(true);
+    if (!companyInfoEditing && !contactsEditing) {
+      setCompanyInfoEditing(true);
+      setContactsEditing(true);
+      setCrmCompanyInfoOpen(true);
+      setCrmUsersSectionOpen(true);
+    }
 
     const warnings = inferred?.diagnostics?.warnings || [];
     if (warnings.length > 0) {
@@ -1327,7 +1493,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const mergedLead = res.crm_lead;
       hydrateFormFromCrmLead(mergedLead);
       setSelectedId(mergedLead.id);
-      setIsRecordEditing(false);
+      setCompanyInfoEditing(false);
+      setContactsEditing(false);
       setMergeModalOpen(false);
       await loadList();
       setAlertModal({
@@ -1472,7 +1639,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     });
   };
 
-  const removeAdditionalContact = (contactIdx) => {
+  const removeContactAtIndex = (contactIndex) => {
     setForm((f) => {
       const contacts = editableContacts(f.contacts, {
         name: f.contact_name || '',
@@ -1481,18 +1648,26 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         job_title: '',
         extension: '',
       });
-      if (contactIdx <= 0 || contactIdx >= contacts.length) return f;
-      const next = contacts.filter((_, idx) => idx !== contactIdx);
-      const nextContacts = ensurePrimaryContactFlagsOnArray(next);
-      const primary = nextContacts[0] || {};
+      if (contactIndex < 0 || contactIndex >= contacts.length) return f;
+      let next = contacts.filter((_, i) => i !== contactIndex);
+      if (next.length === 0) {
+        next = [normalizeContactDraftEntry({ is_primary: true })];
+      } else {
+        next = ensurePrimaryContactFlagsOnArray(next);
+      }
+      const primary = next[0] || {};
       return {
         ...f,
-        contacts: nextContacts,
-        contact_name: primary.name || f.contact_name,
-        email: primary.email || f.email,
-        phone: primary.phone || f.phone,
+        contacts: next,
+        contact_name: primary.name || '',
+        email: primary.email || '',
+        phone: primary.phone || '',
       };
     });
+  };
+
+  const removeAdditionalContact = (contactIndex) => {
+    removeContactAtIndex(contactIndex);
   };
 
   const updateAdditionalContactNamePart = (contactIdx, part, value) => {
@@ -1534,18 +1709,20 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         const first = contacts[0] || normalizeContactDraftEntry({});
         const nextPrimary = {
           ...first,
+          is_primary: true,
           name: String(chosen.name || '').trim(),
           email: String(chosen.email || '').trim(),
           phone: formatPhoneInput(String(chosen.phone || '').trim()),
           job_title: String(chosen.job_title || '').trim(),
           extension: String(chosen.extension || '').trim(),
         };
+        const rest = contacts.slice(1).map((c) => ({ ...c, is_primary: false }));
         return {
           ...f,
           contact_name: nextPrimary.name,
           email: nextPrimary.email,
           phone: nextPrimary.phone,
-          contacts: [nextPrimary, ...contacts.slice(1)],
+          contacts: [nextPrimary, ...rest],
         };
       });
     } catch {
@@ -2128,9 +2305,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const fb = { name: f.contact_name, email: f.email, phone: f.phone || '', job_title: '', extension: '' };
       const contacts = editableContacts(f.contacts, fb);
       const baseContacts = contacts.length > 0 ? contacts : [normalizeContactDraftEntry({})];
-      return { ...f, contacts: [...baseContacts, normalizeContactDraftEntry({})] };
+      const next = [...baseContacts, normalizeContactDraftEntry({})];
+      return { ...f, contacts: ensurePrimaryContactFlagsOnArray(next) };
     });
-    setIsRecordEditing(true);
+    setContactsEditing(true);
+    setCrmUsersSectionOpen(true);
     setTimeout(() => document.getElementById('crm-contacts-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
   }, []);
 
@@ -2256,8 +2435,19 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   };
 
   const handleRailAction = (id) => {
-    if (id === 'add_phone' || id === 'add_contact' || id === 'trade' || id === 'contact') {
-      setIsRecordEditing(true);
+    if (id === 'add_phone') {
+      setCompanyInfoEditing(true);
+      setCrmCompanyInfoOpen(true);
+      return;
+    }
+    if (id === 'add_contact' || id === 'contact') {
+      setContactsEditing(true);
+      setCrmUsersSectionOpen(true);
+      return;
+    }
+    if (id === 'trade') {
+      setCompanyInfoEditing(true);
+      setCrmCompanyInfoOpen(true);
       return;
     }
     if (id === 'provision_account') {
@@ -2841,7 +3031,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                 onAddNote={startAddNote}
                 onReminder={openReminder}
                 onEdit={() => {
-                  setIsRecordEditing(true);
+                  setCompanyInfoEditing(true);
+                  setCrmCompanyInfoOpen(true);
                   setTimeout(
                     () => document.getElementById('crm-company-record-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
                     50,
@@ -2854,7 +3045,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                 onAddCompanyLogin={openAddCompanyLoginForLinkedLead}
                 onLinkAccount={() => setLinkAccountModalOpen(true)}
                 onChangeStatus={() => {
-                  setIsRecordEditing(true);
+                  setCompanyInfoEditing(true);
+                  setCrmCompanyInfoOpen(true);
                   setTimeout(() => document.getElementById('crm-status-select')?.focus(), 50);
                 }}
               />
@@ -2880,15 +3072,32 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     <div className="min-w-0">
                     <h2 className="text-lg font-semibold text-gray-900">Company record</h2>
                     <p className="text-xs text-slate-500 mt-1">
-                      {isRecordEditing ? (
-                        <span className="text-amber-700 font-semibold">Editing — save or cancel before leaving.</span>
+                      {companyInfoEditing || contactsEditing ? (
+                        <span className="text-amber-700 font-semibold">
+                          You have unsaved edits — use Save when finished, or Cancel on each section to discard those
+                          changes.
+                        </span>
                       ) : (
-                        'Read mode — fields are display-only until you click Edit.'
+                        'Use Edit on each section below to change company details or CRM contacts.'
                       )}
                     </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                    <button
+                      type="button"
+                      onClick={expandAllCrmCollapsibles}
+                      className="px-2.5 py-1.5 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 text-xs font-medium"
+                    >
+                      Expand all
+                    </button>
+                    <button
+                      type="button"
+                      onClick={collapseAllCrmCollapsibles}
+                      className="px-2.5 py-1.5 border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 text-xs font-medium"
+                    >
+                      Collapse all
+                    </button>
                     <button
                       type="button"
                       onClick={openMergeModal}
@@ -2903,27 +3112,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     >
                       <FaFileUpload className="w-3.5 h-3.5" />
                       Import
-                    </button>
-                    {isRecordEditing && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsRecordEditing(false);
-                          if (selectedId) loadDetail(selectedId);
-                        }}
-                        className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium"
-                      >
-                        Cancel
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setIsRecordEditing((v) => !v)}
-                      className={`px-3 py-1.5 rounded-lg text-sm font-semibold ${
-                        isRecordEditing ? 'bg-gray-800 text-white hover:bg-gray-900' : 'bg-blue-600 text-white hover:bg-blue-700'
-                      }`}
-                    >
-                      {isRecordEditing ? 'DONE' : 'EDIT'}
                     </button>
                   </div>
                 </div>
@@ -2940,22 +3128,55 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     <PipelineStageTracker currentStatus={form.status} />
                   </div>
                 )}
-                {isRecordEditing ? (
-                  <div className="space-y-4">
+                <div className="space-y-4">
                     <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-                      <button
-                        type="button"
-                        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
-                        onClick={() => setCrmCompanyInfoOpen((o) => !o)}
-                      >
-                        {crmCompanyInfoOpen ? (
-                          <FaChevronDown className="text-gray-500 w-3.5 h-3.5 shrink-0" />
-                        ) : (
-                          <FaChevronRight className="text-gray-500 w-3.5 h-3.5 shrink-0" />
-                        )}
-                        <span className="text-sm font-semibold text-gray-900">Company information</span>
-                      </button>
-                      {crmCompanyInfoOpen && (
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-white px-1 sm:px-2">
+                        <button
+                          type="button"
+                          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg py-2.5 pl-2 pr-2 text-left text-sm font-semibold text-gray-900 hover:bg-slate-50"
+                          onClick={() => setCrmCompanyInfoOpen((o) => !o)}
+                        >
+                          {crmCompanyInfoOpen ? (
+                            <FaChevronDown className="text-gray-500 w-3.5 h-3.5 shrink-0" />
+                          ) : (
+                            <FaChevronRight className="text-gray-500 w-3.5 h-3.5 shrink-0" />
+                          )}
+                          <span>Company information</span>
+                        </button>
+                        <div className="flex flex-wrap items-center gap-2 px-2 pb-2 sm:py-2">
+                          {companyInfoEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={cancelCompanyInfoEdit}
+                                className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-xs font-medium"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setCompanyInfoEditing(false)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-white hover:bg-gray-900"
+                              >
+                                Done
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setCompanyInfoEditing(true);
+                                setCrmCompanyInfoOpen(true);
+                              }}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700"
+                            >
+                              Edit
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {crmCompanyInfoOpen &&
+                        (companyInfoEditing ? (
                         <div className="px-4 pb-4 pt-2 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/30">
                           <label className="block sm:col-span-2">
                             <span className="text-xs font-medium text-gray-500 uppercase">Company name *</span>
@@ -3109,39 +3330,157 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                             />
                           </label>
                         </div>
-                      )}
+                        ) : (
+                      <div className="px-4 pb-4 pt-2 border-t border-slate-100 bg-white">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div>
+                          <div className="text-xs font-medium text-gray-500 uppercase">Company name</div>
+                          <div className="mt-1 text-sm text-gray-900 font-medium">{form.name || '—'}</div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium text-gray-500 uppercase">Status</div>
+                          <div className="mt-1">
+                            <CrmStatusBadge status={form.status} />
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium text-gray-500 uppercase">Company email</div>
+                          <div className="mt-1 text-sm text-gray-900">
+                            {form.company_email ? (
+                              <a href={`mailto:${form.company_email}`} className="text-blue-700 hover:underline break-all">
+                                {form.company_email}
+                              </a>
+                            ) : (
+                              '—'
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs font-medium text-gray-500 uppercase">Company phone</div>
+                          <div className="mt-1 text-sm text-gray-900">{form.company_phone || '—'}</div>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="text-xs font-medium text-gray-500 uppercase">Website</div>
+                          <div className="mt-1 text-sm text-gray-900">
+                            {form.website ? (
+                              <a
+                                href={/^https?:\/\//i.test(form.website) ? form.website : `https://${form.website}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-blue-700 hover:underline break-all"
+                              >
+                                {form.website}
+                              </a>
+                            ) : (
+                              '—'
+                            )}
+                          </div>
+                        </div>
+                        {form.bio ? (
+                          <div className="md:col-span-2">
+                            <div className="text-xs font-medium text-gray-500 uppercase">Company bio</div>
+                            <CrmBioReadMore text={form.bio} className="mt-1" />
+                          </div>
+                        ) : null}
+                        <div className="md:col-span-2">
+                          <div className="text-xs font-medium text-gray-500 uppercase">Company address</div>
+                          <div className="mt-1 text-sm text-gray-900">
+                            {fullAddress ? (
+                              <a href={mapsAddressUrl} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-words">
+                                {fullAddress}
+                              </a>
+                            ) : (
+                              '—'
+                            )}
+                          </div>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="text-xs font-medium text-gray-500 uppercase">Social</div>
+                          <div className="mt-1 text-sm text-gray-900 space-y-1">
+                            <div>Instagram: {form.instagram_url || '—'}</div>
+                            <div>Facebook: {form.facebook_url || '—'}</div>
+                            <div>LinkedIn: {form.linkedin_url || '—'}</div>
+                          </div>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="text-xs font-medium text-gray-500 uppercase">Company types</div>
+                          <div className="mt-1">
+                            <CompanyTypeBadges types={form.company_types} />
+                          </div>
+                        </div>
+                        <div className="md:col-span-2">
+                          <div className="text-xs font-medium text-gray-500 uppercase">Notes</div>
+                          <div className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{form.notes || '—'}</div>
+                        </div>
+                      </div>
+                      </div>
+                        ))}
                     </div>
 
                     <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-                      <button
-                        type="button"
-                        className="w-full flex items-center gap-2 px-4 py-3 text-left hover:bg-slate-50 transition-colors"
-                        onClick={() => setCrmUsersSectionOpen((o) => !o)}
-                      >
-                        {crmUsersSectionOpen ? (
-                          <FaChevronDown className="text-gray-500 w-3.5 h-3.5 shrink-0" />
-                        ) : (
-                          <FaChevronRight className="text-gray-500 w-3.5 h-3.5 shrink-0" />
-                        )}
-                        <span className="text-sm font-semibold text-gray-900">Contacts &amp; platform users</span>
-                      </button>
-                      {crmUsersSectionOpen && (
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-white px-1 sm:px-2">
+                        <button
+                          type="button"
+                          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg py-2.5 pl-2 pr-2 text-left text-sm font-semibold text-gray-900 hover:bg-slate-50"
+                          onClick={() => setCrmUsersSectionOpen((o) => !o)}
+                        >
+                          {crmUsersSectionOpen ? (
+                            <FaChevronDown className="text-gray-500 w-3.5 h-3.5 shrink-0" />
+                          ) : (
+                            <FaChevronRight className="text-gray-500 w-3.5 h-3.5 shrink-0" />
+                          )}
+                          <span>Contacts &amp; platform users</span>
+                        </button>
+                        <div className="flex flex-wrap items-center gap-2 px-2 pb-2 sm:py-2">
+                          {contactsEditing ? (
+                            <>
+                              <button
+                                type="button"
+                                onClick={cancelContactsEdit}
+                                className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-xs font-medium"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setContactsEditing(false)}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-white hover:bg-gray-900"
+                              >
+                                Done
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setContactsEditing(true);
+                                setCrmUsersSectionOpen(true);
+                              }}
+                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700"
+                            >
+                              Edit
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      {crmUsersSectionOpen &&
+                        (contactsEditing ? (
                         <div id="crm-contacts-editor" className="px-4 pb-4 pt-2 border-t border-gray-100 space-y-4 bg-slate-50/30">
                           <div className="rounded-lg border border-gray-200 p-3 bg-white space-y-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <div className="text-xs font-semibold text-gray-500 uppercase">Primary contact</div>
-                              <label className="inline-flex items-center gap-2 text-xs font-medium text-gray-700">
-                                <input
-                                  type="radio"
-                                  name="crm-main-contact"
-                                  checked={(() => {
-                                    const pi = displayContacts.findIndex((c) => c.is_primary);
-                                    return pi === 0 || (pi === -1 && displayContacts.length > 0);
-                                  })()}
-                                  onChange={() => setPrimaryContactIndex(0)}
-                                />
-                                Main contact
-                              </label>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-2 py-0.5">
+                                  Main contact
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeContactAtIndex(0)}
+                                  className="text-xs px-2 py-1 rounded border border-red-300 text-red-700 hover:bg-red-50 font-medium"
+                                >
+                                  Remove
+                                </button>
+                              </div>
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               <label className="block">
@@ -3284,18 +3623,20 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                 >
                                   <summary className="list-none flex flex-wrap items-center justify-between gap-2 px-3 py-2 cursor-pointer text-xs font-semibold text-gray-600 uppercase bg-gray-50 border-b border-gray-100 hover:bg-gray-100 [&::-webkit-details-marker]:hidden">
                                     <span className="select-none inline-flex items-center gap-2 normal-case">
-                                      <input
-                                        type="radio"
-                                        name="crm-main-contact"
-                                        checked={displayContacts.findIndex((c) => c.is_primary) === contactIndex}
-                                        onChange={(e) => {
-                                          e.preventDefault();
-                                          setPrimaryContactIndex(contactIndex);
-                                        }}
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="shrink-0"
-                                        aria-label="Set as main contact"
-                                      />
+                                      <label className="inline-flex items-center gap-2 cursor-pointer">
+                                        <input
+                                          type="radio"
+                                          name="crm-main-contact"
+                                          checked={displayContacts.findIndex((c) => c.is_primary) === contactIndex}
+                                          onChange={(e) => {
+                                            e.preventDefault();
+                                            setPrimaryContactIndex(contactIndex);
+                                          }}
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="shrink-0"
+                                        />
+                                        <span className="text-xs font-medium text-gray-700">Main contact</span>
+                                      </label>
                                       <span className="uppercase tracking-wide text-gray-600">
                                         {contact.name?.trim() || `Contact ${contactIndex + 1}`}
                                       </span>
@@ -3428,106 +3769,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                             </button>
                           </div>
                         </div>
-                      )}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    <details className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm" open>
-                      <summary className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-semibold text-gray-900 cursor-pointer hover:bg-slate-50 list-none [&::-webkit-details-marker]:hidden">
-                        <FaChevronDown className="text-gray-500 w-3.5 h-3.5 shrink-0" />
-                        Company information
-                      </summary>
-                      <div className="px-4 pb-4 pt-2 border-t border-slate-100 bg-white">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div>
-                          <div className="text-xs font-medium text-gray-500 uppercase">Company name</div>
-                          <div className="mt-1 text-sm text-gray-900 font-medium">{form.name || '—'}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-gray-500 uppercase">Status</div>
-                          <div className="mt-1">
-                            <CrmStatusBadge status={form.status} />
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-gray-500 uppercase">Company email</div>
-                          <div className="mt-1 text-sm text-gray-900">
-                            {form.company_email ? (
-                              <a href={`mailto:${form.company_email}`} className="text-blue-700 hover:underline break-all">
-                                {form.company_email}
-                              </a>
-                            ) : (
-                              '—'
-                            )}
-                          </div>
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-gray-500 uppercase">Company phone</div>
-                          <div className="mt-1 text-sm text-gray-900">{form.company_phone || '—'}</div>
-                        </div>
-                        <div className="md:col-span-2">
-                          <div className="text-xs font-medium text-gray-500 uppercase">Website</div>
-                          <div className="mt-1 text-sm text-gray-900">
-                            {form.website ? (
-                              <a
-                                href={/^https?:\/\//i.test(form.website) ? form.website : `https://${form.website}`}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="text-blue-700 hover:underline break-all"
-                              >
-                                {form.website}
-                              </a>
-                            ) : (
-                              '—'
-                            )}
-                          </div>
-                        </div>
-                        {form.bio ? (
-                          <div className="md:col-span-2">
-                            <div className="text-xs font-medium text-gray-500 uppercase">Company bio</div>
-                            <CrmBioReadMore text={form.bio} className="mt-1" />
-                          </div>
-                        ) : null}
-                        <div className="md:col-span-2">
-                          <div className="text-xs font-medium text-gray-500 uppercase">Company address</div>
-                          <div className="mt-1 text-sm text-gray-900">
-                            {fullAddress ? (
-                              <a href={mapsAddressUrl} target="_blank" rel="noreferrer" className="text-blue-700 hover:underline break-words">
-                                {fullAddress}
-                              </a>
-                            ) : (
-                              '—'
-                            )}
-                          </div>
-                        </div>
-                        <div className="md:col-span-2">
-                          <div className="text-xs font-medium text-gray-500 uppercase">Social</div>
-                          <div className="mt-1 text-sm text-gray-900 space-y-1">
-                            <div>Instagram: {form.instagram_url || '—'}</div>
-                            <div>Facebook: {form.facebook_url || '—'}</div>
-                            <div>LinkedIn: {form.linkedin_url || '—'}</div>
-                          </div>
-                        </div>
-                        <div className="md:col-span-2">
-                          <div className="text-xs font-medium text-gray-500 uppercase">Company types</div>
-                          <div className="mt-1">
-                            <CompanyTypeBadges types={form.company_types} />
-                          </div>
-                        </div>
-                        <div className="md:col-span-2">
-                          <div className="text-xs font-medium text-gray-500 uppercase">Notes</div>
-                          <div className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{form.notes || '—'}</div>
-                        </div>
-                      </div>
-                      </div>
-                    </details>
-
-                    <details className="rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-sm" open>
-                      <summary className="w-full flex items-center gap-2 px-4 py-3 text-left text-sm font-semibold text-gray-900 cursor-pointer hover:bg-slate-50 list-none [&::-webkit-details-marker]:hidden">
-                        <FaChevronDown className="text-gray-500 w-3.5 h-3.5 shrink-0" />
-                        Contacts &amp; platform users
-                      </summary>
+                        ) : (
                       <div className="px-4 pb-4 pt-2 border-t border-slate-100 bg-white" id="crm-contacts-section">
                         <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
                           <p className="text-xs text-gray-500 max-w-xl">
@@ -3808,18 +4050,18 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                           </div>
                         )}
                       </div>
-                    </details>
-                  </div>
-                )}
+                        ))}
+                    </div>
+                </div>
 
                 <div className="mt-6 flex flex-wrap gap-3">
                   <button
                     type="button"
-                    disabled={saving || !isRecordEditing}
+                    disabled={saving || (!companyInfoEditing && !contactsEditing)}
                     onClick={saveRecord}
                     className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
                   >
-                    {saving ? 'Saving…' : isRecordEditing ? 'Save' : 'Enable EDIT to save'}
+                    {saving ? 'Saving…' : companyInfoEditing || contactsEditing ? 'Save changes' : 'Save (edit a section first)'}
                   </button>
                   <button
                     type="button"
