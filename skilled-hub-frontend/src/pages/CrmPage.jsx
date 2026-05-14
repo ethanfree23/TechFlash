@@ -21,6 +21,7 @@ import {
 } from '../utils/crmNotes';
 import { US_STATES } from '../data/statesByCountry';
 import { normalizeToUsStateName } from '../utils/crmUsState';
+import { parseUsAddressPaste } from '../utils/parseUsAddressPaste';
 import {
   CRM_STATUSES,
   CRM_PIPELINE_STORAGE_KEY,
@@ -46,6 +47,7 @@ import {
   isValidUrlLoose,
   getPrimaryContactPreview,
   companyTypeLabel,
+  formatWebsiteLabel,
 } from '../utils/crmDisplayAdapter';
 import CrmCommandHeader from '../components/crm/CrmCommandHeader';
 import CompanyRecordHeader from '../components/crm/CompanyRecordHeader';
@@ -440,6 +442,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [searchBusy, setSearchBusy] = useState(false);
   const searchTimer = useRef(null);
   const companySearchTimer = useRef(null);
+  const crmAddressPasteEditRef = useRef(null);
+  const crmAddressPasteNewRef = useRef(null);
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'error' });
   const handlePipelineColumnSaveError = useCallback(() => {
     setAlertModal({
@@ -461,7 +465,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [draggingPipelineColumnKey, setDraggingPipelineColumnKey] = useState(null);
   const [pipelineNameFilter, setPipelineNameFilter] = useState('');
   const [pipelineStatusFilter, setPipelineStatusFilter] = useState('');
-  const [pipelineExpandedByProfileId, setPipelineExpandedByProfileId] = useState({});
   const [crmCompanyInfoOpen, setCrmCompanyInfoOpen] = useState(true);
   const [crmUsersSectionOpen, setCrmUsersSectionOpen] = useState(true);
   const [importModalOpen, setImportModalOpen] = useState(false);
@@ -893,15 +896,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   }, [detail, form]);
 
   const selectLead = (id) => {
-    const row = leads.find((l) => Number(l.id) === Number(id));
-    const pid = row?.linked_company_profile_id;
-    if (pid != null && pid !== '') {
-      const k = String(pid);
-      const mates = leads.filter((r) => String(r.linked_company_profile_id) === k);
-      if (mates.length > 1) {
-        setPipelineExpandedByProfileId((p) => ({ ...p, [k]: true }));
-      }
-    }
     setIsCreating(false);
     setNewCompanyModalOpen(false);
     setProfileImportOpen(false);
@@ -1428,7 +1422,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
-  const openMergeModal = () => {
+  const openMergeModal = (preselectedTargetLeadId) => {
     const defaults = Object.fromEntries(CRM_MERGE_FIELDS.map((field) => [field.key, 'current']));
     setMergeFieldSources(defaults);
     setMergeOptions({
@@ -1438,7 +1432,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       combine_timeline_notes: true,
     });
     setMergeDirection('into_current');
-    setMergeTargetId('');
+    setMergeTargetId(
+      preselectedTargetLeadId != null && preselectedTargetLeadId !== '' ? String(preselectedTargetLeadId) : '',
+    );
     setMergeModalOpen(true);
   };
 
@@ -2143,22 +2139,14 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       });
       return;
     }
-    if (!reminderDraft.body?.trim()) {
-      setAlertModal({
-        isOpen: true,
-        title: 'Details',
-        message: 'Add a short note about who to call and why.',
-        variant: 'error',
-      });
-      return;
-    }
     setReminderSaving(true);
     try {
+      const bodyText = (reminderDraft.body || '').trim();
       const res = await crmAPI.createNote(selectedId, {
         contact_method: 'note',
         made_contact: false,
         title: reminderDraft.title?.trim() || 'Reminder',
-        body: reminderDraft.body.trim(),
+        body: bodyText,
         remind_at: when.toISOString(),
       });
       setCrmNotes(res.crm_notes || []);
@@ -2484,36 +2472,33 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     filteredLeads.forEach((row) => {
       const pid = row.linked_company_profile_id;
       if (pid == null || pid === '') {
-        out.push({ kind: 'single', lead: row });
+        out.push({ kind: 'single', lead: row, duplicateCrRecordsCount: 1, mergeSiblingLeadId: null });
         return;
       }
       const k = String(pid);
       if (emitted.has(k)) return;
       emitted.add(k);
       const groupLeads = filteredLeads.filter((r) => String(r.linked_company_profile_id) === k);
-      if (groupLeads.length === 1) {
-        out.push({ kind: 'single', lead: groupLeads[0] });
-      } else {
-        const displayName =
-          groupLeads[0].linked_account?.company_name?.trim() ||
-          groupLeads[0].name ||
-          'Company';
-        out.push({ kind: 'group', profileId: pid, displayName, leads: groupLeads });
-      }
+      const primary = groupLeads.reduce((best, cur) => {
+        const bt = new Date(best.updated_at || best.created_at || 0).getTime();
+        const ct = new Date(cur.updated_at || cur.created_at || 0).getTime();
+        return ct >= bt ? cur : best;
+      });
+      const others = groupLeads.filter((l) => Number(l.id) !== Number(primary.id));
+      const mergeSiblingLeadId = others.length ? others[0].id : null;
+      out.push({
+        kind: 'single',
+        lead: primary,
+        duplicateCrRecordsCount: groupLeads.length,
+        mergeSiblingLeadId,
+      });
     });
     return out;
   }, [filteredLeads]);
 
-  const togglePipelineGroupHeader = (group) => {
-    const k = String(group.profileId);
-    const next = !pipelineExpandedByProfileId[k];
-    setPipelineExpandedByProfileId((prev) => ({ ...prev, [k]: next }));
-    if (next) selectLead(group.leads[0].id);
-  };
-
   const visiblePipelineColumns = useMemo(() => pipelineColumns.filter((c) => c.visible), [pipelineColumns]);
 
-  const renderPipelineLeadMeta = (row) => {
+  const renderPipelineLeadMeta = (row, pipelineItem = null) => {
     const pc = getPrimaryContactPreview(row);
     const nc = Number(row.notes_count) || 0;
     const warn = !pc.name && !pc.email ? 'text-amber-600' : 'text-slate-500';
@@ -2557,6 +2542,13 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           <span className="text-slate-400">· {nc} notes</span>
           {!row.linked_account && <span className="text-amber-600 font-medium">· Unlinked</span>}
         </div>
+        {pipelineItem && pipelineItem.duplicateCrRecordsCount > 1 && (
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-900 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded">
+              {pipelineItem.duplicateCrRecordsCount} CRM records · same linked company
+            </span>
+          </div>
+        )}
       </div>
     );
   };
@@ -2918,73 +2910,33 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
               ) : (
                 <ul className="divide-y divide-gray-100">
                   {pipelineDisplayGroups.map((item) => {
-                    if (item.kind === 'single') {
-                      const row = item.lead;
-                      return (
-                        <li key={row.id}>
-                          <button
-                            type="button"
-                            onClick={() => selectLead(row.id)}
-                            className={`w-full text-left px-4 py-3 hover:bg-blue-50/60 transition-colors ${
-                              selectedId === row.id && !isCreating ? 'bg-blue-50 border-l-4 border-blue-600' : 'border-l-4 border-transparent'
-                            }`}
-                          >
-                            <div className="font-medium text-gray-900">{row.name}</div>
-                            {renderPipelineLeadMeta(row)}
-                          </button>
-                        </li>
-                      );
-                    }
-                    const group = item;
-                    const k = String(group.profileId);
-                    const isExpanded = Boolean(pipelineExpandedByProfileId[k]);
-                    const groupHasSelection = group.leads.some((l) => Number(l.id) === Number(selectedId));
+                    const row = item.lead;
+                    const dup = item.duplicateCrRecordsCount > 1 && item.mergeSiblingLeadId != null;
                     return (
-                      <li key={`grp-${k}`}>
+                      <li key={row.id} className="flex items-stretch">
                         <button
                           type="button"
-                          onClick={() => togglePipelineGroupHeader(group)}
-                          className={`w-full text-left px-4 py-3 hover:bg-blue-50/60 transition-colors ${
-                            groupHasSelection && !isCreating ? 'bg-blue-50 border-l-4 border-blue-600' : 'border-l-4 border-transparent'
+                          onClick={() => selectLead(row.id)}
+                          className={`min-w-0 flex-1 text-left px-4 py-3 hover:bg-blue-50/60 transition-colors ${
+                            selectedId === row.id && !isCreating ? 'bg-blue-50 border-l-4 border-blue-600' : 'border-l-4 border-transparent'
                           }`}
                         >
-                          <div className="flex items-start gap-2">
-                            <span className="shrink-0 text-gray-500 mt-0.5" aria-hidden>
-                              {isExpanded ? <FaChevronDown className="w-3 h-3" /> : <FaChevronRight className="w-3 h-3" />}
-                            </span>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="font-medium text-gray-900">{group.displayName}</span>
-                                <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
-                                  {group.leads.length} CRM records · 1 company
-                                </span>
-                              </div>
-                              {!isExpanded && (
-                                <p className="mt-1 text-xs text-gray-500">Click to expand and choose a linked account.</p>
-                              )}
-                            </div>
-                          </div>
+                          <div className="font-medium text-gray-900">{row.name}</div>
+                          {renderPipelineLeadMeta(row, item)}
                         </button>
-                        {isExpanded && (
-                          <ul className="border-t border-gray-100 bg-slate-50/60">
-                            {group.leads.map((row) => (
-                              <li key={row.id}>
-                                <button
-                                  type="button"
-                                  onClick={() => selectLead(row.id)}
-                                  className={`w-full text-left pl-10 pr-4 py-2.5 text-sm hover:bg-blue-50/60 transition-colors ${
-                                    selectedId === row.id && !isCreating ? 'bg-blue-50 border-l-4 border-blue-600' : 'border-l-4 border-transparent'
-                                  }`}
-                                >
-                                  <div className="font-medium text-gray-900">
-                                    {row.linked_account?.email || row.email || row.name || `CRM #${row.id}`}
-                                  </div>
-                                  {renderPipelineLeadMeta(row)}
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        )}
+                        {dup ? (
+                          <button
+                            type="button"
+                            title="Open merge with the other CRM record for this company"
+                            onClick={() => {
+                              selectLead(row.id);
+                              openMergeModal(item.mergeSiblingLeadId);
+                            }}
+                            className="shrink-0 self-stretch px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50/90 hover:bg-amber-100 border-l border-amber-100"
+                          >
+                            Merge…
+                          </button>
+                        ) : null}
                       </li>
                     );
                   })}
@@ -3045,36 +2997,36 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
 
             {selectedId && !isCreating && (
               <div id="crm-company-record-panel" className="bg-white rounded-2xl shadow border border-gray-100 p-6">
-                <div className="mb-4 flex items-center justify-between gap-3">
-                  <div className="flex items-start gap-2 min-w-0">
-                    <button
-                      type="button"
-                      onClick={() => setCrmCompanyRecordBodyOpen((o) => !o)}
-                      className="mt-0.5 p-1 rounded-lg text-gray-500 hover:bg-gray-100 shrink-0"
-                      aria-expanded={crmCompanyRecordBodyOpen}
-                      aria-label={crmCompanyRecordBodyOpen ? 'Collapse company record' : 'Expand company record'}
-                    >
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCrmCompanyRecordBodyOpen((o) => !o)}
+                    className="flex min-w-0 flex-1 items-start gap-2 rounded-xl -mx-2 -my-2 px-2 py-2 text-left hover:bg-slate-50"
+                    aria-expanded={crmCompanyRecordBodyOpen}
+                    aria-label={crmCompanyRecordBodyOpen ? 'Collapse company record' : 'Expand company record'}
+                  >
+                    <span className="mt-0.5 shrink-0 text-gray-500" aria-hidden>
                       {crmCompanyRecordBodyOpen ? (
-                        <FaChevronDown className="w-4 h-4" aria-hidden />
+                        <FaChevronDown className="w-4 h-4" />
                       ) : (
-                        <FaChevronRight className="w-4 h-4" aria-hidden />
+                        <FaChevronRight className="w-4 h-4" />
                       )}
-                    </button>
+                    </span>
                     <div className="min-w-0">
-                    <h2 className="text-lg font-semibold text-gray-900">Company record</h2>
-                    <p className="text-xs text-slate-500 mt-1">
-                      {companyInfoEditing || contactsEditing ? (
-                        <span className="text-amber-700 font-semibold">
-                          You have unsaved edits — use Save when finished, or Cancel on each section to discard those
-                          changes.
-                        </span>
-                      ) : (
-                        'Use Edit on each section below to change company details or CRM contacts.'
-                      )}
-                    </p>
+                      <h2 className="text-lg font-semibold text-gray-900">Company record</h2>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {companyInfoEditing || contactsEditing ? (
+                          <span className="text-amber-700 font-semibold">
+                            You have unsaved edits — use Save when finished, or Cancel on each section to discard those
+                            changes.
+                          </span>
+                        ) : (
+                          'Use Edit on each section below to change company details or CRM contacts.'
+                        )}
+                      </p>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap justify-end">
+                  </button>
+                  <div className="flex items-center gap-2 flex-wrap justify-end shrink-0">
                     <button
                       type="button"
                       onClick={expandAllCrmCollapsibles}
@@ -3227,6 +3179,34 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                             />
                           </label>
                           <label className="block sm:col-span-2">
+                            <span className="text-xs font-medium text-gray-500 uppercase">Paste full address (optional)</span>
+                            <textarea
+                              ref={crmAddressPasteEditRef}
+                              rows={2}
+                              placeholder="e.g. 123 Main St, Austin, TX 78701"
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                            />
+                            <button
+                              type="button"
+                              className="mt-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
+                              onClick={() => {
+                                const v = crmAddressPasteEditRef.current?.value || '';
+                                if (!v.trim()) return;
+                                const p = parseUsAddressPaste(v);
+                                setForm((f) => ({
+                                  ...f,
+                                  ...(p.street_address ? { street_address: p.street_address } : {}),
+                                  ...(p.city ? { city: p.city } : {}),
+                                  ...(p.state ? { state: normalizeToUsStateName(p.state) } : {}),
+                                  ...(p.zip ? { zip: p.zip } : {}),
+                                }));
+                                if (crmAddressPasteEditRef.current) crmAddressPasteEditRef.current.value = '';
+                              }}
+                            >
+                              Parse into fields below
+                            </button>
+                          </label>
+                          <label className="block sm:col-span-2">
                             <span className="text-xs font-medium text-gray-500 uppercase">Street address</span>
                             <input
                               className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
@@ -3360,7 +3340,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                 rel="noreferrer"
                                 className="text-blue-700 hover:underline break-all"
                               >
-                                {form.website}
+                                {formatWebsiteLabel(form.website)}
                               </a>
                             ) : (
                               '—'
@@ -4070,23 +4050,23 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             {selectedId && !isCreating && (
               <div id="crm-notes-section" className="bg-white rounded-2xl shadow border border-gray-100 p-6">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-                  <div className="flex items-start gap-2 min-w-0">
-                    <button
-                      type="button"
-                      onClick={() => setCrmActivitySectionOpen((o) => !o)}
-                      className="mt-0.5 p-1 rounded-lg text-gray-500 hover:bg-gray-100 shrink-0"
-                      aria-expanded={crmActivitySectionOpen}
-                      aria-label={crmActivitySectionOpen ? 'Collapse activity' : 'Expand activity'}
-                    >
+                  <button
+                    type="button"
+                    onClick={() => setCrmActivitySectionOpen((o) => !o)}
+                    className="flex min-w-0 flex-1 items-start gap-2 rounded-xl -mx-2 -my-2 px-2 py-2 text-left hover:bg-slate-50 sm:items-center"
+                    aria-expanded={crmActivitySectionOpen}
+                    aria-label={crmActivitySectionOpen ? 'Collapse activity' : 'Expand activity'}
+                  >
+                    <span className="mt-0.5 shrink-0 text-gray-500 sm:mt-0" aria-hidden>
                       {crmActivitySectionOpen ? (
-                        <FaChevronDown className="w-4 h-4" aria-hidden />
+                        <FaChevronDown className="w-4 h-4" />
                       ) : (
-                        <FaChevronRight className="w-4 h-4" aria-hidden />
+                        <FaChevronRight className="w-4 h-4" />
                       )}
-                    </button>
-                    <h2 className="text-lg font-semibold text-gray-900">Activity &amp; notes</h2>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
+                    </span>
+                    <h2 className="text-lg font-semibold text-gray-900 min-w-0">Activity &amp; notes</h2>
+                  </button>
+                  <div className="flex flex-wrap items-center gap-2 shrink-0">
                     <label className="text-xs text-gray-500 flex items-center gap-1">
                       Filter
                       <select
@@ -4434,7 +4414,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   />
                 </label>
                 <label className="block">
-                  <span className="text-xs font-medium text-gray-500 uppercase">Details *</span>
+                  <span className="text-xs font-medium text-gray-500 uppercase">Details (optional)</span>
                   <textarea
                     className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[96px]"
                     value={reminderDraft.body}
@@ -5616,6 +5596,34 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       value={form.website ?? ''}
                       onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
                     />
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Paste full address (optional)</span>
+                    <textarea
+                      ref={crmAddressPasteNewRef}
+                      rows={2}
+                      placeholder="e.g. 123 Main St, Austin, TX 78701"
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    />
+                    <button
+                      type="button"
+                      className="mt-2 px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
+                      onClick={() => {
+                        const v = crmAddressPasteNewRef.current?.value || '';
+                        if (!v.trim()) return;
+                        const p = parseUsAddressPaste(v);
+                        setForm((f) => ({
+                          ...f,
+                          ...(p.street_address ? { street_address: p.street_address } : {}),
+                          ...(p.city ? { city: p.city } : {}),
+                          ...(p.state ? { state: normalizeToUsStateName(p.state) } : {}),
+                          ...(p.zip ? { zip: p.zip } : {}),
+                        }));
+                        if (crmAddressPasteNewRef.current) crmAddressPasteNewRef.current.value = '';
+                      }}
+                    >
+                      Parse into fields below
+                    </button>
                   </label>
                   <label className="block sm:col-span-2">
                     <span className="text-xs font-medium text-gray-500 uppercase">Street address</span>

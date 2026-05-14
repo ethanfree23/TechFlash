@@ -21,10 +21,17 @@ const DEFAULT_COLUMNS = [
   { key: 'last_name', label: 'Last name', visible: true },
   { key: 'email', label: 'Email', visible: true },
   { key: 'phone', label: 'Phone', visible: true },
-  { key: 'role', label: 'Role', visible: true },
+  { key: 'role', label: 'User type', visible: true },
   { key: 'joined', label: 'Joined', visible: true },
   { key: 'logins_30d', label: 'Logins (30d)', visible: true },
 ];
+
+function formatUserType(role) {
+  if (role === 'company') return 'Company';
+  if (role === 'technician') return 'Technician';
+  if (role === 'admin') return 'Admin';
+  return role ? String(role) : '—';
+}
 
 export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const [roleTab, setRoleTab] = useState('all');
@@ -46,7 +53,11 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const [emailFilter, setEmailFilter] = useState('');
   const [phoneFilter, setPhoneFilter] = useState('');
   const [companyFilter, setCompanyFilter] = useState('');
+  const [columnRoleFilter, setColumnRoleFilter] = useState('');
+  const [joinedFilter, setJoinedFilter] = useState('');
+  const [loginsMinFilter, setLoginsMinFilter] = useState('');
   const [sortDir, setSortDir] = useState('asc');
+  const [sortKeyOverride, setSortKeyOverride] = useState(null);
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [draggingColumnKey, setDraggingColumnKey] = useState(null);
 
@@ -107,12 +118,33 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
     return () => document.removeEventListener('visibilitychange', onVisibility);
   }, [loadUsers]);
 
+  useEffect(() => {
+    setSortKeyOverride(null);
+  }, [roleTab]);
+
   const visibleColumns = useMemo(() => columns.filter((c) => c.visible), [columns]);
-  const primarySortKey = visibleColumns[0]?.key;
+  const effectiveSortKey = useMemo(() => {
+    const keys = visibleColumns.map((c) => c.key);
+    if (sortKeyOverride && keys.includes(sortKeyOverride)) return sortKeyOverride;
+    return keys[0];
+  }, [visibleColumns, sortKeyOverride]);
+
+  useEffect(() => {
+    if (sortKeyOverride && !visibleColumns.some((c) => c.key === sortKeyOverride)) {
+      setSortKeyOverride(null);
+    }
+  }, [visibleColumns, sortKeyOverride]);
 
   useEffect(() => {
     setSortDir('asc');
-  }, [primarySortKey, roleTab]);
+  }, [effectiveSortKey, roleTab]);
+
+  const sortKeys = useMemo(() => {
+    const keys = visibleColumns.map((c) => c.key);
+    if (!keys.length) return [];
+    const primary = keys.includes(effectiveSortKey) ? effectiveSortKey : keys[0];
+    return [primary, ...keys.filter((k) => k !== primary)];
+  }, [visibleColumns, effectiveSortKey]);
 
   const startMasquerade = async (e, targetUserId) => {
     e.stopPropagation();
@@ -144,6 +176,23 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
     if (emailFilter.trim() && !rowEmail.includes(emailFilter.trim().toLowerCase())) return false;
     if (phoneFilter.trim() && !rowPhone.includes(phoneFilter.trim().toLowerCase())) return false;
     if (companyFilter.trim() && !rowCompany.includes(companyFilter.trim().toLowerCase())) return false;
+    if (columnRoleFilter && String(row.role || '') !== columnRoleFilter) return false;
+    if (joinedFilter.trim()) {
+      const j = joinedFilter.trim().toLowerCase();
+      const iso = (row.created_at && String(row.created_at).toLowerCase()) || '';
+      const pretty = row.created_at
+        ? new Date(row.created_at).toLocaleDateString(undefined, {
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+          })
+        : '';
+      if (!iso.includes(j) && !pretty.toLowerCase().includes(j)) return false;
+    }
+    if (loginsMinFilter.trim()) {
+      const min = parseInt(loginsMinFilter.trim(), 10);
+      if (Number.isFinite(min) && Number(row.logins_last_30_days ?? 0) < min) return false;
+    }
     return true;
   });
 
@@ -151,8 +200,26 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
     setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
   };
 
+  const onSortHeaderClick = (colKey) => {
+    if (colKey === effectiveSortKey) togglePrimarySort();
+    else {
+      setSortKeyOverride(colKey);
+      setSortDir('asc');
+    }
+  };
+
+  const clearColumnFilters = () => {
+    setFirstNameFilter('');
+    setLastNameFilter('');
+    setEmailFilter('');
+    setPhoneFilter('');
+    setCompanyFilter('');
+    setColumnRoleFilter('');
+    setJoinedFilter('');
+    setLoginsMinFilter('');
+  };
+
   const sortedList = [...filteredList].sort((a, b) => {
-    const sortKeys = visibleColumns.map((c) => c.key);
     if (!sortKeys.length) return 0;
 
     const getRawValue = (row, key) => {
@@ -329,6 +396,100 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
           />
         </div>
 
+        <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50/80 p-3">
+          <div className="flex flex-wrap items-end justify-between gap-3 mb-2">
+            <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Column filters</span>
+            <button
+              type="button"
+              onClick={clearColumnFilters}
+              className="text-xs font-medium text-blue-700 hover:text-blue-900"
+            >
+              Clear filters
+            </button>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-2">
+            <label className="block min-w-0">
+              <span className="text-[10px] font-medium text-gray-500 uppercase">First name</span>
+              <input
+                type="search"
+                value={firstNameFilter}
+                onChange={(e) => setFirstNameFilter(e.target.value)}
+                className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className="text-[10px] font-medium text-gray-500 uppercase">Last name</span>
+              <input
+                type="search"
+                value={lastNameFilter}
+                onChange={(e) => setLastNameFilter(e.target.value)}
+                className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className="text-[10px] font-medium text-gray-500 uppercase">Email</span>
+              <input
+                type="search"
+                value={emailFilter}
+                onChange={(e) => setEmailFilter(e.target.value)}
+                className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className="text-[10px] font-medium text-gray-500 uppercase">Phone</span>
+              <input
+                type="search"
+                value={phoneFilter}
+                onChange={(e) => setPhoneFilter(e.target.value)}
+                className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className="text-[10px] font-medium text-gray-500 uppercase">Company</span>
+              <input
+                type="search"
+                value={companyFilter}
+                onChange={(e) => setCompanyFilter(e.target.value)}
+                className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className="text-[10px] font-medium text-gray-500 uppercase">User type</span>
+              <select
+                value={columnRoleFilter}
+                onChange={(e) => setColumnRoleFilter(e.target.value)}
+                className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white"
+              >
+                <option value="">All types</option>
+                <option value="company">Company</option>
+                <option value="technician">Technician</option>
+                <option value="admin">Admin</option>
+              </select>
+            </label>
+            <label className="block min-w-0">
+              <span className="text-[10px] font-medium text-gray-500 uppercase">Joined contains</span>
+              <input
+                type="search"
+                value={joinedFilter}
+                onChange={(e) => setJoinedFilter(e.target.value)}
+                placeholder="e.g. May 2026"
+                className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
+              />
+            </label>
+            <label className="block min-w-0">
+              <span className="text-[10px] font-medium text-gray-500 uppercase">Logins (30d) min</span>
+              <input
+                type="number"
+                min={0}
+                step={1}
+                value={loginsMinFilter}
+                onChange={(e) => setLoginsMinFilter(e.target.value)}
+                className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
+              />
+            </label>
+          </div>
+        </div>
+
         <div className="flex justify-end mb-2 relative">
           <button
             type="button"
@@ -379,66 +540,26 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
                 <tr>
                   {visibleColumns.map((col) => (
                     <th key={col.key} className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      {col.key === primarySortKey ? (
-                        <button type="button" onClick={togglePrimarySort} className="inline-flex items-center gap-1">
+                      {col.key === effectiveSortKey ? (
+                        <button
+                          type="button"
+                          onClick={() => onSortHeaderClick(col.key)}
+                          className="inline-flex items-center gap-1"
+                        >
                           {col.label} {sortDir === 'asc' ? '▲' : '▼'}
                         </button>
                       ) : (
-                        <span className="inline-flex items-center gap-1 text-gray-700">
+                        <button
+                          type="button"
+                          onClick={() => onSortHeaderClick(col.key)}
+                          className="inline-flex items-center gap-1 text-gray-700 hover:text-gray-900"
+                        >
                           {col.label} <span className="text-gray-400 font-normal">↕</span>
-                        </span>
+                        </button>
                       )}
                     </th>
                   ))}
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Actions</th>
-                </tr>
-                <tr>
-                  {visibleColumns.map((col) => (
-                    <th key={`filter-${col.key}`} className="px-4 pb-3">
-                      {col.key === 'first_name' ? (
-                        <input
-                          type="search"
-                          value={firstNameFilter}
-                          onChange={(e) => setFirstNameFilter(e.target.value)}
-                          placeholder="Filter first name"
-                          className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs font-normal"
-                        />
-                      ) : col.key === 'last_name' ? (
-                        <input
-                          type="search"
-                          value={lastNameFilter}
-                          onChange={(e) => setLastNameFilter(e.target.value)}
-                          placeholder="Filter last name"
-                          className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs font-normal"
-                        />
-                      ) : col.key === 'email' ? (
-                        <input
-                          type="search"
-                          value={emailFilter}
-                          onChange={(e) => setEmailFilter(e.target.value)}
-                          placeholder="Filter email"
-                          className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs font-normal"
-                        />
-                      ) : col.key === 'phone' ? (
-                        <input
-                          type="search"
-                          value={phoneFilter}
-                          onChange={(e) => setPhoneFilter(e.target.value)}
-                          placeholder="Filter phone"
-                          className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs font-normal"
-                        />
-                      ) : col.key === 'company' ? (
-                        <input
-                          type="search"
-                          value={companyFilter}
-                          onChange={(e) => setCompanyFilter(e.target.value)}
-                          placeholder="Filter company"
-                          className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs font-normal"
-                        />
-                      ) : null}
-                    </th>
-                  ))}
-                  <th className="px-4 pb-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -486,7 +607,7 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
                               '—'
                             )
                           ) : col.key === 'role' ? (
-                            <span className="capitalize">{row.role}</span>
+                            formatUserType(row.role)
                           ) : col.key === 'joined' ? (
                             row.created_at
                               ? new Date(row.created_at).toLocaleDateString(undefined, {

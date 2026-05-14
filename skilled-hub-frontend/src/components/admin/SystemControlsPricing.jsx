@@ -9,6 +9,9 @@ import AlertModal from '../AlertModal';
 import { auth } from '../../auth';
 import SystemControlsCoupons from './SystemControlsCoupons';
 import SystemControlsSimulatedMarkers from './SystemControlsSimulatedMarkers';
+import AdminJobAccessSettings from './AdminJobAccessSettings';
+import AdminBackendPlaceholder from '../settings/AdminBackendPlaceholder';
+import SettingsCard from '../settings/SettingsCard';
 
 /** Must match EmailQaRunner::CONFIRMATION_TEXT on the API. */
 const EMAIL_QA_PHRASE = 'SEND_TEST_EMAILS';
@@ -62,9 +65,14 @@ function tierToFormRow(t, audience) {
   };
 }
 
-export default function SystemControlsPricing() {
+export default function SystemControlsPricing({ systemSubTab: controlledSubTab, onSystemSubTabChange }) {
   const [audience, setAudience] = useState('technician');
-  const [systemSubTab, setSystemSubTab] = useState('pricing');
+  const [uncontrolledSub, setUncontrolledSub] = useState('pricing');
+  const systemSubTab = controlledSubTab != null ? controlledSubTab : uncontrolledSub;
+  const setSystemSubTab = (next) => {
+    onSystemSubTabChange?.(next);
+    if (controlledSubTab == null) setUncontrolledSub(next);
+  };
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -209,10 +217,33 @@ export default function SystemControlsPricing() {
     setRows((prev) => prev.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
   };
 
+  const pricingStats = useMemo(() => {
+    const commVals = rows.map((r) => parseFloat(r.commission_percent)).filter((n) => !Number.isNaN(n));
+    const missingStripe = rows.filter((r) => !String(r.stripe_price_id || '').trim()).length;
+    const avgComm = commVals.length ? commVals.reduce((a, b) => a + b, 0) / commVals.length : 0;
+    return {
+      count: rows.length,
+      missingStripe,
+      avgComm: avgComm.toFixed(1),
+    };
+  }, [rows]);
+
   const handleSaveAll = async () => {
     setSaving(true);
     setError(null);
     try {
+      for (const r of rows) {
+        const fee = parseFloat(r.monthly_fee_dollars);
+        const comm = parseFloat(r.commission_percent);
+        if (!String(r.slug || '').trim()) throw new Error('Each tier needs a slug');
+        if (!String(r.display_name || '').trim()) throw new Error('Each tier needs a display name');
+        if (Number.isNaN(fee) || fee < 0) throw new Error('Monthly fee cannot be negative');
+        if (Number.isNaN(comm) || comm < 0 || comm > 100) throw new Error('Commission must be between 0 and 100');
+        const early = audience === 'technician' ? parseInt(r.early_access_delay_hours, 10) : 0;
+        if (audience === 'technician' && (Number.isNaN(early) || early < 0)) {
+          throw new Error('Early access hours must be zero or positive');
+        }
+      }
       const originals = await adminMembershipTierConfigsAPI.list(audience);
       const byId = Object.fromEntries((originals.membership_tier_configs || []).map((t) => [t.id, t]));
 
@@ -440,105 +471,89 @@ export default function SystemControlsPricing() {
     }
   };
 
+  const subTabBtn = (id, label) => (
+    <button
+      key={id}
+      type="button"
+      role="tab"
+      aria-selected={systemSubTab === id}
+      onClick={() => setSystemSubTab(id)}
+      className={`shrink-0 px-3 sm:px-4 py-2.5 text-sm font-medium border-b-2 -mb-px whitespace-nowrap ${
+        systemSubTab === id
+          ? 'text-blue-600 border-blue-600 bg-blue-50/50'
+          : 'text-gray-600 border-transparent hover:text-gray-900 hover:bg-gray-50/80'
+      }`}
+    >
+      {label}
+    </button>
+  );
+
   return (
     <div className="space-y-6">
-      <div className="flex border-b border-gray-200" role="tablist" aria-label="System controls sections">
-        <button
-          type="button"
-          role="tab"
-          aria-selected={systemSubTab === 'pricing'}
-          onClick={() => setSystemSubTab('pricing')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-            systemSubTab === 'pricing'
-              ? 'text-blue-600 border-blue-600'
-              : 'text-gray-600 border-transparent hover:text-gray-900'
-          }`}
-        >
-          Pricing
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={systemSubTab === 'licensing'}
-          onClick={() => setSystemSubTab('licensing')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-            systemSubTab === 'licensing'
-              ? 'text-blue-600 border-blue-600'
-              : 'text-gray-600 border-transparent hover:text-gray-900'
-          }`}
-        >
-          Licensing
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={systemSubTab === 'mailtrap'}
-          onClick={() => setSystemSubTab('mailtrap')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-            systemSubTab === 'mailtrap'
-              ? 'text-blue-600 border-blue-600'
-              : 'text-gray-600 border-transparent hover:text-gray-900'
-          }`}
-        >
-          Mailtrap
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={systemSubTab === 'email_qa'}
-          onClick={() => setSystemSubTab('email_qa')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-            systemSubTab === 'email_qa'
-              ? 'text-blue-600 border-blue-600'
-              : 'text-gray-600 border-transparent hover:text-gray-900'
-          }`}
-        >
-          Email QA
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={systemSubTab === 'coupons'}
-          onClick={() => setSystemSubTab('coupons')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-            systemSubTab === 'coupons'
-              ? 'text-blue-600 border-blue-600'
-              : 'text-gray-600 border-transparent hover:text-gray-900'
-          }`}
-        >
-          Coupons
-        </button>
-        <button
-          type="button"
-          role="tab"
-          aria-selected={systemSubTab === 'map_markers'}
-          onClick={() => setSystemSubTab('map_markers')}
-          className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${
-            systemSubTab === 'map_markers'
-              ? 'text-blue-600 border-blue-600'
-              : 'text-gray-600 border-transparent hover:text-gray-900'
-          }`}
-        >
-          Map markers
-        </button>
+      <div className="-mx-1 overflow-x-auto overscroll-x-contain pb-px" role="tablist" aria-label="System controls sections">
+        <div className="flex min-w-min gap-0 border-b border-gray-200 px-1">
+          {subTabBtn('pricing', 'Pricing')}
+          {subTabBtn('licensing', 'Licensing')}
+          {subTabBtn('mailtrap', 'Email delivery')}
+          {subTabBtn('email_qa', 'Email QA')}
+          {subTabBtn('coupons', 'Coupons')}
+          {subTabBtn('map_markers', 'Map markers')}
+          {subTabBtn('job_access', 'Job access')}
+          {subTabBtn('ux_copy', 'UX copy')}
+          {subTabBtn('marketplace_rules', 'Marketplace rules')}
+          {subTabBtn('feature_flags', 'Feature flags')}
+          {subTabBtn('referral_settings', 'Referral settings')}
+          {subTabBtn('trust_safety', 'Trust and safety')}
+        </div>
       </div>
 
       {systemSubTab === 'pricing' && (
         <div className="space-y-4">
-          <div className="text-sm text-gray-600 space-y-2 max-w-3xl">
-            <p>
-              Configure membership tiers, monthly fees, and commission. New or edited paid tiers do not charge
-              subscription checkout until a monthly recurring <span className="font-medium text-gray-800">Stripe</span>{' '}
-              <code className="text-xs bg-gray-100 px-1 rounded">price_…</code> exists and is stored here (or a matching
-              legacy <code className="text-xs bg-gray-100 px-1 rounded">STRIPE_*_PRICE_ID</code> environment variable
-              is set and the row has no ID).
-            </p>
-            <p>
-              Paste a price ID from the Stripe Dashboard, or use <span className="font-medium text-gray-800">Create in Stripe</span>{' '}
-              to have TechFlash create a product and monthly price via the server (requires a Stripe secret key in the
-              API). That action uses the <em>last saved</em> monthly fee—click <span className="font-medium">Save changes</span> first
-              if you changed the amount.
-            </p>
+          <SettingsCard
+            title="How pricing works"
+            description="Stripe price IDs, commissions, and subscription checkout."
+            collapsible
+            defaultOpen={false}
+          >
+            <div className="text-sm text-gray-600 space-y-2 max-w-3xl">
+              <p>
+                Configure membership tiers, monthly fees, and commission. New or edited paid tiers do not charge
+                subscription checkout until a monthly recurring <span className="font-medium text-gray-800">Stripe</span>{' '}
+                <code className="text-xs bg-gray-100 px-1 rounded">price_…</code> exists and is stored here (or a matching
+                legacy <code className="text-xs bg-gray-100 px-1 rounded">STRIPE_*_PRICE_ID</code> environment variable
+                is set and the row has no ID).
+              </p>
+              <p>
+                Paste a price ID from the Stripe Dashboard, or use <span className="font-medium text-gray-800">Create in Stripe</span>{' '}
+                to have TechFlash create a product and monthly price via the server (requires a Stripe secret key in the
+                API). That action uses the <em>last saved</em> monthly fee—click <span className="font-medium">Save changes</span> first
+                if you changed the amount.
+              </p>
+            </div>
+          </SettingsCard>
+
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Active tiers</p>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">{pricingStats.count}</p>
+              <p className="text-xs text-gray-500 mt-1">{audience === 'technician' ? 'Technician' : 'Company'} audience</p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Missing Stripe price</p>
+              <p className="mt-1 text-2xl font-semibold text-amber-700">{pricingStats.missingStripe}</p>
+              <p className="text-xs text-gray-500 mt-1">Rows without price_… ID</p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Avg commission</p>
+              <p className="mt-1 text-2xl font-semibold text-gray-900">{pricingStats.avgComm}%</p>
+              <p className="text-xs text-gray-500 mt-1">Across visible rows</p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-white p-4 shadow-sm">
+              <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">Preview</p>
+              <p className="mt-1 text-sm text-gray-700 leading-snug">
+                A Premium technician sees jobs immediately when delay hours are 0 and monthly fee matches the saved row.
+              </p>
+            </div>
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
@@ -710,15 +725,20 @@ export default function SystemControlsPricing() {
 
       {systemSubTab === 'licensing' && (
         <div className="space-y-4">
-          <div className="text-sm text-gray-600 space-y-2 max-w-3xl">
-            <p>
-              Electrical license number is required by default for all company states. Use this list only for
-              states where licensing is local/city-driven and a statewide number should not be mandatory.
-            </p>
-            <p>
-              Select states where licensing is local-only.
-            </p>
-          </div>
+          <SettingsCard
+            title="Licensing rules"
+            description="Default statewide electrical license vs local-only exceptions."
+            collapsible
+            defaultOpen={false}
+          >
+            <div className="text-sm text-gray-600 space-y-2 max-w-3xl">
+              <p>
+                Electrical license number is required by default for all company states. Use this list only for
+                states where licensing is local/city-driven and a statewide number should not be mandatory.
+              </p>
+              <p>Select states where licensing is local-only.</p>
+            </div>
+          </SettingsCard>
 
           <div>
             <span className="text-sm font-medium text-gray-700">Local-only exception states</span>
@@ -756,6 +776,9 @@ export default function SystemControlsPricing() {
                   <span>{name} ({code})</span>
                 </label>
               ))}
+              {filteredStateOptions.length === 0 && (
+                <p className="text-sm text-gray-500 col-span-full py-6 text-center">No states match your search.</p>
+              )}
             </div>
           </div>
 
@@ -790,16 +813,18 @@ export default function SystemControlsPricing() {
 
       {systemSubTab === 'mailtrap' && (
         <div className="space-y-4">
-          <div className="text-sm text-gray-600 space-y-2 max-w-3xl">
-            <p>
-              This panel shows the current outbound email delivery health and every automated
-              transactional email currently wired in the app.
-            </p>
-            <p>
-              Values are read-only and never expose credentials. Use this view to confirm what is live
-              and what still needs environment configuration.
-            </p>
-          </div>
+          <SettingsCard title="Email delivery overview" collapsible defaultOpen={false}>
+            <div className="text-sm text-gray-600 space-y-2 max-w-3xl">
+              <p>
+                This panel shows the current outbound email delivery health and every automated
+                transactional email currently wired in the app.
+              </p>
+              <p>
+                Values are read-only and never expose credentials. Use this view to confirm what is live
+                and what still needs environment configuration.
+              </p>
+            </div>
+          </SettingsCard>
 
           {mailtrapError && (
             <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
@@ -900,11 +925,14 @@ export default function SystemControlsPricing() {
 
       {systemSubTab === 'email_qa' && (
         <div className="space-y-4">
-          <div className="text-sm text-gray-600 space-y-3 max-w-3xl">
-            <p>
+          <SettingsCard title="Email QA workflow" description="Preview and send test templates safely." collapsible defaultOpen>
+            <p className="text-sm text-gray-600">
               Preview and send fixture-based test emails for every transactional template.
               Choose where test mail is delivered below (defaults to your signed-in admin if left blank).
             </p>
+          </SettingsCard>
+
+          <div className="text-sm text-gray-600 space-y-3 max-w-3xl">
             <div className="text-xs bg-gray-50 border border-gray-200 rounded-lg px-3 py-3 text-gray-800 space-y-2">
               <label className="block font-semibold text-gray-900" htmlFor="email-qa-recipient">
                 Deliver test sends to
@@ -1131,6 +1159,44 @@ export default function SystemControlsPricing() {
       {systemSubTab === 'coupons' && <SystemControlsCoupons />}
 
       {systemSubTab === 'map_markers' && <SystemControlsSimulatedMarkers />}
+
+      {systemSubTab === 'job_access' && <AdminJobAccessSettings />}
+
+      {systemSubTab === 'ux_copy' && (
+        <AdminBackendPlaceholder
+          title="UX copy and content controls"
+          description="Centralize headlines, empty states, onboarding checklist copy, and referral CTAs. Wire to a key-value store or CMS when ready."
+          suggestedModel="Suggested: platform_settings(key, value_json, audience, updated_at)"
+        />
+      )}
+      {systemSubTab === 'marketplace_rules' && (
+        <AdminBackendPlaceholder
+          title="Marketplace rules"
+          description="Minimum rates, job visibility windows, application expiry, auto-close rules, and reminder schedules."
+          suggestedModel="Suggested: marketplace_rules(rule_key, value_json, status, updated_at)"
+        />
+      )}
+      {systemSubTab === 'feature_flags' && (
+        <AdminBackendPlaceholder
+          title="Feature flags"
+          description="Toggle map, referrals, SMS, CRM, subscriptions, and experiments with rollout percentages."
+          suggestedModel="Suggested: feature_flags(flag_key, enabled, rollout_percent, environment)"
+        />
+      )}
+      {systemSubTab === 'referral_settings' && (
+        <AdminBackendPlaceholder
+          title="Referral program"
+          description="Rewards, fraud checks, and landing copy for technician and company referrals."
+          suggestedModel="Suggested: referral_settings JSON + audit log"
+        />
+      )}
+      {systemSubTab === 'trust_safety' && (
+        <AdminBackendPlaceholder
+          title="Trust and safety"
+          description="Required profile fields, dispute thresholds, suspension reasons, and retention policy notes."
+          suggestedModel="Suggested: trust_policy_settings + admin_audit_entries"
+        />
+      )}
 
       {addOpen && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">

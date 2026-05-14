@@ -19,11 +19,24 @@ import JobAddressFields from '../components/JobAddressFields';
 import AlertModal from '../components/AlertModal';
 import ConfirmModal from '../components/ConfirmModal';
 import SystemControlsPricing from '../components/admin/SystemControlsPricing';
-import AdminJobAccessSettings from '../components/admin/AdminJobAccessSettings';
 import { needsTechnicianMapSetup } from '../utils/technicianMap';
 import { requiresElectricalLicenseForState, setLocalOnlyLicenseStates } from '../utils/licensingRules';
 import { formatPhoneInput } from '../utils/phone';
 import { TRADE_OPTIONS, TRADE_OTHER_SENTINEL } from '../constants/trades';
+import { getNotificationCategories } from '../config/notificationPreferenceCatalog';
+import { parseSettingsUrl, replaceSettingsUrl } from '../utils/settingsUrl';
+import SettingsPageShell from '../components/settings/SettingsPageShell';
+import SettingsHeader from '../components/settings/SettingsHeader';
+import SettingsTabs from '../components/settings/SettingsTabs';
+import SettingsSection from '../components/settings/SettingsSection';
+import SettingsCard from '../components/settings/SettingsCard';
+import SettingsRow from '../components/settings/SettingsRow';
+import SettingsToggle from '../components/settings/SettingsToggle';
+import SettingsInput from '../components/settings/SettingsInput';
+import SettingsDangerZone from '../components/settings/SettingsDangerZone';
+import SettingsBadge from '../components/settings/SettingsBadge';
+import NotificationPreferenceCard from '../components/settings/NotificationPreferenceCard';
+import NotificationAdvancedModal from '../components/settings/NotificationAdvancedModal';
 
 const formatMembershipTier = (tier) => {
   const raw = String(tier || '').trim();
@@ -102,6 +115,14 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'success' });
   const [confirmCertId, setConfirmCertId] = useState(null);
   const [settingsTab, setSettingsTab] = useState('account');
+  const [adminSystemSubTab, setAdminSystemSubTab] = useState('pricing');
+  const [modalNotificationItem, setModalNotificationItem] = useState(null);
+  const [localAdvancedById, setLocalAdvancedById] = useState({});
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
+  const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
+  const [membershipTierDetailList, setMembershipTierDetailList] = useState([]);
+  const [membershipTierConfigsLoading, setMembershipTierConfigsLoading] = useState(false);
   const [membershipTierOptions, setMembershipTierOptions] = useState([]);
   const [membershipTierEditing, setMembershipTierEditing] = useState(false);
   const [membershipTierDraft, setMembershipTierDraft] = useState('');
@@ -118,6 +139,86 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const isTechnician = user?.role === 'technician';
   const isAdmin = user?.role === 'admin';
   const needsMapSetup = isTechnician && needsTechnicianMapSetup(profile);
+
+  const mainTabs = useMemo(() => {
+    const base = [
+      { id: 'account', label: 'Account' },
+      { id: 'profile', label: 'Profile' },
+      { id: 'notifications', label: 'Notifications' },
+      { id: 'payment', label: 'Billing' },
+    ];
+    if (isTechnician || isCompany) {
+      base.push({ id: 'membership', label: 'Membership and access' });
+      base.push({ id: 'legal', label: 'Legal and support' });
+    } else if (isAdmin) {
+      base.push({ id: 'legal', label: 'Legal and support' });
+    }
+    if (isAdmin) base.push({ id: 'system_controls', label: 'System controls' });
+    return base;
+  }, [isAdmin, isTechnician, isCompany]);
+
+  const settingsSubtitle = useMemo(() => {
+    if (isAdmin) {
+      return 'Manage your account, marketplace controls, billing rules, notifications, and platform configuration.';
+    }
+    if (isCompany) {
+      return 'Manage your company profile, billing, notifications, job preferences, and account security.';
+    }
+    if (isTechnician) {
+      return 'Manage your profile, job alerts, notifications, membership, payment preferences, and account security.';
+    }
+    return 'Manage your TechFlash account.';
+  }, [isAdmin, isCompany, isTechnician]);
+
+  const roleBadgeLabel = useMemo(() => {
+    if (isAdmin) return 'Admin';
+    if (isCompany) return 'Company';
+    if (isTechnician) return 'Technician';
+    return 'User';
+  }, [isAdmin, isCompany, isTechnician]);
+
+  const accountStatusBadges = useMemo(() => {
+    const badges = [];
+    const ms = profile?.membership_status;
+    if (ms && String(ms).toLowerCase() !== 'active') badges.push(String(ms).replace(/_/g, ' '));
+    if (isTechnician && needsMapSetup) badges.push('Incomplete profile');
+    if (isCompany && requiresElectricalLicenseForState(form.state) && !(form.electrical_license_number || '').trim()) {
+      badges.push('Incomplete profile');
+    }
+    if (isTechnician && profile && !profile.background_verified) {
+      badges.push('Pending verification');
+    }
+    if (!badges.length) badges.push('Active');
+    return [...new Set(badges)];
+  }, [profile, isTechnician, isCompany, form.state, form.electrical_license_number, needsMapSetup]);
+
+  const profileCompletion = useMemo(() => {
+    if (!profile || isAdmin) return { pct: 100, missing: [] };
+    const missing = [];
+    if (!(form.first_name || '').trim()) missing.push('First name');
+    if (!(form.last_name || '').trim()) missing.push('Last name');
+    const phoneDigits = String(form.phone || '').replace(/\D/g, '');
+    if (!phoneDigits || phoneDigits.length < 10) missing.push('Phone');
+    if (isCompany) {
+      if (!(form.company_name || '').trim()) missing.push('Company name');
+      if (!(form.location || '').trim()) missing.push('Location');
+    }
+    if (isTechnician) {
+      if (!(form.trade_type || '').trim()) missing.push('Trade type');
+      if (!(form.bio || '').trim()) missing.push('Bio');
+      if (needsMapSetup) missing.push('Full address for maps');
+    }
+    const total = isCompany ? 7 : 8;
+    const pct = Math.round(((total - missing.length) / total) * 100);
+    return { pct: Math.min(100, Math.max(0, pct)), missing };
+  }, [profile, isAdmin, isCompany, isTechnician, form, needsMapSetup]);
+
+  const notificationCategories = useMemo(() => {
+    const r = user?.role;
+    if (r === 'admin') return getNotificationCategories('admin');
+    if (r === 'company') return getNotificationCategories('company');
+    return getNotificationCategories('technician');
+  }, [user?.role]);
 
   const membershipTierSelectOptions = useMemo(() => {
     const cur = String(profile?.membership_level || '').toLowerCase();
@@ -315,7 +416,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get('tab') === 'profile') setSettingsTab('profile');
     const membershipParam = params.get('membership');
     if (membershipParam === 'success' || membershipParam === 'cancel') {
       setSettingsTab('profile');
@@ -338,8 +438,40 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           });
         });
       }
+      return;
     }
-  }, [fetchProfile, user, onUserUpdate]);
+
+    const { tab, sub } = parseSettingsUrl();
+    const allowed = new Set(mainTabs.map((t) => t.id));
+    if (allowed.has(tab)) setSettingsTab(tab);
+    if (isAdmin && tab === 'system_controls' && sub) setAdminSystemSubTab(sub);
+  }, [fetchProfile, user, onUserUpdate, isAdmin, mainTabs]);
+
+  useEffect(() => {
+    replaceSettingsUrl(settingsTab, isAdmin && settingsTab === 'system_controls' ? adminSystemSubTab : null);
+  }, [settingsTab, adminSystemSubTab, isAdmin]);
+
+  useEffect(() => {
+    if (settingsTab !== 'membership' || (!isTechnician && !isCompany)) return undefined;
+    let cancelled = false;
+    setMembershipTierConfigsLoading(true);
+    membershipTierConfigsAPI
+      .list(isCompany ? 'company' : 'technician')
+      .then((res) => {
+        if (cancelled) return;
+        const list = Array.isArray(res?.membership_tier_configs) ? res.membership_tier_configs : [];
+        setMembershipTierDetailList(list);
+      })
+      .catch(() => {
+        if (!cancelled) setMembershipTierDetailList([]);
+      })
+      .finally(() => {
+        if (!cancelled) setMembershipTierConfigsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [settingsTab, isTechnician, isCompany]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -489,18 +621,69 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
-  const handleEmailCategoryToggle = async (category, checked) => {
-    const prev = notificationPrefs;
-    const next = {
-      ...prev,
-      email_notification_preferences: {
-        ...prev.email_notification_preferences,
-        [category]: checked,
-      },
-    };
-    setNotificationPrefs(next);
-    const ok = await persistNotificationPrefs(next);
-    if (!ok) setNotificationPrefs(prev);
+  const handleNotificationCardToggle = async (item, value) => {
+    if (item.persistence === 'job_alert_master') {
+      await handleNotificationToggle('job_alert_notifications_enabled', value);
+      return;
+    }
+    if (item.persistence === 'user_email_category' && item.emailCategory) {
+      let next = { ...notificationPrefs };
+      if (value && next.email_notifications_enabled === false) {
+        next = { ...next, email_notifications_enabled: true };
+      }
+      next = {
+        ...next,
+        email_notification_preferences: {
+          ...next.email_notification_preferences,
+          [item.emailCategory]: value,
+        },
+      };
+      const prev = notificationPrefs;
+      setNotificationPrefs(next);
+      const ok = await persistNotificationPrefs(next);
+      if (!ok) setNotificationPrefs(prev);
+    }
+  };
+
+  const handlePersistModalNotificationPrefs = async (draft) => {
+    setSavingNotifications(true);
+    try {
+      const res = await authAPI.updateMe({
+        email_notifications_enabled: draft.email_notifications_enabled,
+        job_alert_notifications_enabled: draft.job_alert_notifications_enabled,
+        email_notification_preferences: draft.email_notification_preferences,
+      });
+      auth.setUser(res.user);
+      onUserUpdate?.(res.user);
+      setNotificationPrefs({
+        email_notifications_enabled: res.user.email_notifications_enabled !== false,
+        job_alert_notifications_enabled: res.user.job_alert_notifications_enabled !== false,
+        email_notification_preferences: {
+          ...DEFAULT_EMAIL_PREFS,
+          ...(res.user.email_notification_preferences || {}),
+        },
+      });
+      setAlertModal({
+        isOpen: true,
+        title: 'Preferences saved',
+        message: 'Notification settings updated.',
+        variant: 'success',
+      });
+    } catch (err) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Update failed',
+        message: err.message || 'Could not save notification settings.',
+        variant: 'error',
+      });
+    } finally {
+      setSavingNotifications(false);
+    }
+  };
+
+  const handleDeleteAccountConfirmed = async () => {
+    await authAPI.deleteMe();
+    onLogout?.();
   };
 
   const handleJobAlertFieldChange = (e) => {
@@ -593,7 +776,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   };
 
   const handleSaveJobAlertPreferences = async (e) => {
-    e.preventDefault();
+    if (e?.preventDefault) e.preventDefault();
     setSavingJobAlertForm(true);
     try {
       const md = jobAlertForm.max_distance_miles === '' ? NaN : Number(jobAlertForm.max_distance_miles);
@@ -806,121 +989,121 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <>
       <AppHeader user={user} onLogout={onLogout} activePage="settings" emailVariant="simple" />
-
-      <main
-        className={`mx-auto px-4 py-8 ${settingsTab === 'system_controls' && isAdmin ? 'max-w-4xl' : 'max-w-2xl'}`}
-      >
-        <h1 className="text-2xl font-bold text-gray-900 mb-8">Settings</h1>
+      <SettingsPageShell wide={isAdmin && settingsTab === 'system_controls'}>
+        <SettingsHeader
+          title="Settings"
+          subtitle={settingsSubtitle}
+          roleBadge={roleBadgeLabel}
+          statusBadges={accountStatusBadges}
+          lastSavedAt={user?.updated_at}
+          note="Changes save per section. Use each section's save or update control."
+        />
 
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg text-red-700">{error}</div>
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-2xl text-red-700">{error}</div>
         )}
 
         <section
           className="bg-white rounded-2xl shadow border border-gray-200 overflow-x-hidden"
           aria-label="Settings sections"
         >
-          <div className="flex border-b border-gray-200" role="tablist" aria-label="Settings categories">
-            {['account', 'profile', 'notifications', 'payment', ...(isAdmin ? ['system_controls', 'job_access'] : [])].map((id) => (
-              <button
-                key={id}
-                type="button"
-                role="tab"
-                id={`settings-tab-${id}`}
-                aria-selected={settingsTab === id}
-                aria-controls={`settings-panel-${id}`}
-                tabIndex={settingsTab === id ? 0 : -1}
-                onClick={() => setSettingsTab(id)}
-                className={`flex-1 px-4 py-3 text-sm font-medium transition-colors border-b-2 -mb-px capitalize ${
-                  settingsTab === id
-                    ? 'text-blue-600 border-blue-600 bg-blue-50/50'
-                    : 'text-gray-600 border-transparent hover:text-gray-900 hover:bg-gray-50'
-                }`}
-              >
-                {id === 'account'
-                  ? 'Account'
-                  : id === 'profile'
-                    ? 'Profile'
-                    : id === 'notifications'
-                      ? 'Notifications'
-                    : id === 'payment'
-                      ? 'Payment'
-                      : id === 'system_controls'
-                        ? 'System controls'
-                        : 'Job access'}
-              </button>
-            ))}
-          </div>
+          <SettingsTabs tabs={mainTabs} activeId={settingsTab} onChange={setSettingsTab} />
 
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             {settingsTab === 'account' && (
               <div id="settings-panel-account" role="tabpanel" aria-labelledby="settings-tab-account">
-                <p className="text-sm text-gray-600 mb-4">Your email is your username. Change it here along with your password.</p>
+                <SettingsSection
+                  title="Sign-in and email"
+                  description="Your email is your username. Security-critical messages always stay on."
+                />
+                <SettingsCard title="Account role" collapsible defaultOpen={false}>
+                  <SettingsRow
+                    title="Role"
+                    description="Determines marketplace permissions and available settings tabs."
+                    control={<span className="text-sm font-medium text-gray-800">{roleBadgeLabel}</span>}
+                  />
+                </SettingsCard>
                 {accountError && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{accountError}</div>
+                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{accountError}</div>
                 )}
                 <form onSubmit={handleAccountSubmit} className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Email (username)</label>
-                    <input
+                    <SettingsInput
                       type="email"
                       value={accountEmail}
                       onChange={(e) => setAccountEmail(e.target.value)}
-                      className="w-full border rounded-lg px-3 py-2"
                       placeholder="you@example.com"
                       required
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">New password (leave blank to keep current)</label>
-                    <input
-                      type="password"
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <label className="block text-sm font-medium text-gray-700">New password (optional)</label>
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-blue-700 hover:underline"
+                        onClick={() => setShowPassword((s) => !s)}
+                      >
+                        {showPassword ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                    <SettingsInput
+                      type={showPassword ? 'text' : 'password'}
                       value={accountPassword}
                       onChange={(e) => setAccountPassword(e.target.value)}
-                      className="w-full border rounded-lg px-3 py-2"
-                      placeholder="••••••••"
+                      autoComplete="new-password"
+                      placeholder="Leave blank to keep current"
                     />
                   </div>
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Confirm new password</label>
-                    <input
-                      type="password"
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <label className="block text-sm font-medium text-gray-700">Confirm new password</label>
+                      <button
+                        type="button"
+                        className="text-xs font-medium text-blue-700 hover:underline"
+                        onClick={() => setShowPasswordConfirm((s) => !s)}
+                      >
+                        {showPasswordConfirm ? 'Hide' : 'Show'}
+                      </button>
+                    </div>
+                    <SettingsInput
+                      type={showPasswordConfirm ? 'text' : 'password'}
                       value={accountPasswordConfirm}
                       onChange={(e) => setAccountPasswordConfirm(e.target.value)}
-                      className="w-full border rounded-lg px-3 py-2"
-                      placeholder="••••••••"
+                      autoComplete="new-password"
+                      placeholder="Confirm new password"
                     />
                   </div>
-                  <button type="submit" disabled={savingAccount} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
-                    {savingAccount ? 'Saving...' : 'Update Account'}
+                  <button type="submit" disabled={savingAccount} className="px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
+                    {savingAccount ? 'Saving...' : 'Update account'}
                   </button>
                 </form>
-                <div className="mt-6 rounded-lg border border-gray-200 bg-gray-50 p-4 space-y-3">
-                  <p className="text-sm font-medium text-gray-900">Legal and support</p>
-                  <div className="flex flex-wrap gap-3 text-sm">
-                    <a className="text-blue-700 hover:underline" href="/privacy-policy">Privacy Policy</a>
-                    <a className="text-blue-700 hover:underline" href="/terms-of-service">Terms of Service</a>
-                    <a className="text-blue-700 hover:underline" href="mailto:support@techflash.app">Contact support</a>
-                  </div>
-                </div>
-                <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4">
-                  <p className="text-sm font-medium text-red-900 mb-2">Delete account</p>
-                  <p className="text-sm text-red-800 mb-3">This permanently removes your account and cannot be undone.</p>
+
+                <SettingsCard title="Two-factor authentication" description="Add an extra layer of protection for your TechFlash account." collapsible defaultOpen={false}>
+                  <p className="text-sm text-gray-600">Not available yet. TODO(backend): TOTP or WebAuthn enrollment and recovery codes.</p>
+                </SettingsCard>
+                <SettingsCard title="Active sessions and devices" collapsible defaultOpen={false}>
+                  <p className="text-sm text-gray-600">Session listing is not wired for this build. TODO(backend): GET /sessions for device/IP and remote sign-out.</p>
+                </SettingsCard>
+                <SettingsCard title="Login history" collapsible defaultOpen={false}>
+                  <p className="text-sm text-gray-600">Recent sign-ins will appear here when audit logging is exposed to the app.</p>
+                </SettingsCard>
+
+                <SettingsDangerZone
+                  title="Delete account"
+                  description="This permanently removes your account and cannot be undone."
+                >
                   <button
                     type="button"
-                    className="px-4 py-2 bg-red-600 text-white text-sm rounded-lg hover:bg-red-700"
-                    onClick={async () => {
-                      const confirmed = window.confirm('Delete your account permanently? This cannot be undone.');
-                      if (!confirmed) return;
-                      await authAPI.deleteMe();
-                      onLogout?.();
-                    }}
+                    className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700"
+                    onClick={() => setConfirmDeleteAccount(true)}
                   >
                     Delete account permanently
                   </button>
-                </div>
+                </SettingsDangerZone>
               </div>
             )}
 
@@ -932,6 +1115,34 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               <p className="text-sm text-amber-800 mt-1">
                 Add your full address so job maps can center correctly and show accurate nearby jobs.
               </p>
+            </div>
+          )}
+          {(isTechnician || isCompany) && (
+            <div className="grid gap-4 mb-6 md:grid-cols-2">
+              <SettingsCard title="Profile completion" description="Based on fields on this page only.">
+                <div className="flex items-end gap-3">
+                  <p className="text-3xl font-bold text-gray-900">{profileCompletion.pct}%</p>
+                  <p className="text-sm text-gray-600 pb-1">complete</p>
+                </div>
+                {profileCompletion.missing.length > 0 ? (
+                  <ul className="mt-3 list-disc pl-5 text-sm text-gray-700 space-y-1">
+                    {profileCompletion.missing.map((m) => (
+                      <li key={m}>{m}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="mt-2 text-sm text-emerald-800">Great — no obvious gaps from this checklist.</p>
+                )}
+              </SettingsCard>
+              {isTechnician && (
+                <SettingsCard title="Trust and verification" collapsible defaultOpen>
+                  <ul className="text-sm text-gray-700 space-y-2">
+                    <li>Background check: {profile?.background_verified ? 'Verified' : 'Not verified yet'}</li>
+                    <li>Certificates on file: {certificates.length}</li>
+                    <li>Map address: {needsMapSetup ? 'Incomplete' : 'Looks good'}</li>
+                  </ul>
+                </SettingsCard>
+              )}
             </div>
           )}
           {isAdmin ? (
@@ -1189,58 +1400,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               </div>
             )}
 
-            {(isTechnician || isCompany) && (
-              <div className="relative rounded-lg border border-blue-100 bg-blue-50 px-4 py-3">
-                {!membershipTierEditing && (
-                  <button
-                    type="button"
-                    onClick={beginMembershipTierEdit}
-                    className="absolute top-3 right-3 text-sm font-medium text-blue-700 hover:text-blue-900"
-                  >
-                    Edit
-                  </button>
-                )}
-                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Membership tier</p>
-                {!membershipTierEditing ? (
-                  <p className="mt-1 text-lg font-semibold text-blue-900 pr-16">{formatMembershipTier(profile?.membership_level)}</p>
-                ) : (
-                  <div className="mt-3 space-y-3">
-                    <select
-                      value={membershipTierDraft}
-                      onChange={(e) => setMembershipTierDraft(e.target.value)}
-                      className="w-full max-w-md border rounded-lg px-3 py-2 text-sm bg-white"
-                      disabled={savingMembership}
-                    >
-                      {membershipTierSelectOptions.map((opt) => (
-                        <option key={opt.id} value={opt.id}>
-                          {opt.name}
-                        </option>
-                      ))}
-                    </select>
-                    <div className="flex flex-wrap gap-2">
-                      <button
-                        type="button"
-                        onClick={handleMembershipTierSave}
-                        disabled={savingMembership}
-                        className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50"
-                      >
-                        {savingMembership ? 'Saving...' : 'Save'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={cancelMembershipTierEdit}
-                        disabled={savingMembership}
-                        className="px-4 py-2 border border-gray-300 text-sm rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                )}
-                <p className="mt-2 text-xs text-blue-700">Your tier controls job access timing and platform commission.</p>
-              </div>
-            )}
-
             <button type="submit" disabled={saving} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
@@ -1258,6 +1417,34 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               >
           {paymentError && <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{paymentError}</div>}
           {paymentSuccess && <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-lg text-sm">{paymentSuccess}</div>}
+
+          {!isAdmin && (isTechnician || isCompany) && (
+            <SettingsCard title="Promo code" description="Redeem a membership or billing promotion when applicable." collapsible defaultOpen={false}>
+              <form onSubmit={handleRedeemCoupon} className="flex flex-col sm:flex-row gap-3 sm:items-end">
+                <div className="flex-1 min-w-0">
+                  <label htmlFor="settings-coupon-code" className="sr-only">
+                    Promo code
+                  </label>
+                  <SettingsInput
+                    id="settings-coupon-code"
+                    type="text"
+                    autoComplete="off"
+                    value={couponCode}
+                    onChange={(e) => setCouponCode(e.target.value)}
+                    placeholder="Enter code"
+                    disabled={couponBusy}
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={couponBusy || !couponCode.trim()}
+                  className="px-4 py-2 bg-blue-600 text-white text-sm rounded-xl hover:bg-blue-700 disabled:opacity-50 shrink-0"
+                >
+                  {couponBusy ? 'Applying…' : 'Apply'}
+                </button>
+              </form>
+            </SettingsCard>
+          )}
 
           {isCompany && (
             <div>
@@ -1297,6 +1484,147 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           {(isAdmin || (!isCompany && !isTechnician)) && (
             <p className="text-gray-500">Payment settings are available for companies and technicians.</p>
           )}
+
+          {!isAdmin && isCompany && (
+            <SettingsCard title="Billing history" collapsible defaultOpen={false}>
+              <p className="text-sm text-gray-600">Invoice and receipt history will appear here when billing exports are connected.</p>
+            </SettingsCard>
+          )}
+              </div>
+            )}
+
+            {settingsTab === 'membership' && (isTechnician || isCompany) && (
+              <div id="settings-panel-membership" role="tabpanel" aria-labelledby="settings-tab-membership" className="space-y-6">
+                <SettingsSection
+                  title="Membership and job access"
+                  description="Your tier controls when jobs unlock for you and the platform commission rate."
+                />
+                <SettingsCard title="Current membership">
+                  <div className="relative rounded-xl border border-blue-100 bg-blue-50 px-4 py-3">
+                    {!membershipTierEditing && (
+                      <button
+                        type="button"
+                        onClick={beginMembershipTierEdit}
+                        className="absolute top-3 right-3 text-sm font-medium text-blue-700 hover:text-blue-900"
+                      >
+                        Change tier
+                      </button>
+                    )}
+                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Membership tier</p>
+                    {!membershipTierEditing ? (
+                      <p className="mt-1 text-lg font-semibold text-blue-900 pr-20">{formatMembershipTier(profile?.membership_level)}</p>
+                    ) : (
+                      <div className="mt-3 space-y-3">
+                        <select
+                          value={membershipTierDraft}
+                          onChange={(e) => setMembershipTierDraft(e.target.value)}
+                          className="w-full max-w-md border rounded-lg px-3 py-2 text-sm bg-white"
+                          disabled={savingMembership}
+                        >
+                          {membershipTierSelectOptions.map((opt) => (
+                            <option key={opt.id} value={opt.id}>
+                              {opt.name}
+                            </option>
+                          ))}
+                        </select>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={handleMembershipTierSave}
+                            disabled={savingMembership}
+                            className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                          >
+                            {savingMembership ? 'Saving...' : 'Continue'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={cancelMembershipTierEdit}
+                            disabled={savingMembership}
+                            className="px-4 py-2 border border-gray-300 text-sm rounded-lg text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    {profile?.membership_status && (
+                      <p className="mt-2 text-xs text-blue-800">
+                        Status: <span className="font-medium">{String(profile.membership_status)}</span>
+                        {profile?.membership_current_period_end_at && (
+                          <>
+                            {' '}
+                            · Renews{' '}
+                            <time dateTime={profile.membership_current_period_end_at}>
+                              {new Date(profile.membership_current_period_end_at).toLocaleDateString()}
+                            </time>
+                          </>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                </SettingsCard>
+
+                <SettingsCard title="Tier access timing" collapsible defaultOpen>
+                  {membershipTierConfigsLoading ? (
+                    <p className="text-sm text-gray-500">Loading tier configuration…</p>
+                  ) : membershipTierDetailList.length === 0 ? (
+                    <p className="text-sm text-gray-600">No public tier timing is published yet.</p>
+                  ) : (
+                    <div className="overflow-x-auto border border-gray-100 rounded-xl">
+                      <table className="min-w-full text-sm">
+                        <thead className="bg-gray-50 text-left text-gray-600">
+                          <tr>
+                            <th className="px-3 py-2 font-medium">Tier</th>
+                            <th className="px-3 py-2 font-medium">Monthly fee</th>
+                            <th className="px-3 py-2 font-medium">Commission</th>
+                            {isTechnician && <th className="px-3 py-2 font-medium">Job access delay</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {membershipTierDetailList.map((t) => (
+                            <tr key={t.id} className="border-t border-gray-100">
+                              <td className="px-3 py-2 font-medium text-gray-900">{t.display_name || t.slug}</td>
+                              <td className="px-3 py-2">${((t.monthly_fee_cents || 0) / 100).toFixed(2)}</td>
+                              <td className="px-3 py-2">{t.commission_percent ?? '—'}%</td>
+                              {isTechnician && (
+                                <td className="px-3 py-2">
+                                  {Number(t.early_access_delay_hours) === 0
+                                    ? 'Immediate'
+                                    : `${t.early_access_delay_hours}h after go-live`}
+                                </td>
+                              )}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  <p className="mt-3 text-xs text-gray-500">
+                    Premium typically sees jobs immediately; Pro and Basic follow configured delays.
+                  </p>
+                </SettingsCard>
+              </div>
+            )}
+
+            {settingsTab === 'legal' && (
+              <div id="settings-panel-legal" role="tabpanel" aria-labelledby="settings-tab-legal" className="space-y-4">
+                <SettingsSection title="Legal and support" description="Policies and ways to reach the TechFlash team." />
+                <SettingsCard title="Policies">
+                  <div className="flex flex-wrap gap-4 text-sm">
+                    <a className="text-blue-700 font-medium hover:underline" href="/privacy-policy">
+                      Privacy Policy
+                    </a>
+                    <a className="text-blue-700 font-medium hover:underline" href="/terms-of-service">
+                      Terms of Service
+                    </a>
+                  </div>
+                </SettingsCard>
+                <SettingsCard title="Help">
+                  <p className="text-sm text-gray-600 mb-3">Questions about billing, jobs, or your account?</p>
+                  <a className="inline-flex text-sm font-medium text-orange-600 hover:underline" href="mailto:support@techflash.app">
+                    support@techflash.app
+                  </a>
+                </SettingsCard>
               </div>
             )}
 
@@ -1307,86 +1635,67 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 aria-labelledby="settings-tab-notifications"
                 className="space-y-6"
               >
-                {!isAdmin && (isTechnician || isCompany) && (
-                  <div className="rounded-xl border border-gray-200 p-4">
-                    <h3 className="text-base font-semibold text-gray-900 mb-1">Promo code</h3>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Redeem a code to attach a membership or billing promotion to your account when applicable.
-                    </p>
-                    <form onSubmit={handleRedeemCoupon} className="flex flex-col sm:flex-row gap-3 sm:items-end">
-                      <div className="flex-1 min-w-0">
-                        <label htmlFor="settings-coupon-code" className="sr-only">
-                          Promo code
-                        </label>
-                        <input
-                          id="settings-coupon-code"
-                          type="text"
-                          autoComplete="off"
-                          value={couponCode}
-                          onChange={(e) => setCouponCode(e.target.value)}
-                          placeholder="Enter code"
-                          className="w-full border rounded-lg px-3 py-2 text-sm"
-                          disabled={couponBusy}
-                        />
-                      </div>
-                      <button
-                        type="submit"
-                        disabled={couponBusy || !couponCode.trim()}
-                        className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 disabled:opacity-50 shrink-0"
-                      >
-                        {couponBusy ? 'Applying…' : 'Apply'}
-                      </button>
-                    </form>
-                  </div>
-                )}
+                <SettingsSection
+                  title="Notification center"
+                  description="Choose what we email you about. Security, password reset, payment receipts, and legal notices stay on."
+                />
 
-                <div className="rounded-xl border border-gray-200 p-4">
-                  <h3 className="text-base font-semibold text-gray-900 mb-1">Emails</h3>
+                <SettingsCard title="Always on (cannot disable)" collapsible defaultOpen={false}>
+                  <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
+                    <li>Security alerts and password reset</li>
+                    <li>Payment receipts and tax or compliance notices when applicable</li>
+                    <li>Legal and policy updates when required</li>
+                  </ul>
+                </SettingsCard>
+
+                <SettingsCard title="Global email controls">
                   <p className="text-sm text-gray-600 mb-4">
-                    Control non-critical automated emails. Security and receipt emails stay enabled.
+                    Master switch for non-critical automated emails. Individual categories can still be tuned per row below.
                   </p>
-                  <label className="flex items-center justify-between gap-4">
-                    <span className="text-sm text-gray-800">All automated non-critical emails</span>
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                      checked={notificationPrefs.email_notifications_enabled}
-                      disabled={savingNotifications}
-                      onChange={(e) => handleNotificationToggle('email_notifications_enabled', e.target.checked)}
+                  <SettingsRow
+                    title="All automated non-critical emails"
+                    description="Turns off optional marketing and lifecycle digests except security and receipts."
+                    control={
+                      <SettingsToggle
+                        checked={notificationPrefs.email_notifications_enabled !== false}
+                        disabled={savingNotifications}
+                        onChange={(v) => handleNotificationToggle('email_notifications_enabled', v)}
+                        ariaLabel="All non-critical emails"
+                      />
+                    }
+                  />
+                </SettingsCard>
+
+                <SettingsCard title="Digest, quiet hours, and language" collapsible defaultOpen={false}>
+                  <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                    Not connected to the backend yet. TODO(backend): user notification_settings JSON for digest and quiet hours.
+                  </p>
+                  <p className="text-sm text-gray-600">UI placeholder for hourly/daily digests, time zone, and preferred language.</p>
+                </SettingsCard>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  {notificationCategories.map((item) => (
+                    <NotificationPreferenceCard
+                      key={item.id}
+                      item={item}
+                      notificationPrefs={notificationPrefs}
+                      jobAlertForm={jobAlertForm}
+                      isTechnician={isTechnician}
+                      savingNotifications={savingNotifications}
+                      savingJobAlertForm={savingJobAlertForm}
+                      onTogglePersisted={(it, v) => handleNotificationCardToggle(it, v)}
+                      onCustomize={(it) => setModalNotificationItem(it)}
                     />
-                  </label>
-                  <details className="mt-4 rounded-lg border border-gray-200 bg-gray-50">
-                    <summary className="cursor-pointer px-3 py-2 text-sm font-medium text-gray-800">
-                      Email types
-                    </summary>
-                    <div className="space-y-3 px-3 pb-3 pt-1">
-                      {[
-                        ['messages', 'New messages'],
-                        ['job_lifecycle', 'Job lifecycle updates'],
-                        ['reviews', 'Reviews and reminders'],
-                        ['membership_updates', 'Membership updates and welcome emails'],
-                      ].map(([key, label]) => (
-                        <label key={key} className="flex items-center justify-between gap-4">
-                          <span className="text-sm text-gray-700">{label}</span>
-                          <input
-                            type="checkbox"
-                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                            checked={notificationPrefs.email_notification_preferences?.[key] !== false}
-                            disabled={savingNotifications || !notificationPrefs.email_notifications_enabled}
-                            onChange={(e) => handleEmailCategoryToggle(key, e.target.checked)}
-                          />
-                        </label>
-                      ))}
-                    </div>
-                  </details>
+                  ))}
                 </div>
 
                 {isTechnician && (
-                  <div className="rounded-xl border border-gray-200 p-4">
-                    <h3 className="text-base font-semibold text-gray-900 mb-1">Job alerts</h3>
-                    <p className="text-sm text-gray-600 mb-4">
-                      Filters used when evaluating new jobs for alerts (trade, pay floor, distance, duration, and channels).
-                    </p>
+                  <SettingsCard
+                    title="Job alert filters"
+                    description="Trade, pay floor, distance, duration, and channels for nearby jobs."
+                    collapsible
+                    defaultOpen={false}
+                  >
                     <form onSubmit={handleSaveJobAlertPreferences} className="space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div className="md:col-span-2">
@@ -1611,7 +1920,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                         {savingJobAlertForm ? 'Saving…' : 'Save job alert preferences'}
                       </button>
                     </form>
-                  </div>
+                  </SettingsCard>
                 )}
               </div>
             )}
@@ -1622,22 +1931,31 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 role="tabpanel"
                 aria-labelledby="settings-tab-system_controls"
               >
-                <SystemControlsPricing />
+                <SystemControlsPricing
+                  systemSubTab={adminSystemSubTab}
+                  onSystemSubTabChange={setAdminSystemSubTab}
+                />
               </div>
             )}
 
-            {isAdmin && settingsTab === 'job_access' && (
-              <div
-                id="settings-panel-job_access"
-                role="tabpanel"
-                aria-labelledby="settings-tab-job_access"
-              >
-                <AdminJobAccessSettings />
-              </div>
-            )}
           </div>
         </section>
-      </main>
+      </SettingsPageShell>
+
+      <NotificationAdvancedModal
+        isOpen={!!modalNotificationItem}
+        item={modalNotificationItem}
+        onClose={() => setModalNotificationItem(null)}
+        notificationPrefs={notificationPrefs}
+        onPersistNotificationPrefs={handlePersistModalNotificationPrefs}
+        isTechnician={isTechnician}
+        jobAlertModalBody={null}
+        onSaveJobAlerts={() => handleSaveJobAlertPreferences()}
+        savingJobAlertForm={savingJobAlertForm}
+        savingNotifications={savingNotifications}
+        localAdvancedById={localAdvancedById}
+        onUpdateLocalAdvanced={(id, data) => setLocalAdvancedById((prev) => ({ ...prev, [id]: data }))}
+      />
 
       <AlertModal
         isOpen={alertModal.isOpen}
@@ -1657,7 +1975,18 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         cancelLabel="Cancel"
         variant="destructive"
       />
-    </div>
+
+      <ConfirmModal
+        isOpen={confirmDeleteAccount}
+        onClose={() => setConfirmDeleteAccount(false)}
+        onConfirm={handleDeleteAccountConfirmed}
+        title="Delete account permanently?"
+        message="This cannot be undone. All account data will be removed."
+        confirmLabel="Delete permanently"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
+    </>
   );
 };
 

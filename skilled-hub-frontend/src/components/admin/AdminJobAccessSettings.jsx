@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { adminMembershipTierConfigsAPI } from '../../api/api';
 import { buildTierUpdatePayload, defaultAdditionalFeatures, rowFromTier } from './adminJobAccessSettingsState';
+import SettingsCard from '../settings/SettingsCard';
 
 export default function AdminJobAccessSettings() {
   const [rows, setRows] = useState([]);
@@ -71,22 +72,42 @@ export default function AdminJobAccessSettings() {
     [rows, activeFeatureTierId]
   );
 
+  const accessOrderWarning = useMemo(() => {
+    const bySlug = Object.fromEntries(rows.map((r) => [String(r.slug || '').toLowerCase(), parseInt(r.accessAfterLiveHours, 10) || 0]));
+    const p = bySlug.premium;
+    const pr = bySlug.pro;
+    const b = bySlug.basic;
+    if (p == null || pr == null || b == null) return null;
+    if (p <= pr && pr <= b) return null;
+    return 'Access hours are unusual: expected Premium delay ≤ Pro ≤ Basic so higher tiers unlock first.';
+  }, [rows]);
+
   return (
     <div className="space-y-4">
-      <div className="text-sm text-gray-600 space-y-2">
-        <p>
-          Control job visibility by technician tier. A tier can see jobs starting{' '}
-          <span className="font-medium text-gray-900">X hours after</span> the job&apos;s go-live date.
-        </p>
-        <p>
-          Standard release order should be <span className="font-medium text-gray-900">premium first</span>, then pro, then basic.
-          Recommended defaults: premium = 0h, pro = 24h, basic = 48h.
-        </p>
-        <p>
-          Configure extra early-access eligibility rules with the additional features popup. Jobs still enforce each
-          listing&apos;s own minimum years requirement.
-        </p>
-      </div>
+      <SettingsCard title="How job access timing works" collapsible defaultOpen={false}>
+        <div className="text-sm text-gray-600 space-y-2">
+          <p>
+            Control job visibility by technician tier. A tier can see jobs starting{' '}
+            <span className="font-medium text-gray-900">X hours after</span> the job&apos;s go-live date.
+          </p>
+          <p>
+            Standard release order should be <span className="font-medium text-gray-900">premium first</span>, then pro, then basic.
+            Recommended defaults: premium = 0h, pro = 24h, basic = 48h.
+          </p>
+          <p>
+            Configure extra early-access eligibility rules with the additional features popup. Jobs still enforce each
+            listing&apos;s own minimum years requirement.
+          </p>
+        </div>
+      </SettingsCard>
+
+      {accessOrderWarning && (
+        <div className="p-3 rounded-xl border border-amber-200 bg-amber-50 text-amber-900 text-sm">{accessOrderWarning}</div>
+      )}
+
+      <p className="text-xs text-gray-500 border border-dashed border-gray-200 rounded-lg px-3 py-2 bg-gray-50">
+        Audit trail placeholder: last changed by and timestamp will display here once admin audit logging is exposed.
+      </p>
 
       {error && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">{error}</div>

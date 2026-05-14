@@ -34,6 +34,23 @@ export function normalizeWebsiteUrl(url) {
   return `https://${raw}`;
 }
 
+/** Human-friendly website label: no https://, and www. prefix when the host has no other subdomain. */
+export function formatWebsiteLabel(url) {
+  const raw = String(url || '').trim();
+  if (!raw) return '';
+  const withoutScheme = raw.replace(/^https?:\/\//i, '').replace(/^\/+/, '');
+  if (!withoutScheme) return '';
+  const host = withoutScheme.split('/')[0];
+  const hostLower = host.toLowerCase();
+  if (hostLower === 'localhost' || /^\d{1,3}(\.\d{1,3}){3}$/.test(host)) {
+    return withoutScheme;
+  }
+  if (!hostLower.startsWith('www.')) {
+    return `www.${withoutScheme}`;
+  }
+  return withoutScheme;
+}
+
 export function isValidEmail(email) {
   const s = String(email || '').trim();
   if (!s) return true;

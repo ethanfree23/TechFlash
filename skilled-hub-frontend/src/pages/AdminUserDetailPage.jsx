@@ -98,6 +98,28 @@ function AdminUserDetailToolbar({
   );
 }
 
+function AdminUserDetailProfileCardControls() {
+  const { expandAll, collapseAll } = useCollapsibleSections();
+  return (
+    <div className="flex flex-wrap gap-2 mt-2">
+      <button
+        type="button"
+        onClick={expandAll}
+        className="px-2.5 py-1 rounded-md text-xs font-medium border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+      >
+        Expand all cards
+      </button>
+      <button
+        type="button"
+        onClick={collapseAll}
+        className="px-2.5 py-1 rounded-md text-xs font-medium border border-gray-200 bg-white text-gray-700 hover:bg-gray-50"
+      >
+        Collapse all cards
+      </button>
+    </div>
+  );
+}
+
 function fmtMoney(cents) {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format((cents || 0) / 100);
 }
@@ -359,6 +381,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
       setProfileDraft({
         first_name: u?.first_name || '',
         last_name: u?.last_name || '',
+        account_phone: u?.phone || '',
         company_name: profile.company_name || '',
         industry: profile.industry || '',
         location: profile.location || '',
@@ -374,7 +397,9 @@ export default function AdminUserDetailPage({ user, onLogout }) {
       setProfileDraft({
         first_name: u?.first_name || '',
         last_name: u?.last_name || '',
+        account_phone: u?.phone || '',
         trade_type: profile.trade_type || '',
+        phone: profile.phone || '',
         address: profile.address || '',
         city: profile.city || '',
         state: profile.state || 'Texas',
@@ -398,6 +423,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
           ? {
               first_name: profileDraft.first_name?.trim() || null,
               last_name: profileDraft.last_name?.trim() || null,
+              account_phone: formatPhoneInput((profileDraft.account_phone || '').trim()),
               company_name: profileDraft.company_name?.trim(),
               industry: profileDraft.industry?.trim(),
               location: profileDraft.location?.trim(),
@@ -412,6 +438,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
           : {
               first_name: profileDraft.first_name?.trim() || null,
               last_name: profileDraft.last_name?.trim() || null,
+              account_phone: formatPhoneInput((profileDraft.account_phone || '').trim()),
               trade_type: profileDraft.trade_type?.trim(),
               location: [profileDraft.city?.trim(), profileDraft.state?.trim(), profileDraft.country?.trim()]
                 .filter(Boolean)
@@ -421,6 +448,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               state: profileDraft.state?.trim(),
               zip_code: profileDraft.zip_code?.trim(),
               country: profileDraft.country?.trim(),
+              phone: profileDraft.phone?.trim(),
               availability: profileDraft.availability?.trim(),
               bio: profileDraft.bio?.trim(),
               experience_years:
@@ -619,6 +647,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                 {profile?.company_name && ` · ${profile.company_name}`}
                 {profile?.trade_type && ` · ${profile.trade_type}`}
               </p>
+              <AdminUserDetailProfileCardControls />
             </div>
             <AdminUserDetailToolbar
               isCompany={isCompany}
@@ -677,6 +706,10 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                     <dd className="font-medium text-gray-900">{u?.id}</dd>
                   </div>
                   <div>
+                    <dt className="text-gray-500">Account phone</dt>
+                    <dd className="font-medium text-gray-900">{u?.phone || '—'}</dd>
+                  </div>
+                  <div>
                     <dt className="text-gray-500">Joined</dt>
                     <dd className="font-medium text-gray-900">
                       {u?.created_at ? new Date(u.created_at).toLocaleString() : '—'}
@@ -701,7 +734,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                         <dd className="font-medium text-gray-900">{profile.industry || '—'}</dd>
                       </div>
                       <div>
-                        <dt className="text-gray-500">Phone</dt>
+                        <dt className="text-gray-500">Company profile phone</dt>
                         <dd className="font-medium text-gray-900">{profile.phone || '—'}</dd>
                       </div>
                       <div>
@@ -722,6 +755,10 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                   )}
                   {isTech && profile && (
                     <>
+                      <div>
+                        <dt className="text-gray-500">Profile phone</dt>
+                        <dd className="font-medium text-gray-900">{profile.phone || '—'}</dd>
+                      </div>
                       <div>
                         <dt className="text-gray-500">Trade</dt>
                         <dd className="font-medium text-gray-900">{profile.trade_type || '—'}</dd>
@@ -824,6 +861,16 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                         onChange={(e) => setProfileDraft((d) => ({ ...d, last_name: e.target.value }))}
                       />
                     </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Account phone</span>
+                      <input
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.account_phone || ''}
+                        onChange={(e) =>
+                          setProfileDraft((d) => ({ ...d, account_phone: formatPhoneInput(e.target.value) }))
+                        }
+                      />
+                    </label>
                     <label className="block sm:col-span-2">
                       <span className="text-xs font-medium text-gray-500 uppercase">Company name</span>
                       <input
@@ -841,7 +888,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                       />
                     </label>
                     <label className="block">
-                      <span className="text-xs font-medium text-gray-500 uppercase">Phone</span>
+                      <span className="text-xs font-medium text-gray-500 uppercase">Company profile phone</span>
                       <input
                         className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                         value={profileDraft.phone || ''}
@@ -940,6 +987,24 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                         className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                         value={profileDraft.last_name || ''}
                         onChange={(e) => setProfileDraft((d) => ({ ...d, last_name: e.target.value }))}
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Account phone</span>
+                      <input
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.account_phone || ''}
+                        onChange={(e) =>
+                          setProfileDraft((d) => ({ ...d, account_phone: formatPhoneInput(e.target.value) }))
+                        }
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Profile phone</span>
+                      <input
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={profileDraft.phone || ''}
+                        onChange={(e) => setProfileDraft((d) => ({ ...d, phone: formatPhoneInput(e.target.value) }))}
                       />
                     </label>
                     <label className="block">

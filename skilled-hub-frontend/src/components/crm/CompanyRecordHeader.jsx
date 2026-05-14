@@ -13,7 +13,7 @@ import {
   FaBell,
 } from 'react-icons/fa';
 import { CrmStatusBadge, CompanyTypeBadges } from './CrmBadges';
-import { getPrimaryContactPreview, isLinkedToPlatformAccount, formatCrmDateTime } from '../../utils/crmDisplayAdapter';
+import { getPrimaryContactPreview, isLinkedToPlatformAccount, formatCrmDateTime, formatWebsiteLabel } from '../../utils/crmDisplayAdapter';
 
 function formatAddressSnippet(form) {
   const parts = [form?.street_address, form?.city, form?.state, form?.zip].map((v) => String(v || '').trim()).filter(Boolean);
@@ -101,7 +101,7 @@ export default function CompanyRecordHeader({
                       rel="noreferrer"
                       className="text-blue-600 hover:underline break-words inline-block max-w-full"
                     >
-                      {form.website}
+                      {formatWebsiteLabel(form.website)}
                     </a>
                   ) : (
                     <span className="text-slate-400">Missing</span>
