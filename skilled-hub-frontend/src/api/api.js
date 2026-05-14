@@ -227,6 +227,11 @@ export const crmAPI = {
       method: 'POST',
       body: JSON.stringify(data),
     }),
+  bulkCrmProvision: (data) =>
+    apiRequest('/admin/company_accounts/bulk_crm', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
   importRows: (rows) =>
     apiRequest('/admin/crm_leads/import', {
       method: 'POST',

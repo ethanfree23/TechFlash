@@ -118,12 +118,76 @@ module Api
                as: :json
 
           assert_response :created
+          assert_equal 1, CrmLead.count, "Provisioning from CRM must not create a duplicate CrmLead"
           lead.reload
           assert lead.linked_user_id.present?
           assert lead.linked_company_profile_id.present?
           linked_user = User.find(lead.linked_user_id)
           assert linked_user.company?
           assert_equal lead.linked_company_profile_id, linked_user.company_profile_id
+        end
+
+        test "bulk_crm provisions multiple logins and sets linked_user_id on CRM contacts" do
+          admin = User.create!(
+            email: "admin+bulk_crm@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+          lead = CrmLead.create!(
+            name: "Bulk CRM Co",
+            status: "lead",
+            contacts: [
+              { "name" => "Alice Owner", "email" => "alice+bulk_crm@example.com", "phone" => "555-111-1111" },
+              { "name" => "Bob Ops", "email" => "bob+bulk_crm@example.com", "phone" => "555-222-2222" }
+            ]
+          )
+
+          post "/api/v1/admin/company_accounts/bulk_crm",
+               params: {
+                 crm_lead_id: lead.id,
+                 company: {
+                   company_name: "Bulk CRM Co LLC",
+                   state: "Texas",
+                   bio: "Bio for bulk CRM company profile.",
+                   industry: "HVAC | Plumbing",
+                   location: "Austin, Texas"
+                 },
+                 contacts: [
+                   {
+                     contact_index: 0,
+                     email: "alice+bulk_crm@example.com",
+                     first_name: "Alice",
+                     last_name: "Owner",
+                     phone: "555-111-1111",
+                     selected: true
+                   },
+                   {
+                     contact_index: 1,
+                     email: "bob+bulk_crm@example.com",
+                     first_name: "Bob",
+                     last_name: "Ops",
+                     phone: "555-222-2222",
+                     selected: true
+                   }
+                 ]
+               },
+               headers: auth_header_for(admin),
+               as: :json
+
+          assert_response :created
+          assert_equal 1, CrmLead.count
+          lead.reload
+          alice = User.find_by!(email: "alice+bulk_crm@example.com")
+          bob = User.find_by!(email: "bob+bulk_crm@example.com")
+          assert_equal alice.company_profile_id, bob.company_profile_id
+          assert_equal lead.linked_company_profile_id, alice.company_profile_id
+          assert_equal alice.id, lead.linked_user_id
+
+          c0 = lead.contacts[0].with_indifferent_access
+          c1 = lead.contacts[1].with_indifferent_access
+          assert_equal alice.id, c0[:linked_user_id]
+          assert_equal bob.id, c1[:linked_user_id]
         end
 
         test "create additional company login links CRM lead when crm_lead_id is provided" do

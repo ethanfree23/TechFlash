@@ -2,7 +2,7 @@
 
 class CrmLead < ApplicationRecord
   CONTACT_ALLOWED_ROOT_KEYS = %w[
-    name email phone job_title extension linked_user_id
+    name email phone job_title extension linked_user_id is_primary
     instagram_url facebook_url linkedin_url same_as_company
   ].freeze
   SAME_AS_COMPANY_KEYS = %w[email phone socials].freeze
@@ -154,7 +154,7 @@ class CrmLead < ApplicationRecord
   end
 
   def normalize_contacts!
-    normalized =
+    normalized_input =
       case contacts
       when String
         begin
@@ -168,7 +168,7 @@ class CrmLead < ApplicationRecord
         []
       end
 
-    self.contacts = normalized.filter_map do |entry|
+    rows = normalized_input.filter_map do |entry|
       hash = entry.respond_to?(:to_h) ? entry.to_h : {}
       name = hash["name"].to_s.strip.presence || hash[:name].to_s.strip.presence
       email = hash["email"].to_s.strip.presence || hash[:email].to_s.strip.presence
@@ -204,7 +204,26 @@ class CrmLead < ApplicationRecord
         out["linked_user_id"] = lid if lid.positive?
       end
 
+      ip = hash["is_primary"] || hash[:is_primary]
+      out["is_primary"] = true if ActiveModel::Type::Boolean.new.cast(ip)
+
       out
     end
+
+    primary_indices = rows.each_index.select { |i| rows[i]["is_primary"] }
+    if primary_indices.empty? && rows.any?
+      rows[0]["is_primary"] = true
+    elsif primary_indices.length > 1
+      keep = primary_indices.first
+      rows.each_with_index do |h, i|
+        h["is_primary"] = (i == keep)
+      end
+    elsif primary_indices.any?
+      rows.each_with_index do |h, i|
+        h["is_primary"] = false unless i == primary_indices.first
+      end
+    end
+
+    self.contacts = rows
   end
 end

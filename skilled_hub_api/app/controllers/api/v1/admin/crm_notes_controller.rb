@@ -41,7 +41,7 @@ module Api
         end
 
         def note_params
-          params.permit(:contact_method, :title, :body, :made_contact, :parent_note_id)
+          params.permit(:contact_method, :title, :body, :made_contact, :parent_note_id, :remind_at)
         end
 
         def crm_notes_payload(lead)
@@ -58,6 +58,7 @@ module Api
             title: note.title,
             body: note.body,
             made_contact: note.made_contact,
+            remind_at: note.remind_at&.iso8601,
             created_at: note.created_at,
             updated_at: note.updated_at
           }

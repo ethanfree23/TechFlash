@@ -10,9 +10,15 @@ import {
   FaTrash,
   FaBriefcase,
   FaUserPlus,
+  FaBell,
 } from 'react-icons/fa';
 import { CrmStatusBadge, CompanyTypeBadges } from './CrmBadges';
 import { getPrimaryContactPreview, isLinkedToPlatformAccount, formatCrmDateTime } from '../../utils/crmDisplayAdapter';
+
+function formatAddressSnippet(form) {
+  const parts = [form?.street_address, form?.city, form?.state, form?.zip].map((v) => String(v || '').trim()).filter(Boolean);
+  return parts.join(', ') || '';
+}
 
 export default function CompanyRecordHeader({
   form,
@@ -21,6 +27,7 @@ export default function CompanyRecordHeader({
   onEmail,
   onWebsite,
   onAddNote,
+  onReminder,
   onEdit,
   onMerge,
   onDelete,
@@ -43,6 +50,8 @@ export default function CompanyRecordHeader({
     detailLead?.linked_company_profile_id != null
       ? 'Check pipeline for duplicate CRM rows sharing this platform company.'
       : null;
+  const addr = formatAddressSnippet(form);
+  const showCreateJob = linked;
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-6">
@@ -66,16 +75,12 @@ export default function CompanyRecordHeader({
               )}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-sm min-w-0">
-              <div className="min-w-0">
-                <span className="text-xs font-medium text-slate-500">Primary contact</span>
-                <p className="text-slate-900 font-medium break-words">{pc.name || <span className="text-slate-400 font-normal">No contact</span>}</p>
-              </div>
-              <div className="min-w-0">
-                <span className="text-xs font-medium text-slate-500">Email</span>
+              <div className="min-w-0 sm:col-span-2">
+                <span className="text-xs font-medium text-slate-500">Company email</span>
                 <p className="text-slate-900 min-w-0">
-                  {pc.email ? (
-                    <a href={`mailto:${pc.email}`} className="text-blue-600 hover:underline break-words inline-block max-w-full">
-                      {pc.email}
+                  {form?.company_email ? (
+                    <a href={`mailto:${form.company_email}`} className="text-blue-600 hover:underline break-words inline-block max-w-full">
+                      {form.company_email}
                     </a>
                   ) : (
                     <span className="text-slate-400">Missing</span>
@@ -83,8 +88,8 @@ export default function CompanyRecordHeader({
                 </p>
               </div>
               <div className="min-w-0">
-                <span className="text-xs font-medium text-slate-500">Phone</span>
-                <p className="text-slate-900 break-words">{pc.phone || <span className="text-slate-400">Missing</span>}</p>
+                <span className="text-xs font-medium text-slate-500">Company phone</span>
+                <p className="text-slate-900 break-words">{form?.company_phone || <span className="text-slate-400">Missing</span>}</p>
               </div>
               <div className="min-w-0">
                 <span className="text-xs font-medium text-slate-500">Website</span>
@@ -101,6 +106,16 @@ export default function CompanyRecordHeader({
                   ) : (
                     <span className="text-slate-400">Missing</span>
                   )}
+                </p>
+              </div>
+              <div className="min-w-0 sm:col-span-2">
+                <span className="text-xs font-medium text-slate-500">Address</span>
+                <p className="text-slate-900 break-words">{addr || <span className="text-slate-400">Missing</span>}</p>
+              </div>
+              <div className="sm:col-span-2 pt-1 border-t border-slate-100/80">
+                <span className="text-xs font-medium text-slate-500">Primary contact</span>
+                <p className="text-slate-800 text-sm mt-0.5 break-words">
+                  {[pc.name || '—', pc.email && ` · ${pc.email}`, pc.phone && ` · ${pc.phone}`].filter(Boolean).join('')}
                 </p>
               </div>
               <div className="sm:col-span-2 text-xs text-slate-500">
@@ -137,13 +152,23 @@ export default function CompanyRecordHeader({
               <FaGlobe className="h-3.5 w-3.5 text-sky-600" aria-hidden />
               Website
             </button>
+            {typeof onReminder === 'function' ? (
+              <button
+                type="button"
+                onClick={onReminder}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50"
+              >
+                <FaBell className="h-3.5 w-3.5 text-amber-600" aria-hidden />
+                Reminder
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onAddNote}
               className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50"
             >
               <FaStickyNote className="h-3.5 w-3.5 text-violet-600" aria-hidden />
-              Add note
+              Note
             </button>
             <button
               type="button"
@@ -152,14 +177,16 @@ export default function CompanyRecordHeader({
             >
               Change status
             </button>
-            <button
-              type="button"
-              onClick={onCreateJob}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white hover:bg-orange-600"
-            >
-              <FaBriefcase className="h-3.5 w-3.5" aria-hidden />
-              Create job
-            </button>
+            {showCreateJob ? (
+              <button
+                type="button"
+                onClick={onCreateJob}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white hover:bg-orange-600"
+              >
+                <FaBriefcase className="h-3.5 w-3.5" aria-hidden />
+                Create job
+              </button>
+            ) : null}
             {linked && typeof onAddCompanyLogin === 'function' ? (
               <button
                 type="button"

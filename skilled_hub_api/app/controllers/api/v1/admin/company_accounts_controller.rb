@@ -43,7 +43,8 @@ module Api
                 service_cities: cities,
                 contact_name: p[:contact_name],
                 first_name: p[:first_name],
-                last_name: p[:last_name]
+                last_name: p[:last_name],
+                skip_auto_crm_lead: p[:crm_lead_id].present?
               )
             end
 
@@ -52,6 +53,92 @@ module Api
           render json: {
             user: UserSerializer.new(result[:user]).as_json,
             company_profile: CompanyProfileSerializer.new(result[:profile]).as_json
+          }, status: :created
+        rescue AdminAccountProvisioner::Error => e
+          render json: { errors: [e.message] }, status: :unprocessable_entity
+        rescue ActiveRecord::RecordInvalid => e
+          render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+        end
+
+        # POST /api/v1/admin/company_accounts/bulk_crm
+        # Creates one company profile + first selected CRM contact as owner login, then additional
+        # company logins for other selected contacts, links the CRM lead, and sets linked_user_id on contacts.
+        def bulk_crm_create
+          p = bulk_crm_params
+          lead = CrmLead.find_by(id: p[:crm_lead_id].to_s.to_i)
+          unless lead
+            return render json: { errors: ["CRM lead not found"] }, status: :not_found
+          end
+          if lead.linked_company_profile_id.present? || lead.linked_user_id.present?
+            return render json: { errors: ["CRM lead is already linked"] }, status: :unprocessable_entity
+          end
+
+          company = (p[:company] || {}).to_h.symbolize_keys
+          rows = Array(p[:contacts]).map { |r| r.to_h.with_indifferent_access }
+          rows = rows.reject { |r| r[:selected] == false || r[:selected] == "false" || r[:selected] == "0" }
+          rows.sort_by! { |r| r[:contact_index].to_i }
+
+          if rows.length < 2
+            return render json: { errors: ["Select at least two contacts for bulk provisioning"] }, status: :unprocessable_entity
+          end
+
+          emails = rows.map { |r| r[:email].to_s.strip.downcase }.reject(&:blank?)
+          if emails.length != emails.uniq.length
+            return render json: { errors: ["Each contact must have a unique email"] }, status: :unprocessable_entity
+          end
+
+          cities = company[:location].presence
+          cities = cities.to_s.split(",").map(&:strip).reject(&:blank?) if cities.present?
+
+          result = nil
+          index_to_user = {}
+
+          ActiveRecord::Base.transaction do
+            first = rows.first
+            fn, ln = bulk_contact_names(first)
+            result = AdminAccountProvisioner.provision_company!(
+              email: AdminAccountProvisioner.normalize_email(first[:email]),
+              company_name: company[:company_name],
+              industry: company[:industry],
+              bio: company[:bio],
+              state: company[:state],
+              electrical_license_number: company[:electrical_license_number],
+              phone: first[:phone].to_s.strip,
+              website_url: company[:website_url],
+              facebook_url: company[:facebook_url],
+              instagram_url: company[:instagram_url],
+              linkedin_url: company[:linkedin_url],
+              service_cities: cities,
+              contact_name: company[:contact_name],
+              first_name: fn,
+              last_name: ln,
+              skip_auto_crm_lead: true
+            )
+
+            link_crm_lead_after_provision!(result, lead.id)
+            index_to_user[first[:contact_index].to_i] = result[:user]
+
+            rows.drop(1).each do |row|
+              fn2, ln2 = bulk_contact_names(row)
+              r2 = AdminAccountProvisioner.provision_company_login!(
+                email: AdminAccountProvisioner.normalize_email(row[:email]),
+                company_profile_id: result[:profile].id,
+                phone: row[:phone].to_s.strip,
+                first_name: fn2,
+                last_name: ln2
+              )
+              index_to_user[row[:contact_index].to_i] = r2[:user]
+            end
+
+            lead.reload
+            merged = merge_bulk_contact_linked_users(lead.contacts, index_to_user)
+            lead.update!(contacts: merged)
+          end
+
+          render json: {
+            user: UserSerializer.new(result[:user]).as_json,
+            company_profile: CompanyProfileSerializer.new(result[:profile]).as_json,
+            created_user_ids: index_to_user.values.map(&:id)
           }, status: :created
         rescue AdminAccountProvisioner::Error => e
           render json: { errors: [e.message] }, status: :unprocessable_entity
@@ -107,6 +194,43 @@ module Api
         end
 
         private
+
+        def bulk_crm_params
+          params.permit(
+            :crm_lead_id,
+            company: %i[
+              company_name industry bio state website_url facebook_url instagram_url linkedin_url
+              electrical_license_number contact_name location
+            ],
+            contacts: %i[contact_index email first_name last_name phone selected name]
+          )
+        end
+
+        def bulk_contact_names(row)
+          fn = row[:first_name].to_s.strip
+          ln = row[:last_name].to_s.strip
+          if fn.blank? && ln.blank?
+            tokens = row[:name].to_s.strip.split(/\s+/).reject(&:blank?)
+            fn = tokens[0].presence || "Company"
+            ln = (tokens.length > 1 ? tokens[1..].join(" ") : "User")
+          end
+          [fn, ln]
+        end
+
+        def merge_bulk_contact_linked_users(contacts, index_to_user)
+          return contacts if contacts.blank?
+
+          arr = contacts.map do |entry|
+            entry.is_a?(Hash) ? entry.stringify_keys : {}
+          end
+          index_to_user.each do |idx, user|
+            i = idx.to_i
+            next if i.negative? || i >= arr.length
+
+            arr[i] = arr[i].merge("linked_user_id" => user.id)
+          end
+          arr
+        end
 
         def provision_params
           params.permit(

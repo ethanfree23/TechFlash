@@ -995,6 +995,9 @@ const JobDetail = () => {
                   <div>
                     <p className="text-sm text-gray-500">Job amount</p>
                     <p className="font-medium">${((job?.job_amount_cents ?? job?.price_cents ?? 0) / 100).toFixed(2)}</p>
+                    {currentUser?.role === 'technician' && !viewerTechCommissionKnown && (
+                      <p className="text-xs text-gray-400">Loading your payout estimate…</p>
+                    )}
                     {currentUser?.role === 'technician' &&
                       viewerTechCommissionKnown &&
                       viewerTechCommissionPercent != null &&

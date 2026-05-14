@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_05_13_190000) do
+ActiveRecord::Schema[7.1].define(version: 2026_05_14_120000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -166,9 +166,11 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_13_190000) do
     t.boolean "made_contact", default: false, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "remind_at"
     t.index ["crm_lead_id", "created_at"], name: "index_crm_notes_on_crm_lead_id_and_created_at"
     t.index ["crm_lead_id"], name: "index_crm_notes_on_crm_lead_id"
     t.index ["parent_note_id"], name: "index_crm_notes_on_parent_note_id"
+    t.index ["remind_at"], name: "index_crm_notes_on_remind_at"
   end
 
   create_table "documents", force: :cascade do |t|

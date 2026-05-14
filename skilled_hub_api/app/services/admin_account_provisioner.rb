@@ -18,7 +18,8 @@ module AdminAccountProvisioner
     first_name: nil,
     last_name: nil,
     password: nil,
-    password_confirmation: nil
+    password_confirmation: nil,
+    skip_auto_crm_lead: false
   )
     # rubocop:enable Metrics/ParameterLists
     email = normalize_email(email)
@@ -78,7 +79,9 @@ module AdminAccountProvisioner
 
       user.generate_password_reset_token! if send_reset
       contact_full_name = [first_name_clean, last_name_clean].join(" ").strip
-      create_crm_prospect_for_company!(user: user, profile: profile, contact_name: contact_name.presence || contact_full_name)
+      unless skip_auto_crm_lead
+        create_crm_prospect_for_company!(user: user, profile: profile, contact_name: contact_name.presence || contact_full_name)
+      end
     end
 
     send_reset_email(user) if send_reset

@@ -88,10 +88,10 @@ export function isLinkedToPlatformAccount(lead) {
 export function getPrimaryContactPreview(lead) {
   if (!lead || typeof lead !== 'object') return { name: '', email: '', phone: '' };
   const contacts = Array.isArray(lead.contacts) ? lead.contacts : [];
-  const first = contacts[0];
-  const name = String(first?.name || lead.contact_name || '').trim();
-  const email = String(first?.email || lead.email || '').trim();
-  const phone = String(first?.phone || lead.phone || '').trim();
+  const primaryRow = contacts.find((c) => c && (c.is_primary === true || c.is_primary === 'true')) || contacts[0];
+  const name = String(primaryRow?.name || lead.contact_name || '').trim();
+  const email = String(primaryRow?.email || lead.email || '').trim();
+  const phone = String(primaryRow?.phone || lead.phone || '').trim();
   return { name, email, phone };
 }
 
@@ -338,6 +338,9 @@ export function getNextBestActions({ form, metrics, crmNotesLength, isLinked }) 
   if (!isLinked) {
     actions.push({ id: 'provision_account', label: 'Create platform account', priority: 2 });
     actions.push({ id: 'link', label: 'Link platform account', priority: 2 });
+  }
+  if (isLinked) {
+    actions.push({ id: 'add_company_login', label: 'Add company login', priority: 2 });
   }
   if (missing.has('trade_type')) actions.push({ id: 'trade', label: 'Set company trade types', priority: 2 });
   if (String(f.status || '') === 'lead') actions.push({ id: 'contact', label: 'Move to contacted after outreach', priority: 3 });

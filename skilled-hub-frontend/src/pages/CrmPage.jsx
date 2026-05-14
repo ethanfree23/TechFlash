@@ -45,6 +45,7 @@ import {
   isValidPhoneLoose,
   isValidUrlLoose,
   getPrimaryContactPreview,
+  companyTypeLabel,
 } from '../utils/crmDisplayAdapter';
 import CrmCommandHeader from '../components/crm/CrmCommandHeader';
 import CompanyRecordHeader from '../components/crm/CompanyRecordHeader';
@@ -69,6 +70,7 @@ import {
   FaFileUpload,
   FaCog,
   FaChevronDown,
+  FaChevronLeft,
   FaChevronRight,
 } from 'react-icons/fa';
 
@@ -100,6 +102,7 @@ const emptyProvisionState = () => ({
   company_name: '',
   phone: '',
   industry: '',
+  industry_keys: [],
   location: '',
   bio: '',
   state: '',
@@ -109,7 +112,27 @@ const emptyProvisionState = () => ({
   linkedin_url: '',
   contact_name: '',
   electrical_license_number: '',
+  bulk_rows: [],
 });
+
+function splitContactNameForProvision(fullName) {
+  const tokens = String(fullName || '')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (tokens.length === 0) return { firstName: '', lastName: '' };
+  if (tokens.length === 1) return { firstName: tokens[0], lastName: '' };
+  return { firstName: tokens[0], lastName: tokens.slice(1).join(' ') };
+}
+
+/** Ensure exactly one contact row is marked primary for CRM form state. */
+function ensurePrimaryContactFlagsOnArray(contacts) {
+  if (!Array.isArray(contacts) || contacts.length === 0) return contacts;
+  const list = contacts.map((c) => ({ ...c }));
+  let idx = list.findIndex((c) => c.is_primary);
+  if (idx < 0) idx = 0;
+  return list.map((c, i) => ({ ...c, is_primary: i === idx }));
+}
 
 /** CRM lead → create-platform modal: company profile fields (login email/phone optional overrides). */
 function companyProvisionFieldsFromLeadForm(form, overrides = {}) {
@@ -117,7 +140,8 @@ function companyProvisionFieldsFromLeadForm(form, overrides = {}) {
     .map((x) => String(x || '').trim())
     .filter(Boolean)
     .join(', ');
-  const industryFirst = (form.company_types || [])[0];
+  const industry_keys = (form.company_types || []).filter((t) => CRM_COMPANY_TYPES.includes(t));
+  const industryFromKeys = industry_keys.map((k) => companyTypeLabel(k)).join(' | ');
   const st = normalizeToUsStateName(form.state || '');
   const email =
     overrides.email !== undefined
@@ -127,11 +151,38 @@ function companyProvisionFieldsFromLeadForm(form, overrides = {}) {
     overrides.phone !== undefined
       ? String(overrides.phone || '')
       : String(form.company_phone || form.phone || '');
+  const contactRows = ensurePrimaryContactFlagsOnArray(
+    editableContacts(form.contacts, {
+      name: form.contact_name || '',
+      email: form.email || '',
+      phone: form.phone || '',
+      job_title: '',
+      extension: '',
+    }),
+  );
+  const bulk_rows = contactRows.map((contact, contact_index) => {
+    const sac = normalizeSameAsCompany(contact.same_as_company);
+    const companyEmail = (form.company_email || '').trim();
+    const companyPhone = formatPhoneInput((form.company_phone || '').trim());
+    const rowEmail = sac.email && companyEmail ? companyEmail : String(contact.email || '').trim();
+    const rowPhone = sac.phone && companyPhone ? companyPhone : formatPhoneInput(String(contact.phone || '').trim());
+    const sn = splitContactNameForProvision(contact.name);
+    return {
+      contact_index,
+      selected: true,
+      name: String(contact.name || '').trim(),
+      email: rowEmail,
+      phone: rowPhone,
+      first_name: sn.firstName,
+      last_name: sn.lastName,
+    };
+  });
   return {
     email,
     company_name: String(form.name || '').trim(),
     phone: formatPhoneInput(phoneRaw),
-    industry: industryFirst ? String(industryFirst).replace(/_/g, ' ') : '',
+    industry: industryFromKeys || '',
+    industry_keys,
     location: loc,
     bio:
       String(form.bio || '').trim() ||
@@ -143,6 +194,7 @@ function companyProvisionFieldsFromLeadForm(form, overrides = {}) {
     linkedin_url: String(form.linkedin_url || '').trim(),
     contact_name: String(form.name || '').trim(),
     electrical_license_number: '',
+    bulk_rows,
   };
 }
 
@@ -185,6 +237,9 @@ const normalizeContactEntry = (entry) => {
     const n = Number(lid);
     if (Number.isFinite(n) && n > 0) out.linked_user_id = n;
   }
+  if (entry.is_primary === true || entry.is_primary === 'true' || entry.isPrimary === true) {
+    out.is_primary = true;
+  }
   return out;
 };
 
@@ -217,6 +272,7 @@ const normalizeContactDraftEntry = (entry) => {
       entry?.linked_user_id != null && entry.linked_user_id !== ''
         ? Number(entry.linked_user_id)
         : '',
+    is_primary: Boolean(entry?.is_primary),
   };
 };
 
@@ -388,6 +444,13 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [crmHasContactFilter, setCrmHasContactFilter] = useState('all');
   const [crmHasPhoneFilter, setCrmHasPhoneFilter] = useState('all');
   const [timelineFilter, setTimelineFilter] = useState('all');
+  const [linkAccountModalOpen, setLinkAccountModalOpen] = useState(false);
+  const [pipelineSidebarCollapsed, setPipelineSidebarCollapsed] = useState(false);
+  const [crmCompanyRecordBodyOpen, setCrmCompanyRecordBodyOpen] = useState(true);
+  const [crmActivitySectionOpen, setCrmActivitySectionOpen] = useState(true);
+  const [reminderModalOpen, setReminderModalOpen] = useState(false);
+  const [reminderDraft, setReminderDraft] = useState({ remind_at: '', title: '', body: '' });
+  const [reminderSaving, setReminderSaving] = useState(false);
   const pendingAdditionalContactFocusIdx = useRef(null);
   const crmAddUserContactIdxRef = useRef(null);
   const [crmContactUserModalOpen, setCrmContactUserModalOpen] = useState(false);
@@ -395,11 +458,12 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
 
   const hydrateFormFromCrmLead = useCallback((c) => {
     if (!c) return;
-    const contacts = normalizeContacts(c.contacts, {
+    const rawContacts = normalizeContacts(c.contacts, {
       name: c.contact_name || '',
       email: c.email || '',
       phone: c.phone || '',
     });
+    const contacts = ensurePrimaryContactFlagsOnArray(rawContacts);
     const primaryContact = contacts[0] || { name: '', email: '', phone: '' };
     setForm({
       name: c.name || '',
@@ -511,6 +575,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   useEffect(() => {
     resetNoteDraft();
     setNoteComposerOpen(false);
+    setReminderModalOpen(false);
+    setLinkAccountModalOpen(false);
   }, [selectedId, isCreating]);
 
   useEffect(() => {
@@ -539,7 +605,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         setSearchBusy(false);
       }
     }, 300);
-    return () => clearTimeout(searchTimer.current);
+    return () => clearTimeout(companySearchTimer.current);
   }, [searchQ]);
 
   useEffect(() => {
@@ -565,7 +631,12 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   }, [companySearchQ, provisionMode, provisionModalOpen]);
 
   useEffect(() => {
-    const modalOpen = provisionModalOpen || newCompanyModalOpen;
+    const modalOpen =
+      provisionModalOpen ||
+      newCompanyModalOpen ||
+      linkAccountModalOpen ||
+      reminderModalOpen ||
+      noteComposerOpen;
     if (!modalOpen) return undefined;
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
@@ -574,10 +645,13 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         setNewCompanyModalOpen(false);
         setIsCreating(false);
       }
+      if (linkAccountModalOpen && !saving) setLinkAccountModalOpen(false);
+      if (reminderModalOpen && !reminderSaving) setReminderModalOpen(false);
+      if (noteComposerOpen && !noteSaving) setNoteComposerOpen(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [provisionModalOpen, newCompanyModalOpen, provisionSaving, saving]);
+  }, [provisionModalOpen, newCompanyModalOpen, provisionSaving, saving, linkAccountModalOpen, reminderModalOpen, reminderSaving, noteComposerOpen, noteSaving]);
 
   const openCreate = () => {
     setProvisionModalOpen(false);
@@ -718,7 +792,32 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const n = Number(lid);
       if (Number.isFinite(n) && n > 0) row.linked_user_id = n;
     }
+    if (entry.is_primary === true || entry.is_primary === 'true') row.is_primary = true;
     return row;
+  };
+
+  const setPrimaryContactIndex = (idx) => {
+    setForm((f) => {
+      const contacts = editableContacts(f.contacts, {
+        name: f.contact_name || '',
+        email: f.email || '',
+        phone: f.phone || '',
+        job_title: '',
+        extension: '',
+      });
+      const next = contacts.map((row, i) => ({
+        ...row,
+        is_primary: i === idx,
+      }));
+      const primary = next[idx] || next[0] || {};
+      return {
+        ...f,
+        contacts: next,
+        contact_name: primary.name || f.contact_name,
+        email: primary.email || f.email,
+        phone: primary.phone || f.phone,
+      };
+    });
   };
 
   const saveRecord = async () => {
@@ -730,7 +829,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       extension: '',
     });
     const normalizedContacts = base.map((c) => resolveContactRowForPayload(c, form));
-    const primaryContact = normalizedContacts[0] || {};
+    const primaryContact =
+      normalizedContacts.find((row) => row.is_primary === true) || normalizedContacts[0] || {};
     const payload = {
       name: form.name?.trim(),
       contact_name: (primaryContact.name || form.contact_name || '').trim() || undefined,
@@ -905,19 +1005,83 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
 
   const provisionCompanyAccount = async (e) => {
     e.preventDefault();
-    const email = provision.email?.trim();
-    const phone = provision.phone?.trim();
+    const sid =
+      selectedId != null && selectedId !== ''
+        ? Number(selectedId)
+        : null;
+    const crmLeadId = Number.isFinite(sid) && sid > 0 ? sid : null;
+    const bulkRows = Array.isArray(provision.bulk_rows) ? provision.bulk_rows : [];
+    const selectedBulk = bulkRows.filter((r) => r.selected !== false && r.selected !== 'false');
+    const showBulkUi =
+      provisionMode === 'new' && crmLeadId != null && bulkRows.length > 1;
+    const useBulkProvision = showBulkUi && selectedBulk.length >= 2;
+
     const nameSource =
       provisionMode === 'existing'
         ? String(selectedCompany?.company_name || '').trim()
         : String(provision.company_name || '').trim();
-    const { first_name: derivedFirst, last_name: derivedLast } =
-      splitDisplayNameFromCompanyName(nameSource);
+
+    let email = provision.email?.trim();
+    let phone = provision.phone?.trim();
+    let derivedFirst;
+    let derivedLast;
+
+    if (useBulkProvision) {
+      const sorted = [...selectedBulk].sort((a, b) => Number(a.contact_index) - Number(b.contact_index));
+      const firstRow = sorted[0];
+      email = String(firstRow.email || '').trim();
+      phone = formatPhoneInput(String(firstRow.phone || '').trim());
+      let fn = String(firstRow.first_name || '').trim();
+      let ln = String(firstRow.last_name || '').trim();
+      if (!fn && !ln) {
+        const sn = splitContactNameForProvision(firstRow.name);
+        fn = sn.firstName;
+        ln = sn.lastName;
+      }
+      if (!fn || !ln) {
+        const fb = splitDisplayNameFromCompanyName(nameSource);
+        fn = fn || fb.first_name;
+        ln = ln || fb.last_name;
+      }
+      derivedFirst = fn;
+      derivedLast = ln;
+    } else if (showBulkUi && selectedBulk.length === 1) {
+      const r0 = selectedBulk[0];
+      email = String(r0.email || '').trim();
+      phone = formatPhoneInput(String(r0.phone || '').trim());
+      let fn = String(r0.first_name || '').trim();
+      let ln = String(r0.last_name || '').trim();
+      if (!fn && !ln) {
+        const sn = splitContactNameForProvision(r0.name);
+        fn = sn.firstName;
+        ln = sn.lastName;
+      }
+      const fb = splitDisplayNameFromCompanyName(nameSource);
+      derivedFirst = fn || fb.first_name;
+      derivedLast = ln || fb.last_name;
+    } else {
+      const sp = splitDisplayNameFromCompanyName(nameSource);
+      derivedFirst = sp.first_name;
+      derivedLast = sp.last_name;
+    }
+
+    if (showBulkUi && selectedBulk.length === 0) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Select contacts',
+        message: 'Choose at least one CRM contact to provision.',
+        variant: 'error',
+      });
+      return;
+    }
+
     if (!email) {
       setAlertModal({
         isOpen: true,
         title: 'Email required',
-        message: 'Enter the company login email.',
+        message: showBulkUi
+          ? 'Each selected contact needs a login email.'
+          : 'Enter the company login email.',
         variant: 'error',
       });
       return;
@@ -931,17 +1095,68 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       });
       return;
     }
+
+    if (useBulkProvision) {
+      const emails = selectedBulk.map((r) => String(r.email || '').trim().toLowerCase()).filter(Boolean);
+      if (emails.length !== new Set(emails).size) {
+        setAlertModal({
+          isOpen: true,
+          title: 'Duplicate emails',
+          message: 'Each selected contact needs a unique login email.',
+          variant: 'error',
+        });
+        return;
+      }
+      for (const r of selectedBulk) {
+        const em = String(r.email || '').trim();
+        const ph = formatPhoneInput(String(r.phone || '').trim());
+        let fn = String(r.first_name || '').trim();
+        let ln = String(r.last_name || '').trim();
+        if (!fn && !ln) {
+          const sn = splitContactNameForProvision(r.name);
+          fn = sn.firstName;
+          ln = sn.lastName;
+        }
+        if (!fn || !ln) {
+          setAlertModal({
+            isOpen: true,
+            title: 'Name required',
+            message: 'Each selected contact needs a first and last name (or a full name to split).',
+            variant: 'error',
+          });
+          return;
+        }
+        if (!em || !ph) {
+          setAlertModal({
+            isOpen: true,
+            title: 'Missing contact fields',
+            message: 'Each selected contact needs email and phone.',
+            variant: 'error',
+          });
+          return;
+        }
+      }
+    }
+
     if (
       provisionMode === 'new' &&
       (!provision.company_name?.trim() ||
-        !provision.phone?.trim() ||
         !provision.bio?.trim() ||
         !provision.state?.trim())
     ) {
       setAlertModal({
         isOpen: true,
         title: 'Missing required fields',
-        message: 'Company name, US state, phone number, and bio are required.',
+        message: 'Company name, US state, and bio are required.',
+        variant: 'error',
+      });
+      return;
+    }
+    if (provisionMode === 'new' && !useBulkProvision && !provision.phone?.trim()) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Phone required',
+        message: 'Phone number is required.',
         variant: 'error',
       });
       return;
@@ -955,6 +1170,12 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       });
       return;
     }
+
+    const industryStr =
+      (provision.industry_keys || []).map((k) => companyTypeLabel(k)).join(' | ') ||
+      provision.industry?.trim() ||
+      undefined;
+
     setProvisionSaving(true);
     try {
       const prevProvisionMode = provisionMode;
@@ -966,36 +1187,62 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         prevLinkedProfileId != null &&
         Number(prevSelectedCompanyId) === Number(prevLinkedProfileId);
 
-      const payload = {
-        email,
-        first_name: derivedFirst,
-        last_name: derivedLast,
-        phone,
-      };
-      if (provisionMode === 'existing') {
-        payload.company_profile_id = selectedCompany.id;
+      if (useBulkProvision) {
+        await crmAPI.bulkCrmProvision({
+          crm_lead_id: crmLeadId,
+          company: {
+            company_name: provision.company_name.trim(),
+            industry: industryStr,
+            bio: provision.bio.trim(),
+            state: normalizeToUsStateName(provision.state || ''),
+            website_url: provision.website_url?.trim() || undefined,
+            facebook_url: provision.facebook_url?.trim() || undefined,
+            instagram_url: provision.instagram_url?.trim() || undefined,
+            linkedin_url: provision.linkedin_url?.trim() || undefined,
+            electrical_license_number: provision.electrical_license_number?.trim() || undefined,
+            contact_name: provision.contact_name?.trim() || undefined,
+            location: provision.location?.trim() || undefined,
+          },
+          contacts: [...selectedBulk]
+            .sort((a, b) => Number(a.contact_index) - Number(b.contact_index))
+            .map((r) => ({
+              contact_index: r.contact_index,
+              email: String(r.email || '').trim(),
+              phone: formatPhoneInput(String(r.phone || '').trim()),
+              first_name: String(r.first_name || '').trim(),
+              last_name: String(r.last_name || '').trim(),
+              name: String(r.name || '').trim(),
+              selected: true,
+            })),
+        });
       } else {
-        payload.company_name = provision.company_name.trim();
-        payload.industry = provision.industry?.trim() || undefined;
-        payload.location = provision.location?.trim() || undefined;
-        payload.bio = provision.bio.trim();
-        payload.state = normalizeToUsStateName(provision.state || '');
-        payload.website_url = provision.website_url?.trim() || undefined;
-        payload.facebook_url = provision.facebook_url?.trim() || undefined;
-        payload.instagram_url = provision.instagram_url?.trim() || undefined;
-        payload.linkedin_url = provision.linkedin_url?.trim() || undefined;
-        payload.contact_name = provision.contact_name?.trim() || undefined;
-        payload.electrical_license_number = provision.electrical_license_number?.trim() || undefined;
+        const payload = {
+          email,
+          first_name: derivedFirst,
+          last_name: derivedLast,
+          phone,
+        };
+        if (provisionMode === 'existing') {
+          payload.company_profile_id = selectedCompany.id;
+        } else {
+          payload.company_name = provision.company_name.trim();
+          payload.industry = industryStr;
+          payload.location = provision.location?.trim() || undefined;
+          payload.bio = provision.bio.trim();
+          payload.state = normalizeToUsStateName(provision.state || '');
+          payload.website_url = provision.website_url?.trim() || undefined;
+          payload.facebook_url = provision.facebook_url?.trim() || undefined;
+          payload.instagram_url = provision.instagram_url?.trim() || undefined;
+          payload.linkedin_url = provision.linkedin_url?.trim() || undefined;
+          payload.contact_name = provision.contact_name?.trim() || undefined;
+          payload.electrical_license_number = provision.electrical_license_number?.trim() || undefined;
+        }
+        if (crmLeadId != null) {
+          payload.crm_lead_id = crmLeadId;
+        }
+        await crmAPI.createCompanyAccount(payload);
       }
-      const sid =
-        selectedId != null && selectedId !== ''
-          ? Number(selectedId)
-          : null;
-      const crmLeadId = Number.isFinite(sid) && sid > 0 ? sid : null;
-      if (crmLeadId != null) {
-        payload.crm_lead_id = crmLeadId;
-      }
-      await crmAPI.createCompanyAccount(payload);
+
       setProvision(emptyProvisionState());
       setProvisionMode('new');
       setCompanySearchQ('');
@@ -1008,12 +1255,18 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       }
       setAlertModal({
         isOpen: true,
-        title: wasAddLoginForLinkedCrm ? 'Company login created' : 'Company account created',
+        title: wasAddLoginForLinkedCrm
+          ? 'Company login created'
+          : useBulkProvision
+            ? 'Company accounts created'
+            : 'Company account created',
         message: wasAddLoginForLinkedCrm
           ? 'Another company login was created and the welcome email was sent when applicable.'
-          : crmLeadId != null
-            ? 'Company account created and this CRM record is now linked.'
-            : 'Company account created successfully.',
+          : useBulkProvision
+            ? 'Company profiles and logins were created, the CRM record is linked, and welcome emails were sent when applicable.'
+            : crmLeadId != null
+              ? 'Company account created and this CRM record is now linked.'
+              : 'Company account created successfully.',
         variant: 'success',
       });
     } catch (err) {
@@ -1133,11 +1386,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const first = contacts[0] || normalizeContactDraftEntry({});
       const socialKeys = ['instagram_url', 'facebook_url', 'linkedin_url'];
       if (socialKeys.includes(field)) {
-        const nextContacts = [{ ...first, [field]: value }, ...contacts.slice(1)];
+        const nextContacts = [{ ...first, is_primary: true, [field]: value }, ...contacts.slice(1)];
         return { ...f, contacts: nextContacts };
       }
       const formattedValue = field === 'phone' ? formatPhoneInput(value) : value;
-      const nextContacts = [{ ...first, [field]: formattedValue }, ...contacts.slice(1)];
+      const nextContacts = [{ ...first, is_primary: true, [field]: formattedValue }, ...contacts.slice(1)];
       return {
         ...f,
         contacts: nextContacts,
@@ -1165,7 +1418,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       };
       const next = { ...current, [part]: value };
       const combinedName = [next.firstName, next.lastName].filter(Boolean).join(' ').trim();
-      const nextContacts = [{ ...first, name: combinedName }, ...contacts.slice(1)];
+      const nextContacts = [{ ...first, is_primary: true, name: combinedName }, ...contacts.slice(1)];
       return {
         ...f,
         contacts: nextContacts,
@@ -1185,9 +1438,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       });
       const baseContacts = contacts.length > 0 ? contacts : [normalizeContactDraftEntry({})];
       pendingAdditionalContactFocusIdx.current = baseContacts.length;
+      const withNew = [...baseContacts, normalizeContactDraftEntry({})];
+      const nextContacts = withNew.map((row, i) => ({ ...row, is_primary: i === 0 }));
       return {
         ...f,
-        contacts: [...baseContacts, normalizeContactDraftEntry({})],
+        contacts: nextContacts,
       };
     });
   };
@@ -1227,7 +1482,16 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         extension: '',
       });
       if (contactIdx <= 0 || contactIdx >= contacts.length) return f;
-      return { ...f, contacts: contacts.filter((_, idx) => idx !== contactIdx) };
+      const next = contacts.filter((_, idx) => idx !== contactIdx);
+      const nextContacts = ensurePrimaryContactFlagsOnArray(next);
+      const primary = nextContacts[0] || {};
+      return {
+        ...f,
+        contacts: nextContacts,
+        contact_name: primary.name || f.contact_name,
+        email: primary.email || f.email,
+        phone: primary.phone || f.phone,
+      };
     });
   };
 
@@ -1665,6 +1929,13 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         body: noteDraft.body.trim(),
         parent_note_id: noteDraft.parent_note_id ?? undefined,
       };
+      const ra = (noteDraft.remind_at || '').trim();
+      if (ra) {
+        const dt = new Date(ra);
+        if (!Number.isNaN(dt.getTime())) payload.remind_at = dt.toISOString();
+      } else if (noteDraft.id) {
+        payload.remind_at = null;
+      }
       const res = noteDraft.id
         ? await crmAPI.updateNote(selectedId, noteDraft.id, payload)
         : await crmAPI.createNote(selectedId, payload);
@@ -1680,6 +1951,125 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       });
     } finally {
       setNoteSaving(false);
+    }
+  };
+
+  const openReminder = () => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    d.setHours(9, 0, 0, 0);
+    const pad = (n) => String(n).padStart(2, '0');
+    const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+    setReminderDraft({ remind_at: local, title: 'Reminder — call back', body: '' });
+    setReminderModalOpen(true);
+  };
+
+  const saveReminder = async () => {
+    if (!selectedId) return;
+    if (!reminderDraft.remind_at?.trim()) {
+      setAlertModal({
+        isOpen: true,
+        title: 'When?',
+        message: 'Choose a reminder date and time.',
+        variant: 'error',
+      });
+      return;
+    }
+    const when = new Date(reminderDraft.remind_at);
+    if (Number.isNaN(when.getTime())) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Invalid time',
+        message: 'Reminder time is not valid.',
+        variant: 'error',
+      });
+      return;
+    }
+    if (!reminderDraft.body?.trim()) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Details',
+        message: 'Add a short note about who to call and why.',
+        variant: 'error',
+      });
+      return;
+    }
+    setReminderSaving(true);
+    try {
+      const res = await crmAPI.createNote(selectedId, {
+        contact_method: 'note',
+        made_contact: false,
+        title: reminderDraft.title?.trim() || 'Reminder',
+        body: reminderDraft.body.trim(),
+        remind_at: when.toISOString(),
+      });
+      setCrmNotes(res.crm_notes || []);
+      setReminderModalOpen(false);
+      setReminderDraft({ remind_at: '', title: '', body: '' });
+    } catch (e) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not save reminder',
+        message: e.message || 'Save failed',
+        variant: 'error',
+      });
+    } finally {
+      setReminderSaving(false);
+    }
+  };
+
+  const selectLinkedAccountFromSearch = async (u) => {
+    if (!selectedId) return;
+    setSaving(true);
+    try {
+      await crmAPI.update(selectedId, {
+        linked_user_id: u.id,
+        linked_company_profile_id: u.company_profile_id ?? null,
+      });
+      await loadDetail(selectedId);
+      await loadList();
+      setSearchQ('');
+      setSearchHits([]);
+      setLinkAccountModalOpen(false);
+    } catch (e) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not link account',
+        message: e.message || 'Update failed',
+        variant: 'error',
+      });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const unlinkPlatformAccount = async () => {
+    if (!selectedId) return;
+    if (
+      !window.confirm(
+        'Unlink this CRM record from the platform company account? This does not delete the company account on TechFlash.',
+      )
+    ) {
+      return;
+    }
+    setSaving(true);
+    try {
+      await crmAPI.update(selectedId, {
+        linked_user_id: null,
+        linked_company_profile_id: null,
+      });
+      await loadDetail(selectedId);
+      await loadList();
+      setLinkAccountModalOpen(false);
+    } catch (e) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not unlink',
+        message: e.message || 'Update failed',
+        variant: 'error',
+      });
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1727,6 +2117,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     const orphanPlatform = platformCompanyUsers.filter((u) => !matchedIds.has(u.id));
     return { rows, orphanPlatform };
   }, [displayContacts, form, platformCompanyUsers]);
+
+  const mainContactReadIdx = useMemo(() => {
+    const pi = displayContacts.findIndex((c) => c.is_primary);
+    return pi >= 0 ? pi : 0;
+  }, [displayContacts]);
 
   const startAddCrmContactFromReadMode = useCallback(() => {
     setForm((f) => {
@@ -1869,12 +2264,24 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       openProvisionFromCrmRecord();
       return;
     }
+    if (id === 'add_company_login') {
+      openAddCompanyLoginForLinkedLead();
+      return;
+    }
     if (id === 'link') {
-      setIsRecordEditing(true);
-      setTimeout(() => document.getElementById('crm-link-platform')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+      setLinkAccountModalOpen(true);
       return;
     }
     if (id === 'first_job') {
+      if (!form.linked_user_id && !form.linked_company_profile_id) {
+        setAlertModal({
+          isOpen: true,
+          title: 'Link a company first',
+          message: 'Create or link a platform company account before posting a job from this CRM record.',
+          variant: 'error',
+        });
+        return;
+      }
       navigate('/create-job');
       return;
     }
@@ -2106,8 +2513,32 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           );
         })()}
 
-        <div className="grid grid-cols-1 xl:grid-cols-12 gap-6">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden xl:col-span-4">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          <div
+            className={`bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden ${
+              pipelineSidebarCollapsed ? 'lg:col-span-1' : 'lg:col-span-4'
+            }`}
+          >
+            {pipelineSidebarCollapsed ? (
+              <div className="hidden lg:flex flex-col items-center py-6 gap-3 border-b border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setPipelineSidebarCollapsed(false)}
+                  className="p-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  title="Show prospect list"
+                  aria-label="Show prospect list"
+                >
+                  <FaChevronRight className="w-4 h-4" />
+                </button>
+                <span
+                  className="text-[10px] font-bold uppercase tracking-widest text-slate-500"
+                  style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
+                >
+                  Prospects
+                </span>
+              </div>
+            ) : null}
+            <div className={pipelineSidebarCollapsed ? 'max-lg:block lg:hidden' : ''}>
             <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
               <div className="flex items-start justify-between gap-2">
                 <div>
@@ -2115,6 +2546,15 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   <p className="text-[11px] text-slate-500 mt-0.5">{filteredLeads.length} in view · {leads.length} total</p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setPipelineSidebarCollapsed((v) => !v)}
+                    className="hidden lg:inline-flex items-center justify-center p-2 text-xs border border-slate-200 bg-white rounded-lg hover:bg-slate-50 text-slate-700"
+                    title={pipelineSidebarCollapsed ? 'Expand list' : 'Collapse list'}
+                    aria-label={pipelineSidebarCollapsed ? 'Expand prospect list' : 'Collapse prospect list'}
+                  >
+                    {pipelineSidebarCollapsed ? <FaChevronRight className="w-3.5 h-3.5" /> : <FaChevronLeft className="w-3.5 h-3.5" />}
+                  </button>
                   <div className="relative shrink-0">
                     <button
                       type="button"
@@ -2335,7 +2775,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                               <div className="flex flex-wrap items-center gap-2">
                                 <span className="font-medium text-gray-900">{group.displayName}</span>
                                 <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-600 bg-gray-100 px-2 py-0.5 rounded">
-                                  {group.leads.length} accounts
+                                  {group.leads.length} CRM records · 1 company
                                 </span>
                               </div>
                               {!isExpanded && (
@@ -2370,9 +2810,10 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                 </ul>
               )}
             </div>
+            </div>
           </div>
 
-          <div className="xl:col-span-5 space-y-6">
+          <div className={`space-y-6 ${pipelineSidebarCollapsed ? 'lg:col-span-8' : 'lg:col-span-5'}`}>
             {!selectedId && (
               <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-10 text-center text-gray-500">
                 Select a company on the left or use the buttons above to add a CRM record or create a platform account.
@@ -2398,16 +2839,20 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   window.open(u, '_blank', 'noopener,noreferrer');
                 }}
                 onAddNote={startAddNote}
-                onEdit={() => setIsRecordEditing(true)}
+                onReminder={openReminder}
+                onEdit={() => {
+                  setIsRecordEditing(true);
+                  setTimeout(
+                    () => document.getElementById('crm-company-record-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }),
+                    50,
+                  );
+                }}
                 onMerge={openMergeModal}
                 onDelete={removeRecord}
                 onCreateJob={() => navigate('/create-job')}
                 onCreatePlatformAccount={openProvisionFromCrmRecord}
                 onAddCompanyLogin={openAddCompanyLoginForLinkedLead}
-                onLinkAccount={() => {
-                  setIsRecordEditing(true);
-                  setTimeout(() => document.getElementById('crm-link-platform')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
-                }}
+                onLinkAccount={() => setLinkAccountModalOpen(true)}
                 onChangeStatus={() => {
                   setIsRecordEditing(true);
                   setTimeout(() => document.getElementById('crm-status-select')?.focus(), 50);
@@ -2416,9 +2861,23 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             )}
 
             {selectedId && !isCreating && (
-              <div className="bg-white rounded-2xl shadow border border-gray-100 p-6">
+              <div id="crm-company-record-panel" className="bg-white rounded-2xl shadow border border-gray-100 p-6">
                 <div className="mb-4 flex items-center justify-between gap-3">
-                  <div>
+                  <div className="flex items-start gap-2 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => setCrmCompanyRecordBodyOpen((o) => !o)}
+                      className="mt-0.5 p-1 rounded-lg text-gray-500 hover:bg-gray-100 shrink-0"
+                      aria-expanded={crmCompanyRecordBodyOpen}
+                      aria-label={crmCompanyRecordBodyOpen ? 'Collapse company record' : 'Expand company record'}
+                    >
+                      {crmCompanyRecordBodyOpen ? (
+                        <FaChevronDown className="w-4 h-4" aria-hidden />
+                      ) : (
+                        <FaChevronRight className="w-4 h-4" aria-hidden />
+                      )}
+                    </button>
+                    <div className="min-w-0">
                     <h2 className="text-lg font-semibold text-gray-900">Company record</h2>
                     <p className="text-xs text-slate-500 mt-1">
                       {isRecordEditing ? (
@@ -2427,6 +2886,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         'Read mode — fields are display-only until you click Edit.'
                       )}
                     </p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -2467,6 +2927,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     </button>
                   </div>
                 </div>
+                {crmCompanyRecordBodyOpen ? (
+                <>
                 {detailLoading ? (
                   <div className="space-y-3 mb-6 animate-pulse" aria-busy="true">
                     <div className="h-10 bg-slate-100 rounded-xl" />
@@ -2476,37 +2938,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                 ) : (
                   <div className="space-y-4 mb-6">
                     <PipelineStageTracker currentStatus={form.status} />
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
-                        <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Outreach snapshot</h3>
-                        <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs text-slate-700">
-                          <dt className="text-slate-500">First touch</dt>
-                          <dd>{outreachSnapshot.firstContactDate ? formatDateTime(outreachSnapshot.firstContactDate) : '—'}</dd>
-                          <dt className="text-slate-500">Last touch</dt>
-                          <dd>{outreachSnapshot.lastContactDate ? formatDateTime(outreachSnapshot.lastContactDate) : '—'}</dd>
-                          <dt className="text-slate-500">Calls / emails</dt>
-                          <dd>
-                            {outreachSnapshot.calls} / {outreachSnapshot.emails}
-                          </dd>
-                          <dt className="text-slate-500">Notes</dt>
-                          <dd>{outreachSnapshot.notesCount}</dd>
-                          <dt className="text-slate-500">Outreach status</dt>
-                          <dd className="font-semibold">{outreachSnapshot.outreachStatus}</dd>
-                        </dl>
-                      </div>
-                      <div className="rounded-xl border border-slate-200 bg-slate-50/40 p-4">
-                        <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Operational insight</h3>
-                        {operationalInsights.length === 0 ? (
-                          <p className="text-xs text-slate-500">No automated insights for this record yet.</p>
-                        ) : (
-                          <ul className="list-disc pl-4 space-y-1 text-xs text-slate-700">
-                            {operationalInsights.map((line, i) => (
-                              <li key={i}>{line}</li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    </div>
                   </div>
                 )}
                 {isRecordEditing ? (
@@ -2697,7 +3128,21 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       {crmUsersSectionOpen && (
                         <div id="crm-contacts-editor" className="px-4 pb-4 pt-2 border-t border-gray-100 space-y-4 bg-slate-50/30">
                           <div className="rounded-lg border border-gray-200 p-3 bg-white space-y-3">
-                            <div className="text-xs font-semibold text-gray-500 uppercase">Primary contact</div>
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="text-xs font-semibold text-gray-500 uppercase">Primary contact</div>
+                              <label className="inline-flex items-center gap-2 text-xs font-medium text-gray-700">
+                                <input
+                                  type="radio"
+                                  name="crm-main-contact"
+                                  checked={(() => {
+                                    const pi = displayContacts.findIndex((c) => c.is_primary);
+                                    return pi === 0 || (pi === -1 && displayContacts.length > 0);
+                                  })()}
+                                  onChange={() => setPrimaryContactIndex(0)}
+                                />
+                                Main contact
+                              </label>
+                            </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                               <label className="block">
                                 <span className="text-xs font-medium text-gray-500 uppercase">First name</span>
@@ -2838,8 +3283,22 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                   open={idx === 0}
                                 >
                                   <summary className="list-none flex flex-wrap items-center justify-between gap-2 px-3 py-2 cursor-pointer text-xs font-semibold text-gray-600 uppercase bg-gray-50 border-b border-gray-100 hover:bg-gray-100 [&::-webkit-details-marker]:hidden">
-                                    <span className="select-none">
-                                      {contact.name?.trim() || `Contact ${contactIndex + 1}`}
+                                    <span className="select-none inline-flex items-center gap-2 normal-case">
+                                      <input
+                                        type="radio"
+                                        name="crm-main-contact"
+                                        checked={displayContacts.findIndex((c) => c.is_primary) === contactIndex}
+                                        onChange={(e) => {
+                                          e.preventDefault();
+                                          setPrimaryContactIndex(contactIndex);
+                                        }}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="shrink-0"
+                                        aria-label="Set as main contact"
+                                      />
+                                      <span className="uppercase tracking-wide text-gray-600">
+                                        {contact.name?.trim() || `Contact ${contactIndex + 1}`}
+                                      </span>
                                     </span>
                                     <button
                                       type="button"
@@ -3111,7 +3570,14 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                     <div className="flex items-start justify-between gap-3">
                                       <div className="min-w-0 flex-1">
                                         <p className="text-[11px] font-semibold text-gray-500 uppercase">Platform user</p>
-                                        <p className="text-sm font-semibold text-gray-900 mt-0.5 break-words">{displayName}</p>
+                                        <p className="text-sm font-semibold text-gray-900 mt-0.5 break-words flex flex-wrap items-center gap-2">
+                                          {displayName}
+                                          {idx === mainContactReadIdx ? (
+                                            <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+                                              Main
+                                            </span>
+                                          ) : null}
+                                        </p>
                                         <p className="text-xs text-gray-600 mt-1 break-all">
                                           {resolved.email || platformUser.email || '—'}
                                         </p>
@@ -3192,8 +3658,13 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                   open={idx === 0}
                                 >
                                   <summary className="list-none cursor-pointer flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3 [&::-webkit-details-marker]:hidden">
-                                    <span className="text-sm font-medium text-gray-900 min-w-0 break-words text-left">
+                                    <span className="text-sm font-medium text-gray-900 min-w-0 break-words text-left inline-flex flex-wrap items-center gap-2">
                                       {displayName}
+                                      {idx === mainContactReadIdx ? (
+                                        <span className="text-[10px] font-semibold uppercase tracking-wide text-emerald-800 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5">
+                                          Main
+                                        </span>
+                                      ) : null}
                                     </span>
                                     <span
                                       className="flex flex-wrap items-center gap-2 shrink-0"
@@ -3341,74 +3812,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   </div>
                 )}
 
-                <div id="crm-link-platform" className="mt-6 pt-6 border-t border-slate-100">
-                  <h3 className="text-sm font-semibold text-gray-800 mb-2 flex items-center gap-2">
-                    <FaBuilding className="text-amber-600" /> Link platform account
-                  </h3>
-                  <p className="text-xs text-gray-500 mb-3">
-                    Search by company login email, then select the account. Only company accounts can be linked. One CRM
-                    record links to a company, which can have multiple logins.
-                  </p>
-                  <div className="relative">
-                    <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 bg-white">
-                      <FaSearch className="text-gray-400 shrink-0" />
-                      <input
-                        className="flex-1 text-sm outline-none"
-                        placeholder="Type at least 2 characters of email…"
-                        value={searchQ}
-                        onChange={(e) => setSearchQ(e.target.value)}
-                        readOnly={!isRecordEditing}
-                      />
-                      {searchBusy && <span className="text-xs text-gray-400">Searching…</span>}
-                    </div>
-                    {searchHits.length > 0 && (
-                      <ul className="absolute z-20 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto text-sm">
-                        {searchHits.map((u) => (
-                          <li key={u.id}>
-                            <button
-                              type="button"
-                              className="w-full text-left px-3 py-2 hover:bg-gray-50"
-                              onClick={() => {
-                                setForm((f) => ({ ...f, linked_user_id: u.id, linked_company_profile_id: u.company_profile_id ?? null }));
-                                setSearchQ('');
-                                setSearchHits([]);
-                              }}
-                            >
-                              <span className="font-medium text-gray-900">{u.email}</span>
-                              {u.company_name && <span className="text-gray-500"> — {u.company_name}</span>}
-                            </button>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                  {form.linked_user_id != null && (
-                    <div className="mt-3 flex flex-wrap items-center gap-3 text-sm">
-                      <span className="text-emerald-700 font-medium">
-                        Linked company user id {form.linked_user_id}
-                        {c?.linked_account?.email && ` (${c.linked_account.email})`}
-                        {c?.linked_account?.company_user_count ? ` - ${c.linked_account.company_user_count} company users` : ''}
-                      </span>
-                      <button
-                        type="button"
-                        className="text-red-600 hover:underline inline-flex items-center gap-1"
-                        onClick={() => {
-                          if (
-                            !window.confirm(
-                              'Unlink this CRM record from the platform company account? This does not delete the company account on TechFlash.',
-                            )
-                          ) {
-                            return;
-                          }
-                          setForm((f) => ({ ...f, linked_user_id: null, linked_company_profile_id: null }));
-                        }}
-                      >
-                        Unlink
-                      </button>
-                    </div>
-                  )}
-                </div>
-
                 <div className="mt-6 flex flex-wrap gap-3">
                   <button
                     type="button"
@@ -3426,13 +3829,30 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     <FaTrash /> Delete record
                   </button>
                 </div>
+                </>
+                ) : null}
               </div>
             )}
 
             {selectedId && !isCreating && (
               <div id="crm-notes-section" className="bg-white rounded-2xl shadow border border-gray-100 p-6">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900">Activity &amp; notes</h2>
+                  <div className="flex items-start gap-2 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => setCrmActivitySectionOpen((o) => !o)}
+                      className="mt-0.5 p-1 rounded-lg text-gray-500 hover:bg-gray-100 shrink-0"
+                      aria-expanded={crmActivitySectionOpen}
+                      aria-label={crmActivitySectionOpen ? 'Collapse activity' : 'Expand activity'}
+                    >
+                      {crmActivitySectionOpen ? (
+                        <FaChevronDown className="w-4 h-4" aria-hidden />
+                      ) : (
+                        <FaChevronRight className="w-4 h-4" aria-hidden />
+                      )}
+                    </button>
+                    <h2 className="text-lg font-semibold text-gray-900">Activity &amp; notes</h2>
+                  </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <label className="text-xs text-gray-500 flex items-center gap-1">
                       Filter
@@ -3452,101 +3872,15 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       onClick={startAddNote}
                       className="inline-flex items-center gap-2 px-3 py-2 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700"
                     >
-                      <FaPlus className="w-3.5 h-3.5" /> Add note
+                      <FaPlus className="w-3.5 h-3.5" /> Note
                     </button>
                   </div>
                 </div>
 
-                {noteComposerOpen ? (
-                <div className="rounded-xl border border-gray-200 p-4 bg-gray-50 mb-4">
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    <span className="text-[10px] font-semibold uppercase text-gray-500 w-full">Quick templates</span>
-                    {CRM_NOTE_QUICK_TEMPLATES.map((tpl) => (
-                      <button
-                        key={tpl.id}
-                        type="button"
-                        className="rounded-full border border-violet-200 bg-white px-2.5 py-1 text-[11px] font-medium text-violet-800 hover:bg-violet-50"
-                        onClick={() =>
-                          setNoteDraft((n) => ({
-                            ...n,
-                            contact_method: tpl.method,
-                            title: tpl.title,
-                            body: tpl.body,
-                          }))
-                        }
-                      >
-                        {tpl.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <label className="block">
-                      <span className="text-xs font-medium text-gray-500 uppercase">Type</span>
-                      <select
-                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm capitalize"
-                        value={noteDraft.contact_method}
-                        onChange={(e) => setNoteDraft((n) => ({ ...n, contact_method: e.target.value }))}
-                      >
-                        {CRM_NOTE_CONTACT_METHODS.map((method) => (
-                          <option key={method} value={method}>
-                            {method.replace(/_/g, ' ')}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="block sm:col-span-2">
-                      <span className="text-xs font-medium text-gray-500 uppercase">Title (optional)</span>
-                      <input
-                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                        value={noteDraft.title}
-                        onChange={(e) => setNoteDraft((n) => ({ ...n, title: e.target.value }))}
-                        placeholder={noteDraft.parent_note_id ? 'Comment title' : 'Quick summary'}
-                      />
-                    </label>
-                    <label className="block sm:col-span-3">
-                      <span className="text-xs font-medium text-gray-500 uppercase">Note details *</span>
-                      <textarea
-                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[96px]"
-                        value={noteDraft.body}
-                        onChange={(e) => setNoteDraft((n) => ({ ...n, body: e.target.value }))}
-                        placeholder={noteDraft.parent_note_id ? 'Add your follow-up comment...' : 'Enter call/email/text/in-person details...'}
-                      />
-                    </label>
-                    <label className="inline-flex items-center gap-2 text-sm text-gray-700 sm:col-span-3">
-                      <input
-                        type="checkbox"
-                        checked={Boolean(noteDraft.made_contact)}
-                        onChange={(e) => setNoteDraft((n) => ({ ...n, made_contact: e.target.checked }))}
-                      />
-                      I made contact
-                    </label>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      disabled={noteSaving}
-                      onClick={saveNote}
-                      className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-50"
-                    >
-                      {noteSaving ? 'Saving…' : noteDraft.id ? 'Update note' : noteDraft.parent_note_id ? 'Save comment' : 'Save note'}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={noteSaving}
-                      onClick={() => {
-                        resetNoteDraft();
-                        setNoteComposerOpen(false);
-                      }}
-                      className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 text-sm font-medium disabled:opacity-50"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-                ) : null}
-
+                {crmActivitySectionOpen ? (
+                <>
                 {crmNotes.length === 0 ? (
-                  <p className="text-sm text-gray-500">No notes yet. Click &quot;Add note&quot; to log the first activity.</p>
+                  <p className="text-sm text-gray-500">No notes yet. Click &quot;Note&quot; to log the first activity.</p>
                 ) : filteredTimelineNotes.length === 0 ? (
                   <p className="text-sm text-gray-500">No items match this filter.</p>
                 ) : (
@@ -3560,6 +3894,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                             <span>{note.made_contact ? 'Contact made' : 'No contact made'}</span>
                             <span>Posted {formatDateTime(note.created_at)}</span>
                             {wasEdited && <span className="text-amber-700">Updated {formatDateTime(note.updated_at)}</span>}
+                            {note.remind_at ? (
+                              <span className="rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-900">
+                                Reminder {formatDateTime(note.remind_at)}
+                              </span>
+                            ) : null}
                           </div>
                           {note.title && <h4 className="mt-2 font-semibold text-gray-900">{note.title}</h4>}
                           <p className="mt-1 text-sm text-gray-800 whitespace-pre-wrap">{note.body}</p>
@@ -3599,6 +3938,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     })}
                   </div>
                 )}
+                </>
+                ) : null}
               </div>
             )}
 
@@ -3715,17 +4056,306 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           </div>
 
           {selectedId && !isCreating ? (
-            <div className="hidden xl:block xl:col-span-3">
+            <div className="hidden lg:block lg:col-span-3">
               <CrmRightRail
                 form={form}
                 metrics={metrics}
                 crmNotesLength={crmNotes.length}
                 isLinked={Boolean(form.linked_user_id || form.linked_company_profile_id)}
                 onAction={handleRailAction}
+                outreachSnapshot={outreachSnapshot}
+                operationalInsights={operationalInsights}
+                formatDateTime={formatDateTime}
               />
             </div>
           ) : null}
         </div>
+
+        {linkAccountModalOpen && selectedId ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="crm-link-account-title"
+          >
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-lg w-full overflow-hidden">
+              <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100">
+                <h2 id="crm-link-account-title" className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <FaBuilding className="text-amber-600" /> Link platform account
+                </h2>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => {
+                    setLinkAccountModalOpen(false);
+                    setSearchQ('');
+                    setSearchHits([]);
+                  }}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+                  aria-label="Close"
+                >
+                  <FaTimes className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="px-6 py-5 space-y-4">
+                <p className="text-xs text-gray-500">
+                  Search by company login email, then select the account. Only company accounts can be linked. One CRM
+                  record links to a company, which can have multiple logins.
+                </p>
+                <div className="relative z-10">
+                  <div className="flex items-center gap-2 border border-gray-300 rounded-lg px-3 py-2 bg-white">
+                    <FaSearch className="text-gray-400 shrink-0" />
+                    <input
+                      className="flex-1 text-sm outline-none"
+                      placeholder="Type at least 2 characters of email…"
+                      value={searchQ}
+                      onChange={(e) => setSearchQ(e.target.value)}
+                    />
+                    {searchBusy && <span className="text-xs text-gray-400">Searching…</span>}
+                  </div>
+                  {searchHits.length > 0 && (
+                    <ul className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto text-sm">
+                      {searchHits.map((u) => (
+                        <li key={u.id}>
+                          <button
+                            type="button"
+                            className="w-full text-left px-3 py-2 hover:bg-gray-50"
+                            onClick={() => selectLinkedAccountFromSearch(u)}
+                          >
+                            <span className="font-medium text-gray-900">{u.email}</span>
+                            {u.company_name && <span className="text-gray-500"> — {u.company_name}</span>}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+                {form.linked_user_id != null && (
+                  <div className="flex flex-wrap items-center gap-3 text-sm">
+                    <span className="text-emerald-700 font-medium">
+                      Linked company user id {form.linked_user_id}
+                      {c?.linked_account?.email && ` (${c.linked_account.email})`}
+                      {c?.linked_account?.company_user_count ? ` - ${c.linked_account.company_user_count} company users` : ''}
+                    </span>
+                    <button type="button" className="text-red-600 hover:underline text-sm font-medium" onClick={unlinkPlatformAccount}>
+                      Unlink
+                    </button>
+                  </div>
+                )}
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLinkAccountModalOpen(false);
+                      setSearchQ('');
+                      setSearchHits([]);
+                    }}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 text-sm"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {reminderModalOpen && selectedId ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="crm-reminder-title"
+          >
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-lg w-full overflow-hidden">
+              <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100">
+                <h2 id="crm-reminder-title" className="text-lg font-semibold text-gray-900">
+                  Reminder to call back
+                </h2>
+                <button
+                  type="button"
+                  disabled={reminderSaving}
+                  onClick={() => setReminderModalOpen(false)}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+                  aria-label="Close"
+                >
+                  <FaTimes className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="px-6 py-5 space-y-3">
+                <label className="block">
+                  <span className="text-xs font-medium text-gray-500 uppercase">When</span>
+                  <input
+                    type="datetime-local"
+                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    value={reminderDraft.remind_at}
+                    onChange={(e) => setReminderDraft((d) => ({ ...d, remind_at: e.target.value }))}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-gray-500 uppercase">Title</span>
+                  <input
+                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    value={reminderDraft.title}
+                    onChange={(e) => setReminderDraft((d) => ({ ...d, title: e.target.value }))}
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-gray-500 uppercase">Details *</span>
+                  <textarea
+                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[96px]"
+                    value={reminderDraft.body}
+                    onChange={(e) => setReminderDraft((d) => ({ ...d, body: e.target.value }))}
+                    placeholder="Who to call and what to follow up on…"
+                  />
+                </label>
+                <div className="flex justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    disabled={reminderSaving}
+                    onClick={() => setReminderModalOpen(false)}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 text-sm disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={reminderSaving}
+                    onClick={saveReminder}
+                    className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm font-medium disabled:opacity-50"
+                  >
+                    {reminderSaving ? 'Saving…' : 'Save reminder'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
+
+        {noteComposerOpen && selectedId ? (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="crm-note-modal-title"
+          >
+            <div className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+              <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
+                <h2 id="crm-note-modal-title" className="text-lg font-semibold text-gray-900">
+                  {noteDraft.parent_note_id ? 'Comment' : noteDraft.id ? 'Edit note' : 'Note'}
+                </h2>
+                <button
+                  type="button"
+                  disabled={noteSaving}
+                  onClick={() => {
+                    resetNoteDraft();
+                    setNoteComposerOpen(false);
+                  }}
+                  className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-50"
+                  aria-label="Close"
+                >
+                  <FaTimes className="w-5 h-5" />
+                </button>
+              </div>
+              <div className="overflow-y-auto px-6 py-5 space-y-4">
+                <div className="flex flex-wrap gap-2">
+                  <span className="text-[10px] font-semibold uppercase text-gray-500 w-full">Quick templates</span>
+                  {CRM_NOTE_QUICK_TEMPLATES.map((tpl) => (
+                    <button
+                      key={tpl.id}
+                      type="button"
+                      className="rounded-full border border-violet-200 bg-white px-2.5 py-1 text-[11px] font-medium text-violet-800 hover:bg-violet-50"
+                      onClick={() =>
+                        setNoteDraft((n) => ({
+                          ...n,
+                          contact_method: tpl.method,
+                          title: tpl.title,
+                          body: tpl.body,
+                        }))
+                      }
+                    >
+                      {tpl.label}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <label className="block">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Type</span>
+                    <select
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm capitalize"
+                      value={noteDraft.contact_method}
+                      onChange={(e) => setNoteDraft((n) => ({ ...n, contact_method: e.target.value }))}
+                    >
+                      {CRM_NOTE_CONTACT_METHODS.map((method) => (
+                        <option key={method} value={method}>
+                          {method.replace(/_/g, ' ')}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Title (optional)</span>
+                    <input
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      value={noteDraft.title}
+                      onChange={(e) => setNoteDraft((n) => ({ ...n, title: e.target.value }))}
+                      placeholder={noteDraft.parent_note_id ? 'Comment title' : 'Quick summary'}
+                    />
+                  </label>
+                  <label className="block sm:col-span-3">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Note details *</span>
+                    <textarea
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[96px]"
+                      value={noteDraft.body}
+                      onChange={(e) => setNoteDraft((n) => ({ ...n, body: e.target.value }))}
+                      placeholder={noteDraft.parent_note_id ? 'Add your follow-up comment...' : 'Enter call/email/text/in-person details...'}
+                    />
+                  </label>
+                  {!noteDraft.parent_note_id ? (
+                    <label className="block sm:col-span-3">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Reminder (optional)</span>
+                      <input
+                        type="datetime-local"
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={noteDraft.remind_at || ''}
+                        onChange={(e) => setNoteDraft((n) => ({ ...n, remind_at: e.target.value }))}
+                      />
+                    </label>
+                  ) : null}
+                  <label className="inline-flex items-center gap-2 text-sm text-gray-700 sm:col-span-3">
+                    <input
+                      type="checkbox"
+                      checked={Boolean(noteDraft.made_contact)}
+                      onChange={(e) => setNoteDraft((n) => ({ ...n, made_contact: e.target.checked }))}
+                    />
+                    I made contact
+                  </label>
+                </div>
+                <div className="flex flex-wrap justify-end gap-2 pt-2">
+                  <button
+                    type="button"
+                    disabled={noteSaving}
+                    onClick={() => {
+                      resetNoteDraft();
+                      setNoteComposerOpen(false);
+                    }}
+                    className="px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-100 text-sm font-medium disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={noteSaving}
+                    onClick={saveNote}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-50"
+                  >
+                    {noteSaving ? 'Saving…' : noteDraft.id ? 'Update note' : noteDraft.parent_note_id ? 'Save comment' : 'Save note'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
 
         {profileImportOpen ? (
           <div
@@ -4099,28 +4729,40 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       </button>
                     </div>
                   </div>
-                  <label className="block sm:col-span-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Login email *</span>
-                    <input
-                      type="email"
-                      required
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={provision.email}
-                      onChange={(e) => setProvision((p) => ({ ...p, email: e.target.value }))}
-                      placeholder="sales@company.com (from CRM company email when set)"
-                      autoComplete="off"
-                    />
-                  </label>
-                  <label className="block sm:col-span-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Phone *</span>
-                    <input
-                      type="tel"
-                      required
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={provision.phone}
-                      onChange={(e) => setProvision((p) => ({ ...p, phone: formatPhoneInput(e.target.value) }))}
-                    />
-                  </label>
+                  {!(provisionMode === 'new' && selectedId && (provision.bulk_rows || []).length > 1 && !provisionModalIsAddLoginForLinkedCrm) ? (
+                    <>
+                      <label className="block sm:col-span-2">
+                        <span className="text-xs font-medium text-gray-500 uppercase">Login email *</span>
+                        <input
+                          type="email"
+                          required
+                          className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                          value={provision.email}
+                          onChange={(e) => setProvision((p) => ({ ...p, email: e.target.value }))}
+                          placeholder="sales@company.com (from CRM company email when set)"
+                          autoComplete="off"
+                        />
+                      </label>
+                      <label className="block sm:col-span-2">
+                        <span className="text-xs font-medium text-gray-500 uppercase">Phone *</span>
+                        <input
+                          type="tel"
+                          required
+                          className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                          value={provision.phone}
+                          onChange={(e) => setProvision((p) => ({ ...p, phone: formatPhoneInput(e.target.value) }))}
+                        />
+                      </label>
+                    </>
+                  ) : (
+                    <div className="sm:col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-gray-700">
+                      <p className="font-medium text-gray-900">Multiple CRM contacts</p>
+                      <p className="mt-1 text-xs text-gray-600">
+                        Use the cards below to choose who gets a platform login. Each row needs its own email and phone.
+                        Select two or more contacts to create one company profile with multiple logins in a single step.
+                      </p>
+                    </div>
+                  )}
                   {provisionMode === 'existing' && (
                     <div className="sm:col-span-2">
                       <span className="text-xs font-medium text-gray-500 uppercase">Find company *</span>
@@ -4175,13 +4817,40 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       placeholder="Registered business or DBA"
                     />
                   </label>
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Industry</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={provision.industry}
-                      onChange={(e) => setProvision((p) => ({ ...p, industry: e.target.value }))}
-                    />
+                  <label className="block sm:col-span-2">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Industries / trades</span>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {CRM_COMPANY_TYPES.map((t) => {
+                        const keys = provision.industry_keys || [];
+                        const checked = keys.includes(t);
+                        return (
+                          <label
+                            key={`prov-ind-${t}`}
+                            className={`inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs font-medium cursor-pointer ${
+                              checked ? 'border-blue-500 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-700'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              className="rounded border-gray-300"
+                              checked={checked}
+                              onChange={() => {
+                                setProvision((p) => {
+                                  const cur = [...(p.industry_keys || [])];
+                                  const next = cur.includes(t) ? cur.filter((k) => k !== t) : [...cur, t];
+                                  return {
+                                    ...p,
+                                    industry_keys: next,
+                                    industry: next.map((k) => companyTypeLabel(k)).join(' | '),
+                                  };
+                                });
+                              }}
+                            />
+                            {companyTypeLabel(t)}
+                          </label>
+                        );
+                      })}
+                    </div>
                   </label>
                   <label className="block">
                     <span className="text-xs font-medium text-gray-500 uppercase">Location</span>
@@ -4242,6 +4911,112 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       onChange={(e) => setProvision((p) => ({ ...p, bio: e.target.value }))}
                     />
                   </label>
+                  {selectedId &&
+                  (provision.bulk_rows || []).length > 1 &&
+                  !provisionModalIsAddLoginForLinkedCrm ? (
+                    <div className="sm:col-span-2 space-y-3">
+                      <div className="text-xs font-medium text-gray-500 uppercase">CRM contacts to provision</div>
+                      {(provision.bulk_rows || []).map((row, i) => (
+                        <div
+                          key={`bulk-${row.contact_index}-${i}`}
+                          className={`rounded-xl border p-3 grid grid-cols-1 sm:grid-cols-2 gap-2 ${
+                            row.selected === false ? 'opacity-60 border-gray-100 bg-gray-50' : 'border-gray-200 bg-white'
+                          }`}
+                        >
+                          <label className="sm:col-span-2 flex items-start gap-2 text-sm">
+                            <input
+                              type="checkbox"
+                              className="mt-1 rounded border-gray-300"
+                              checked={row.selected !== false}
+                              onChange={(e) =>
+                                setProvision((p) => ({
+                                  ...p,
+                                  bulk_rows: (p.bulk_rows || []).map((br) =>
+                                    br.contact_index === row.contact_index
+                                      ? { ...br, selected: e.target.checked }
+                                      : br,
+                                  ),
+                                }))
+                              }
+                            />
+                            <span>
+                              <span className="font-semibold text-gray-900">
+                                Contact {Number(row.contact_index) + 1}
+                                {i === 0 ? ' (primary company login)' : ''}
+                              </span>
+                              <span className="block text-xs text-gray-500">CRM name: {row.name || '—'}</span>
+                            </span>
+                          </label>
+                          <label className="block sm:col-span-2">
+                            <span className="text-xs text-gray-500">Login email *</span>
+                            <input
+                              type="email"
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                              value={row.email}
+                              onChange={(e) =>
+                                setProvision((p) => ({
+                                  ...p,
+                                  bulk_rows: (p.bulk_rows || []).map((br) =>
+                                    br.contact_index === row.contact_index ? { ...br, email: e.target.value } : br,
+                                  ),
+                                }))
+                              }
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-xs text-gray-500">First name *</span>
+                            <input
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                              value={row.first_name}
+                              onChange={(e) =>
+                                setProvision((p) => ({
+                                  ...p,
+                                  bulk_rows: (p.bulk_rows || []).map((br) =>
+                                    br.contact_index === row.contact_index
+                                      ? { ...br, first_name: e.target.value }
+                                      : br,
+                                  ),
+                                }))
+                              }
+                            />
+                          </label>
+                          <label className="block">
+                            <span className="text-xs text-gray-500">Last name *</span>
+                            <input
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                              value={row.last_name}
+                              onChange={(e) =>
+                                setProvision((p) => ({
+                                  ...p,
+                                  bulk_rows: (p.bulk_rows || []).map((br) =>
+                                    br.contact_index === row.contact_index ? { ...br, last_name: e.target.value } : br,
+                                  ),
+                                }))
+                              }
+                            />
+                          </label>
+                          <label className="block sm:col-span-2">
+                            <span className="text-xs text-gray-500">Phone *</span>
+                            <input
+                              type="tel"
+                              className="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                              value={row.phone}
+                              onChange={(e) =>
+                                setProvision((p) => ({
+                                  ...p,
+                                  bulk_rows: (p.bulk_rows || []).map((br) =>
+                                    br.contact_index === row.contact_index
+                                      ? { ...br, phone: formatPhoneInput(e.target.value) }
+                                      : br,
+                                  ),
+                                }))
+                              }
+                            />
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
                   </>
                   )}
                   <div className="sm:col-span-2 flex flex-wrap gap-2">
@@ -4250,7 +5025,17 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       disabled={provisionSaving}
                       className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium disabled:opacity-50"
                     >
-                      {provisionSaving ? 'Creating…' : provisionModalIsAddLoginForLinkedCrm ? 'Create login & send email' : 'Create account & send email'}
+                      {provisionSaving
+                        ? 'Creating…'
+                        : provisionModalIsAddLoginForLinkedCrm
+                          ? 'Create login & send email'
+                          : provisionMode === 'new' &&
+                              selectedId &&
+                              (provision.bulk_rows || []).length > 1 &&
+                              (provision.bulk_rows || []).filter((r) => r.selected !== false && r.selected !== 'false')
+                                .length >= 2
+                            ? 'Create accounts & send emails'
+                            : 'Create account & send email'}
                     </button>
                     <button
                       type="button"

@@ -182,7 +182,7 @@ module Api
             :linked_company_profile_id,
             company_types: [],
             contacts: [
-              :name, :email, :phone, :job_title, :extension, :linked_user_id,
+              :name, :email, :phone, :job_title, :extension, :linked_user_id, :is_primary,
               :instagram_url, :facebook_url, :linkedin_url,
               { same_as_company: %i[email phone socials] }
             ]
@@ -435,6 +435,7 @@ module Api
               title: note.title,
               body: note.body,
               made_contact: note.made_contact,
+              remind_at: note.remind_at&.iso8601,
               created_at: note.created_at,
               updated_at: note.updated_at,
               comments: note.comments.order(created_at: :asc).map do |comment|
@@ -446,6 +447,7 @@ module Api
                   title: comment.title,
                   body: comment.body,
                   made_contact: comment.made_contact,
+                  remind_at: comment.remind_at&.iso8601,
                   created_at: comment.created_at,
                   updated_at: comment.updated_at
                 }

@@ -111,6 +111,7 @@ Rails.application.routes.draw do
         post "masquerade", to: "masquerades#create"
         get "location_suggestions", to: "location_suggestions#index"
         post "company_accounts", to: "company_accounts#create"
+        post "company_accounts/bulk_crm", to: "company_accounts#bulk_crm_create"
         get "company_accounts/search", to: "company_accounts#search"
         get "company_accounts/search_companies", to: "company_accounts#search_companies"
         get "platform_insights", to: "platform_insights#show"
