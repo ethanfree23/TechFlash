@@ -190,6 +190,56 @@ module Api
           assert_equal bob.id, c1[:linked_user_id]
         end
 
+        test "bulk_crm provisions one login when a single CRM contact is selected" do
+          admin = User.create!(
+            email: "admin+bulk_crm_one@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+          lead = CrmLead.create!(
+            name: "Single Contact CRM Co",
+            status: "lead",
+            contacts: [
+              { "name" => "Chris Solo", "email" => "chris+bulk_crm_one@example.com", "phone" => "555-333-3333" }
+            ]
+          )
+
+          post "/api/v1/admin/company_accounts/bulk_crm",
+               params: {
+                 crm_lead_id: lead.id,
+                 company: {
+                   company_name: "Single Contact CRM Co LLC",
+                   state: "Texas",
+                   bio: "Bio for single-contact bulk CRM company profile.",
+                   industry: "Electrical",
+                   location: "Houston, Texas"
+                 },
+                 contacts: [
+                   {
+                     contact_index: 0,
+                     email: "chris+bulk_crm_one@example.com",
+                     first_name: "Chris",
+                     last_name: "Solo",
+                     phone: "555-333-3333",
+                     selected: true
+                   }
+                 ]
+               },
+               headers: auth_header_for(admin),
+               as: :json
+
+          assert_response :created
+          assert_equal 1, CrmLead.count
+          lead.reload
+          chris = User.find_by!(email: "chris+bulk_crm_one@example.com")
+          assert_equal lead.linked_company_profile_id, chris.company_profile_id
+          assert_equal chris.id, lead.linked_user_id
+
+          c0 = lead.contacts[0].with_indifferent_access
+          assert_equal chris.id, c0[:linked_user_id]
+        end
+
         test "create additional company login links CRM lead when crm_lead_id is provided" do
           admin = User.create!(
             email: "admin+crm_link_login@example.com",

@@ -1178,9 +1178,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     const crmLeadId = Number.isFinite(sid) && sid > 0 ? sid : null;
     const bulkRows = Array.isArray(provision.bulk_rows) ? provision.bulk_rows : [];
     const selectedBulk = bulkRows.filter((r) => r.selected !== false && r.selected !== 'false');
-    const showBulkUi =
-      provisionMode === 'new' && crmLeadId != null && bulkRows.length > 1;
-    const useBulkProvision = showBulkUi && selectedBulk.length >= 2;
+    const isCrmNewCompanyFromLead = crmLeadId != null && provisionMode === 'new';
+    const willBulkCrmFromLead =
+      isCrmNewCompanyFromLead && bulkRows.length >= 1 && selectedBulk.length >= 1;
 
     const nameSource =
       provisionMode === 'existing'
@@ -1192,86 +1192,39 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     let derivedFirst;
     let derivedLast;
 
-    if (useBulkProvision) {
-      const sorted = [...selectedBulk].sort((a, b) => Number(a.contact_index) - Number(b.contact_index));
-      const firstRow = sorted[0];
-      email = String(firstRow.email || '').trim();
-      phone = formatPhoneInput(String(firstRow.phone || '').trim());
-      let fn = String(firstRow.first_name || '').trim();
-      let ln = String(firstRow.last_name || '').trim();
-      if (!fn && !ln) {
-        const sn = splitContactNameForProvision(firstRow.name);
-        fn = sn.firstName;
-        ln = sn.lastName;
-      }
-      if (!fn || !ln) {
-        const fb = splitDisplayNameFromCompanyName(nameSource);
-        fn = fn || fb.first_name;
-        ln = ln || fb.last_name;
-      }
-      derivedFirst = fn;
-      derivedLast = ln;
-    } else if (showBulkUi && selectedBulk.length === 1) {
-      const r0 = selectedBulk[0];
-      email = String(r0.email || '').trim();
-      phone = formatPhoneInput(String(r0.phone || '').trim());
-      let fn = String(r0.first_name || '').trim();
-      let ln = String(r0.last_name || '').trim();
-      if (!fn && !ln) {
-        const sn = splitContactNameForProvision(r0.name);
-        fn = sn.firstName;
-        ln = sn.lastName;
-      }
-      const fb = splitDisplayNameFromCompanyName(nameSource);
-      derivedFirst = fn || fb.first_name;
-      derivedLast = ln || fb.last_name;
-    } else {
-      const sp = splitDisplayNameFromCompanyName(nameSource);
-      derivedFirst = sp.first_name;
-      derivedLast = sp.last_name;
+    if (isCrmNewCompanyFromLead && bulkRows.length === 0) {
+      setAlertModal({
+        isOpen: true,
+        title: 'CRM contacts',
+        message:
+          'Add at least one contact on this CRM company record before creating a platform company. Platform logins are created per contact.',
+        variant: 'error',
+      });
+      return;
     }
 
-    if (showBulkUi && selectedBulk.length === 0) {
+    if (isCrmNewCompanyFromLead && bulkRows.length >= 1 && selectedBulk.length === 0) {
       setAlertModal({
         isOpen: true,
         title: 'Select contacts',
-        message: 'Choose at least one CRM contact to provision.',
+        message: 'Choose at least one CRM contact to grant a platform login.',
         variant: 'error',
       });
       return;
     }
 
-    if (!email) {
-      setAlertModal({
-        isOpen: true,
-        title: 'Email required',
-        message: showBulkUi
-          ? 'Each selected contact needs a login email.'
-          : 'Enter the company login email.',
-        variant: 'error',
-      });
-      return;
-    }
-    if (!phone) {
-      setAlertModal({
-        isOpen: true,
-        title: 'Phone required',
-        message: 'Phone number is required.',
-        variant: 'error',
-      });
-      return;
-    }
-
-    if (useBulkProvision) {
-      const emails = selectedBulk.map((r) => String(r.email || '').trim().toLowerCase()).filter(Boolean);
-      if (emails.length !== new Set(emails).size) {
-        setAlertModal({
-          isOpen: true,
-          title: 'Duplicate emails',
-          message: 'Each selected contact needs a unique login email.',
-          variant: 'error',
-        });
-        return;
+    if (willBulkCrmFromLead) {
+      if (selectedBulk.length > 1) {
+        const emails = selectedBulk.map((r) => String(r.email || '').trim().toLowerCase()).filter(Boolean);
+        if (emails.length !== new Set(emails).size) {
+          setAlertModal({
+            isOpen: true,
+            title: 'Duplicate emails',
+            message: 'Each selected contact needs a unique login email.',
+            variant: 'error',
+          });
+          return;
+        }
       }
       for (const r of selectedBulk) {
         const em = String(r.email || '').trim();
@@ -1287,7 +1240,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           setAlertModal({
             isOpen: true,
             title: 'Name required',
-            message: 'Each selected contact needs a first and last name (or a full name to split).',
+            message: 'Each selected contact needs a first and last name (or a full name that can be split).',
             variant: 'error',
           });
           return;
@@ -1296,11 +1249,34 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           setAlertModal({
             isOpen: true,
             title: 'Missing contact fields',
-            message: 'Each selected contact needs email and phone.',
+            message: 'Each selected contact needs an email and phone for their platform login.',
             variant: 'error',
           });
           return;
         }
+      }
+    } else {
+      const sp = splitDisplayNameFromCompanyName(nameSource);
+      derivedFirst = sp.first_name;
+      derivedLast = sp.last_name;
+
+      if (!email) {
+        setAlertModal({
+          isOpen: true,
+          title: 'Email required',
+          message: 'Enter the login email for this user.',
+          variant: 'error',
+        });
+        return;
+      }
+      if (!phone) {
+        setAlertModal({
+          isOpen: true,
+          title: 'Phone required',
+          message: 'Phone number is required.',
+          variant: 'error',
+        });
+        return;
       }
     }
 
@@ -1318,7 +1294,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       });
       return;
     }
-    if (provisionMode === 'new' && !useBulkProvision && !provision.phone?.trim()) {
+    if (provisionMode === 'new' && !willBulkCrmFromLead && !provision.phone?.trim()) {
       setAlertModal({
         isOpen: true,
         title: 'Phone required',
@@ -1353,7 +1329,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         prevLinkedProfileId != null &&
         Number(prevSelectedCompanyId) === Number(prevLinkedProfileId);
 
-      if (useBulkProvision) {
+      if (willBulkCrmFromLead) {
         await crmAPI.bulkCrmProvision({
           crm_lead_id: crmLeadId,
           company: {
@@ -1419,17 +1395,22 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         await loadDetail(crmLeadId);
         await loadList();
       }
+      const bulkLoginCount = willBulkCrmFromLead ? selectedBulk.length : 0;
       setAlertModal({
         isOpen: true,
         title: wasAddLoginForLinkedCrm
           ? 'Company login created'
-          : useBulkProvision
-            ? 'Company accounts created'
+          : willBulkCrmFromLead
+            ? bulkLoginCount > 1
+              ? 'Company and logins created'
+              : 'Company and login created'
             : 'Company account created',
         message: wasAddLoginForLinkedCrm
           ? 'Another company login was created and the welcome email was sent when applicable.'
-          : useBulkProvision
-            ? 'Company profiles and logins were created, the CRM record is linked, and welcome emails were sent when applicable.'
+          : willBulkCrmFromLead
+            ? bulkLoginCount > 1
+              ? 'A new company profile was created; this CRM record is linked; and welcome emails were sent to each selected contact when applicable.'
+              : 'A new company profile was created; this CRM record is linked; and a welcome email was sent when applicable.'
             : crmLeadId != null
               ? 'Company account created and this CRM record is now linked.'
               : 'Company account created successfully.',
@@ -2271,6 +2252,16 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     provisionMode === 'existing' &&
     selectedCompany?.id != null &&
     Number(selectedCompany.id) === Number(form.linked_company_profile_id);
+
+  const provisionCrmNewCompanyFromLead =
+    Boolean(selectedId) && !provisionModalIsAddLoginForLinkedCrm && provisionMode === 'new';
+  const provisionBulkRowCount = (provision.bulk_rows || []).length;
+  const provisionSelectedContactCount = (provision.bulk_rows || []).filter(
+    (r) => r.selected !== false && r.selected !== 'false',
+  ).length;
+  const showProvisionTopLoginFields = provisionModalIsAddLoginForLinkedCrm || !provisionCrmNewCompanyFromLead;
+  const provisionSubmitDisabledForContacts =
+    provisionSaving || (provisionCrmNewCompanyFromLead && provisionBulkRowCount === 0);
 
   const crmContactsWithPlatformMatch = useMemo(() => {
     const matchedIds = new Set();
@@ -4916,7 +4907,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             <div className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col">
               <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
                 <h2 id="crm-provision-title" className="text-lg font-semibold text-gray-900">
-                  {provisionModalIsAddLoginForLinkedCrm ? 'Add company login' : 'Create platform company account'}
+                  {provisionModalIsAddLoginForLinkedCrm
+                    ? 'Add company login'
+                    : provisionCrmNewCompanyFromLead
+                      ? 'Create platform company'
+                      : 'Create platform company account'}
                 </h2>
                 <button
                   type="button"
@@ -4935,43 +4930,66 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       Add another company-role login for this CRM record&apos;s linked platform company. Enter a new
                       email and phone for the additional user.
                     </>
+                  ) : provisionCrmNewCompanyFromLead ? (
+                    <>
+                      <span className="font-medium text-gray-800">New company only.</span> This creates one new
+                      platform company profile from this CRM record. The company does not have its own login — you
+                      choose which CRM contacts get platform accounts, and you enter each person&apos;s signup email and
+                      phone in their card below.
+                    </>
                   ) : (
                     <>
-                      Prefills from this CRM company profile. You are creating a company platform login (and a new
-                      company profile when you choose &quot;New company&quot;), not a personal contact record.
+                      Prefills from this CRM company profile. Choose account target and enter the login email and
+                      phone for the user you are creating.
                     </>
                   )}
                 </p>
                 <form onSubmit={provisionCompanyAccount} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="sm:col-span-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Account target</span>
-                    <div className="mt-2 flex gap-2">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setProvisionMode('new');
-                          setSelectedCompany(null);
-                        }}
-                        disabled={provisionModalIsAddLoginForLinkedCrm}
-                        className={`px-3 py-2 rounded-lg text-sm font-medium border ${
-                          provisionMode === 'new' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700'
-                        } ${provisionModalIsAddLoginForLinkedCrm ? 'opacity-40 cursor-not-allowed' : ''}`}
-                      >
-                        New company
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setProvisionMode('existing')}
-                        disabled={provisionModalIsAddLoginForLinkedCrm}
-                        className={`px-3 py-2 rounded-lg text-sm font-medium border ${
-                          provisionMode === 'existing' ? 'bg-blue-600 text-white border-blue-600' : 'border-gray-300 text-gray-700'
-                        } ${provisionModalIsAddLoginForLinkedCrm ? 'opacity-40 cursor-not-allowed' : ''}`}
-                      >
-                        Existing company
-                      </button>
+                  {provisionCrmNewCompanyFromLead ? (
+                    <label className="block sm:col-span-2">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Company display name *</span>
+                      <input
+                        required
+                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                        value={provision.company_name}
+                        onChange={(e) => setProvision((p) => ({ ...p, company_name: e.target.value }))}
+                        placeholder="Registered business or DBA"
+                      />
+                    </label>
+                  ) : null}
+                  {!provisionModalIsAddLoginForLinkedCrm && !provisionCrmNewCompanyFromLead ? (
+                    <div className="sm:col-span-2">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Account target</span>
+                      <div className="mt-2 flex gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setProvisionMode('new');
+                            setSelectedCompany(null);
+                          }}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium border ${
+                            provisionMode === 'new'
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'border-gray-300 text-gray-700'
+                          }`}
+                        >
+                          New company
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setProvisionMode('existing')}
+                          className={`px-3 py-2 rounded-lg text-sm font-medium border ${
+                            provisionMode === 'existing'
+                              ? 'bg-blue-600 text-white border-blue-600'
+                              : 'border-gray-300 text-gray-700'
+                          }`}
+                        >
+                          Existing company
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                  {!(provisionMode === 'new' && selectedId && (provision.bulk_rows || []).length > 1 && !provisionModalIsAddLoginForLinkedCrm) ? (
+                  ) : null}
+                  {showProvisionTopLoginFields ? (
                     <>
                       <label className="block sm:col-span-2">
                         <span className="text-xs font-medium text-gray-500 uppercase">Login email *</span>
@@ -4996,15 +5014,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         />
                       </label>
                     </>
-                  ) : (
-                    <div className="sm:col-span-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-gray-700">
-                      <p className="font-medium text-gray-900">Multiple CRM contacts</p>
-                      <p className="mt-1 text-xs text-gray-600">
-                        Use the cards below to choose who gets a platform login. Each row needs its own email and phone.
-                        Select two or more contacts to create one company profile with multiple logins in a single step.
-                      </p>
-                    </div>
-                  )}
+                  ) : null}
                   {provisionMode === 'existing' && (
                     <div className="sm:col-span-2">
                       <span className="text-xs font-medium text-gray-500 uppercase">Find company *</span>
@@ -5049,6 +5059,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   )}
                   {provisionMode === 'new' && (
                   <>
+                  {!provisionCrmNewCompanyFromLead ? (
                   <label className="block sm:col-span-2">
                     <span className="text-xs font-medium text-gray-500 uppercase">Company display name *</span>
                     <input
@@ -5059,6 +5070,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       placeholder="Registered business or DBA"
                     />
                   </label>
+                  ) : null}
                   <label className="block sm:col-span-2">
                     <span className="text-xs font-medium text-gray-500 uppercase">Industries / trades</span>
                     <div className="mt-2 flex flex-wrap gap-2">
@@ -5153,11 +5165,20 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       onChange={(e) => setProvision((p) => ({ ...p, bio: e.target.value }))}
                     />
                   </label>
-                  {selectedId &&
-                  (provision.bulk_rows || []).length > 1 &&
-                  !provisionModalIsAddLoginForLinkedCrm ? (
+                  {provisionCrmNewCompanyFromLead && provisionBulkRowCount === 0 ? (
+                    <div className="sm:col-span-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                      Add at least one CRM contact on the company record before you can create platform logins.
+                    </div>
+                  ) : null}
+                  {provisionCrmNewCompanyFromLead && provisionBulkRowCount >= 1 ? (
                     <div className="sm:col-span-2 space-y-3">
-                      <div className="text-xs font-medium text-gray-500 uppercase">CRM contacts to provision</div>
+                      <div>
+                        <div className="text-xs font-medium text-gray-500 uppercase">Platform logins</div>
+                        <p className="mt-1 text-xs text-gray-600">
+                          Select which CRM contacts should receive platform accounts. Enter each person&apos;s login
+                          email, name, and phone in their card.
+                        </p>
+                      </div>
                       {(provision.bulk_rows || []).map((row, i) => (
                         <div
                           key={`bulk-${row.contact_index}-${i}`}
@@ -5183,10 +5204,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                             />
                             <span>
                               <span className="font-semibold text-gray-900">
-                                Contact {Number(row.contact_index) + 1}
-                                {i === 0 ? ' (primary company login)' : ''}
+                                CRM contact {Number(row.contact_index) + 1}
                               </span>
-                              <span className="block text-xs text-gray-500">CRM name: {row.name || '—'}</span>
+                              <span className="block text-xs text-gray-500">Name on record: {row.name || '—'}</span>
                             </span>
                           </label>
                           <label className="block sm:col-span-2">
@@ -5264,19 +5284,17 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   <div className="sm:col-span-2 flex flex-wrap gap-2">
                     <button
                       type="submit"
-                      disabled={provisionSaving}
+                      disabled={provisionSubmitDisabledForContacts}
                       className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium disabled:opacity-50"
                     >
                       {provisionSaving
                         ? 'Creating…'
                         : provisionModalIsAddLoginForLinkedCrm
                           ? 'Create login & send email'
-                          : provisionMode === 'new' &&
-                              selectedId &&
-                              (provision.bulk_rows || []).length > 1 &&
-                              (provision.bulk_rows || []).filter((r) => r.selected !== false && r.selected !== 'false')
-                                .length >= 2
-                            ? 'Create accounts & send emails'
+                          : provisionCrmNewCompanyFromLead
+                            ? provisionSelectedContactCount > 1
+                              ? 'Create company & send login emails'
+                              : 'Create company & send login email'
                             : 'Create account & send email'}
                     </button>
                     <button

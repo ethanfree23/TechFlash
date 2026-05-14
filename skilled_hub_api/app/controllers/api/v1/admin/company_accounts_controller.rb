@@ -61,7 +61,7 @@ module Api
         end
 
         # POST /api/v1/admin/company_accounts/bulk_crm
-        # Creates one company profile + first selected CRM contact as owner login, then additional
+        # Creates one company profile + first selected CRM contact as owner login, then optional additional
         # company logins for other selected contacts, links the CRM lead, and sets linked_user_id on contacts.
         def bulk_crm_create
           p = bulk_crm_params
@@ -78,8 +78,8 @@ module Api
           rows = rows.reject { |r| r[:selected] == false || r[:selected] == "false" || r[:selected] == "0" }
           rows.sort_by! { |r| r[:contact_index].to_i }
 
-          if rows.length < 2
-            return render json: { errors: ["Select at least two contacts for bulk provisioning"] }, status: :unprocessable_entity
+          if rows.length < 1
+            return render json: { errors: ["Select at least one CRM contact to provision"] }, status: :unprocessable_entity
           end
 
           emails = rows.map { |r| r[:email].to_s.strip.downcase }.reject(&:blank?)
