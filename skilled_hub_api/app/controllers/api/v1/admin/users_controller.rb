@@ -206,7 +206,18 @@ module Api
           user = provisioned_user!
           return if user.nil?
 
-          user_attrs = user_admin_params.to_h.transform_values { |v| v.is_a?(String) ? v.strip.presence : v }
+          p_user = user_admin_params
+          user_attrs = {}
+          %i[first_name last_name].each do |k|
+            next unless p_user.key?(k)
+
+            v = p_user[k]
+            user_attrs[k] = v.is_a?(String) ? v.strip.presence : v
+          end
+          if p_user.key?(:account_phone)
+            v = p_user[:account_phone]
+            user_attrs[:phone] = v.is_a?(String) ? v.strip.presence : v
+          end
           user.update!(user_attrs) if user_attrs.any?
 
           if user.company?
@@ -357,7 +368,8 @@ module Api
 
         def user_admin_params
           # job_alert_trade_label is persisted on job_alert_preferences, not users (see update_profile).
-          params.permit(:first_name, :last_name)
+          # account_phone maps to users.phone (see update_profile); distinct from company_profile :phone.
+          params.permit(:first_name, :last_name, :account_phone)
         end
 
         def technician_profile_admin_params

@@ -83,6 +83,33 @@ module Api
           body = JSON.parse(response.body)
           assert_equal remind.iso8601, body.dig("crm_note", "remind_at")
         end
+
+        test "creates reminder note with empty body when remind_at is set" do
+          admin = User.create!(
+            email: "admin+crm_notes_remind_empty@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+          lead = CrmLead.create!(name: "Remind Empty Co", status: "lead")
+          remind = 3.days.from_now.change(usec: 0)
+
+          post "/api/v1/admin/crm_leads/#{lead.id}/crm_notes",
+               params: {
+                 contact_method: "note",
+                 title: "Ping",
+                 body: "",
+                 made_contact: false,
+                 remind_at: remind.iso8601
+               },
+               headers: auth_header_for(admin),
+               as: :json
+
+          assert_response :created
+          body = JSON.parse(response.body)
+          assert_nil body.dig("crm_note", "body").presence
+          assert_equal remind.iso8601, body.dig("crm_note", "remind_at")
+        end
       end
     end
   end

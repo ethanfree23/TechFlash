@@ -7,7 +7,7 @@ class CrmNote < ApplicationRecord
   belongs_to :parent_note, class_name: "CrmNote", optional: true
   has_many :comments, class_name: "CrmNote", foreign_key: :parent_note_id, dependent: :nullify
 
-  validates :body, presence: true
+  validates :body, presence: true, unless: -> { remind_at.present? }
   validates :contact_method, inclusion: { in: CONTACT_METHODS }
   validate :parent_note_must_belong_to_same_lead
 
