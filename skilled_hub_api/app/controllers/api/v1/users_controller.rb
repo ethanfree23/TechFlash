@@ -141,6 +141,20 @@ module Api
           end
         end
 
+        if permitted_role == 'company'
+          company_name = params[:company_name].to_s.strip
+          if company_name.blank?
+            return render json: { error: "company_name is required for company signup" }, status: :unprocessable_entity
+          end
+          industry = params[:industry].to_s.strip
+          if industry.blank?
+            return render json: { error: "industry is required for company signup" }, status: :unprocessable_entity
+          end
+          unless TECHNICIAN_TRADE_OPTIONS.include?(industry)
+            return render json: { error: "industry must be selected from the trade list" }, status: :unprocessable_entity
+          end
+        end
+
         membership_level = MembershipPolicy.normalized_level(params[:membership_tier] || params[:membership_level], audience: permitted_role)
         unless MembershipPolicy.level_valid?(membership_level, audience: permitted_role)
           return render json: { error: "membership_tier is not valid for the selected role" }, status: :unprocessable_entity
@@ -155,6 +169,9 @@ module Api
           if user.company?
             profile = CompanyProfile.new(
               user: user,
+              company_name: params[:company_name].to_s.strip,
+              industry: params[:industry].to_s.strip,
+              primary_hiring_need: params[:primary_hiring_need].to_s.strip.presence,
               membership_level: membership_level,
               phone: phone.presence,
               state: state.presence,
@@ -168,6 +185,20 @@ module Api
             end
             user.update_column(:company_profile_id, profile.id)
           elsif user.technician?
+            specialties =
+              case params[:specialties]
+              when Array
+                params[:specialties].map { |s| s.to_s.strip }.reject(&:blank?)
+              when String
+                begin
+                  parsed = JSON.parse(params[:specialties])
+                  parsed.is_a?(Array) ? parsed.map { |s| s.to_s.strip }.reject(&:blank?) : []
+                rescue JSON::ParserError
+                  []
+                end
+              else
+                []
+              end
             TechnicianProfile.create!(
               user: user,
               trade_type: trade_type,
@@ -179,7 +210,8 @@ module Api
               state: state,
               zip_code: zip_code,
               country: country,
-              membership_level: membership_level
+              membership_level: membership_level,
+              specialties: specialties
             )
           end
           MailDelivery.safe_deliver { UserMailer.welcome_email(user).deliver_now }

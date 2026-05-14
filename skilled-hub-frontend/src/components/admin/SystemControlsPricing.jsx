@@ -45,6 +45,13 @@ const emptyNewTier = () => ({
   slug: '',
   display_name: '',
   monthly_fee_dollars: '0',
+  yearly_fee_dollars: '0',
+  yearly_savings_label: '',
+  feature_bullets_text: '',
+  job_access_summary: '',
+  commission_summary: '',
+  is_highlighted: false,
+  active: true,
   commission_percent: '10',
   early_access_delay_hours: '0',
   sort_order: '0',
@@ -52,11 +59,20 @@ const emptyNewTier = () => ({
 });
 
 function tierToFormRow(t, audience) {
+  const bullets = Array.isArray(t.feature_bullets) ? t.feature_bullets : [];
   return {
     id: t.id,
     slug: t.slug,
     display_name: t.display_name || '',
     monthly_fee_dollars: (t.monthly_fee_cents / 100).toFixed(2),
+    yearly_fee_dollars: ((t.yearly_fee_cents ?? 0) / 100).toFixed(2),
+    yearly_savings_label: t.yearly_savings_label || '',
+    feature_bullets_text: bullets.join('\n'),
+    job_access_summary: t.job_access_summary || '',
+    commission_summary: t.commission_summary || '',
+    is_highlighted: !!t.is_highlighted,
+    active: t.active !== false,
+    monthly_fee_cents: t.monthly_fee_cents,
     commission_percent: String(t.commission_percent),
     early_access_delay_hours:
       audience === 'technician' ? String(t.early_access_delay_hours ?? 0) : '',
@@ -262,6 +278,16 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
         const payload = {
           display_name: r.display_name.trim() || null,
           monthly_fee_cents,
+          yearly_fee_cents: Math.round(parseFloat(r.yearly_fee_dollars) * 100) || 0,
+          yearly_savings_label: r.yearly_savings_label.trim() || null,
+          feature_bullets: String(r.feature_bullets_text || '')
+            .split(/\r?\n/)
+            .map((s) => s.trim())
+            .filter(Boolean),
+          job_access_summary: r.job_access_summary.trim() || null,
+          commission_summary: r.commission_summary.trim() || null,
+          is_highlighted: !!r.is_highlighted,
+          active: r.active !== false,
           commission_percent,
           sort_order,
           stripe_price_id,
@@ -273,6 +299,19 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
         const unchanged =
           (orig.display_name || '') === (r.display_name.trim() || '') &&
           orig.monthly_fee_cents === monthly_fee_cents &&
+          (orig.yearly_fee_cents ?? 0) === (Math.round(parseFloat(r.yearly_fee_dollars) * 100) || 0) &&
+          (orig.yearly_savings_label || '') === (r.yearly_savings_label.trim() || '') &&
+          JSON.stringify(Array(orig.feature_bullets || [])) ===
+            JSON.stringify(
+              String(r.feature_bullets_text || '')
+                .split(/\r?\n/)
+                .map((s) => s.trim())
+                .filter(Boolean)
+            ) &&
+          (orig.job_access_summary || '') === (r.job_access_summary.trim() || '') &&
+          (orig.commission_summary || '') === (r.commission_summary.trim() || '') &&
+          !!orig.is_highlighted === !!r.is_highlighted &&
+          (orig.active !== false) === (r.active !== false) &&
           Math.abs(orig.commission_percent - commission_percent) < 0.0001 &&
           orig.sort_order === sort_order &&
           (orig.stripe_price_id || '') === (stripe_price_id || '') &&
@@ -305,6 +344,16 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
         slug,
         display_name: newTier.display_name.trim() || null,
         monthly_fee_cents,
+        yearly_fee_cents: Math.round(parseFloat(newTier.yearly_fee_dollars) * 100) || 0,
+        yearly_savings_label: newTier.yearly_savings_label.trim() || null,
+        feature_bullets: String(newTier.feature_bullets_text || '')
+          .split(/\r?\n/)
+          .map((s) => s.trim())
+          .filter(Boolean),
+        job_access_summary: newTier.job_access_summary.trim() || null,
+        commission_summary: newTier.commission_summary.trim() || null,
+        is_highlighted: !!newTier.is_highlighted,
+        active: newTier.active !== false,
         commission_percent: parseFloat(newTier.commission_percent) || 0,
         sort_order: parseInt(newTier.sort_order, 10) || 0,
         stripe_price_id: newTier.stripe_price_id.trim() || null,
@@ -604,107 +653,189 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
                       <th className="px-3 py-2 font-medium">Slug</th>
                       <th className="px-3 py-2 font-medium">Display name</th>
                       <th className="px-3 py-2 font-medium">Monthly fee ($)</th>
+                      <th className="px-3 py-2 font-medium">Yearly fee ($)</th>
+                      <th className="px-3 py-2 font-medium">Yearly savings label</th>
                       <th className="px-3 py-2 font-medium">Commission %</th>
                       {audience === 'technician' && (
                         <th className="px-3 py-2 font-medium">Early access (hrs)</th>
                       )}
                       <th className="px-3 py-2 font-medium">Sort</th>
+                      <th className="px-3 py-2 font-medium">Highlight</th>
+                      <th className="px-3 py-2 font-medium">Active</th>
                       <th className="px-3 py-2 font-medium min-w-[200px]">Stripe subscription (price_…)</th>
                       <th className="px-3 py-2 font-medium w-24" />
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((r) => (
-                      <tr key={r.id} className="border-t border-gray-100">
-                        <td className="px-3 py-2 font-mono text-xs text-gray-800">{r.slug}</td>
-                        <td className="px-3 py-2">
-                          <input
-                            value={r.display_name}
-                            onChange={(e) => updateRow(r.id, 'display_name', e.target.value)}
-                            className="w-full border rounded px-2 py-1 text-sm"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={r.monthly_fee_dollars}
-                            onChange={(e) => updateRow(r.id, 'monthly_fee_dollars', e.target.value)}
-                            className="w-24 border rounded px-2 py-1 text-sm"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            min="0"
-                            step="0.001"
-                            value={r.commission_percent}
-                            onChange={(e) => updateRow(r.id, 'commission_percent', e.target.value)}
-                            className="w-24 border rounded px-2 py-1 text-sm"
-                          />
-                        </td>
-                        {audience === 'technician' && (
+                      <React.Fragment key={r.id}>
+                        <tr className="border-t border-gray-100">
+                          <td className="px-3 py-2 font-mono text-xs text-gray-800">{r.slug}</td>
+                          <td className="px-3 py-2">
+                            <input
+                              value={r.display_name}
+                              onChange={(e) => updateRow(r.id, 'display_name', e.target.value)}
+                              className="w-full border rounded px-2 py-1 text-sm"
+                            />
+                          </td>
                           <td className="px-3 py-2">
                             <input
                               type="number"
                               min="0"
-                              step="1"
-                              value={r.early_access_delay_hours}
-                              onChange={(e) => updateRow(r.id, 'early_access_delay_hours', e.target.value)}
-                              className="w-20 border rounded px-2 py-1 text-sm"
+                              step="0.01"
+                              value={r.monthly_fee_dollars}
+                              onChange={(e) => updateRow(r.id, 'monthly_fee_dollars', e.target.value)}
+                              className="w-24 border rounded px-2 py-1 text-sm"
                             />
                           </td>
-                        )}
-                        <td className="px-3 py-2">
-                          <input
-                            type="number"
-                            step="1"
-                            value={r.sort_order}
-                            onChange={(e) => updateRow(r.id, 'sort_order', e.target.value)}
-                            className="w-16 border rounded px-2 py-1 text-sm"
-                          />
-                        </td>
-                        <td className="px-3 py-2">
-                          <div className="space-y-1.5 min-w-[180px] max-w-xs">
+                          <td className="px-3 py-2">
                             <input
-                              value={r.stripe_price_id}
-                              onChange={(e) => updateRow(r.id, 'stripe_price_id', e.target.value)}
-                              className="w-full border rounded px-2 py-1 text-xs font-mono"
-                              placeholder="price_…"
-                              autoComplete="off"
-                              title="Recurring price ID. Clear and create a new one in Stripe if the monthly fee changed."
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={r.yearly_fee_dollars}
+                              onChange={(e) => updateRow(r.id, 'yearly_fee_dollars', e.target.value)}
+                              className="w-24 border rounded px-2 py-1 text-sm"
                             />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              value={r.yearly_savings_label}
+                              onChange={(e) => updateRow(r.id, 'yearly_savings_label', e.target.value)}
+                              className="w-28 border rounded px-2 py-1 text-sm"
+                              placeholder="Save 15%"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.001"
+                              value={r.commission_percent}
+                              onChange={(e) => updateRow(r.id, 'commission_percent', e.target.value)}
+                              className="w-24 border rounded px-2 py-1 text-sm"
+                            />
+                          </td>
+                          {audience === 'technician' && (
+                            <td className="px-3 py-2">
+                              <input
+                                type="number"
+                                min="0"
+                                step="1"
+                                value={r.early_access_delay_hours}
+                                onChange={(e) => updateRow(r.id, 'early_access_delay_hours', e.target.value)}
+                                className="w-20 border rounded px-2 py-1 text-sm"
+                              />
+                            </td>
+                          )}
+                          <td className="px-3 py-2">
+                            <input
+                              type="number"
+                              step="1"
+                              value={r.sort_order}
+                              onChange={(e) => updateRow(r.id, 'sort_order', e.target.value)}
+                              className="w-16 border rounded px-2 py-1 text-sm"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <label className="inline-flex items-center gap-1 text-xs text-gray-700">
+                              <input
+                                type="checkbox"
+                                checked={!!r.is_highlighted}
+                                onChange={(e) => updateRow(r.id, 'is_highlighted', e.target.checked)}
+                              />
+                              Popular
+                            </label>
+                          </td>
+                          <td className="px-3 py-2">
+                            <label className="inline-flex items-center gap-1 text-xs text-gray-700">
+                              <input
+                                type="checkbox"
+                                checked={r.active !== false}
+                                onChange={(e) => updateRow(r.id, 'active', e.target.checked)}
+                              />
+                              Active
+                            </label>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="space-y-1.5 min-w-[180px] max-w-xs">
+                              <input
+                                value={r.stripe_price_id}
+                                onChange={(e) => updateRow(r.id, 'stripe_price_id', e.target.value)}
+                                className="w-full border rounded px-2 py-1 text-xs font-mono"
+                                placeholder="price_…"
+                                autoComplete="off"
+                                title="Recurring price ID. Clear and create a new one in Stripe if the monthly fee changed."
+                              />
+                              <button
+                                type="button"
+                                className="w-full px-2 py-1 text-xs font-medium bg-gray-900 text-white rounded-md hover:bg-gray-800 disabled:opacity-45 disabled:cursor-not-allowed"
+                                disabled={
+                                  saving ||
+                                  loading ||
+                                  provisionBusyId !== null ||
+                                  (parseFloat(r.monthly_fee_dollars) || 0) <= 0 ||
+                                  (r.stripe_price_id && String(r.stripe_price_id).trim() !== '')
+                                }
+                                title="Creates a product + monthly recurring price in Stripe using the fee last saved in TechFlash. Remove the price ID first if you need a different amount."
+                                onClick={() => handleProvisionStripe(r.id)}
+                              >
+                                {provisionBusyId === r.id ? 'Creating in Stripe…' : 'Create in Stripe'}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-right">
                             <button
                               type="button"
-                              className="w-full px-2 py-1 text-xs font-medium bg-gray-900 text-white rounded-md hover:bg-gray-800 disabled:opacity-45 disabled:cursor-not-allowed"
-                              disabled={
-                                saving ||
-                                loading ||
-                                provisionBusyId !== null ||
-                                (parseFloat(r.monthly_fee_dollars) || 0) <= 0 ||
-                                (r.stripe_price_id && String(r.stripe_price_id).trim() !== '')
-                              }
-                              title="Creates a product + monthly recurring price in Stripe using the fee last saved in TechFlash. Remove the price ID first if you need a different amount."
-                              onClick={() => handleProvisionStripe(r.id)}
+                              onClick={() => {
+                                setDeleteTarget({ id: r.id, slug: r.slug });
+                                setDeleteConfirmText('');
+                              }}
+                              className="text-red-600 hover:text-red-800 text-sm font-medium"
                             >
-                              {provisionBusyId === r.id ? 'Creating in Stripe…' : 'Create in Stripe'}
+                              Delete
                             </button>
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setDeleteTarget({ id: r.id, slug: r.slug });
-                              setDeleteConfirmText('');
-                            }}
-                            className="text-red-600 hover:text-red-800 text-sm font-medium"
+                          </td>
+                        </tr>
+                        <tr key={`${r.id}-mkt`} className="border-t border-gray-50 bg-slate-50/60">
+                          <td
+                            colSpan={audience === 'technician' ? 13 : 12}
+                            className="px-3 py-3 text-xs text-gray-700 space-y-2"
                           >
-                            Delete
-                          </button>
-                        </td>
-                      </tr>
+                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
+                              <label className="block">
+                                <span className="font-medium text-gray-600">Feature bullets (one per line)</span>
+                                <textarea
+                                  value={r.feature_bullets_text}
+                                  onChange={(e) => updateRow(r.id, 'feature_bullets_text', e.target.value)}
+                                  rows={4}
+                                  className="mt-1 w-full border rounded px-2 py-1 text-sm font-mono"
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="font-medium text-gray-600">Job access (signup/marketing)</span>
+                                <textarea
+                                  value={r.job_access_summary}
+                                  onChange={(e) => updateRow(r.id, 'job_access_summary', e.target.value)}
+                                  rows={4}
+                                  className="mt-1 w-full border rounded px-2 py-1 text-sm"
+                                  placeholder="When this tier can see new jobs…"
+                                />
+                              </label>
+                              <label className="block">
+                                <span className="font-medium text-gray-600">Commission line (optional override)</span>
+                                <textarea
+                                  value={r.commission_summary}
+                                  onChange={(e) => updateRow(r.id, 'commission_summary', e.target.value)}
+                                  rows={4}
+                                  className="mt-1 w-full border rounded px-2 py-1 text-sm"
+                                  placeholder="Leave blank to use commission % only in UI"
+                                />
+                              </label>
+                            </div>
+                          </td>
+                        </tr>
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>

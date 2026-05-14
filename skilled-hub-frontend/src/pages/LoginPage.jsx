@@ -1,15 +1,26 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { TECHFLASH_LOGO_LOGIN } from '../constants/branding';
 import { authAPI, passwordResetsAPI } from '../api/api';
 import { auth } from '../auth';
 import RegisterForm from '../components/RegisterForm';
+import { MarketingHeader } from '../components/marketing/MarketingHeader';
+import { readSignupRoleIntent } from '../utils/signupRoleIntent';
 
 const LoginPage = ({ onLoginSuccess }) => {
   const [searchParams] = useSearchParams();
   const tab = searchParams.get('tab');
   const signupEmail = searchParams.get('email') || '';
-  const signupRoleView = searchParams.get('role') === 'company' ? 'company' : 'technician';
+  /**
+   * Role intent: explicit `?role=company|technician` wins; otherwise use session intent from
+   * marketing CTAs (`readSignupRoleIntent()`); generic email signup defaults to technician.
+   */
+  const signupRoleView = useMemo(() => {
+    const r = searchParams.get('role');
+    if (r === 'company') return 'company';
+    if (r === 'technician') return 'technician';
+    return readSignupRoleIntent();
+  }, [searchParams]);
   const [isLogin, setIsLogin] = useState(tab !== 'signup');
 
   useEffect(() => {
@@ -66,122 +77,150 @@ const LoginPage = ({ onLoginSuccess }) => {
     }
   };
 
+  if (!isLogin) {
+    return (
+      <div className="min-h-screen min-w-0 bg-tf-muted text-gray-800">
+        <MarketingHeader />
+        <div
+          className="min-h-[calc(100vh-4rem)] bg-gradient-to-b from-tf-navy via-[#0f1f45] to-tf-muted pb-16 pt-2"
+        >
+          <RegisterForm
+            onLoginSuccess={onLoginSuccess}
+            initialEmail={signupEmail}
+            initialRole={signupRoleView}
+            initialRoleView={signupRoleView}
+          />
+        </div>
+        <div className="border-t border-gray-200 bg-white py-6 text-center">
+          <p className="text-sm text-gray-600">
+            Already have an account?{' '}
+            <button
+              type="button"
+              className="font-semibold text-[#3A7CA5] hover:text-[#2F5D7C]"
+              onClick={() => setIsLogin(true)}
+            >
+              Login here
+            </button>
+          </p>
+          <div className="mx-auto mt-4 max-w-md px-4 text-xs text-gray-500">
+            By using TechFlash, you agree to our{' '}
+            <Link to="/terms-of-service" className="text-[#3A7CA5] hover:underline">
+              Terms of Service
+            </Link>{' '}
+            and{' '}
+            <Link to="/privacy-policy" className="text-[#3A7CA5] hover:underline">
+              Privacy Policy
+            </Link>
+            .
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-[#F7F7F7] flex flex-col justify-center px-4 py-12 sm:px-6 lg:px-8">
+    <div className="flex min-h-screen flex-col justify-center bg-[#F7F7F7] px-4 py-12 sm:px-6 lg:px-8">
       <div className="sm:mx-auto sm:w-full sm:max-w-md">
         <div className="text-center">
-          <img src={TECHFLASH_LOGO_LOGIN} alt="TechFlash" className="h-16 mx-auto object-contain" />
-          <p className="mt-3 text-gray-600">Let's get the job done.</p>
+          <img src={TECHFLASH_LOGO_LOGIN} alt="TechFlash" className="mx-auto h-16 object-contain" />
+          <p className="mt-3 text-gray-600">Let&apos;s get the job done.</p>
         </div>
       </div>
 
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-6 shadow-md rounded-lg sm:px-10">
-          <div className="flex rounded-md overflow-hidden border mb-6">
+        <div className="rounded-lg bg-white px-6 py-8 shadow-md sm:px-10">
+          <div className="mb-6 flex overflow-hidden rounded-md border">
             <button
+              type="button"
               className={`flex-1 py-2 text-sm font-medium transition ${
-                isLogin
-                  ? 'bg-[#3A7CA5] text-white'
-                  : 'bg-white text-[#2E2E2E] hover:bg-gray-100'
+                isLogin ? 'bg-[#3A7CA5] text-white' : 'bg-white text-[#2E2E2E] hover:bg-gray-100'
               }`}
               onClick={() => setIsLogin(true)}
             >
               Login
             </button>
             <button
+              type="button"
               className={`flex-1 py-2 text-sm font-medium transition ${
-                !isLogin
-                  ? 'bg-[#3A7CA5] text-white'
-                  : 'bg-white text-[#2E2E2E] hover:bg-gray-100'
+                !isLogin ? 'bg-[#3A7CA5] text-white' : 'bg-white text-[#2E2E2E] hover:bg-gray-100'
               }`}
-              onClick={() => setIsLogin(false)}
+              onClick={() => navigate('/login?tab=signup')}
             >
               Register
             </button>
           </div>
 
           {error && (
-            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded">
-              {error}
+            <div className="mb-4 rounded border border-red-400 bg-red-100 p-3 text-red-700">{error}</div>
+          )}
+
+          <form onSubmit={handleLoginSubmit} className="space-y-6">
+            <div>
+              <label htmlFor="login-email" className="block text-sm font-medium text-[#2E2E2E]">
+                Email
+              </label>
+              <input
+                type="email"
+                id="login-email"
+                name="email"
+                value={loginData.email}
+                onChange={handleInputChange}
+                required
+                placeholder="you@example.com"
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-[#2E2E2E] shadow-sm focus:border-[#3A7CA5] focus:ring-[#3A7CA5]"
+              />
             </div>
-          )}
 
-          {isLogin ? (
-            <form onSubmit={handleLoginSubmit} className="space-y-6">
-              <div>
-                <label htmlFor="login-email" className="block text-sm font-medium text-[#2E2E2E]">
-                  Email
-                </label>
-                <input
-                  type="email"
-                  id="login-email"
-                  name="email"
-                  value={loginData.email}
-                  onChange={handleInputChange}
-                  required
-                  placeholder="you@example.com"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-[#3A7CA5] focus:border-[#3A7CA5] text-[#2E2E2E]"
-                />
+            <div>
+              <label htmlFor="login-password" className="block text-sm font-medium text-[#2E2E2E]">
+                Password
+              </label>
+              <input
+                type="password"
+                id="login-password"
+                name="password"
+                value={loginData.password}
+                onChange={handleInputChange}
+                required
+                placeholder="••••••••"
+                className="mt-1 block w-full rounded-md border border-gray-300 px-3 py-2 text-[#2E2E2E] shadow-sm focus:border-[#3A7CA5] focus:ring-[#3A7CA5]"
+              />
+              <div className="mt-2 text-right">
+                <button
+                  type="button"
+                  onClick={handleForgotPassword}
+                  disabled={resetLoading}
+                  className="text-sm font-medium text-[#3A7CA5] hover:text-[#2F5D7C] disabled:opacity-50"
+                >
+                  {resetLoading ? 'Sending reset link…' : 'Forgot password?'}
+                </button>
               </div>
+            </div>
 
-              <div>
-                <label htmlFor="login-password" className="block text-sm font-medium text-[#2E2E2E]">
-                  Password
-                </label>
-                <input
-                  type="password"
-                  id="login-password"
-                  name="password"
-                  value={loginData.password}
-                  onChange={handleInputChange}
-                  required
-                  placeholder="••••••••"
-                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-[#3A7CA5] focus:border-[#3A7CA5] text-[#2E2E2E]"
-                />
-                <div className="mt-2 text-right">
-                  <button
-                    type="button"
-                    onClick={handleForgotPassword}
-                    disabled={resetLoading}
-                    className="text-sm font-medium text-[#3A7CA5] hover:text-[#2F5D7C] disabled:opacity-50"
-                  >
-                    {resetLoading ? 'Sending reset link…' : 'Forgot password?'}
-                  </button>
-                </div>
+            {resetNotice && (
+              <div className="rounded border border-green-200 bg-green-50 p-3 text-sm text-green-800">
+                {resetNotice}
               </div>
+            )}
 
-              {resetNotice && (
-                <div className="p-3 bg-green-50 border border-green-200 text-green-800 rounded text-sm">
-                  {resetNotice}
-                </div>
-              )}
-
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full flex justify-center py-2 px-4 rounded-md text-sm font-medium text-white bg-[#3A7CA5] hover:bg-[#2F5D7C] focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-[#3A7CA5] disabled:opacity-50"
-              >
-                {loading ? 'Logging in...' : 'Login'}
-              </button>
-            </form>
-          ) : (
-            <RegisterForm
-              onLoginSuccess={onLoginSuccess}
-              initialEmail={signupEmail}
-              initialRole={signupRoleView}
-              initialRoleView={signupRoleView}
-            />
-          )}
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex w-full justify-center rounded-md bg-[#3A7CA5] px-4 py-2 text-sm font-medium text-white hover:bg-[#2F5D7C] focus:outline-none focus:ring-2 focus:ring-[#3A7CA5] focus:ring-offset-2 disabled:opacity-50"
+            >
+              {loading ? 'Logging in...' : 'Login'}
+            </button>
+          </form>
 
           <div className="mt-6 text-center">
             <p className="text-sm text-gray-600">
-              {isLogin ? "Don't have an account? " : 'Already have an account? '}
-              <button
+              Don&apos;t have an account?{' '}
+              <Link
+                to="/login?tab=signup"
                 className="font-medium text-[#3A7CA5] hover:text-[#2F5D7C]"
-                onClick={() => setIsLogin(!isLogin)}
               >
-                {isLogin ? 'Register here' : 'Login here'}
-              </button>
+                Register here
+              </Link>
             </p>
           </div>
         </div>

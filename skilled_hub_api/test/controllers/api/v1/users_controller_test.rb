@@ -23,6 +23,14 @@ module Api
         }.merge(overrides)
       end
 
+      def company_profile_params
+        {
+          company_name: "Acme Test Company",
+          industry: "Electrician",
+          primary_hiring_need: "Short-term labor coverage"
+        }
+      end
+
       test "signup requires phone" do
         post "/api/v1/users",
              params: base_signup_params(phone: ""),
@@ -111,13 +119,15 @@ module Api
       test "company signup stores phone and normalized location fields in profile" do
         post "/api/v1/users",
              params: base_signup_params(
-               email: "company-with-location@example.com",
-               role: "company",
-               phone: "713-333-1122",
-               city: "Houston",
-               state: "Texas",
-               zip_code: "77007",
-               electrical_license_number: "TECL-12345"
+               {
+                 email: "company-with-location@example.com",
+                 role: "company",
+                 phone: "713-333-1122",
+                 city: "Houston",
+                 state: "Texas",
+                 zip_code: "77007",
+                 electrical_license_number: "TECL-12345"
+               }.merge(company_profile_params)
              ),
              as: :json
 
@@ -126,6 +136,8 @@ module Api
         assert_equal "company", user.role
         profile = user.company_profile
         assert_not_nil profile
+        assert_equal "Acme Test Company", profile.company_name
+        assert_equal "Electrician", profile.industry
         assert_equal "713-333-1122", profile.phone
         assert_equal "Texas", profile.state
         assert_equal ["Houston"], profile.service_cities
@@ -136,11 +148,13 @@ module Api
       test "company signup allows missing electrical license number in statewide-license state" do
         post "/api/v1/users",
              params: base_signup_params(
-               email: "company-california-no-license@example.com",
-               role: "company",
-               state: "California",
-               city: "Los Angeles",
-               zip_code: "90012"
+               {
+                 email: "company-california-no-license@example.com",
+                 role: "company",
+                 state: "California",
+                 city: "Los Angeles",
+                 zip_code: "90012"
+               }.merge(company_profile_params)
              ),
              as: :json
 
@@ -156,11 +170,13 @@ module Api
 
         post "/api/v1/users",
              params: base_signup_params(
-               email: "company-newyork-no-license@example.com",
-               role: "company",
-               city: "New York",
-               state: "New York",
-               zip_code: "10001"
+               {
+                 email: "company-newyork-no-license@example.com",
+                 role: "company",
+                 city: "New York",
+                 state: "New York",
+                 zip_code: "10001"
+               }.merge(company_profile_params)
              ),
              as: :json
 

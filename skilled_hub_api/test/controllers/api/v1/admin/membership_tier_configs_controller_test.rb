@@ -50,9 +50,12 @@ module Api
             slug: "only",
             display_name: "Only",
             monthly_fee_cents: 0,
+            yearly_fee_cents: 0,
             commission_percent: 10,
             early_access_delay_hours: 0,
-            sort_order: 0
+            sort_order: 0,
+            feature_bullets: [],
+            active: true
           )
 
           delete "/api/v1/admin/membership_tier_configs/#{solo.id}", headers: auth_header_for(admin)
@@ -67,9 +70,12 @@ module Api
             slug: "orphan_tier",
             display_name: "Orphan",
             monthly_fee_cents: 100,
+            yearly_fee_cents: 0,
             commission_percent: 15,
             early_access_delay_hours: 12,
-            sort_order: 99
+            sort_order: 99,
+            feature_bullets: [],
+            active: true
           )
           orphan = MembershipTierConfig.find_by!(audience: "technician", slug: "orphan_tier")
           user = User.create!(email: "tech-on-orphan@example.com", password: "password123", password_confirmation: "password123", role: :technician)
@@ -92,10 +98,13 @@ module Api
             slug: "provision_ok_#{SecureRandom.hex(2)}",
             display_name: "Provisioned",
             monthly_fee_cents: 100,
+            yearly_fee_cents: 0,
             commission_percent: 1.0,
             early_access_delay_hours: 0,
             sort_order: 100,
-            stripe_price_id: nil
+            stripe_price_id: nil,
+            feature_bullets: [],
+            active: true
           )
           was_key = ENV["STRIPE_SECRET_KEY"]
           was_api = Stripe.api_key

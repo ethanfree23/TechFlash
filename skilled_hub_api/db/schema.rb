@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_05_14_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_05_15_000002) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -74,6 +74,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_14_120000) do
     t.datetime "membership_current_period_end_at"
     t.string "state"
     t.string "electrical_license_number"
+    t.string "primary_hiring_need"
     t.index ["membership_level"], name: "index_company_profiles_on_membership_level"
     t.index ["state"], name: "index_company_profiles_on_state"
     t.index ["stripe_membership_subscription_id"], name: "index_company_profiles_on_stripe_membership_subscription_id", unique: true
@@ -345,6 +346,13 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_14_120000) do
     t.integer "job_access_min_successful_jobs"
     t.integer "job_access_min_profile_completeness_percent"
     t.boolean "job_access_requires_verified_background", default: false, null: false
+    t.integer "yearly_fee_cents", default: 0, null: false
+    t.string "yearly_savings_label"
+    t.json "feature_bullets", default: [], null: false
+    t.text "job_access_summary"
+    t.text "commission_summary"
+    t.boolean "is_highlighted", default: false, null: false
+    t.boolean "active", default: true, null: false
     t.index ["audience", "slug"], name: "index_membership_tier_configs_on_audience_and_slug", unique: true
     t.index ["audience", "sort_order"], name: "index_membership_tier_configs_on_audience_and_sort_order"
   end
@@ -495,6 +503,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_14_120000) do
     t.datetime "membership_current_period_end_at"
     t.string "phone"
     t.boolean "background_verified", default: false, null: false
+    t.json "specialties", default: [], null: false
     t.index ["membership_level"], name: "index_technician_profiles_on_membership_level"
     t.index ["stripe_membership_subscription_id"], name: "index_technician_profiles_on_stripe_membership_subscription_id", unique: true
     t.index ["user_id"], name: "index_technician_profiles_on_user_id"

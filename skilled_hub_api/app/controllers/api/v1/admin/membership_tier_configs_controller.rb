@@ -85,11 +85,26 @@ module Api
         end
 
         def create_attributes
-          p = params.permit(:slug, :display_name, :monthly_fee_cents, :commission_percent, :early_access_delay_hours, :job_access_min_experience_years, :job_access_min_jobs_completed, :job_access_min_successful_jobs, :job_access_min_profile_completeness_percent, :job_access_requires_verified_background, :sort_order, :stripe_price_id).to_h
+          p = params.permit(
+            :slug, :display_name, :monthly_fee_cents, :yearly_fee_cents, :yearly_savings_label,
+            :commission_percent, :early_access_delay_hours, :job_access_summary, :commission_summary,
+            :is_highlighted, :active, :job_access_min_experience_years, :job_access_min_jobs_completed,
+            :job_access_min_successful_jobs, :job_access_min_profile_completeness_percent,
+            :job_access_requires_verified_background, :sort_order, :stripe_price_id, feature_bullets: []
+          ).to_h
           p[:slug] = p[:slug].to_s.downcase.strip if p[:slug]
           p[:display_name] = p[:display_name].to_s.strip.presence
           p[:stripe_price_id] = p[:stripe_price_id].to_s.strip.presence
           p[:monthly_fee_cents] = p[:monthly_fee_cents].to_i if p.key?(:monthly_fee_cents)
+          p[:yearly_fee_cents] = p[:yearly_fee_cents].to_i if p.key?(:yearly_fee_cents)
+          p[:yearly_savings_label] = p[:yearly_savings_label].to_s.strip.presence if p.key?(:yearly_savings_label)
+          p[:job_access_summary] = p[:job_access_summary].to_s.strip.presence if p.key?(:job_access_summary)
+          p[:commission_summary] = p[:commission_summary].to_s.strip.presence if p.key?(:commission_summary)
+          p[:is_highlighted] = ActiveModel::Type::Boolean.new.cast(p[:is_highlighted]) if p.key?(:is_highlighted)
+          p[:active] = ActiveModel::Type::Boolean.new.cast(p[:active]) if p.key?(:active)
+          if p.key?(:feature_bullets)
+            p[:feature_bullets] = Array(p[:feature_bullets]).map { |s| s.to_s.strip }.reject(&:blank?)
+          end
           p[:sort_order] = p[:sort_order].present? ? p[:sort_order].to_i : 0
           p[:commission_percent] = p[:commission_percent].to_f if p.key?(:commission_percent)
           if p.key?(:early_access_delay_hours)
@@ -117,10 +132,25 @@ module Api
         end
 
         def update_attributes
-          p = params.permit(:display_name, :monthly_fee_cents, :commission_percent, :early_access_delay_hours, :job_access_min_experience_years, :job_access_min_jobs_completed, :job_access_min_successful_jobs, :job_access_min_profile_completeness_percent, :job_access_requires_verified_background, :sort_order, :stripe_price_id).to_h
+          p = params.permit(
+            :display_name, :monthly_fee_cents, :yearly_fee_cents, :yearly_savings_label,
+            :commission_percent, :early_access_delay_hours, :job_access_summary, :commission_summary,
+            :is_highlighted, :active, :job_access_min_experience_years, :job_access_min_jobs_completed,
+            :job_access_min_successful_jobs, :job_access_min_profile_completeness_percent,
+            :job_access_requires_verified_background, :sort_order, :stripe_price_id, feature_bullets: []
+          ).to_h
           p[:display_name] = p[:display_name].to_s.strip.presence if p.key?(:display_name)
           p[:stripe_price_id] = p[:stripe_price_id].to_s.strip.presence if p.key?(:stripe_price_id)
           p[:monthly_fee_cents] = p[:monthly_fee_cents].to_i if p.key?(:monthly_fee_cents)
+          p[:yearly_fee_cents] = p[:yearly_fee_cents].to_i if p.key?(:yearly_fee_cents)
+          p[:yearly_savings_label] = p[:yearly_savings_label].to_s.strip.presence if p.key?(:yearly_savings_label)
+          p[:job_access_summary] = p[:job_access_summary].to_s.strip.presence if p.key?(:job_access_summary)
+          p[:commission_summary] = p[:commission_summary].to_s.strip.presence if p.key?(:commission_summary)
+          p[:is_highlighted] = ActiveModel::Type::Boolean.new.cast(p[:is_highlighted]) if p.key?(:is_highlighted)
+          p[:active] = ActiveModel::Type::Boolean.new.cast(p[:active]) if p.key?(:active)
+          if p.key?(:feature_bullets)
+            p[:feature_bullets] = Array(p[:feature_bullets]).map { |s| s.to_s.strip }.reject(&:blank?)
+          end
           p[:sort_order] = p[:sort_order].to_i if p.key?(:sort_order)
           p[:commission_percent] = p[:commission_percent].to_f if p.key?(:commission_percent)
           if p.key?(:early_access_delay_hours)
@@ -154,6 +184,11 @@ module Api
             slug: config.slug,
             display_name: config.display_name,
             monthly_fee_cents: config.monthly_fee_cents,
+            yearly_fee_cents: config.yearly_fee_cents,
+            yearly_savings_label: config.yearly_savings_label,
+            feature_bullets: Array(config.feature_bullets),
+            job_access_summary: config.job_access_summary,
+            commission_summary: config.commission_summary,
             commission_percent: config.commission_percent.to_f,
             early_access_delay_hours: config.early_access_delay_hours,
             job_access_min_experience_years: config.job_access_min_experience_years,
@@ -162,7 +197,9 @@ module Api
             job_access_min_profile_completeness_percent: config.job_access_min_profile_completeness_percent,
             job_access_requires_verified_background: config.job_access_requires_verified_background,
             sort_order: config.sort_order,
-            stripe_price_id: config.stripe_price_id
+            stripe_price_id: config.stripe_price_id,
+            is_highlighted: config.is_highlighted,
+            active: config.active
           }
         end
       end

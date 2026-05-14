@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import MarketingPage from './pages/MarketingPage';
+import ForCompaniesPage from './pages/ForCompaniesPage';
+import ForTechniciansPage from './pages/ForTechniciansPage';
+import HowItWorksPage from './pages/HowItWorksPage';
+import WhyTechFlashPage from './pages/WhyTechFlashPage';
 import LoginPage from './pages/LoginPage';
 import JobsPage from './pages/JobsPage';
 import JobDetail from './components/JobDetail';
@@ -117,6 +121,14 @@ function App() {
           <Route path="/dmca-ip-policy" element={<DmcaIpClaimsPage />} />
 
           <Route path="/download" element={<DownloadAppPage />} />
+
+          <Route path="/for-companies" element={<ForCompaniesPage />} />
+
+          <Route path="/for-technicians" element={<ForTechniciansPage />} />
+
+          <Route path="/how-it-works" element={<HowItWorksPage />} />
+
+          <Route path="/why-techflash" element={<WhyTechFlashPage />} />
 
           <Route path="/reset-password" element={<ResetPasswordPage />} />
 

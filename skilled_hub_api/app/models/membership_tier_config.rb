@@ -7,6 +7,7 @@ class MembershipTierConfig < ApplicationRecord
   validates :audience, inclusion: { in: AUDIENCES }
   validates :slug, presence: true, uniqueness: { scope: :audience }, format: { with: SLUG_REGEX, message: "must be lowercase letters, numbers, or underscores" }
   validates :monthly_fee_cents, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validates :yearly_fee_cents, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates :commission_percent, numericality: { greater_than_or_equal_to: 0 }
   validates :sort_order, numericality: { only_integer: true }
   validates :job_access_min_experience_years, numericality: { only_integer: true, greater_than_or_equal_to: 0, allow_nil: true }
