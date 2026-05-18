@@ -52,7 +52,7 @@ export function MarketingHeader() {
           <span className="text-xl font-bold tracking-tight text-tf-navy">TechFlash</span>
         </Link>
 
-        <nav className="hidden min-w-0 items-center gap-6 lg:flex xl:gap-8">
+        <nav className="hidden min-w-0 flex-1 items-center justify-center gap-6 lg:flex xl:gap-8">
           <Link to="/for-companies" className={navClass(isCompaniesLanding)} onClick={close}>
             For Companies
           </Link>
@@ -61,23 +61,22 @@ export function MarketingHeader() {
           </Link>
           {howItWorksNav}
           {whyTechFlashNav}
-        </nav>
-
-        <div className="hidden shrink-0 items-center gap-6 lg:flex">
-          <Link to="/download" className={navClass(false)}>
+          <Link to="/download" className={navClass(false)} onClick={close}>
             Get the app
           </Link>
-          <div className="flex items-center gap-2">
-            <Link to="/login" className={navClass(false)}>
-              Sign In
-            </Link>
-            <Link
-              to="/login?tab=signup"
-              className="rounded-xl bg-tf-orange px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-tf-orange-hover"
-            >
-              Get Started
-            </Link>
-          </div>
+        </nav>
+
+        <div className="hidden shrink-0 items-center gap-3 lg:flex">
+          <Link to="/login" className={navClass(false)} onClick={close}>
+            Sign In
+          </Link>
+          <Link
+            to="/login?tab=signup"
+            className="rounded-xl bg-tf-orange px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-tf-orange-hover"
+            onClick={close}
+          >
+            Get Started
+          </Link>
         </div>
 
         <div className="flex min-w-0 items-center gap-2 sm:gap-3 lg:hidden">
@@ -165,9 +164,6 @@ export function MarketingHeader() {
             )}
             <Link to="/download" className="rounded-lg px-3 py-2.5 text-sm font-semibold text-tf-navy hover:bg-gray-50" onClick={close}>
               Get the app
-            </Link>
-            <Link to="/login" className="rounded-lg px-3 py-2.5 text-sm font-semibold text-tf-navy hover:bg-gray-50" onClick={close}>
-              Sign In
             </Link>
           </div>
         </div>
