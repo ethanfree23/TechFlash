@@ -8,10 +8,12 @@ module Api
         before_action :require_admin
 
         def show
+          catalog = MailAuditCatalog.as_json
           render json: {
             mail_delivery: MailDelivery.audit_status,
-            live_automations: MailAuditCatalog.as_json[:live_automations],
-            inactive_automations: MailAuditCatalog.as_json[:inactive_automations]
+            live_automations: catalog[:live_automations],
+            manual_emails: catalog[:manual_emails],
+            inactive_automations: catalog[:inactive_automations]
           }, status: :ok
         end
       end

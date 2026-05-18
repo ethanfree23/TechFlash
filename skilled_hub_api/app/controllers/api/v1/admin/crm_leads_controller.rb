@@ -6,7 +6,7 @@ module Api
       class CrmLeadsController < ApplicationController
         before_action :authenticate_user
         before_action :require_admin
-        before_action :set_lead, only: %i[show update destroy]
+        before_action :set_lead, only: %i[show update destroy send_email preview_email]
 
         def index
           leads = CrmLead.order(updated_at: :desc).to_a
@@ -60,6 +60,36 @@ module Api
           data = CrmLeadUrlEnrichment.call(url)
           render json: { enrichment: data }, status: :ok
         rescue CrmLeadUrlEnrichment::Error => e
+          render json: { error: e.message }, status: :unprocessable_entity
+        end
+
+        def send_email
+          result = CrmLeadSendEmailService.call(
+            lead: @lead,
+            admin_user: @current_user,
+            params: email_params,
+            deliver: true,
+            log_activity: true
+          )
+          if result[:success]
+            render json: result, status: :ok
+          else
+            render json: { success: false, error: result[:error], crm_note: result[:crm_note] }, status: :unprocessable_entity
+          end
+        rescue CrmLeadSendEmailService::Error => e
+          render json: { success: false, error: e.message }, status: :unprocessable_entity
+        end
+
+        def preview_email
+          result = CrmLeadSendEmailService.call(
+            lead: @lead,
+            admin_user: @current_user,
+            params: email_params,
+            deliver: false,
+            log_activity: false
+          )
+          render json: result[:preview], status: :ok
+        rescue CrmLeadSendEmailService::Error => e
           render json: { error: e.message }, status: :unprocessable_entity
         end
 
@@ -165,6 +195,19 @@ module Api
           @lead = CrmLead.find(params[:id])
         rescue ActiveRecord::RecordNotFound
           render json: { error: "CRM record not found" }, status: :not_found
+        end
+
+        def email_params
+          params.permit(
+            :template_key,
+            :to,
+            :cc,
+            :bcc,
+            :subject,
+            :body,
+            :send_test,
+            :confirm_non_record_recipient
+          )
         end
 
         def lead_params

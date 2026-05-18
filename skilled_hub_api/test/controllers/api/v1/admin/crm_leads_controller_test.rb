@@ -331,6 +331,91 @@ module Api
           row = body.fetch("crm_leads").find { |r| r.fetch("name") == "Index Co" }
           assert_equal [], row.fetch("platform_company_users")
         end
+
+        test "admin can preview crm sales email" do
+          admin = User.create!(
+            email: "admin+crm_preview@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin,
+            first_name: "Ethan"
+          )
+          lead = CrmLead.create!(
+            name: "Preview Co",
+            email: "contact@previewco.example.com",
+            status: "lead"
+          )
+
+          post "/api/v1/admin/crm_leads/#{lead.id}/preview_email",
+               params: {
+                 template_key: "sales_call_follow_up",
+                 to: "contact@previewco.example.com",
+                 subject: CrmEmailTemplates.default_subject("sales_call_follow_up"),
+                 body: "Hi {{contact_first_name}}, thanks for speaking."
+               },
+               headers: auth_header_for(admin),
+               as: :json
+
+          assert_response :ok
+          body = JSON.parse(response.body)
+          assert body["html_body"].present?
+          assert_match(/Preview Co|thanks/i, body["text_body"].to_s + body["html_body"].to_s)
+        end
+
+        test "admin can send crm email and log activity" do
+          ActionMailer::Base.deliveries.clear
+          admin = User.create!(
+            email: "admin+crm_send@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin,
+            first_name: "Ethan"
+          )
+          lead = CrmLead.create!(
+            name: "Send Co",
+            email: "contact@sendco.example.com",
+            status: "lead"
+          )
+
+          post "/api/v1/admin/crm_leads/#{lead.id}/send_email",
+               params: {
+                 template_key: "short_follow_up",
+                 to: "contact@sendco.example.com",
+                 subject: "Follow up",
+                 body: "Thanks for the call today."
+               },
+               headers: auth_header_for(admin),
+               as: :json
+
+          assert_response :ok
+          body = JSON.parse(response.body)
+          assert_equal true, body["success"]
+          assert body["crm_notes"].is_a?(Array)
+          assert body["crm_notes"].any? { |n| n["contact_method"] == "email" }
+          assert_equal 1, ActionMailer::Base.deliveries.size
+        end
+
+        test "non-admin cannot send crm email" do
+          company = User.create!(
+            email: "company+crm_email@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :company
+          )
+          lead = CrmLead.create!(name: "Blocked Co", email: "a@b.example.com", status: "lead")
+
+          post "/api/v1/admin/crm_leads/#{lead.id}/send_email",
+               params: {
+                 template_key: "short_follow_up",
+                 to: "a@b.example.com",
+                 subject: "Hi",
+                 body: "Body"
+               },
+               headers: auth_header_for(company),
+               as: :json
+
+          assert_response :forbidden
+        end
       end
     end
   end

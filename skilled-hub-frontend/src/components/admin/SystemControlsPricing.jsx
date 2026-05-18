@@ -25,6 +25,61 @@ function parseEmailQaConfirmation(raw) {
   return t;
 }
 
+function EmailQaTemplateCard({ template, emailQaBusyKey, onPreview, onSend }) {
+  const isManual = template.automated === false;
+  return (
+    <div
+      className={`rounded-lg border p-3 ${
+        isManual ? 'border-orange-200 bg-orange-50/20' : 'border-gray-200'
+      }`}
+    >
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-medium text-gray-900">{template.name}</span>
+        {isManual ? (
+          <span className="text-xs px-2 py-0.5 rounded-full border bg-orange-50 text-orange-800 border-orange-200">
+            manual
+          </span>
+        ) : null}
+        <span
+          className={`text-xs px-2 py-0.5 rounded-full border ${
+            template.active
+              ? 'bg-blue-50 text-blue-700 border-blue-200'
+              : 'bg-gray-100 text-gray-700 border-gray-300'
+          }`}
+        >
+          {template.active ? 'active' : 'inactive'}
+        </span>
+      </div>
+      <p className="text-xs text-gray-600 mt-1">{template.description}</p>
+      <p className="text-xs font-mono text-gray-500 mt-1">{template.key}</p>
+      {template.audience ? (
+        <p className="text-xs text-gray-500 mt-1">User type: {template.audience}</p>
+      ) : null}
+      {template.trigger ? (
+        <p className="text-xs text-gray-500 mt-1">When sent: {template.trigger}</p>
+      ) : null}
+      <div className="mt-2 flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => onPreview(template.key)}
+          disabled={emailQaBusyKey === `preview:${template.key}`}
+          className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
+        >
+          {emailQaBusyKey === `preview:${template.key}` ? 'Loading…' : 'Preview'}
+        </button>
+        <button
+          type="button"
+          onClick={() => onSend(template.key)}
+          disabled={emailQaBusyKey === `send:${template.key}` || emailQaBusyKey === 'send_all'}
+          className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
+        >
+          {emailQaBusyKey === `send:${template.key}` ? 'Sending…' : 'Send test'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const US_STATE_OPTIONS = [
   ['AL', 'Alabama'], ['AK', 'Alaska'], ['AZ', 'Arizona'], ['AR', 'Arkansas'],
   ['CA', 'California'], ['CO', 'Colorado'], ['CT', 'Connecticut'], ['DE', 'Delaware'],
@@ -223,6 +278,16 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
       String(template.trigger || '').toLowerCase().includes(q)
     ));
   }, [emailQaSearch, emailQaTemplates]);
+
+  const filteredAutomatedEmailQaTemplates = useMemo(
+    () => filteredEmailQaTemplates.filter((t) => t.automated !== false),
+    [filteredEmailQaTemplates],
+  );
+
+  const filteredManualEmailQaTemplates = useMemo(
+    () => filteredEmailQaTemplates.filter((t) => t.automated === false),
+    [filteredEmailQaTemplates],
+  );
 
   useEffect(() => {
     if (!emailQaPreview || !previewPanelRef.current) return;
@@ -474,11 +539,12 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
     let deliveredCount = 0;
     const recipientOpt = emailQaRecipient.trim();
     try {
-      for (let i = 0; i < emailQaTemplates.length; i += 1) {
-        const t = emailQaTemplates[i];
+      const automatedOnly = emailQaTemplates.filter((t) => t.automated !== false);
+      for (let i = 0; i < automatedOnly.length; i += 1) {
+        const t = automatedOnly[i];
         setEmailQaSendAllProgress({
           current: i + 1,
-          total: emailQaTemplates.length,
+          total: automatedOnly.length,
           templateKey: t.key,
         });
         try {
@@ -500,7 +566,7 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
       setEmailQaLastSendSummary({
         type: 'all',
         deliveredCount,
-        totalCount: emailQaTemplates.length,
+        totalCount: automatedOnly.length,
         errors,
       });
       if (deliveredCount > 0) {
@@ -947,8 +1013,8 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
           <SettingsCard title="Email delivery overview" collapsible defaultOpen={false}>
             <div className="text-sm text-gray-600 space-y-2 max-w-3xl">
               <p>
-                This panel shows the current outbound email delivery health and every automated
-                transactional email currently wired in the app.
+                This panel shows outbound email delivery health, automated transactional emails, and
+                admin-composed (non-automated) templates such as CRM sales follow-up.
               </p>
               <p>
                 Values are read-only and never expose credentials. Use this view to confirm what is live
@@ -1027,6 +1093,32 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
                 </div>
               </div>
 
+              <div className="rounded-xl border border-orange-200 bg-orange-50/30 p-4">
+                <h3 className="text-sm font-semibold text-gray-900 mb-1">Non-automated (admin-composed) emails</h3>
+                <p className="text-xs text-gray-600 mb-3">
+                  Sent manually from the CRM — not triggered by app events. Uses the same Mailtrap delivery as automated mail.
+                </p>
+                {(mailtrapAudit?.manual_emails || []).length === 0 ? (
+                  <p className="text-sm text-gray-600">No manual email templates registered.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {(mailtrapAudit?.manual_emails || []).map((item) => (
+                      <div key={item.key} className="rounded-lg border border-orange-200 bg-white p-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-medium text-gray-900">{item.name}</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-orange-50 text-orange-800 border border-orange-200">
+                            {item.status}
+                          </span>
+                          <span className="font-mono text-xs text-gray-500">{item.key}</span>
+                        </div>
+                        <p className="text-sm text-gray-700 mt-1">{item.trigger}</p>
+                        <p className="text-xs text-gray-500 mt-1">Source: {item.source}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               <div className="rounded-xl border border-gray-200 bg-white p-4">
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">Implemented but inactive</h3>
                 {(mailtrapAudit?.inactive_automations || []).length === 0 ? (
@@ -1058,8 +1150,8 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
         <div className="space-y-4">
           <SettingsCard title="Email QA workflow" description="Preview and send test templates safely." collapsible defaultOpen>
             <p className="text-sm text-gray-600">
-              Preview and send fixture-based test emails for every transactional template.
-              Choose where test mail is delivered below (defaults to your signed-in admin if left blank).
+              Preview and send fixture-based test emails. Automated templates are grouped separately from
+              admin-composed CRM mail. Test sends use Mailtrap when configured on the API (same as production).
             </p>
           </SettingsCard>
 
@@ -1099,7 +1191,7 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
               Type <code className="bg-gray-100 px-1 rounded">SEND_TEST_EMAILS</code> — underscores required (not spaces). Case and extra spaces are OK; &quot;SEND TEST EMAILS&quot; is normalized automatically.
             </p>
             <p className="text-xs text-gray-500">
-              Send all runs one template per request so production gateways do not time out on a single long call.
+              Send all runs automated templates only (excludes CRM manual emails). One template per request to avoid timeouts.
             </p>
             <input
               type="text"
@@ -1168,50 +1260,39 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
                   placeholder="Search templates by name, key, audience, or trigger"
                   className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                 />
-                <div className="space-y-2 max-h-[520px] overflow-auto pr-1">
-                  {filteredEmailQaTemplates.map((template) => (
-                    <div key={template.key} className="rounded-lg border border-gray-200 p-3">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="font-medium text-gray-900">{template.name}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full border ${
-                          template.active
-                            ? 'bg-blue-50 text-blue-700 border-blue-200'
-                            : 'bg-gray-100 text-gray-700 border-gray-300'
-                        }`}
-                        >
-                          {template.active ? 'active' : 'inactive'}
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-600 mt-1">{template.description}</p>
-                      <p className="text-xs font-mono text-gray-500 mt-1">{template.key}</p>
-                      {template.audience ? (
-                        <p className="text-xs text-gray-500 mt-1">User type: {template.audience}</p>
-                      ) : null}
-                      {template.trigger ? (
-                        <p className="text-xs text-gray-500 mt-1">When sent: {template.trigger}</p>
-                      ) : null}
-                      <div className="mt-2 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => previewEmailTemplate(template.key)}
-                          disabled={emailQaBusyKey === `preview:${template.key}`}
-                          className="px-3 py-1.5 text-xs font-medium border border-gray-300 rounded-lg hover:bg-gray-50 disabled:opacity-50"
-                        >
-                          {emailQaBusyKey === `preview:${template.key}` ? 'Loading…' : 'Preview'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => sendOneEmailTemplate(template.key)}
-                          disabled={
-                            emailQaBusyKey === `send:${template.key}` || emailQaBusyKey === 'send_all'
-                          }
-                          className="px-3 py-1.5 text-xs font-medium bg-gray-900 text-white rounded-lg hover:bg-gray-800 disabled:opacity-50"
-                        >
-                          {emailQaBusyKey === `send:${template.key}` ? 'Sending…' : 'Send test'}
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                <div className="space-y-4 max-h-[520px] overflow-auto pr-1">
+                  {filteredAutomatedEmailQaTemplates.length > 0 ? (
+                    <>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 pt-1">
+                        Automated transactional
+                      </p>
+                      {filteredAutomatedEmailQaTemplates.map((template) => (
+                        <EmailQaTemplateCard
+                          key={template.key}
+                          template={template}
+                          emailQaBusyKey={emailQaBusyKey}
+                          onPreview={previewEmailTemplate}
+                          onSend={sendOneEmailTemplate}
+                        />
+                      ))}
+                    </>
+                  ) : null}
+                  {filteredManualEmailQaTemplates.length > 0 ? (
+                    <>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-orange-700 pt-2">
+                        Non-automated (admin-composed)
+                      </p>
+                      {filteredManualEmailQaTemplates.map((template) => (
+                        <EmailQaTemplateCard
+                          key={template.key}
+                          template={template}
+                          emailQaBusyKey={emailQaBusyKey}
+                          onPreview={previewEmailTemplate}
+                          onSend={sendOneEmailTemplate}
+                        />
+                      ))}
+                    </>
+                  ) : null}
                   {!filteredEmailQaTemplates.length ? (
                     <p className="text-sm text-gray-500 py-4 text-center">No templates match your search.</p>
                   ) : null}

@@ -1,4 +1,5 @@
 require "active_support/core_ext/integer/time"
+require_relative "../mail_env"
 
 Rails.application.configure do
   # Settings specified here will take precedence over those in config/application.rb.
@@ -37,16 +38,22 @@ Rails.application.configure do
   config.action_mailer.raise_delivery_errors = false
   config.action_mailer.perform_caching = false
 
-  # SMTP: set SMTP_ADDRESS, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD in .env (see EMAIL_SETUP.md)
-  if ENV['SMTP_ADDRESS'].present?
+  # Mailtrap HTTP (preferred) or Mailtrap/SMTP — same as production (see EMAIL_SETUP.md).
+  mailtrap_http = MailEnv.mailtrap_http_delivery?
+  if mailtrap_http
+    config.action_mailer.delivery_method = :mailtrap_http
+    config.action_mailer.mailtrap_http_settings = {
+      api_token: ENV["MAILTRAP_API_TOKEN"].presence || ENV["SMTP_PASSWORD"].presence
+    }
+  elsif ENV["SMTP_ADDRESS"].present?
     config.action_mailer.delivery_method = :smtp
     config.action_mailer.smtp_settings = {
-      address:              ENV['SMTP_ADDRESS'],
-      port:                 (ENV['SMTP_PORT'] || 587).to_i,
-      user_name:            ENV['SMTP_USERNAME'],
-      password:             ENV['SMTP_PASSWORD'],
+      address:              ENV["SMTP_ADDRESS"],
+      port:                 (ENV["SMTP_PORT"] || 587).to_i,
+      user_name:            ENV["SMTP_USERNAME"],
+      password:             ENV["SMTP_PASSWORD"],
       authentication:       :plain,
-      enable_starttls_auto:  true
+      enable_starttls_auto: true
     }
   end
 

@@ -151,6 +151,17 @@ class MailAuditCatalog
     }
   ].freeze
 
+  # Admin-composed / manual sends (not fired by app events).
+  MANUAL_EMAILS = [
+    {
+      key: "crm_sales_call_follow_up",
+      name: "CRM sales call follow-up",
+      trigger: "Admin sends from CRM company record (Send email)",
+      status: "active",
+      source: "Api::V1::Admin::CrmLeadsController#send_email"
+    }
+  ].freeze
+
   INACTIVE_EMAILS = [
     {
       key: "job_accepted_email",
@@ -164,6 +175,7 @@ class MailAuditCatalog
   def self.as_json
     {
       live_automations: ACTIVE_EMAILS,
+      manual_emails: MANUAL_EMAILS,
       inactive_automations: INACTIVE_EMAILS
     }
   end

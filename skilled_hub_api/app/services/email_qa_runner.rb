@@ -5,7 +5,7 @@ require "uri"
 class EmailQaRunner
   CONFIRMATION_TEXT = "SEND_TEST_EMAILS"
 
-  Template = Struct.new(:key, :name, :description, :active, :audience, :trigger, :source, keyword_init: true)
+  Template = Struct.new(:key, :name, :description, :active, :automated, :audience, :trigger, :source, keyword_init: true)
 
   TEMPLATE_DEFS = [
     Template.new(key: "welcome_email", name: "Welcome email", description: "Signup welcome message", active: true, audience: "company/technician", trigger: "User signs up", source: "Api::V1::UsersController#create"),
@@ -29,7 +29,8 @@ class EmailQaRunner
     Template.new(key: "job_counter_offer_accepted_email", name: "Counter offer accepted", description: "Counter offer accepted notice", active: true, audience: "company/technician", trigger: "A counter offer is accepted", source: "Api::V1::JobCounterOffersController#accept"),
     Template.new(key: "job_counter_offer_declined_email", name: "Counter offer declined", description: "Counter offer declined notice", active: true, audience: "company/technician", trigger: "A counter offer is declined", source: "Api::V1::JobCounterOffersController#decline"),
     Template.new(key: "job_counter_offer_countered_email", name: "Counter offer updated", description: "Counter offer updated notice", active: true, audience: "company/technician", trigger: "A counter offer is countered", source: "Api::V1::JobCounterOffersController#counter"),
-    Template.new(key: "job_accepted_email", name: "Job accepted (inactive)", description: "Defined mailer, not currently auto-triggered", active: false, audience: "technician", trigger: "No active trigger", source: "UserMailer#job_accepted_email")
+    Template.new(key: "job_accepted_email", name: "Job accepted (inactive)", description: "Defined mailer, not currently auto-triggered", active: false, automated: false, audience: "technician", trigger: "No active trigger", source: "UserMailer#job_accepted_email"),
+    Template.new(key: "crm_sales_call_follow_up", name: "CRM sales call follow-up", description: "Admin-composed sales follow-up from CRM", active: true, automated: false, audience: "crm prospect", trigger: "Admin sends from CRM company record", source: "Api::V1::Admin::CrmLeadsController#send_email")
   ].freeze
 
   def self.templates
@@ -39,6 +40,7 @@ class EmailQaRunner
         name: template.name,
         description: template.description,
         active: template.active,
+        automated: template.automated != false,
         audience: template.audience,
         trigger: template.trigger,
         source: template.source
@@ -102,7 +104,7 @@ class EmailQaRunner
   def send_all(confirmation:)
     ensure_confirmation!(confirmation)
 
-    TEMPLATE_DEFS.map do |template|
+    TEMPLATE_DEFS.select { |t| t.automated != false && t.active }.map do |template|
       begin
         send_one(template_key: template.key, confirmation: CONFIRMATION_TEXT)
       rescue StandardError => e
@@ -182,6 +184,8 @@ class EmailQaRunner
       UserMailer.job_counter_offer_declined_email(@fixtures[:offer])
     when "job_counter_offer_countered_email"
       UserMailer.job_counter_offer_countered_email(@fixtures[:offer])
+    when "crm_sales_call_follow_up"
+      CrmEmailQaMail.build(admin_user: @admin_user)
     end
   end
 

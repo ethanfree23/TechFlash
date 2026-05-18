@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   FaPhone,
   FaEnvelope,
@@ -11,6 +11,7 @@ import {
   FaBriefcase,
   FaUserPlus,
   FaBell,
+  FaChevronDown,
 } from 'react-icons/fa';
 import { CrmStatusBadge, CompanyTypeBadges } from './CrmBadges';
 import { getPrimaryContactPreview, isLinkedToPlatformAccount, formatCrmDateTime, formatWebsiteLabel } from '../../utils/crmDisplayAdapter';
@@ -37,7 +38,19 @@ export default function CompanyRecordHeader({
   onLinkAccount,
   onChangeStatus,
   onOpenGmail,
+  onSendEmail,
 }) {
+  const [sendMenuOpen, setSendMenuOpen] = useState(false);
+  const sendMenuRef = useRef(null);
+
+  useEffect(() => {
+    if (!sendMenuOpen) return undefined;
+    const onDoc = (e) => {
+      if (sendMenuRef.current && !sendMenuRef.current.contains(e.target)) setSendMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [sendMenuOpen]);
   const name = String(form?.name || '').trim() || '—';
   const pc = getPrimaryContactPreview({
     ...detailLead,
@@ -154,6 +167,43 @@ export default function CompanyRecordHeader({
                 <FaEnvelope className="h-3.5 w-3.5 text-red-500" aria-hidden />
                 Open in Gmail
               </button>
+            ) : null}
+            {typeof onSendEmail === 'function' ? (
+              <div className="relative" ref={sendMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => setSendMenuOpen((o) => !o)}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-900 hover:bg-orange-100"
+                >
+                  <FaEnvelope className="h-3.5 w-3.5 text-orange-600" aria-hidden />
+                  Send email
+                  <FaChevronDown className="h-3 w-3 opacity-70" aria-hidden />
+                </button>
+                {sendMenuOpen ? (
+                  <div className="absolute left-0 top-full z-20 mt-1 min-w-[220px] rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                    <button
+                      type="button"
+                      className="block w-full px-3 py-2 text-left text-xs font-medium text-slate-800 hover:bg-slate-50"
+                      onClick={() => {
+                        setSendMenuOpen(false);
+                        onSendEmail('sales_call_follow_up');
+                      }}
+                    >
+                      Sales call follow-up
+                    </button>
+                    <button
+                      type="button"
+                      className="block w-full px-3 py-2 text-left text-xs font-medium text-slate-800 hover:bg-slate-50"
+                      onClick={() => {
+                        setSendMenuOpen(false);
+                        onSendEmail('custom_email');
+                      }}
+                    >
+                      Custom email
+                    </button>
+                  </div>
+                ) : null}
+              </div>
             ) : null}
             <button
               type="button"

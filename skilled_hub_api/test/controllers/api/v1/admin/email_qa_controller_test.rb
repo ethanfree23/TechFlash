@@ -39,6 +39,21 @@ module Api
           assert body["trigger"].present?
         end
 
+        test "admin can preview crm sales call follow-up template" do
+          admin = create_admin!("qa-admin-crm-preview@example.com", first_name: "Ethan")
+
+          post "/api/v1/admin/email_qa/preview",
+               params: { template_key: "crm_sales_call_follow_up" },
+               headers: auth_header_for(admin),
+               as: :json
+
+          assert_response :ok
+          body = JSON.parse(response.body)
+          assert_equal "crm_sales_call_follow_up", body["template_key"]
+          assert_match(/TechFlash|speaking/i, body["subject"].to_s)
+          assert body["html_body"].present?
+        end
+
         test "send one requires confirmation guard" do
           admin = create_admin!("qa-admin-confirm@example.com")
 
@@ -146,13 +161,14 @@ module Api
 
         private
 
-        def create_admin!(email)
+        def create_admin!(email, first_name: nil)
           User.create!(
             email: email,
             password: "password123",
             password_confirmation: "password123",
             role: :admin,
-            phone: "713-555-0600"
+            phone: "713-555-0600",
+            first_name: first_name
           )
         end
 

@@ -257,6 +257,16 @@ export const crmAPI = {
       method: 'PATCH',
       body: JSON.stringify(data),
     }),
+  previewEmail: (crmLeadId, data) =>
+    apiRequest(`/admin/crm_leads/${crmLeadId}/preview_email`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
+  sendEmail: (crmLeadId, data) =>
+    apiRequest(`/admin/crm_leads/${crmLeadId}/send_email`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    }),
 };
 
 // US city autocomplete (Nominatim via Rails) — admin only

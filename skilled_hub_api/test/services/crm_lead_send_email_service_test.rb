@@ -1,0 +1,118 @@
+# frozen_string_literal: true
+
+require "test_helper"
+
+class CrmLeadSendEmailServiceTest < ActiveSupport::TestCase
+  setup do
+    @admin = User.create!(
+      email: "admin+crm_email_svc@example.com",
+      password: "password123",
+      password_confirmation: "password123",
+      role: :admin,
+      first_name: "Ethan",
+      last_name: "Admin"
+    )
+    @lead = CrmLead.create!(
+      name: "Rodriguez Electric",
+      contact_name: "Mike Rodriguez",
+      email: "mike@rodiguez-electric.example.com",
+      status: "lead"
+    )
+  end
+
+  test "interpolates template variables" do
+    result = CrmLeadSendEmailService.call(
+      lead: @lead,
+      admin_user: @admin,
+      params: {
+        template_key: "sales_call_follow_up",
+        to: "mike@rodiguez-electric.example.com",
+        subject: "Hi {{contact_first_name}}",
+        body: "Hello {{contact_first_name}} from {{sender_name}} at {{company_name}}."
+      },
+      deliver: false,
+      log_activity: false
+    )
+
+    assert result[:success]
+    assert_includes result[:preview][:subject], "Mike"
+    assert_includes result[:preview][:text_body], "Ethan Admin"
+    assert_includes result[:preview][:text_body], "Rodriguez Electric"
+  end
+
+  test "rejects unknown template" do
+    assert_raises(CrmLeadSendEmailService::Error) do
+      CrmLeadSendEmailService.call(
+        lead: @lead,
+        admin_user: @admin,
+        params: {
+          template_key: "not_real",
+          to: "mike@rodiguez-electric.example.com",
+          subject: "Hi",
+          body: "Body"
+        },
+        deliver: false
+      )
+    end
+  end
+
+  test "rejects non-record recipient without confirm" do
+    assert_raises(CrmLeadSendEmailService::Error) do
+      CrmLeadSendEmailService.call(
+        lead: @lead,
+        admin_user: @admin,
+        params: {
+          template_key: "sales_call_follow_up",
+          to: "stranger@example.com",
+          subject: "Hi",
+          body: "Hello there"
+        },
+        deliver: false
+      )
+    end
+  end
+
+  test "allows non-record recipient with confirm flag" do
+    result = CrmLeadSendEmailService.call(
+      lead: @lead,
+      admin_user: @admin,
+      params: {
+        template_key: "sales_call_follow_up",
+        to: "stranger@example.com",
+        subject: "Hi",
+        body: "Hello there",
+        confirm_non_record_recipient: true
+      },
+      deliver: false,
+      log_activity: false
+    )
+
+    assert result[:success]
+    assert_equal "stranger@example.com", result[:preview][:to]
+  end
+
+  test "send creates crm note on success" do
+    ActionMailer::Base.delivery_method = :test
+    ActionMailer::Base.deliveries.clear
+
+    result = CrmLeadSendEmailService.call(
+      lead: @lead,
+      admin_user: @admin,
+      params: {
+        template_key: "short_follow_up",
+        to: "mike@rodiguez-electric.example.com",
+        subject: "Quick follow-up",
+        body: "Thanks for the call."
+      },
+      deliver: true,
+      log_activity: true
+    )
+
+    assert result[:success]
+    assert_equal 1, ActionMailer::Base.deliveries.size
+    note = @lead.crm_notes.order(:id).last
+    assert_equal "email", note.contact_method
+    assert_match(/sent/i, note.title)
+    assert_includes note.body, "mike@rodiguez-electric.example.com"
+  end
+end

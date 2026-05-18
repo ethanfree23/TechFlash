@@ -128,6 +128,8 @@ Rails.application.routes.draw do
         resources :crm_leads, only: %i[index show create update destroy] do
           member do
             post :merge
+            post :send_email
+            post :preview_email
           end
           collection do
             post :import

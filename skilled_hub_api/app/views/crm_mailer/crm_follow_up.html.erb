@@ -1,0 +1,23 @@
+<%= @body_html.html_safe %>
+
+<% if @show_ctas %>
+  <%= render partial: "user_mailer/cta_button", locals: { text: "Create your TechFlash account", url: @signup_url } %>
+
+  <% if @post_job_url.present? %>
+    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="margin-top: 12px;">
+      <tr>
+        <td>
+          <a href="<%= @post_job_url %>" target="_blank" rel="noopener" style="display: inline-block; padding: 12px 24px; font-size: 15px; font-weight: 600; color: #FE6711 !important; text-decoration: none; background-color: #ffffff; border: 2px solid #FE6711; border-radius: 12px;">
+            Post a job
+          </a>
+        </td>
+      </tr>
+    </table>
+  <% end %>
+
+  <% if @techflash_url.present? %>
+    <p style="margin: 24px 0 0 0; font-size: 14px; color: #6b7280; line-height: 1.5;">
+      <a href="<%= @techflash_url %>" target="_blank" rel="noopener" style="color: #2563eb; text-decoration: underline;">Learn more about TechFlash</a>
+    </p>
+  <% end %>
+<% end %>

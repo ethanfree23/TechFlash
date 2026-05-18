@@ -52,6 +52,7 @@ import {
 } from '../utils/crmDisplayAdapter';
 import CrmCommandHeader from '../components/crm/CrmCommandHeader';
 import CompanyRecordHeader from '../components/crm/CompanyRecordHeader';
+import CrmSendEmailModal from '../components/crm/CrmSendEmailModal';
 import CrmRightRail from '../components/crm/CrmRightRail';
 import PipelineStageTracker from '../components/crm/PipelineStageTracker';
 import CrmBioReadMore from '../components/crm/CrmBioReadMore';
@@ -79,6 +80,7 @@ import {
   FaChevronDown,
   FaChevronLeft,
   FaChevronRight,
+  FaEnvelope,
 } from 'react-icons/fa';
 
 const formatCurrency = (cents) => {
@@ -533,6 +535,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [reminderModalOpen, setReminderModalOpen] = useState(false);
   const [reminderDraft, setReminderDraft] = useState({ remind_at: '', title: '', body: '' });
   const [reminderSaving, setReminderSaving] = useState(false);
+  const [emailComposerOpen, setEmailComposerOpen] = useState(false);
+  const [emailComposerTemplateKey, setEmailComposerTemplateKey] = useState('sales_call_follow_up');
   const pendingAdditionalContactFocusIdx = useRef(null);
   const crmAddUserContactIdxRef = useRef(null);
   const [crmContactUserModalOpen, setCrmContactUserModalOpen] = useState(false);
@@ -3085,6 +3089,10 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   setCrmCompanyInfoOpen(true);
                   setTimeout(() => document.getElementById('crm-status-select')?.focus(), 50);
                 }}
+                onSendEmail={(templateKey) => {
+                  setEmailComposerTemplateKey(templateKey || 'sales_call_follow_up');
+                  setEmailComposerOpen(true);
+                }}
               />
             )}
 
@@ -4190,9 +4198,24 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   <div className="space-y-3">
                     {filteredTimelineNotes.map((note) => {
                       const wasEdited = noteWasEdited(note);
+                      const isSentEmail =
+                        note.contact_method === 'email' && /sent/i.test(String(note.title || ''));
                       return (
-                        <div key={note.id} className="rounded-xl border border-gray-200 bg-white p-4">
+                        <div
+                          key={note.id}
+                          className={`rounded-xl border p-4 ${
+                            isSentEmail
+                              ? 'border-orange-200 bg-orange-50/40'
+                              : 'border-gray-200 bg-white'
+                          }`}
+                        >
                           <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                            {isSentEmail ? (
+                              <span className="inline-flex items-center gap-1 rounded bg-orange-100 px-2 py-0.5 text-orange-800 font-semibold">
+                                <FaEnvelope className="h-3 w-3" aria-hidden />
+                                Sent
+                              </span>
+                            ) : null}
                             <span className="capitalize px-2 py-0.5 rounded bg-gray-100 text-gray-700">{(note.contact_method || 'note').replace(/_/g, ' ')}</span>
                             <span>{note.made_contact ? 'Contact made' : 'No contact made'}</span>
                             <span>Posted {formatDateTime(note.created_at)}</span>
@@ -6081,6 +6104,24 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             isOpen: true,
             title: 'Create user',
             message: msg,
+            variant: 'error',
+          })
+        }
+      />
+
+      <CrmSendEmailModal
+        open={emailComposerOpen && Boolean(selectedId) && !isCreating}
+        onClose={() => setEmailComposerOpen(false)}
+        crmLeadId={selectedId}
+        form={form}
+        user={user}
+        initialTemplateKey={emailComposerTemplateKey}
+        onSent={(notes) => setCrmNotes(notes || [])}
+        onError={(message) =>
+          setAlertModal({
+            isOpen: true,
+            title: 'Email failed',
+            message: message || 'Could not send email.',
             variant: 'error',
           })
         }

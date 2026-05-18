@@ -24,6 +24,9 @@ module Api
           assert body["live_automations"].is_a?(Array)
           assert body["inactive_automations"].is_a?(Array)
           assert body["live_automations"].any? { |item| item["key"] == "welcome_email" }
+          assert body["manual_emails"].is_a?(Array)
+          assert body["manual_emails"].any? { |item| item["key"] == "crm_sales_call_follow_up" }
+          refute body["live_automations"].any? { |item| item["key"] == "crm_sales_call_follow_up" }
         end
 
         test "non admin cannot fetch mailtrap audit payload" do

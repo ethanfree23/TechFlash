@@ -1,0 +1,13 @@
+<%= @body_plain %>
+
+<% if @show_ctas %>
+Create your TechFlash account: <%= @signup_url %>
+
+<% if @post_job_url.present? %>
+Post a job: <%= @post_job_url %>
+<% end %>
+
+<% if @techflash_url.present? %>
+Learn more about TechFlash: <%= @techflash_url %>
+<% end %>
+<% end %>

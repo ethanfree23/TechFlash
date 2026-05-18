@@ -5,7 +5,7 @@ import { adminUsersAPI } from '../api/api';
 import AlertModal from '../components/AlertModal';
 import AdminCreateUserModal from '../components/AdminCreateUserModal';
 import { auth } from '../auth';
-import { FaCog, FaEye, FaSearch, FaUserPlus } from 'react-icons/fa';
+import { FaCog, FaEye, FaFilter, FaSort, FaSortDown, FaSortUp, FaUserPlus } from 'react-icons/fa';
 import { useTableColumnPreferences } from '../hooks/useTableColumnPreferences';
 import { adminUsersTableId } from '../utils/tableColumnPrefs';
 
@@ -37,9 +37,6 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const [roleTab, setRoleTab] = useState('all');
   const [list, setList] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchQ, setSearchQ] = useState('');
-  const searchTimer = useRef(null);
-  const [debouncedQ, setDebouncedQ] = useState('');
   const [alertModal, setAlertModal] = useState({
     isOpen: false,
     title: '',
@@ -58,21 +55,10 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const [loginsMinFilter, setLoginsMinFilter] = useState('');
   const [sortDir, setSortDir] = useState('asc');
   const [sortKeyOverride, setSortKeyOverride] = useState(null);
+  const [activeFilterColumn, setActiveFilterColumn] = useState(null);
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [draggingColumnKey, setDraggingColumnKey] = useState(null);
   const columnConfigRef = useRef(null);
-  const columnsButtonRef = useRef(null);
-
-  useEffect(() => {
-    if (!showColumnConfig) return undefined;
-    const onMouseDown = (e) => {
-      const t = e.target;
-      if (columnConfigRef.current?.contains(t) || columnsButtonRef.current?.contains(t)) return;
-      setShowColumnConfig(false);
-    };
-    document.addEventListener('mousedown', onMouseDown);
-    return () => document.removeEventListener('mousedown', onMouseDown);
-  }, [showColumnConfig]);
 
   const handleColumnSaveError = useCallback(() => {
     setAlertModal({
@@ -92,17 +78,10 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
     localStorageKey: `${COLUMN_STORAGE_KEY}-${roleTab}`,
   });
 
-  useEffect(() => {
-    if (searchTimer.current) clearTimeout(searchTimer.current);
-    searchTimer.current = setTimeout(() => setDebouncedQ(searchQ.trim()), 300);
-    return () => clearTimeout(searchTimer.current);
-  }, [searchQ]);
-
   const loadUsers = useCallback(async () => {
     setLoading(true);
     try {
       const res = await adminUsersAPI.list({
-        q: debouncedQ || undefined,
         role: roleTab === 'all' ? 'all' : roleTab,
       });
       setList(res.users || []);
@@ -117,7 +96,7 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
     } finally {
       setLoading(false);
     }
-  }, [debouncedQ, roleTab]);
+  }, [roleTab]);
 
   useEffect(() => {
     loadUsers();
@@ -230,6 +209,154 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
     setColumnRoleFilter('');
     setJoinedFilter('');
     setLoginsMinFilter('');
+    setActiveFilterColumn(null);
+  };
+
+  const hasFilterForColumn = (key) => {
+    switch (key) {
+      case 'first_name':
+        return !!firstNameFilter.trim();
+      case 'last_name':
+        return !!lastNameFilter.trim();
+      case 'email':
+        return !!emailFilter.trim();
+      case 'phone':
+        return !!phoneFilter.trim();
+      case 'company':
+        return !!companyFilter.trim();
+      case 'role':
+        return !!columnRoleFilter;
+      case 'joined':
+        return !!joinedFilter.trim();
+      case 'logins_30d':
+        return !!loginsMinFilter.trim();
+      default:
+        return false;
+    }
+  };
+
+  const hasAnyColumnFilter =
+    hasFilterForColumn('first_name') ||
+    hasFilterForColumn('last_name') ||
+    hasFilterForColumn('email') ||
+    hasFilterForColumn('phone') ||
+    hasFilterForColumn('company') ||
+    hasFilterForColumn('role') ||
+    hasFilterForColumn('joined') ||
+    hasFilterForColumn('logins_30d');
+
+  const filterInputClass =
+    'w-full min-w-[5.5rem] border border-gray-300 rounded-md px-2 py-1.5 text-xs bg-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500';
+
+  const renderColumnFilter = (colKey) => {
+    switch (colKey) {
+      case 'first_name':
+        return (
+          <input
+            type="search"
+            autoFocus
+            value={firstNameFilter}
+            onChange={(e) => setFirstNameFilter(e.target.value)}
+            placeholder="Filter…"
+            className={filterInputClass}
+          />
+        );
+      case 'last_name':
+        return (
+          <input
+            type="search"
+            autoFocus
+            value={lastNameFilter}
+            onChange={(e) => setLastNameFilter(e.target.value)}
+            placeholder="Filter…"
+            className={filterInputClass}
+          />
+        );
+      case 'email':
+        return (
+          <input
+            type="search"
+            autoFocus
+            value={emailFilter}
+            onChange={(e) => setEmailFilter(e.target.value)}
+            placeholder="Filter…"
+            className={filterInputClass}
+          />
+        );
+      case 'phone':
+        return (
+          <input
+            type="search"
+            autoFocus
+            value={phoneFilter}
+            onChange={(e) => setPhoneFilter(e.target.value)}
+            placeholder="Filter…"
+            className={filterInputClass}
+          />
+        );
+      case 'company':
+        return (
+          <input
+            type="search"
+            autoFocus
+            value={companyFilter}
+            onChange={(e) => setCompanyFilter(e.target.value)}
+            placeholder="Filter…"
+            className={filterInputClass}
+          />
+        );
+      case 'role':
+        return (
+          <select
+            autoFocus
+            value={columnRoleFilter}
+            onChange={(e) => setColumnRoleFilter(e.target.value)}
+            className={filterInputClass}
+          >
+            <option value="">All types</option>
+            <option value="company">Company</option>
+            <option value="technician">Technician</option>
+            <option value="admin">Admin</option>
+          </select>
+        );
+      case 'joined':
+        return (
+          <input
+            type="search"
+            autoFocus
+            value={joinedFilter}
+            onChange={(e) => setJoinedFilter(e.target.value)}
+            placeholder="e.g. May 2026"
+            className={filterInputClass}
+          />
+        );
+      case 'logins_30d':
+        return (
+          <input
+            type="number"
+            autoFocus
+            min={0}
+            step={1}
+            value={loginsMinFilter}
+            onChange={(e) => setLoginsMinFilter(e.target.value)}
+            placeholder="Min"
+            className={filterInputClass}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+
+  const SortIndicator = ({ colKey }) => {
+    if (colKey === effectiveSortKey) {
+      return sortDir === 'asc' ? (
+        <FaSortUp className="w-3.5 h-3.5 shrink-0 text-blue-600" aria-hidden />
+      ) : (
+        <FaSortDown className="w-3.5 h-3.5 shrink-0 text-blue-600" aria-hidden />
+      );
+    }
+    return <FaSort className="w-3.5 h-3.5 shrink-0 text-gray-300 group-hover:text-gray-400" aria-hidden />;
   };
 
   const sortedList = [...filteredList].sort((a, b) => {
@@ -398,123 +525,37 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
           ))}
         </div>
 
-        <div className="relative mb-4">
-          <FaSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm" />
-          <input
-            type="search"
-            placeholder="Search by email…"
-            value={searchQ}
-            onChange={(e) => setSearchQ(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm"
-          />
-        </div>
-
-        <div className="mb-4 rounded-xl border border-gray-200 bg-gray-50/80 p-3">
-          <div className="flex flex-wrap items-end justify-between gap-3 mb-2">
-            <span className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Column filters</span>
+        <div className="flex flex-wrap items-center justify-end gap-3 mb-2 relative">
+          {hasAnyColumnFilter && (
             <button
               type="button"
               onClick={clearColumnFilters}
-              className="text-xs font-medium text-blue-700 hover:text-blue-900"
+              className="text-xs font-medium text-blue-700 hover:text-blue-900 mr-auto"
             >
               Clear filters
             </button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-2">
-            <label className="block min-w-0">
-              <span className="text-[10px] font-medium text-gray-500 uppercase">First name</span>
-              <input
-                type="search"
-                value={firstNameFilter}
-                onChange={(e) => setFirstNameFilter(e.target.value)}
-                className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
-              />
-            </label>
-            <label className="block min-w-0">
-              <span className="text-[10px] font-medium text-gray-500 uppercase">Last name</span>
-              <input
-                type="search"
-                value={lastNameFilter}
-                onChange={(e) => setLastNameFilter(e.target.value)}
-                className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
-              />
-            </label>
-            <label className="block min-w-0">
-              <span className="text-[10px] font-medium text-gray-500 uppercase">Email</span>
-              <input
-                type="search"
-                value={emailFilter}
-                onChange={(e) => setEmailFilter(e.target.value)}
-                className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
-              />
-            </label>
-            <label className="block min-w-0">
-              <span className="text-[10px] font-medium text-gray-500 uppercase">Phone</span>
-              <input
-                type="search"
-                value={phoneFilter}
-                onChange={(e) => setPhoneFilter(e.target.value)}
-                className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
-              />
-            </label>
-            <label className="block min-w-0">
-              <span className="text-[10px] font-medium text-gray-500 uppercase">Company</span>
-              <input
-                type="search"
-                value={companyFilter}
-                onChange={(e) => setCompanyFilter(e.target.value)}
-                className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
-              />
-            </label>
-            <label className="block min-w-0">
-              <span className="text-[10px] font-medium text-gray-500 uppercase">User type</span>
-              <select
-                value={columnRoleFilter}
-                onChange={(e) => setColumnRoleFilter(e.target.value)}
-                className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white"
-              >
-                <option value="">All types</option>
-                <option value="company">Company</option>
-                <option value="technician">Technician</option>
-                <option value="admin">Admin</option>
-              </select>
-            </label>
-            <label className="block min-w-0">
-              <span className="text-[10px] font-medium text-gray-500 uppercase">Joined contains</span>
-              <input
-                type="search"
-                value={joinedFilter}
-                onChange={(e) => setJoinedFilter(e.target.value)}
-                placeholder="e.g. May 2026"
-                className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
-              />
-            </label>
-            <label className="block min-w-0">
-              <span className="text-[10px] font-medium text-gray-500 uppercase">Logins (30d) min</span>
-              <input
-                type="number"
-                min={0}
-                step={1}
-                value={loginsMinFilter}
-                onChange={(e) => setLoginsMinFilter(e.target.value)}
-                className="mt-0.5 w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs"
-              />
-            </label>
-          </div>
-        </div>
-
-        <div className="flex justify-end mb-2 relative">
+          )}
           <button
-            ref={columnsButtonRef}
             type="button"
             onClick={() => setShowColumnConfig((v) => !v)}
-            className="inline-flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 bg-white rounded-lg hover:bg-gray-50"
+            className={`inline-flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 bg-white rounded-lg hover:bg-gray-50 ${
+              showColumnConfig ? 'relative z-30' : ''
+            }`}
+            aria-expanded={showColumnConfig}
+            aria-haspopup="dialog"
           >
             <FaCog className="w-4 h-4" aria-hidden />
             Columns
           </button>
           {showColumnConfig && (
-            <div ref={columnConfigRef} className="absolute right-0 top-10 z-30 w-80 bg-white border border-gray-200 rounded-xl shadow-lg p-3">
+            <>
+              <button
+                type="button"
+                className="fixed inset-0 z-20 cursor-default"
+                aria-label="Close column settings"
+                onClick={() => setShowColumnConfig(false)}
+              />
+              <div ref={columnConfigRef} className="absolute right-0 top-10 z-30 w-80 bg-white border border-gray-200 rounded-xl shadow-lg p-3">
               <div className="text-xs text-gray-500 mb-2">
                 <button type="button" onClick={() => setShowColumnConfig(false)} className="float-right text-gray-500 hover:text-gray-800 text-sm" aria-label="Close">×</button>
                 Toggle visibility and drag to reorder columns.
@@ -544,7 +585,8 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
                   </li>
                 ))}
               </ul>
-            </div>
+              </div>
+            </>
           )}
         </div>
 
@@ -554,24 +596,39 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
               <thead className="bg-gray-50">
                 <tr>
                   {visibleColumns.map((col) => (
-                    <th key={col.key} className="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase">
-                      {col.key === effectiveSortKey ? (
-                        <button
-                          type="button"
-                          onClick={() => onSortHeaderClick(col.key)}
-                          className="inline-flex items-center gap-1"
-                        >
-                          {col.label} {sortDir === 'asc' ? '▲' : '▼'}
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => onSortHeaderClick(col.key)}
-                          className="inline-flex items-center gap-1 text-gray-700 hover:text-gray-900"
-                        >
-                          {col.label} <span className="text-gray-400 font-normal">↕</span>
-                        </button>
-                      )}
+                    <th key={col.key} className="px-4 py-3 text-left align-top">
+                      <div className="flex flex-col gap-2 min-w-[5.5rem]">
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => onSortHeaderClick(col.key)}
+                            className={`group inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide ${
+                              col.key === effectiveSortKey ? 'text-blue-700' : 'text-gray-600 hover:text-gray-900'
+                            }`}
+                          >
+                            <span>{col.label}</span>
+                            <SortIndicator colKey={col.key} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setActiveFilterColumn((current) => (current === col.key ? null : col.key))
+                            }
+                            className={`p-1 rounded-md transition-colors ${
+                              activeFilterColumn === col.key || hasFilterForColumn(col.key)
+                                ? 'text-blue-600 bg-blue-50 hover:bg-blue-100'
+                                : 'text-gray-400 hover:text-gray-600 hover:bg-gray-200/80'
+                            }`}
+                            aria-label={`Filter ${col.label}`}
+                            aria-expanded={activeFilterColumn === col.key}
+                          >
+                            <FaFilter className="w-3 h-3" aria-hidden />
+                          </button>
+                        </div>
+                        {activeFilterColumn === col.key && (
+                          <div className="pb-0.5">{renderColumnFilter(col.key)}</div>
+                        )}
+                      </div>
                     </th>
                   ))}
                   <th className="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase">Actions</th>
