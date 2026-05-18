@@ -36,6 +36,7 @@ export default function CompanyRecordHeader({
   onAddCompanyLogin,
   onLinkAccount,
   onChangeStatus,
+  onOpenGmail,
 }) {
   const name = String(form?.name || '').trim() || '—';
   const pc = getPrimaryContactPreview({
@@ -143,6 +144,17 @@ export default function CompanyRecordHeader({
               <FaEnvelope className="h-3.5 w-3.5 text-orange-500" aria-hidden />
               Email
             </button>
+            {typeof onOpenGmail === 'function' ? (
+              <button
+                type="button"
+                onClick={onOpenGmail}
+                disabled={!pc.email && !form?.company_email}
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-40"
+              >
+                <FaEnvelope className="h-3.5 w-3.5 text-red-500" aria-hidden />
+                Open in Gmail
+              </button>
+            ) : null}
             <button
               type="button"
               onClick={onWebsite}

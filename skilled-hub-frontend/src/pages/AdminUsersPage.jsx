@@ -60,6 +60,19 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const [sortKeyOverride, setSortKeyOverride] = useState(null);
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [draggingColumnKey, setDraggingColumnKey] = useState(null);
+  const columnConfigRef = useRef(null);
+  const columnsButtonRef = useRef(null);
+
+  useEffect(() => {
+    if (!showColumnConfig) return undefined;
+    const onMouseDown = (e) => {
+      const t = e.target;
+      if (columnConfigRef.current?.contains(t) || columnsButtonRef.current?.contains(t)) return;
+      setShowColumnConfig(false);
+    };
+    document.addEventListener('mousedown', onMouseDown);
+    return () => document.removeEventListener('mousedown', onMouseDown);
+  }, [showColumnConfig]);
 
   const handleColumnSaveError = useCallback(() => {
     setAlertModal({
@@ -492,6 +505,7 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
 
         <div className="flex justify-end mb-2 relative">
           <button
+            ref={columnsButtonRef}
             type="button"
             onClick={() => setShowColumnConfig((v) => !v)}
             className="inline-flex items-center gap-2 px-3 py-1.5 text-sm border border-gray-300 bg-white rounded-lg hover:bg-gray-50"
@@ -500,8 +514,9 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
             Columns
           </button>
           {showColumnConfig && (
-            <div className="absolute right-0 top-10 z-30 w-80 bg-white border border-gray-200 rounded-xl shadow-lg p-3">
+            <div ref={columnConfigRef} className="absolute right-0 top-10 z-30 w-80 bg-white border border-gray-200 rounded-xl shadow-lg p-3">
               <div className="text-xs text-gray-500 mb-2">
+                <button type="button" onClick={() => setShowColumnConfig(false)} className="float-right text-gray-500 hover:text-gray-800 text-sm" aria-label="Close">×</button>
                 Toggle visibility and drag to reorder columns.
               </div>
               <ul className="space-y-2 max-h-72 overflow-auto">

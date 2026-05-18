@@ -105,6 +105,8 @@ export const CRM_QUICK_PIPELINE_FILTERS = [
 ];
 
 export const CRM_NOTE_QUICK_TEMPLATES = [
+  { id: 'call_no_answer', label: 'Call - No Answer', method: 'call', title: 'Call - No Answer', body: 'N/A' },
+  { id: 'call_stvm', label: 'Call - STVM', method: 'call', title: 'Call - STVM', body: 'straight to voicemail' },
   { id: 'cold_call', label: 'Cold call', method: 'call', title: 'Cold call', body: 'Called — ' },
   { id: 'voicemail', label: 'Left voicemail', method: 'call', title: 'Voicemail', body: 'Left voicemail. ' },
   { id: 'interested', label: 'Interested', method: 'call', title: 'Interested', body: 'Interested in TechFlash. Next steps: ' },

@@ -991,7 +991,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   return (
     <>
       <AppHeader user={user} onLogout={onLogout} activePage="settings" emailVariant="simple" />
-      <SettingsPageShell wide={isAdmin && settingsTab === 'system_controls'}>
+      <SettingsPageShell wide>
         <SettingsHeader
           title="Settings"
           subtitle={settingsSubtitle}

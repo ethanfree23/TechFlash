@@ -55,6 +55,14 @@ module Api
           head :no_content
         end
 
+        def enrich_from_url
+          url = params[:url].to_s.strip
+          data = CrmLeadUrlEnrichment.call(url)
+          render json: { enrichment: data }, status: :ok
+        rescue CrmLeadUrlEnrichment::Error => e
+          render json: { error: e.message }, status: :unprocessable_entity
+        end
+
         def import
           rows = params[:rows]
           unless rows.is_a?(Array)

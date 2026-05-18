@@ -132,6 +132,7 @@ Rails.application.routes.draw do
           collection do
             post :import
             post :bulk_destroy
+            post :enrich_from_url
           end
           resources :crm_notes, only: %i[create update]
         end

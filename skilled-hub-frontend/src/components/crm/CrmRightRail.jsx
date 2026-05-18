@@ -1,4 +1,6 @@
 import React from 'react';
+import { CrmStatusBadge } from './CrmBadges';
+import { CRM_STATUSES } from '../../utils/crmConstants';
 import { getDataQualityScore, getNextBestActions, getRelationshipTemperature } from '../../utils/crmDisplayAdapter';
 
 export default function CrmRightRail({
@@ -10,6 +12,12 @@ export default function CrmRightRail({
   outreachSnapshot,
   operationalInsights,
   formatDateTime,
+  statusEditing,
+  onStatusEdit,
+  onStatusChange,
+  onStatusSave,
+  onStatusCancel,
+  statusSaving,
 }) {
   const score = getDataQualityScore(form);
   const actions = getNextBestActions({ form, metrics, crmNotesLength, isLinked });
@@ -17,6 +25,45 @@ export default function CrmRightRail({
 
   return (
     <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between gap-2 mb-2">
+          <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Status</h3>
+          {!statusEditing ? (
+            <button type="button" onClick={onStatusEdit} className="text-xs font-semibold text-blue-700 hover:text-blue-900">
+              Edit
+            </button>
+          ) : (
+            <div className="flex gap-2">
+              <button type="button" onClick={onStatusCancel} className="text-xs text-slate-600 hover:text-slate-900">
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={onStatusSave}
+                disabled={statusSaving}
+                className="text-xs font-semibold text-blue-700 hover:text-blue-900 disabled:opacity-50"
+              >
+                {statusSaving ? 'Saving…' : 'Save'}
+              </button>
+            </div>
+          )}
+        </div>
+        {statusEditing ? (
+          <select
+            className="w-full border border-slate-300 rounded-lg px-2 py-1.5 text-sm capitalize bg-white"
+            value={form?.status || 'lead'}
+            onChange={(e) => onStatusChange?.(e.target.value)}
+          >
+            {CRM_STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {s}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <CrmStatusBadge status={form?.status} />
+        )}
+      </div>
       {outreachSnapshot && (
         <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500 mb-2">Outreach snapshot</h3>

@@ -61,15 +61,20 @@ export function MarketingHeader() {
           </Link>
           {howItWorksNav}
           {whyTechFlashNav}
-          <Link to="/download" className={navClass(false)}>
-            Get the app
-          </Link>
-          <Link to="/login" className={navClass(false)}>
-            Sign In
-          </Link>
         </nav>
 
-        <div className="hidden items-center gap-3 lg:flex">
+        <div className="hidden shrink-0 items-center gap-4 lg:flex">
+          <div className="flex items-center gap-2 text-sm font-semibold text-tf-navy">
+            <Link to="/download" className={navClass(false)}>
+              Get the app
+            </Link>
+            <span className="select-none text-tf-navy/35" aria-hidden="true">
+              |
+            </span>
+            <Link to="/login" className={navClass(false)}>
+              Sign In
+            </Link>
+          </div>
           <Link
             to="/login?tab=signup"
             className="rounded-xl bg-tf-orange px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-tf-orange-hover"
@@ -78,10 +83,21 @@ export function MarketingHeader() {
           </Link>
         </div>
 
-        <div className="flex items-center gap-2 lg:hidden">
+        <div className="flex min-w-0 items-center gap-2 sm:gap-3 lg:hidden">
+          <div className="hidden min-w-0 items-center gap-1.5 text-xs font-semibold sm:flex sm:text-sm">
+            <Link to="/download" className={navClass(false)} onClick={close}>
+              Get the app
+            </Link>
+            <span className="shrink-0 select-none text-tf-navy/35" aria-hidden="true">
+              |
+            </span>
+            <Link to="/login" className={navClass(false)} onClick={close}>
+              Sign In
+            </Link>
+          </div>
           <Link
             to="/login?tab=signup"
-            className="rounded-xl bg-tf-orange px-3 py-2 text-xs font-semibold text-white sm:text-sm"
+            className="shrink-0 rounded-xl bg-tf-orange px-3 py-2 text-xs font-semibold text-white sm:text-sm"
             onClick={close}
           >
             Get Started

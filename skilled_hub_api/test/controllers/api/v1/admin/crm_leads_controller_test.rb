@@ -241,6 +241,32 @@ module Api
           assert_equal "Regional HVAC partner.", lead.bio
         end
 
+        test "update clears company_email when sent as null" do
+          admin = User.create!(
+            email: "admin+crm_clear_email@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+
+          lead = CrmLead.create!(
+            name: "Clear Email Co",
+            company_email: "keep@example.com",
+            status: "lead"
+          )
+
+          patch "/api/v1/admin/crm_leads/#{lead.id}",
+                params: { name: "Clear Email Co", company_email: nil },
+                headers: auth_header_for(admin),
+                as: :json
+
+          assert_response :ok
+          body = JSON.parse(response.body)
+          assert_nil body.fetch("crm_lead").fetch("company_email")
+          lead.reload
+          assert_nil lead.company_email
+        end
+
         test "show includes platform_company_users when linked to company profile" do
           admin = User.create!(
             email: "admin+crm_show_users@example.com",

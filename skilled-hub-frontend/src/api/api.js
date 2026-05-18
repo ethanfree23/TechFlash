@@ -218,6 +218,11 @@ export const crmAPI = {
     apiRequest(`/admin/crm_leads/${id}`, {
       method: 'DELETE',
     }),
+  enrichFromUrl: (url) =>
+    apiRequest('/admin/crm_leads/enrich_from_url', {
+      method: 'POST',
+      body: JSON.stringify({ url }),
+    }),
   searchCompanyAccounts: (q) =>
     apiRequest(`/admin/company_accounts/search?q=${encodeURIComponent(q || '')}`),
   searchCompanies: (q) =>

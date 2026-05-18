@@ -22,6 +22,7 @@ import {
 import { US_STATES } from '../data/statesByCountry';
 import { normalizeToUsStateName } from '../utils/crmUsState';
 import { parseUsAddressPaste } from '../utils/parseUsAddressPaste';
+import { clearableString, clearablePhone } from '../utils/crmPayload';
 import {
   CRM_STATUSES,
   CRM_PIPELINE_STORAGE_KEY,
@@ -55,7 +56,11 @@ import CrmRightRail from '../components/crm/CrmRightRail';
 import PipelineStageTracker from '../components/crm/PipelineStageTracker';
 import CrmBioReadMore from '../components/crm/CrmBioReadMore';
 import { CrmStatusBadge, CompanyTypeBadges } from '../components/crm/CrmBadges';
+import CrmCompanySocialRows from '../components/crm/CrmCompanySocialRows';
+import CrmPasteScreenshotZone from '../components/crm/CrmPasteScreenshotZone';
 import AdminCreateUserModal from '../components/AdminCreateUserModal';
+import { socialRowsFromForm, applySocialRowsToForm } from '../utils/crmCompanySocials';
+import { mergeInferredRowIntoForm, mergeEnrichmentIntoForm } from '../utils/crmFormMerge';
 import {
   FaBuilding,
   FaChartLine,
@@ -82,14 +87,15 @@ const formatCurrency = (cents) => {
 };
 
 const formatDateTime = (value) => {
-  if (!value) return '—';
+  if (!value) return 'â€”';
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return '—';
+  if (Number.isNaN(d.getTime())) return 'â€”';
   return d.toLocaleString();
 };
 
 /** Persisted per admin user + CRM lead: main collapsible regions on the CRM record view. */
 const CRM_LEAD_COLLAPSIBLE_KEY_PREFIX = 'crm_lead_collapsibles_v1';
+const CRM_RECORD_TAB_KEY_PREFIX = 'crm_record_active_tab_v1';
 
 function crmLeadCollapsibleStorageKey(userId, leadId) {
   return `${CRM_LEAD_COLLAPSIBLE_KEY_PREFIX}_${userId}_${leadId}`;
@@ -162,7 +168,7 @@ function ensurePrimaryContactFlagsOnArray(contacts) {
   return list.map((c, i) => ({ ...c, is_primary: i === idx }));
 }
 
-/** CRM lead → create-platform modal: company profile fields (login email/phone optional overrides). */
+/** CRM lead â†’ create-platform modal: company profile fields (login email/phone optional overrides). */
 function companyProvisionFieldsFromLeadForm(form, overrides = {}) {
   const loc = [form.city, form.state]
     .map((x) => String(x || '').trim())
@@ -214,7 +220,7 @@ function companyProvisionFieldsFromLeadForm(form, overrides = {}) {
     location: loc,
     bio:
       String(form.bio || '').trim() ||
-      'Company profile pending — update from CRM record or complete during onboarding.',
+      'Company profile pending â€” update from CRM record or complete during onboarding.',
     state: st,
     website_url: String(form.website || '').trim(),
     facebook_url: String(form.facebook_url || '').trim(),
@@ -365,10 +371,10 @@ function contactsFieldsSnapshotFromLead(c) {
 }
 
 const mergeFieldDisplayValue = (lead, key) => {
-  if (!lead) return '—';
+  if (!lead) return 'â€”';
   const value = lead[key];
-  if (value == null || value === '') return '—';
-  if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : '—';
+  if (value == null || value === '') return 'â€”';
+  if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : 'â€”';
   return String(value);
 };
 
@@ -489,6 +495,12 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [noteComposerOpen, setNoteComposerOpen] = useState(false);
   const [companyInfoEditing, setCompanyInfoEditing] = useState(false);
   const [contactsEditing, setContactsEditing] = useState(false);
+  const [recordTab, setRecordTab] = useState('company');
+  const [statusRailEditing, setStatusRailEditing] = useState(false);
+  const [newCompanyUsersOpen, setNewCompanyUsersOpen] = useState(false);
+  const [websiteEnrichBusy, setWebsiteEnrichBusy] = useState(false);
+  const [websiteEnrichHint, setWebsiteEnrichHint] = useState('');
+  const websiteEnrichTimer = useRef(null);
   const [profileImportOpen, setProfileImportOpen] = useState(false);
   const [profileImportText, setProfileImportText] = useState('');
   const [mergeModalOpen, setMergeModalOpen] = useState(false);
@@ -813,12 +825,83 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     return () => window.removeEventListener('keydown', onKey);
   }, [provisionModalOpen, newCompanyModalOpen, provisionSaving, saving, linkAccountModalOpen, reminderModalOpen, reminderSaving, noteComposerOpen, noteSaving]);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    try {
+      const saved = localStorage.getItem(`${CRM_RECORD_TAB_KEY_PREFIX}_${user.id}`);
+      if (saved === 'company' || saved === 'contacts') setRecordTab(saved);
+    } catch {
+      /* ignore */
+    }
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    try {
+      localStorage.setItem(`${CRM_RECORD_TAB_KEY_PREFIX}_${user.id}`, recordTab);
+    } catch {
+      /* ignore */
+    }
+  }, [recordTab, user?.id]);
+
+  const companySocialRows = useMemo(
+    () => socialRowsFromForm(form),
+    [form.instagram_url, form.facebook_url, form.linkedin_url],
+  );
+
+  const setCompanySocialRows = useCallback((rowsOrUpdater) => {
+    setForm((f) => {
+      const prev = socialRowsFromForm(f);
+      const next = typeof rowsOrUpdater === 'function' ? rowsOrUpdater(prev) : rowsOrUpdater;
+      return applySocialRowsToForm(f, next);
+    });
+  }, []);
+
+  const applyInferredTextToForm = useCallback(
+    (text) => {
+      const draft = buildImportDraftRows(text, CRM_STATUSES, CRM_COMPANY_TYPES, {
+        knownCompanyName: String(form.name || '').trim(),
+      });
+      if (!draft.length) return;
+      setForm((f) => mergeInferredRowIntoForm(f, draft[0]));
+    },
+    [form.name],
+  );
+
+  const enrichWebsiteFromUrl = useCallback(async (url) => {
+    const u = String(url || '').trim();
+    if (!u || u.length < 4) return;
+    setWebsiteEnrichBusy(true);
+    setWebsiteEnrichHint('');
+    try {
+      const res = await crmAPI.enrichFromUrl(u);
+      if (res?.enrichment) {
+        setForm((f) => mergeEnrichmentIntoForm(f, res.enrichment));
+        setWebsiteEnrichHint('Fetched from website');
+      }
+    } catch {
+      setWebsiteEnrichHint('');
+    } finally {
+      setWebsiteEnrichBusy(false);
+    }
+  }, []);
+
+  const scheduleWebsiteEnrich = useCallback(
+    (url) => {
+      if (websiteEnrichTimer.current) clearTimeout(websiteEnrichTimer.current);
+      websiteEnrichTimer.current = setTimeout(() => enrichWebsiteFromUrl(url), 600);
+    },
+    [enrichWebsiteFromUrl],
+  );
+
   const openCreate = () => {
     setProvisionModalOpen(false);
     setProfileImportOpen(false);
     setSelectedId(null);
     setIsCreating(true);
     setNewCompanyModalOpen(true);
+    setNewCompanyUsersOpen(false);
+    setWebsiteEnrichHint('');
     setSearchQ('');
     setSearchHits([]);
   };
@@ -835,7 +918,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     setProvisionModalOpen(true);
   }, [form]);
 
-  /** Prefill lead-level “Create platform company account” from a specific CRM contact row (e.g. unlinked lead). */
+  /** Prefill lead-level â€œCreate platform company accountâ€ from a specific CRM contact row (e.g. unlinked lead). */
   const openProvisionFromCrmContact = useCallback(
     (contact, resolved) => {
       const companyEmail = String(form.company_email || '').trim();
@@ -987,24 +1070,24 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       normalizedContacts.find((row) => row.is_primary === true) || normalizedContacts[0] || {};
     const payload = {
       name: form.name?.trim(),
-      contact_name: (primaryContact.name || form.contact_name || '').trim() || undefined,
-      email: (primaryContact.email || form.email || '').trim() || undefined,
-      phone: formatPhoneInput(String(primaryContact.phone || form.phone || '').trim()) || undefined,
-      company_email: form.company_email?.trim() || undefined,
-      company_phone: formatPhoneInput((form.company_phone || '').trim()) || undefined,
-      bio: form.bio?.trim() || undefined,
+      contact_name: clearableString(primaryContact.name || form.contact_name),
+      email: clearableString(primaryContact.email || form.email),
+      phone: clearablePhone(primaryContact.phone || form.phone, formatPhoneInput),
+      company_email: clearableString(form.company_email),
+      company_phone: clearablePhone(form.company_phone, formatPhoneInput),
+      bio: clearableString(form.bio),
       contacts: normalizedContacts,
-      website: form.website?.trim() || undefined,
-      street_address: form.street_address?.trim() || undefined,
-      city: form.city?.trim() || undefined,
-      state: form.state?.trim() || undefined,
-      zip: form.zip?.trim() || undefined,
-      instagram_url: form.instagram_url?.trim() || undefined,
-      facebook_url: form.facebook_url?.trim() || undefined,
-      linkedin_url: form.linkedin_url?.trim() || undefined,
+      website: clearableString(form.website),
+      street_address: clearableString(form.street_address),
+      city: clearableString(form.city),
+      state: clearableString(form.state),
+      zip: clearableString(form.zip),
+      instagram_url: clearableString(form.instagram_url),
+      facebook_url: clearableString(form.facebook_url),
+      linkedin_url: clearableString(form.linkedin_url),
       company_types: form.company_types || [],
       status: form.status || 'lead',
-      notes: form.notes || undefined,
+      notes: clearableString(form.notes),
       linked_user_id: form.linked_user_id ?? null,
       linked_company_profile_id: form.linked_company_profile_id ?? null,
     };
@@ -2114,7 +2197,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     d.setHours(9, 0, 0, 0);
     const pad = (n) => String(n).padStart(2, '0');
     const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    setReminderDraft({ remind_at: local, title: 'Reminder — call back', body: '' });
+    setReminderDraft({ remind_at: local, title: 'Reminder â€” call back', body: '' });
     setReminderModalOpen(true);
   };
 
@@ -2534,18 +2617,18 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           <span className="font-medium text-slate-700">{pc.name || 'No contact'}</span>
           {(row.city || row.state) && (
             <span className="text-slate-400">
-              · {String(row.city || '').trim()}
+              Â· {String(row.city || '').trim()}
               {row.city && row.state ? ', ' : ''}
               {String(row.state || '').trim()}
             </span>
           )}
-          <span className="text-slate-400">· {nc} notes</span>
-          {!row.linked_account && <span className="text-amber-600 font-medium">· Unlinked</span>}
+          <span className="text-slate-400">Â· {nc} notes</span>
+          {!row.linked_account && <span className="text-amber-600 font-medium">Â· Unlinked</span>}
         </div>
         {pipelineItem && pipelineItem.duplicateCrRecordsCount > 1 && (
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-900 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded">
-              {pipelineItem.duplicateCrRecordsCount} CRM records · same linked company
+              {pipelineItem.duplicateCrRecordsCount} CRM records Â· same linked company
             </span>
           </div>
         )}
@@ -2673,7 +2756,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           return (
             <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600 flex flex-wrap gap-x-6 gap-y-2">
               <span>
-                <strong className="text-slate-800">In view — missing phone:</strong> {missingPhone}
+                <strong className="text-slate-800">In view â€” missing phone:</strong> {missingPhone}
               </span>
               <span>
                 <strong className="text-slate-800">Missing email:</strong> {missingEmail}
@@ -2716,7 +2799,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-bold text-slate-800 tracking-tight">Prospect command list</h2>
-                  <p className="text-[11px] text-slate-500 mt-0.5">{filteredLeads.length} in view · {leads.length} total</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">{filteredLeads.length} in view Â· {leads.length} total</p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
                   <button
@@ -2846,7 +2929,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   type="search"
                   value={pipelineNameFilter}
                   onChange={(e) => setPipelineNameFilter(e.target.value)}
-                  placeholder="Search name, email, phone, city, trade…"
+                  placeholder="Search name, email, phone, city, tradeâ€¦"
                   className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white"
                 />
                 <select
@@ -2934,7 +3017,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                             }}
                             className="shrink-0 self-stretch px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50/90 hover:bg-amber-100 border-l border-amber-100"
                           >
-                            Merge…
+                            Mergeâ€¦
                           </button>
                         ) : null}
                       </li>
@@ -2964,6 +3047,16 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                 onEmail={() => {
                   const e = String(form.email || form.company_email || '').trim();
                   if (e) window.location.href = `mailto:${e}`;
+                }}
+                onOpenGmail={() => {
+                  const e = String(form.email || form.company_email || '').trim();
+                  if (e) {
+                    window.open(
+                      `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(e)}`,
+                      '_blank',
+                      'noopener,noreferrer',
+                    );
+                  }
                 }}
                 onWebsite={() => {
                   const w = String(form.website || '').trim();
@@ -3017,12 +3110,10 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       <p className="text-xs text-slate-500 mt-1">
                         {companyInfoEditing || contactsEditing ? (
                           <span className="text-amber-700 font-semibold">
-                            You have unsaved edits — use Save when finished, or Cancel on each section to discard those
+                            You have unsaved edits â€” use Save when finished, or Cancel on each section to discard those
                             changes.
                           </span>
-                        ) : (
-                          'Use Edit on each section below to change company details or CRM contacts.'
-                        )}
+                        ) : null}
                       </p>
                     </div>
                   </button>
@@ -3072,7 +3163,32 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   </div>
                 )}
                 <div className="space-y-4">
-                    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+                   <div className="flex gap-1 border-b border-gray-200 mb-4">
+                  <button
+                    type="button"
+                    onClick={() => setRecordTab('company')}
+                    className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${
+                      recordTab === 'company'
+                        ? 'border-blue-600 text-blue-700'
+                        : 'border-transparent text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    Company info
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRecordTab('contacts')}
+                    className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${
+                      recordTab === 'contacts'
+                        ? 'border-blue-600 text-blue-700'
+                        : 'border-transparent text-gray-500 hover:text-gray-800'
+                    }`}
+                  >
+                    Contacts
+                  </button>
+                </div>
+                {recordTab === 'company' ? (
+                  <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-white px-1 sm:px-2">
                         <button
                           type="button"
@@ -3098,10 +3214,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => setCompanyInfoEditing(false)}
-                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-white hover:bg-gray-900"
+                                disabled={saving}
+                                onClick={saveRecord}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                               >
-                                Done
+                                {saving ? 'Savingâ€¦' : 'Save'}
                               </button>
                             </>
                           ) : (
@@ -3151,25 +3268,26 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                             <input
                               className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
                               value={form.website ?? ''}
-                              onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
+                              onChange={(e) => {
+                                const v = e.target.value;
+                                setForm((f) => ({ ...f, website: v }));
+                                scheduleWebsiteEnrich(v);
+                              }}
+                              onBlur={(e) => enrichWebsiteFromUrl(e.target.value)}
                             />
+                            {websiteEnrichBusy ? (
+                              <p className="mt-1 text-xs text-slate-500">Fetching company details…</p>
+                            ) : websiteEnrichHint ? (
+                              <p className="mt-1 text-xs text-emerald-700">{websiteEnrichHint}</p>
+                            ) : null}
                           </label>
-                          <label className="block">
-                            <span className="text-xs font-medium text-gray-500 uppercase">Status</span>
-                            <select
-                              id="crm-status-select"
-                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm capitalize bg-white"
-                              value={form.status ?? 'lead'}
-                              onChange={(e) => setForm((f) => ({ ...f, status: e.target.value }))}
-                            >
-                              {CRM_STATUSES.map((s) => (
-                                <option key={s} value={s}>
-                                  {s}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          <div className="hidden sm:block" aria-hidden />
+                          <div className="sm:col-span-2">
+                            <CrmCompanySocialRows
+                              rows={companySocialRows}
+                              onChange={setCompanySocialRows}
+                              disabled={!companyInfoEditing}
+                            />
+                          </div>
                           <label className="block sm:col-span-2">
                             <span className="text-xs font-medium text-gray-500 uppercase">Company bio</span>
                             <textarea
@@ -3247,31 +3365,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                               onChange={(e) => setForm((f) => ({ ...f, zip: e.target.value }))}
                             />
                           </label>
-                          <div className="hidden sm:block" aria-hidden />
-                          <label className="block sm:col-span-2">
-                            <span className="text-xs font-medium text-gray-500 uppercase">Instagram URL</span>
-                            <input
-                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
-                              value={form.instagram_url ?? ''}
-                              onChange={(e) => setForm((f) => ({ ...f, instagram_url: e.target.value }))}
-                            />
-                          </label>
-                          <label className="block sm:col-span-2">
-                            <span className="text-xs font-medium text-gray-500 uppercase">Facebook URL</span>
-                            <input
-                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
-                              value={form.facebook_url ?? ''}
-                              onChange={(e) => setForm((f) => ({ ...f, facebook_url: e.target.value }))}
-                            />
-                          </label>
-                          <label className="block sm:col-span-2">
-                            <span className="text-xs font-medium text-gray-500 uppercase">LinkedIn URL</span>
-                            <input
-                              className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
-                              value={form.linkedin_url ?? ''}
-                              onChange={(e) => setForm((f) => ({ ...f, linkedin_url: e.target.value }))}
-                            />
-                          </label>
                           <div className="block sm:col-span-2">
                             <span className="text-xs font-medium text-gray-500 uppercase">Company types</span>
                             <div className="mt-2 flex flex-wrap gap-2">
@@ -3306,13 +3399,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
                           <div className="text-xs font-medium text-gray-500 uppercase">Company name</div>
-                          <div className="mt-1 text-sm text-gray-900 font-medium">{form.name || '—'}</div>
-                        </div>
-                        <div>
-                          <div className="text-xs font-medium text-gray-500 uppercase">Status</div>
-                          <div className="mt-1">
-                            <CrmStatusBadge status={form.status} />
-                          </div>
+                          <div className="mt-1 text-sm text-gray-900 font-medium">{form.name || 'â€”'}</div>
                         </div>
                         <div>
                           <div className="text-xs font-medium text-gray-500 uppercase">Company email</div>
@@ -3322,13 +3409,13 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                 {form.company_email}
                               </a>
                             ) : (
-                              '—'
+                              'â€”'
                             )}
                           </div>
                         </div>
                         <div>
                           <div className="text-xs font-medium text-gray-500 uppercase">Company phone</div>
-                          <div className="mt-1 text-sm text-gray-900">{form.company_phone || '—'}</div>
+                          <div className="mt-1 text-sm text-gray-900">{form.company_phone || 'â€”'}</div>
                         </div>
                         <div className="md:col-span-2">
                           <div className="text-xs font-medium text-gray-500 uppercase">Website</div>
@@ -3343,7 +3430,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                 {formatWebsiteLabel(form.website)}
                               </a>
                             ) : (
-                              '—'
+                              'â€”'
                             )}
                           </div>
                         </div>
@@ -3361,16 +3448,16 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                 {fullAddress}
                               </a>
                             ) : (
-                              '—'
+                              'â€”'
                             )}
                           </div>
                         </div>
                         <div className="md:col-span-2">
                           <div className="text-xs font-medium text-gray-500 uppercase">Social</div>
                           <div className="mt-1 text-sm text-gray-900 space-y-1">
-                            <div>Instagram: {form.instagram_url || '—'}</div>
-                            <div>Facebook: {form.facebook_url || '—'}</div>
-                            <div>LinkedIn: {form.linkedin_url || '—'}</div>
+                            <div>Instagram: {form.instagram_url || 'â€”'}</div>
+                            <div>Facebook: {form.facebook_url || 'â€”'}</div>
+                            <div>LinkedIn: {form.linkedin_url || 'â€”'}</div>
                           </div>
                         </div>
                         <div className="md:col-span-2">
@@ -3381,13 +3468,15 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         </div>
                         <div className="md:col-span-2">
                           <div className="text-xs font-medium text-gray-500 uppercase">Notes</div>
-                          <div className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{form.notes || '—'}</div>
+                          <div className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{form.notes || 'â€”'}</div>
                         </div>
                       </div>
                       </div>
                         ))}
                     </div>
 
+                  ) : null}
+                  {recordTab === 'contacts' ? (
                     <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-white px-1 sm:px-2">
                         <button
@@ -3414,10 +3503,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                               </button>
                               <button
                                 type="button"
-                                onClick={() => setContactsEditing(false)}
-                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-gray-800 text-white hover:bg-gray-900"
+                                disabled={saving}
+                                onClick={saveRecord}
+                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                               >
-                                Done
+                                {saving ? 'Savingâ€¦' : 'Save'}
                               </button>
                             </>
                           ) : (
@@ -3792,14 +3882,14 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                           ) : null}
                                         </p>
                                         <p className="text-xs text-gray-600 mt-1 break-all">
-                                          {resolved.email || platformUser.email || '—'}
+                                          {resolved.email || platformUser.email || 'â€”'}
                                         </p>
                                         <p className="text-xs text-gray-600 mt-0.5">
-                                          {resolved.phone || platformUser.phone || '—'}
+                                          {resolved.phone || platformUser.phone || 'â€”'}
                                         </p>
                                       </div>
                                       <span className="text-xs font-semibold text-blue-700 shrink-0 self-center">
-                                        Open profile →
+                                        Open profile â†’
                                       </span>
                                     </div>
                                   </Link>
@@ -3828,7 +3918,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                             {resolved.instagram_url}
                                           </a>
                                         ) : (
-                                          '—'
+                                          'â€”'
                                         )}
                                       </div>
                                       <div>
@@ -3843,7 +3933,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                             {resolved.facebook_url}
                                           </a>
                                         ) : (
-                                          '—'
+                                          'â€”'
                                         )}
                                       </div>
                                       <div>
@@ -3858,7 +3948,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                             {resolved.linkedin_url}
                                           </a>
                                         ) : (
-                                          '—'
+                                          'â€”'
                                         )}
                                       </div>
                                     </div>
@@ -3923,11 +4013,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                             {resolved.email}
                                           </a>
                                         ) : (
-                                          '—'
+                                          'â€”'
                                         )}
                                       </div>
                                       <div>
-                                        <span className="text-gray-500">Phone:</span> {resolved.phone || '—'}
+                                        <span className="text-gray-500">Phone:</span> {resolved.phone || 'â€”'}
                                       </div>
                                       {contact.job_title ? (
                                         <div>
@@ -3960,7 +4050,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                             {resolved.instagram_url}
                                           </a>
                                         ) : (
-                                          '—'
+                                          'â€”'
                                         )}
                                       </div>
                                       <div>
@@ -3975,7 +4065,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                             {resolved.facebook_url}
                                           </a>
                                         ) : (
-                                          '—'
+                                          'â€”'
                                         )}
                                       </div>
                                       <div>
@@ -3990,7 +4080,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                             {resolved.linkedin_url}
                                           </a>
                                         ) : (
-                                          '—'
+                                          'â€”'
                                         )}
                                       </div>
                                     </div>
@@ -4014,7 +4104,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                     </div>
                                     <div className="text-xs text-gray-600 break-all">{u.email}</div>
                                   </div>
-                                  <span className="text-xs font-semibold text-blue-700 shrink-0">Open profile →</span>
+                                  <span className="text-xs font-semibold text-blue-700 shrink-0">Open profile â†’</span>
                                 </div>
                               </Link>
                             ))}
@@ -4032,7 +4122,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     onClick={saveRecord}
                     className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
                   >
-                    {saving ? 'Saving…' : companyInfoEditing || contactsEditing ? 'Save changes' : 'Save (edit a section first)'}
+                    {saving ? 'Savingâ€¦' : companyInfoEditing || contactsEditing ? 'Save changes' : 'Save (edit a section first)'}
                   </button>
                   <button
                     type="button"
@@ -4250,7 +4340,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                               <td className="px-4 py-2 font-medium text-gray-900">{j.title}</td>
                               <td className="px-4 py-2 capitalize text-gray-600">{j.status}</td>
                               <td className="px-4 py-2 text-gray-500">
-                                {j.created_at ? new Date(j.created_at).toLocaleDateString() : '—'}
+                                {j.created_at ? new Date(j.created_at).toLocaleDateString() : 'â€”'}
                               </td>
                               <td className="px-4 py-2">
                                 <Link to={`/jobs/${j.id}`} className="text-blue-600 hover:underline">
@@ -4279,6 +4369,18 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                 outreachSnapshot={outreachSnapshot}
                 operationalInsights={operationalInsights}
                 formatDateTime={formatDateTime}
+                statusEditing={statusRailEditing}
+                onStatusEdit={() => setStatusRailEditing(true)}
+                onStatusChange={(status) => setForm((f) => ({ ...f, status }))}
+                onStatusSave={async () => {
+                  await saveRecord();
+                  setStatusRailEditing(false);
+                }}
+                onStatusCancel={() => {
+                  setStatusRailEditing(false);
+                  if (detail?.crm_lead) hydrateFormFromCrmLead(detail.crm_lead);
+                }}
+                statusSaving={saving}
               />
             </div>
           ) : null}
@@ -4320,11 +4422,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     <FaSearch className="text-gray-400 shrink-0" />
                     <input
                       className="flex-1 text-sm outline-none"
-                      placeholder="Type at least 2 characters of email…"
+                      placeholder="Type at least 2 characters of emailâ€¦"
                       value={searchQ}
                       onChange={(e) => setSearchQ(e.target.value)}
                     />
-                    {searchBusy && <span className="text-xs text-gray-400">Searching…</span>}
+                    {searchBusy && <span className="text-xs text-gray-400">Searchingâ€¦</span>}
                   </div>
                   {searchHits.length > 0 && (
                     <ul className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto text-sm">
@@ -4336,7 +4438,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                             onClick={() => selectLinkedAccountFromSearch(u)}
                           >
                             <span className="font-medium text-gray-900">{u.email}</span>
-                            {u.company_name && <span className="text-gray-500"> — {u.company_name}</span>}
+                            {u.company_name && <span className="text-gray-500"> â€” {u.company_name}</span>}
                           </button>
                         </li>
                       ))}
@@ -4419,7 +4521,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[96px]"
                     value={reminderDraft.body}
                     onChange={(e) => setReminderDraft((d) => ({ ...d, body: e.target.value }))}
-                    placeholder="Who to call and what to follow up on…"
+                    placeholder="Who to call and what to follow up onâ€¦"
                   />
                 </label>
                 <div className="flex justify-end gap-2 pt-2">
@@ -4437,7 +4539,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     onClick={saveReminder}
                     className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm font-medium disabled:opacity-50"
                   >
-                    {reminderSaving ? 'Saving…' : 'Save reminder'}
+                    {reminderSaving ? 'Savingâ€¦' : 'Save reminder'}
                   </button>
                 </div>
               </div>
@@ -4562,7 +4664,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     onClick={saveNote}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-50"
                   >
-                    {noteSaving ? 'Saving…' : noteDraft.id ? 'Update note' : noteDraft.parent_note_id ? 'Save comment' : 'Save note'}
+                    {noteSaving ? 'Savingâ€¦' : noteDraft.id ? 'Update note' : noteDraft.parent_note_id ? 'Save comment' : 'Save note'}
                   </button>
                 </div>
               </div>
@@ -4748,7 +4850,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                           disabled={importBusy}
                           className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
                         >
-                          {importBusy ? 'Importing…' : 'Import cleaned rows'}
+                          {importBusy ? 'Importingâ€¦' : 'Import cleaned rows'}
                         </button>
                       </div>
                     </div>
@@ -4857,7 +4959,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                           onClick={undoImportedRows}
                           className="px-3 py-1.5 text-xs rounded-lg border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50"
                         >
-                          {importBusy ? 'Undoing…' : `Undo last import (${importSummary.importedLeadIds.length})`}
+                          {importBusy ? 'Undoingâ€¦' : `Undo last import (${importSummary.importedLeadIds.length})`}
                         </button>
                       </div>
                     )}
@@ -4913,7 +5015,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   ) : provisionCrmNewCompanyFromLead ? (
                     <>
                       <span className="font-medium text-gray-800">New company only.</span> This creates one new
-                      platform company profile from this CRM record. The company does not have its own login — you
+                      platform company profile from this CRM record. The company does not have its own login â€” you
                       choose which CRM contacts get platform accounts, and you enter each person&apos;s signup email and
                       phone in their card below.
                     </>
@@ -5186,7 +5288,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                               <span className="font-semibold text-gray-900">
                                 CRM contact {Number(row.contact_index) + 1}
                               </span>
-                              <span className="block text-xs text-gray-500">Name on record: {row.name || '—'}</span>
+                              <span className="block text-xs text-gray-500">Name on record: {row.name || 'â€”'}</span>
                             </span>
                           </label>
                           <label className="block sm:col-span-2">
@@ -5268,7 +5370,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium disabled:opacity-50"
                     >
                       {provisionSaving
-                        ? 'Creating…'
+                        ? 'Creatingâ€¦'
                         : provisionModalIsAddLoginForLinkedCrm
                           ? 'Create login & send email'
                           : provisionCrmNewCompanyFromLead
@@ -5323,6 +5425,34 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     <h3 className="text-sm font-semibold text-gray-800 mb-2">Company info</h3>
                   </div>
                   <label className="block sm:col-span-2">
+                    <span className="text-xs font-medium text-gray-500 uppercase">Website URL</span>
+                    <input
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                      value={form.website ?? ''}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        setForm((f) => ({ ...f, website: v }));
+                        scheduleWebsiteEnrich(v);
+                      }}
+                      onBlur={(e) => enrichWebsiteFromUrl(e.target.value)}
+                      placeholder="https://example.com"
+                    />
+                    {websiteEnrichBusy ? (
+                      <p className="mt-1 text-xs text-slate-500">Fetching company details…</p>
+                    ) : websiteEnrichHint ? (
+                      <p className="mt-1 text-xs text-emerald-700">{websiteEnrichHint}</p>
+                    ) : null}
+                  </label>
+                  <div className="sm:col-span-2">
+                    <CrmPasteScreenshotZone
+                      disabled={saving}
+                      onTextExtracted={(text) => {
+                        applyInferredTextToForm(text);
+                        setNewCompanyUsersOpen(true);
+                      }}
+                    />
+                  </div>
+                  <label className="block sm:col-span-2">
                     <span className="text-xs font-medium text-gray-500 uppercase">Company name *</span>
                     <input
                       className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
@@ -5347,6 +5477,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       onChange={(e) => setForm((f) => ({ ...f, company_phone: formatPhoneInput(e.target.value) }))}
                     />
                   </label>
+                  <div className="sm:col-span-2">
+                    <CrmCompanySocialRows rows={companySocialRows} onChange={setCompanySocialRows} />
+                  </div>
                   <label className="block sm:col-span-2">
                     <span className="text-xs font-medium text-gray-500 uppercase">Company bio</span>
                     <textarea
@@ -5391,7 +5524,16 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     </div>
                   </div>
                   <div className="sm:col-span-2 border-t border-gray-100 pt-4 mt-1">
-                    <h3 className="text-sm font-semibold text-gray-800 mb-2">Primary contact</h3>
+                    {!newCompanyUsersOpen ? (
+                      <button
+                        type="button"
+                        onClick={() => setNewCompanyUsersOpen(true)}
+                        className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 text-gray-800 hover:bg-gray-50 font-medium"
+                      >
+                        + Add user
+                      </button>
+                    ) : (
+                    <>
                     <div className="flex flex-wrap items-center gap-3 mb-3 text-sm">
                       <label className="inline-flex items-center gap-2">
                         <input
@@ -5420,7 +5562,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                           defaultValue=""
                           onChange={(e) => setPrimaryContactFromDirectory(e.target.value)}
                         >
-                          <option value="">Choose a contact…</option>
+                          <option value="">Choose a contactâ€¦</option>
                           {crmContactOptions.map((contact, idx) => (
                             <option key={`${contact.name}-${contact.email}-${idx}`} value={JSON.stringify(contact)}>
                               {[contact.name || 'Unnamed', contact.company_name ? `(${contact.company_name})` : '', contact.email || contact.phone || '']
@@ -5589,14 +5731,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       Add contact
                     </button>
                   </div>
-                  <label className="block sm:col-span-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Website</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.website ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, website: e.target.value }))}
-                    />
-                  </label>
+                  </>
+                    )}
                   <label className="block sm:col-span-2">
                     <span className="text-xs font-medium text-gray-500 uppercase">Paste full address (optional)</span>
                     <textarea
@@ -5668,30 +5804,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   </label>
                   <div className="hidden sm:block" aria-hidden />
                   <label className="block sm:col-span-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Instagram URL</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.instagram_url ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, instagram_url: e.target.value }))}
-                    />
-                  </label>
-                  <label className="block sm:col-span-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Facebook URL</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.facebook_url ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, facebook_url: e.target.value }))}
-                    />
-                  </label>
-                  <label className="block sm:col-span-2">
-                    <span className="text-xs font-medium text-gray-500 uppercase">LinkedIn URL</span>
-                    <input
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={form.linkedin_url ?? ''}
-                      onChange={(e) => setForm((f) => ({ ...f, linkedin_url: e.target.value }))}
-                    />
-                  </label>
-                  <label className="block sm:col-span-2">
                     <span className="text-xs font-medium text-gray-500 uppercase">Notes</span>
                     <textarea
                       className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[88px]"
@@ -5714,11 +5826,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       <FaSearch className="text-gray-400 shrink-0" />
                       <input
                         className="flex-1 text-sm outline-none"
-                        placeholder="Type at least 2 characters of email…"
+                        placeholder="Type at least 2 characters of emailâ€¦"
                         value={searchQ}
                         onChange={(e) => setSearchQ(e.target.value)}
                       />
-                      {searchBusy && <span className="text-xs text-gray-400">Searching…</span>}
+                      {searchBusy && <span className="text-xs text-gray-400">Searchingâ€¦</span>}
                     </div>
                     {searchHits.length > 0 && (
                       <ul className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto text-sm">
@@ -5734,7 +5846,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                               }}
                             >
                               <span className="font-medium text-gray-900">{u.email}</span>
-                              {u.company_name && <span className="text-gray-500"> — {u.company_name}</span>}
+                              {u.company_name && <span className="text-gray-500"> â€” {u.company_name}</span>}
                             </button>
                           </li>
                         ))}
@@ -5771,7 +5883,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     onClick={saveRecord}
                     className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
                   >
-                    {saving ? 'Saving…' : 'Save'}
+                    {saving ? 'Savingâ€¦' : 'Save'}
                   </button>
                   <button
                     type="button"
@@ -5938,7 +6050,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   onClick={mergeRecord}
                   className="px-4 py-2 rounded-lg bg-amber-600 text-white font-semibold hover:bg-amber-700 disabled:opacity-50"
                 >
-                  {mergeSaving ? 'Merging…' : 'Merge CRM records'}
+                  {mergeSaving ? 'Mergingâ€¦' : 'Merge CRM records'}
                 </button>
               </div>
             </div>
