@@ -1,6 +1,6 @@
 import React from 'react';
 import { useSearchParams } from 'react-router-dom';
-import JobList from '../components/JobList';
+import JobsDashboard from '../components/jobs/JobsDashboard';
 import AppHeader from '../components/AppHeader';
 
 const JobsPage = ({ user, onLogout }) => {
@@ -23,7 +23,7 @@ const JobsPage = ({ user, onLogout }) => {
             </div>
           </div>
         )}
-        <JobList />
+        <JobsDashboard />
       </main>
     </div>
   );

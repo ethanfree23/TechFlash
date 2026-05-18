@@ -1,149 +1,147 @@
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import React, { useState, useCallback } from 'react';
 import AppHeader from '../components/AppHeader';
-import { conversationsAPI } from '../api/api';
-import MessageModal from '../components/MessageModal';
+import ConfirmModal from '../components/ConfirmModal';
 import { auth } from '../auth';
-
-// Admin inbox types (extend when adding e.g. system announcements)
-const ADMIN_INBOX_CATEGORIES = [{ id: 'feedback', label: 'Feedback' }];
+import { useMessagesInbox } from '../components/messages/useMessagesInbox';
+import { useToast } from '../components/messages/useToast';
+import MessagesHeader from '../components/messages/MessagesHeader';
+import MessagesKpiRow from '../components/messages/MessagesKpiRow';
+import MessagesInboxLayout from '../components/messages/MessagesInboxLayout';
+import MessagesToast from '../components/messages/MessagesToast';
+import ComposeModal from '../components/messages/ComposeModal';
+import FeedbackModal from '../components/messages/FeedbackModal';
 
 const MessagesPage = ({ user, onLogout }) => {
-  const [conversations, setConversations] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedConversation, setSelectedConversation] = useState(null);
-  const [showModal, setShowModal] = useState(false);
-  const [adminCategory, setAdminCategory] = useState('feedback');
-
   const currentUser = user || auth.getUser();
-  const isAdmin = currentUser?.role === 'admin';
+  const { toasts, push, dismiss } = useToast();
+  const handleNotify = useCallback(({ message, variant }) => push(message, variant), [push]);
 
-  useEffect(() => {
-    setLoading(true);
-    conversationsAPI
-      .getAll()
-      .then((data) => setConversations(Array.isArray(data) ? data : []))
-      .catch((err) => {
-        console.error('Failed to load conversations', err);
-        setConversations([]);
-      })
-      .finally(() => setLoading(false));
-  }, [currentUser?.id, currentUser?.role]);
+  const inbox = useMessagesInbox(currentUser, { onNotify: handleNotify });
+  const [composeOpen, setComposeOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
 
-  const openConversation = (conv) => {
-    setSelectedConversation(conv);
-    setShowModal(true);
+  const showEmptyGlobal = !inbox.loading && !inbox.loadError && inbox.messages.length === 0;
+
+  const handleCreateTest = () => setComposeOpen(true);
+
+  const handleContactSupport = () => {
+    setFeedbackOpen(true);
   };
 
-  const adminFilteredConversations = isAdmin
-    ? conversations.filter((c) => (c.inbox_category || (c.conversation_type === 'feedback' ? 'feedback' : 'job')) === adminCategory)
-    : conversations;
+  const handleDeleteConfirm = () => {
+    inbox.deleteMessage();
+    setDeleteConfirmOpen(false);
+  };
 
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader user={currentUser} onLogout={onLogout} activePage="messages" emailVariant="welcome" />
 
-      <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6 sm:py-8 pb-24 sm:pb-8">
-        {loading ? (
-          <div className="text-center py-12 text-gray-500">Loading conversations...</div>
-        ) : conversations.length === 0 ? (
-          <div className="bg-white rounded-lg border border-gray-200 p-12 text-center">
-            <p className="text-gray-600 mb-4">You have no messages yet.</p>
-            <p className="text-sm text-gray-500">
-              {isAdmin
-                ? 'User feedback from the Feedback button will appear here when received.'
-                : 'Message a company from a job posting, or start chatting after claiming a job.'}
-            </p>
-            {!isAdmin && (
-              <Link to="/jobs" className="inline-block mt-4 text-blue-600 hover:text-blue-800 font-medium">
-                Browse Jobs →
-              </Link>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {isAdmin && (
-              <div className="mb-4 flex flex-wrap gap-2 items-center">
-                <span className="text-sm font-medium text-gray-600 mr-2">Inbox type</span>
-                {ADMIN_INBOX_CATEGORIES.map((cat) => (
-                  <button
-                    key={cat.id}
-                    type="button"
-                    onClick={() => setAdminCategory(cat.id)}
-                    className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
-                      adminCategory === cat.id
-                        ? 'bg-orange-500 border-orange-500 text-white'
-                        : 'bg-white border-gray-300 text-gray-700 hover:bg-gray-50'
-                    }`}
-                  >
-                    {cat.label}
-                  </button>
-                ))}
-              </div>
-            )}
-            {isAdmin && adminFilteredConversations.length === 0 && conversations.length > 0 ? (
-              <div className="bg-white rounded-lg border border-dashed border-gray-200 p-8 text-center text-gray-500 text-sm">
-                No items in this category yet.
-              </div>
-            ) : null}
-            {(isAdmin ? adminFilteredConversations : conversations).map((conv) => {
-              const job = conv.job;
-              const isFeedback = conv.conversation_type === 'feedback';
-              const otherParty = currentUser?.role === 'admin'
-                ? (conv.technician_profile?.user?.email || conv.company_profile?.company_name || conv.submitter_email || 'User')
-                : currentUser?.role === 'technician'
-                  ? (conv.company_profile?.company_name || 'Company')
-                  : (conv.technician_profile?.user?.email || conv.technician_profile?.trade_type || 'Technician');
-              const lastMsg = conv.messages?.length ? conv.messages[conv.messages.length - 1] : null;
-              const title = isFeedback
-                ? (conv.feedback_kind ? `${conv.feedback_kind.charAt(0).toUpperCase()}${conv.feedback_kind.slice(1)}` : 'Feedback')
-                : (job?.title || 'Job');
-              return (
-                <button
-                  key={conv.id}
-                  onClick={() => openConversation(conv)}
-                  className="w-full text-left bg-white border border-gray-200 rounded-lg p-4 hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      {isFeedback && currentUser?.role === 'admin' && (
-                        <span className="inline-block mb-1 px-2 py-0.5 text-xs font-semibold rounded bg-orange-100 text-orange-800">
-                          Feedback
-                        </span>
-                      )}
-                      <h3 className="font-semibold text-gray-900">{title}</h3>
-                      <p className="text-sm text-gray-500">{isFeedback ? `From ${otherParty}` : `with ${otherParty}`}</p>
-                      {lastMsg && (
-                        <p className="text-sm text-gray-600 mt-1 truncate max-w-md">
-                          {lastMsg.content}
-                        </p>
-                      )}
-                    </div>
-                    <span className="text-xs text-gray-400">
-                      {lastMsg ? new Date(lastMsg.created_at).toLocaleDateString() : ''}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
+      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-24 sm:pb-8">
+        <MessagesHeader
+          role={inbox.role}
+          isAdmin={inbox.isAdmin}
+          onCompose={() => setComposeOpen(true)}
+          onExport={inbox.exportCsv}
+        />
+
+        {inbox.isAdmin && <MessagesKpiRow kpis={inbox.kpis} />}
+
+        {inbox.apiSyncFailed && !inbox.loading && inbox.messages.length > 0 && (
+          <div
+            className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+            role="alert"
+          >
+            <span>Some conversations could not be synced. You may be viewing cached or sample data.</span>
+            <button
+              type="button"
+              onClick={inbox.reload}
+              className="font-semibold text-amber-900 underline underline-offset-2 hover:no-underline focus:outline-none focus:ring-2 focus:ring-amber-500 rounded"
+            >
+              Retry sync
+            </button>
           </div>
         )}
+
+        <MessagesInboxLayout
+          viewMode={inbox.viewMode}
+          onComposeMobile={() => setComposeOpen(true)}
+          inbox={{
+            tabs: inbox.tabs,
+            activeTab: inbox.activeTab,
+            onTabChange: inbox.setActiveTab,
+            tabCounts: inbox.tabCounts,
+            search: inbox.search,
+            onSearchChange: inbox.setSearch,
+            statusFilter: inbox.statusFilter,
+            onStatusFilterChange: inbox.setStatusFilter,
+            priorityFilter: inbox.priorityFilter,
+            onPriorityFilterChange: inbox.setPriorityFilter,
+            sortBy: inbox.sortBy,
+            onSortChange: inbox.setSortBy,
+            messages: inbox.filteredMessages,
+            loading: inbox.loading,
+            loadError: inbox.loadError,
+            onRetry: inbox.reload,
+            selectedId: inbox.selectedId,
+            onSelectMessage: inbox.selectMessage,
+            isAdmin: inbox.isAdmin,
+            onCreateTest: handleCreateTest,
+            onContactSupport: handleContactSupport,
+            onClearFilters: inbox.clearFilters,
+            showEmptyGlobal,
+          }}
+          detail={{
+            message: inbox.selectedMessage,
+            isAdmin: inbox.isAdmin,
+            detailLoading: inbox.detailLoading,
+            onBack: inbox.backToList,
+            composerText: inbox.composerText,
+            onComposerChange: inbox.setComposerText,
+            replyMode: inbox.replyMode,
+            onReplyModeChange: inbox.setReplyMode,
+            onSend: inbox.sendReply,
+            onMarkResolved: inbox.markResolved,
+            onArchive: inbox.archiveMessage,
+            onCannedSelect: inbox.setComposerText,
+            onAssign: inbox.assignTo,
+            onPriorityChange: inbox.setPriority,
+            onStatusChange: inbox.setStatus,
+            onDeleteRequest: () => setDeleteConfirmOpen(true),
+            onPlaceholderAction: (action) => push(`"${action}" will be available when connected to the backend.`, 'info'),
+          }}
+        />
       </main>
 
-      {selectedConversation && (
-        <MessageModal
-          isOpen={showModal}
-          onClose={() => { setShowModal(false); setSelectedConversation(null); }}
-          conversationId={selectedConversation.id}
-          jobTitle={
-            selectedConversation.conversation_type === 'feedback'
-              ? `Feedback (${selectedConversation.feedback_kind || '—'})`
-              : selectedConversation.job?.title
-          }
-          currentUserRole={currentUser?.role}
-          isFeedbackThread={selectedConversation.conversation_type === 'feedback'}
-        />
-      )}
+      <ComposeModal
+        isOpen={composeOpen}
+        onClose={() => setComposeOpen(false)}
+        isAdmin={inbox.isAdmin}
+        currentUser={currentUser}
+        onSubmit={inbox.addMessage}
+      />
+
+      <FeedbackModal
+        isOpen={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+        user={currentUser}
+        isAdmin={inbox.isAdmin}
+        onLocalSubmit={inbox.addMessage}
+      />
+
+      <ConfirmModal
+        isOpen={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+        onConfirm={handleDeleteConfirm}
+        title="Delete this message?"
+        message="This removes the conversation from your inbox. This action cannot be undone."
+        confirmLabel="Delete"
+        cancelLabel="Cancel"
+        variant="destructive"
+      />
+
+      <MessagesToast toasts={toasts} onDismiss={dismiss} />
     </div>
   );
 };

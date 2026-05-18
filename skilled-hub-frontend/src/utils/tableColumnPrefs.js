@@ -4,10 +4,15 @@ export const TABLE_COLUMN_IDS = {
   crmPipeline: 'crm_pipeline',
 };
 
-/** Admin Users role tabs (All / Companies / Technicians) each get their own saved layout. */
+/** Admin Users tabs each get their own saved column layout. */
 export function adminUsersTableId(roleTab) {
-  const safe = ['all', 'company', 'technician'].includes(roleTab) ? roleTab : 'all';
-  return `admin_users_${safe}`;
+  const safe = [
+    'all', 'technicians', 'company', 'admins', 'pending', 'flagged', 'suspended', 'recently_active',
+    // legacy tab ids
+    'technician',
+  ].includes(roleTab) ? roleTab : 'all';
+  const normalized = safe === 'technician' ? 'technicians' : safe;
+  return `admin_users_${normalized}`;
 }
 
 export function columnsFromSavedArray(parsed, defaultColumns) {

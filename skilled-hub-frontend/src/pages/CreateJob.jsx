@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { jobsAPI, profilesAPI, crmAPI } from '../api/api';
 import DateTimeInput from '../components/DateTimeInput';
 import JobAddressFields from '../components/JobAddressFields';
@@ -121,8 +121,58 @@ const CreateJob = () => {
   const [successModal, setSuccessModal] = useState(false);
   const [errorModal, setErrorModal] = useState(null);
   const navigate = useNavigate();
+  const location = useLocation();
+  const duplicateFrom = location.state?.duplicateFrom;
 
   useEffect(() => {
+    if (!duplicateFrom) return;
+    const job = duplicateFrom;
+    setTitle(job.title ? `Copy of ${job.title}` : '');
+    setDescription(String(job.description || ''));
+    setSkillClass(String(job.skill_class || ''));
+    setMinimumYearsExperience(
+      job.minimum_years_experience != null ? String(job.minimum_years_experience) : ''
+    );
+    setNotes(String(job.notes || ''));
+    const certs = job.required_certifications;
+    if (Array.isArray(certs) && certs.length > 0) {
+      setRequiredCertifications(certs);
+    } else if (typeof certs === 'string' && certs.trim()) {
+      setRequiredCertifications(certs.split(',').map((c) => c.trim()).filter(Boolean));
+    } else {
+      setRequiredCertifications(['']);
+    }
+    setAddress(String(job.address || ''));
+    setCity(String(job.city || ''));
+    setState(String(job.state || 'Texas'));
+    setZipCode(String(job.zip_code || ''));
+    setCountry(String(job.country || 'United States'));
+    setHourlyRate(
+      job.hourly_rate_cents != null ? String((job.hourly_rate_cents / 100).toFixed(2)) : ''
+    );
+    setHoursPerDay(String(job.hours_per_day ?? '8'));
+    setDays(job.days != null ? String(job.days) : '');
+    setStatus('open');
+    setStartMode(String(job.start_mode || 'hard_start'));
+    if (job.scheduled_start_at) {
+      setScheduledStartAt(toDatetimeLocal(job.scheduled_start_at));
+    }
+    if (job.scheduled_end_at) {
+      setScheduledEndAt(toDatetimeLocal(job.scheduled_end_at));
+    } else if (job.scheduled_start_at && job.days && job.hours_per_day) {
+      setScheduledEndAt(
+        computeEndFromPricing(toDatetimeLocal(job.scheduled_start_at), job.days, job.hours_per_day)
+      );
+    }
+    if (isAdmin && job.company_profile_id) {
+      setCompanyProfileId(job.company_profile_id);
+      setSelectedCompanyName(job.company_profile?.company_name || '');
+      setCompanySelectionLocked(true);
+    }
+  }, [duplicateFrom, isAdmin]);
+
+  useEffect(() => {
+    if (duplicateFrom) return;
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
@@ -154,7 +204,7 @@ const CreateJob = () => {
     } catch {
       /* ignore bad draft */
     }
-  }, [defaultStart]);
+  }, [defaultStart, duplicateFrom]);
 
   useEffect(() => {
     try {
