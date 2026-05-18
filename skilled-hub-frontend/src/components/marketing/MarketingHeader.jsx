@@ -63,45 +63,43 @@ export function MarketingHeader() {
           {whyTechFlashNav}
         </nav>
 
-        <div className="hidden shrink-0 items-center gap-4 lg:flex">
-          <div className="flex items-center gap-2 text-sm font-semibold text-tf-navy">
-            <Link to="/download" className={navClass(false)}>
-              Get the app
-            </Link>
-            <span className="select-none text-tf-navy/35" aria-hidden="true">
-              |
-            </span>
+        <div className="hidden shrink-0 items-center gap-6 lg:flex">
+          <Link to="/download" className={navClass(false)}>
+            Get the app
+          </Link>
+          <div className="flex items-center gap-2">
             <Link to="/login" className={navClass(false)}>
               Sign In
             </Link>
+            <Link
+              to="/login?tab=signup"
+              className="rounded-xl bg-tf-orange px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-tf-orange-hover"
+            >
+              Get Started
+            </Link>
           </div>
-          <Link
-            to="/login?tab=signup"
-            className="rounded-xl bg-tf-orange px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-tf-orange-hover"
-          >
-            Get Started
-          </Link>
         </div>
 
         <div className="flex min-w-0 items-center gap-2 sm:gap-3 lg:hidden">
-          <div className="hidden min-w-0 items-center gap-1.5 text-xs font-semibold sm:flex sm:text-sm">
-            <Link to="/download" className={navClass(false)} onClick={close}>
-              Get the app
-            </Link>
-            <span className="shrink-0 select-none text-tf-navy/35" aria-hidden="true">
-              |
-            </span>
+          <Link
+            to="/download"
+            className={`hidden sm:inline ${navClass(false)}`}
+            onClick={close}
+          >
+            Get the app
+          </Link>
+          <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
             <Link to="/login" className={navClass(false)} onClick={close}>
               Sign In
             </Link>
+            <Link
+              to="/login?tab=signup"
+              className="shrink-0 rounded-xl bg-tf-orange px-3 py-2 text-xs font-semibold text-white sm:text-sm"
+              onClick={close}
+            >
+              Get Started
+            </Link>
           </div>
-          <Link
-            to="/login?tab=signup"
-            className="shrink-0 rounded-xl bg-tf-orange px-3 py-2 text-xs font-semibold text-white sm:text-sm"
-            onClick={close}
-          >
-            Get Started
-          </Link>
           <button
             type="button"
             className="rounded-lg p-2 text-tf-navy hover:bg-gray-100"

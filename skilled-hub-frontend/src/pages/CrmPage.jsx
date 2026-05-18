@@ -97,14 +97,12 @@ const formatDateTime = (value) => {
 
 /** Persisted per admin user + CRM lead: main collapsible regions on the CRM record view. */
 const CRM_LEAD_COLLAPSIBLE_KEY_PREFIX = 'crm_lead_collapsibles_v1';
-const CRM_RECORD_TAB_KEY_PREFIX = 'crm_record_active_tab_v1';
 
 function crmLeadCollapsibleStorageKey(userId, leadId) {
   return `${CRM_LEAD_COLLAPSIBLE_KEY_PREFIX}_${userId}_${leadId}`;
 }
 
 const CRM_LEAD_COLLAPSIBLE_DEFAULTS = {
-  recordBody: true,
   companyInfo: true,
   users: true,
   activity: true,
@@ -114,11 +112,14 @@ const CRM_LEAD_COLLAPSIBLE_DEFAULTS = {
 function mergeCrmLeadCollapsibleState(raw) {
   const base = { ...CRM_LEAD_COLLAPSIBLE_DEFAULTS };
   if (!raw || typeof raw !== 'object') return base;
-  if (typeof raw.recordBody === 'boolean') base.recordBody = raw.recordBody;
   if (typeof raw.companyInfo === 'boolean') base.companyInfo = raw.companyInfo;
   if (typeof raw.users === 'boolean') base.users = raw.users;
   if (typeof raw.activity === 'boolean') base.activity = raw.activity;
   if (typeof raw.pipelineSidebarCollapsed === 'boolean') base.pipelineSidebarCollapsed = raw.pipelineSidebarCollapsed;
+  if (raw.recordBody === false) {
+    base.companyInfo = false;
+    base.users = false;
+  }
   return base;
 }
 
@@ -497,7 +498,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [noteComposerOpen, setNoteComposerOpen] = useState(false);
   const [companyInfoEditing, setCompanyInfoEditing] = useState(false);
   const [contactsEditing, setContactsEditing] = useState(false);
-  const [recordTab, setRecordTab] = useState('company');
   const [statusRailEditing, setStatusRailEditing] = useState(false);
   const [newCompanyUsersOpen, setNewCompanyUsersOpen] = useState(false);
   const [websiteEnrichBusy, setWebsiteEnrichBusy] = useState(false);
@@ -530,7 +530,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [timelineFilter, setTimelineFilter] = useState('all');
   const [linkAccountModalOpen, setLinkAccountModalOpen] = useState(false);
   const [pipelineSidebarCollapsed, setPipelineSidebarCollapsed] = useState(false);
-  const [crmCompanyRecordBodyOpen, setCrmCompanyRecordBodyOpen] = useState(true);
   const [crmActivitySectionOpen, setCrmActivitySectionOpen] = useState(true);
   const [reminderModalOpen, setReminderModalOpen] = useState(false);
   const [reminderDraft, setReminderDraft] = useState({ remind_at: '', title: '', body: '' });
@@ -557,7 +556,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       crmLeadCollapsibleHydratedKeyRef.current = null;
       if (isCreating) {
         const d = { ...CRM_LEAD_COLLAPSIBLE_DEFAULTS };
-        setCrmCompanyRecordBodyOpen(d.recordBody);
         setCrmCompanyInfoOpen(d.companyInfo);
         setCrmUsersSectionOpen(d.users);
         setCrmActivitySectionOpen(d.activity);
@@ -573,7 +571,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     }
     const d = mergeCrmLeadCollapsibleState(raw);
     setPipelineSidebarCollapsed(d.pipelineSidebarCollapsed);
-    setCrmCompanyRecordBodyOpen(d.recordBody);
     setCrmCompanyInfoOpen(d.companyInfo);
     setCrmUsersSectionOpen(d.users);
     setCrmActivitySectionOpen(d.activity);
@@ -591,7 +588,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         localStorage.setItem(
           crmLeadCollapsibleStorageKey(user.id, selectedId),
           JSON.stringify({
-            recordBody: crmCompanyRecordBodyOpen,
             companyInfo: crmCompanyInfoOpen,
             users: crmUsersSectionOpen,
             activity: crmActivitySectionOpen,
@@ -612,7 +608,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     user?.id,
     selectedId,
     isCreating,
-    crmCompanyRecordBodyOpen,
     crmCompanyInfoOpen,
     crmUsersSectionOpen,
     crmActivitySectionOpen,
@@ -620,7 +615,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   ]);
 
   const expandAllCrmCollapsibles = useCallback(() => {
-    setCrmCompanyRecordBodyOpen(true);
     setCrmCompanyInfoOpen(true);
     setCrmUsersSectionOpen(true);
     setCrmActivitySectionOpen(true);
@@ -628,7 +622,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   }, []);
 
   const collapseAllCrmCollapsibles = useCallback(() => {
-    setCrmCompanyRecordBodyOpen(false);
     setCrmCompanyInfoOpen(false);
     setCrmUsersSectionOpen(false);
     setCrmActivitySectionOpen(false);
@@ -828,25 +821,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [provisionModalOpen, newCompanyModalOpen, provisionSaving, saving, linkAccountModalOpen, reminderModalOpen, reminderSaving, noteComposerOpen, noteSaving]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    try {
-      const saved = localStorage.getItem(`${CRM_RECORD_TAB_KEY_PREFIX}_${user.id}`);
-      if (saved === 'company' || saved === 'contacts') setRecordTab(saved);
-    } catch {
-      /* ignore */
-    }
-  }, [user?.id]);
-
-  useEffect(() => {
-    if (!user?.id) return;
-    try {
-      localStorage.setItem(`${CRM_RECORD_TAB_KEY_PREFIX}_${user.id}`, recordTab);
-    } catch {
-      /* ignore */
-    }
-  }, [recordTab, user?.id]);
 
   const companySocialRows = useMemo(
     () => socialRowsFromForm(form),
@@ -2376,7 +2350,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     });
     setContactsEditing(true);
     setCrmUsersSectionOpen(true);
-    setTimeout(() => document.getElementById('crm-contacts-editor')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
+    setTimeout(() => document.getElementById('crm-contacts-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 80);
   }, []);
 
   const openCreateCompanyLoginForContact = useCallback((idx, contact, resolved) => {
@@ -3101,13 +3075,13 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                 <div className="mb-4 flex items-start justify-between gap-3">
                   <button
                     type="button"
-                    onClick={() => setCrmCompanyRecordBodyOpen((o) => !o)}
+                    onClick={() => setCrmCompanyInfoOpen((o) => !o)}
                     className="flex min-w-0 flex-1 items-start gap-2 rounded-xl -mx-2 -my-2 px-2 py-2 text-left hover:bg-slate-50"
-                    aria-expanded={crmCompanyRecordBodyOpen}
-                    aria-label={crmCompanyRecordBodyOpen ? 'Collapse company record' : 'Expand company record'}
+                    aria-expanded={crmCompanyInfoOpen}
+                    aria-label={crmCompanyInfoOpen ? 'Collapse company record' : 'Expand company record'}
                   >
                     <span className="mt-0.5 shrink-0 text-gray-500" aria-hidden>
-                      {crmCompanyRecordBodyOpen ? (
+                      {crmCompanyInfoOpen ? (
                         <FaChevronDown className="w-4 h-4" />
                       ) : (
                         <FaChevronRight className="w-4 h-4" />
@@ -3116,10 +3090,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     <div className="min-w-0">
                       <h2 className="text-lg font-semibold text-gray-900">Company record</h2>
                       <p className="text-xs text-slate-500 mt-1">
-                        {companyInfoEditing || contactsEditing ? (
+                        {companyInfoEditing ? (
                           <span className="text-amber-700 font-semibold">
-                            You have unsaved edits â€” use Save when finished, or Cancel on each section to discard those
-                            changes.
+                            You have unsaved edits — use Save when finished, or Cancel to discard changes.
                           </span>
                         ) : null}
                       </p>
@@ -3155,9 +3128,39 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       <FaFileUpload className="w-3.5 h-3.5" />
                       Import
                     </button>
+                    {companyInfoEditing ? (
+                      <>
+                        <button
+                          type="button"
+                          onClick={cancelCompanyInfoEdit}
+                          className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          disabled={saving}
+                          onClick={saveRecord}
+                          className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {saving ? 'Saving…' : 'Save'}
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCompanyInfoEditing(true);
+                          setCrmCompanyInfoOpen(true);
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700"
+                      >
+                        Edit
+                      </button>
+                    )}
                   </div>
                 </div>
-                {crmCompanyRecordBodyOpen ? (
+                {crmCompanyInfoOpen ? (
                 <>
                 {detailLoading ? (
                   <div className="space-y-3 mb-6 animate-pulse" aria-busy="true">
@@ -3170,81 +3173,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     <PipelineStageTracker currentStatus={form.status} />
                   </div>
                 )}
-                <div className="space-y-4">
-                   <div className="flex gap-1 border-b border-gray-200 mb-4">
-                  <button
-                    type="button"
-                    onClick={() => setRecordTab('company')}
-                    className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${
-                      recordTab === 'company'
-                        ? 'border-blue-600 text-blue-700'
-                        : 'border-transparent text-gray-500 hover:text-gray-800'
-                    }`}
-                  >
-                    Company info
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRecordTab('contacts')}
-                    className={`px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${
-                      recordTab === 'contacts'
-                        ? 'border-blue-600 text-blue-700'
-                        : 'border-transparent text-gray-500 hover:text-gray-800'
-                    }`}
-                  >
-                    Contacts
-                  </button>
-                </div>
-                {recordTab === 'company' ? (
-                  <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-white px-1 sm:px-2">
-                        <button
-                          type="button"
-                          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg py-2.5 pl-2 pr-2 text-left text-sm font-semibold text-gray-900 hover:bg-slate-50"
-                          onClick={() => setCrmCompanyInfoOpen((o) => !o)}
-                        >
-                          {crmCompanyInfoOpen ? (
-                            <FaChevronDown className="text-gray-500 w-3.5 h-3.5 shrink-0" />
-                          ) : (
-                            <FaChevronRight className="text-gray-500 w-3.5 h-3.5 shrink-0" />
-                          )}
-                          <span>Company information</span>
-                        </button>
-                        <div className="flex flex-wrap items-center gap-2 px-2 pb-2 sm:py-2">
-                          {companyInfoEditing ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={cancelCompanyInfoEdit}
-                                className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-xs font-medium"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                disabled={saving}
-                                onClick={saveRecord}
-                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-                              >
-                                {saving ? 'Savingâ€¦' : 'Save'}
-                              </button>
-                            </>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setCompanyInfoEditing(true);
-                                setCrmCompanyInfoOpen(true);
-                              }}
-                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700"
-                            >
-                              Edit
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      {crmCompanyInfoOpen &&
-                        (companyInfoEditing ? (
+                <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+                      {companyInfoEditing ? (
                         <div className="px-4 pb-4 pt-2 border-t border-gray-100 grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/30">
                           <label className="block sm:col-span-2">
                             <span className="text-xs font-medium text-gray-500 uppercase">Company name *</span>
@@ -3480,60 +3410,60 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         </div>
                       </div>
                       </div>
-                        ))}
                     </div>
 
-                  ) : null}
-                  {recordTab === 'contacts' ? (
-                    <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
-                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 bg-white px-1 sm:px-2">
-                        <button
-                          type="button"
-                          className="flex min-w-0 flex-1 items-center gap-2 rounded-lg py-2.5 pl-2 pr-2 text-left text-sm font-semibold text-gray-900 hover:bg-slate-50"
-                          onClick={() => setCrmUsersSectionOpen((o) => !o)}
-                        >
-                          {crmUsersSectionOpen ? (
-                            <FaChevronDown className="text-gray-500 w-3.5 h-3.5 shrink-0" />
-                          ) : (
-                            <FaChevronRight className="text-gray-500 w-3.5 h-3.5 shrink-0" />
-                          )}
-                          <span>Contacts &amp; platform users</span>
-                        </button>
-                        <div className="flex flex-wrap items-center gap-2 px-2 pb-2 sm:py-2">
-                          {contactsEditing ? (
-                            <>
-                              <button
-                                type="button"
-                                onClick={cancelContactsEdit}
-                                className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-xs font-medium"
-                              >
-                                Cancel
-                              </button>
-                              <button
-                                type="button"
-                                disabled={saving}
-                                onClick={saveRecord}
-                                className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-                              >
-                                {saving ? 'Savingâ€¦' : 'Save'}
-                              </button>
-                            </>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setContactsEditing(true);
-                                setCrmUsersSectionOpen(true);
-                              }}
-                              className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700"
-                            >
-                              Edit
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      {crmUsersSectionOpen &&
-                        (contactsEditing ? (
+                <div className="mt-6 flex flex-wrap gap-3">
+                  <button type="button" disabled={saving || (!companyInfoEditing && !contactsEditing)} onClick={saveRecord} className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50">{saving ? 'Saving…' : companyInfoEditing || contactsEditing ? 'Save changes' : 'Save (edit a section first)'}</button>
+                  <button type="button" onClick={removeRecord} className="px-5 py-2 border border-red-200 text-red-700 rounded-lg hover:bg-red-50 font-medium inline-flex items-center gap-2"><FaTrash /> Delete record</button>
+                </div>
+                </>
+                ) : null}
+              </div>
+            )}
+
+            {selectedId && !isCreating && (
+              <div id="crm-contacts-panel" className="bg-white rounded-2xl shadow border border-gray-100 p-6">
+                <div className="mb-4 flex items-start justify-between gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setCrmUsersSectionOpen((o) => !o)}
+                    className="flex min-w-0 flex-1 items-start gap-2 rounded-xl -mx-2 -my-2 px-2 py-2 text-left hover:bg-slate-50"
+                    aria-expanded={crmUsersSectionOpen}
+                    aria-label={crmUsersSectionOpen ? 'Collapse contacts' : 'Expand contacts'}
+                  >
+                    <span className="mt-0.5 shrink-0 text-gray-500" aria-hidden>
+                      {crmUsersSectionOpen ? (
+                        <FaChevronDown className="w-4 h-4" />
+                      ) : (
+                        <FaChevronRight className="w-4 h-4" />
+                      )}
+                    </span>
+                    <div className="min-w-0">
+                      <h2 className="text-lg font-semibold text-gray-900">Contacts &amp; platform users</h2>
+                      <p className="text-xs text-slate-500 mt-1">
+                        {contactsEditing ? (
+                          <span className="text-amber-700 font-semibold">
+                            You have unsaved edits — use Save when finished, or Cancel to discard changes.
+                          </span>
+                        ) : null}
+                      </p>
+                    </div>
+                  </button>
+                  <div className="flex items-center gap-2 flex-wrap justify-end shrink-0">
+                    {contactsEditing ? (
+                      <>
+                        <button type="button" onClick={cancelContactsEdit} className="px-3 py-1.5 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 text-sm font-medium">Cancel</button>
+                        <button type="button" disabled={saving} onClick={saveRecord} className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">{saving ? 'Saving…' : 'Save'}</button>
+                      </>
+                    ) : (
+                      <button type="button" onClick={() => { setContactsEditing(true); setCrmUsersSectionOpen(true); }} className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700">Edit</button>
+                    )}
+                  </div>
+                </div>
+                {crmUsersSectionOpen ? (
+                <>
+                <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
+                      {contactsEditing ? (
                         <div id="crm-contacts-editor" className="px-4 pb-4 pt-2 border-t border-gray-100 space-y-4 bg-slate-50/30">
                           <div className="rounded-lg border border-gray-200 p-3 bg-white space-y-3">
                             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -4119,27 +4049,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                           </div>
                         )}
                       </div>
-                        ))}
+                        )}
                     </div>
-                </div>
-
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <button
-                    type="button"
-                    disabled={saving || (!companyInfoEditing && !contactsEditing)}
-                    onClick={saveRecord}
-                    className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
-                  >
-                    {saving ? 'Savingâ€¦' : companyInfoEditing || contactsEditing ? 'Save changes' : 'Save (edit a section first)'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={removeRecord}
-                    className="px-5 py-2 border border-red-200 text-red-700 rounded-lg hover:bg-red-50 font-medium inline-flex items-center gap-2"
-                  >
-                    <FaTrash /> Delete record
-                  </button>
-                </div>
                 </>
                 ) : null}
               </div>
