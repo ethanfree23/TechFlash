@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { jobsAPI, profilesAPI } from '../api/api';
-import { auth } from '../auth';
+import { jobsAPI, profilesAPI } from '../../api/api';
+import { auth } from '../../auth';
 import {
   getDashboardConfig,
   getRoleKey,

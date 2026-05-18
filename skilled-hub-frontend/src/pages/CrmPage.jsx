@@ -3410,7 +3410,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         </div>
                       </div>
                       </div>
-                    </div>
+                    )}
+                </div>
 
                 <div className="mt-6 flex flex-wrap gap-3">
                   <button type="button" disabled={saving || (!companyInfoEditing && !contactsEditing)} onClick={saveRecord} className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50">{saving ? 'Saving…' : companyInfoEditing || contactsEditing ? 'Save changes' : 'Save (edit a section first)'}</button>
