@@ -5508,7 +5508,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         </select>
                       </label>
                     )}
-                  </div>
                   <label className="block">
                     <span className="text-xs font-medium text-gray-500 uppercase">First name</span>
                     <input
@@ -5668,6 +5667,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   </div>
                   </>
                     )}
+                  </div>
                   <label className="block sm:col-span-2">
                     <span className="text-xs font-medium text-gray-500 uppercase">Paste full address (optional)</span>
                     <textarea
