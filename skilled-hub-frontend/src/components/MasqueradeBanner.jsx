@@ -1,6 +1,7 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import { auth } from '../auth';
+import { isDemoMode, withDemoPath } from '../utils/demoMode';
 
 /**
  * Shown while an admin is masquerading as another user; restores admin JWT from sessionStorage on exit.
@@ -14,7 +15,9 @@ export default function MasqueradeBanner() {
 
   const exit = () => {
     auth.exitMasquerade();
-    window.location.assign('/admin/users');
+    window.location.assign(
+      isDemoMode() ? withDemoPath('/settings?tab=account') : '/admin/users'
+    );
   };
 
   return (
@@ -26,13 +29,15 @@ export default function MasqueradeBanner() {
           <span className="text-amber-100 capitalize ml-2">({user?.role})</span>
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => navigate('/dashboard')}
-            className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/15 hover:bg-white/25 border border-white/30"
-          >
-            Dashboard
-          </button>
+          {isDemoMode() && (
+            <button
+              type="button"
+              onClick={() => navigate('/settings?tab=account')}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/15 hover:bg-white/25 border border-white/30"
+            >
+              Account role
+            </button>
+          )}
           <button
             type="button"
             onClick={exit}

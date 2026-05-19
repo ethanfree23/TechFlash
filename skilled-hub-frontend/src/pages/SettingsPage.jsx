@@ -25,6 +25,7 @@ import { formatPhoneInput } from '../utils/phone';
 import { TRADE_OPTIONS, TRADE_OTHER_SENTINEL } from '../constants/trades';
 import { getNotificationCategories } from '../config/notificationPreferenceCatalog';
 import { isDemoMode, demoSimulatedMessage } from '../utils/demoMode';
+import AccountRolePanel from '../components/settings/AccountRolePanel';
 import { parseSettingsUrl, replaceSettingsUrl } from '../utils/settingsUrl';
 import SettingsPageShell from '../components/settings/SettingsPageShell';
 import SettingsHeader from '../components/settings/SettingsHeader';
@@ -1019,12 +1020,24 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   title="Sign-in and email"
                   description="Your email is your username. Security-critical messages always stay on."
                 />
-                <SettingsCard title="Account role" collapsible defaultOpen={false}>
+                <SettingsCard
+                  title="Account role"
+                  collapsible
+                  defaultOpen={isDemoMode() || auth.isMasquerading()}
+                  description={
+                    isDemoMode() || auth.isMasquerading()
+                      ? 'Expand to switch demo roles or return to admin.'
+                      : isAdmin
+                        ? 'Expand to open the demo environment.'
+                        : undefined
+                  }
+                >
                   <SettingsRow
                     title="Role"
                     description="Determines marketplace permissions and available settings tabs."
                     control={<span className="text-sm font-medium text-gray-800">{roleBadgeLabel}</span>}
                   />
+                  <AccountRolePanel roleLabel={roleBadgeLabel} />
                 </SettingsCard>
                 {accountError && (
                   <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{accountError}</div>

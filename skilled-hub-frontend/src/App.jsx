@@ -32,7 +32,7 @@ import MasqueradeBanner from './components/MasqueradeBanner';
 import DemoModeBanner from './components/DemoModeBanner';
 import { auth } from './auth';
 import { metaAPI } from './api/api';
-import { setApiDemoMode, setDemoFlagshipJobId, setDemoReviewedJobId } from './utils/demoMode';
+import { setApiDemoMode, setDemoFlagshipJobId, setDemoReviewedJobId, getDemoBasePath, isDemoPath } from './utils/demoMode';
 
 // Protected Route component
 const ProtectedRoute = ({ children, isAuthenticated }) => {
@@ -94,21 +94,27 @@ function App() {
     );
   }
 
+  const routerBasename = getDemoBasePath() || undefined;
+
   return (
-    <Router>
+    <Router basename={routerBasename}>
       <div className="App min-w-0 overflow-x-hidden">
         <MasqueradeBanner />
         <DemoModeBanner />
         <FeedbackWidget user={user} />
         <Routes>
           {/* Marketing landing page */}
-          <Route 
-            path="/" 
+          <Route
+            path="/"
             element={
-              <PublicRoute isAuthenticated={isAuthenticated}>
-                <MarketingPage onLoginSuccess={handleLoginSuccess} />
-              </PublicRoute>
-            } 
+              isDemoPath() ? (
+                <Navigate to="/login" replace />
+              ) : (
+                <PublicRoute isAuthenticated={isAuthenticated}>
+                  <MarketingPage onLoginSuccess={handleLoginSuccess} />
+                </PublicRoute>
+              )
+            }
           />
 
           {/* Login/Register page */}

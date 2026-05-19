@@ -6,7 +6,7 @@ export const DEMO_WALKTHROUGH_STEPS = [
     target: '[data-demo="demo-welcome-hero"]',
     title: 'Welcome to TechFlash',
     content:
-      'This is a live Texas marketplace demo — 96 jobs across Houston, Austin, and Dallas. Tap Start Demo here anytime, or use View as Bayou City Mechanical to see the company experience.',
+      'This is a live Texas marketplace demo — 96 jobs across Houston, Austin, and Dallas. Tap Start Demo here anytime.',
   },
   {
     target: '[data-demo="admin-dashboard-stats"]',
@@ -73,17 +73,18 @@ export const DEMO_WALKTHROUGH_STEPS = [
     marketFilter: 'houston',
   },
   {
-    target: '[data-demo="masquerade-company"]',
-    title: 'View as a company',
+    target: '[data-demo="account-role-switcher"]',
+    title: 'Switch demo roles',
     content:
-      'Step into Bayou City Mechanical’s dashboard — post jobs, manage active work, and message technicians exactly as a customer would.',
-    path: '/dashboard',
+      'Open Account role to preview as Bayou City Mechanical or a demo technician, then return to admin with one click. Reset demo data lives here too.',
+    path: '/settings',
+    settingsTab: 'account',
   },
   {
     target: '[data-demo="walkthrough-start"]',
     title: 'You’re ready',
     content:
-      'Companies post short-term jobs, technicians claim work, both sides communicate, jobs get completed, and admins run the marketplace. Use Reset demo data in the hero anytime between walkthroughs.',
+      'Companies post short-term jobs, technicians claim work, both sides communicate, jobs get completed, and admins run the marketplace.',
     path: '/dashboard',
   },
 ];

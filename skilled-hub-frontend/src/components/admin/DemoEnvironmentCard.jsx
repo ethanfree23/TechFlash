@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { FaExternalLinkAlt, FaCopy } from 'react-icons/fa';
-import { DEMO_ACCOUNTS, DEMO_APP_URL } from '../../constants/demoAccounts';
+import { DEMO_ACCOUNTS } from '../../constants/demoAccounts';
+import { getDemoAppUrl } from '../../utils/demoMode';
 import AlertModal from '../AlertModal';
 
 function CredentialRow({ account }) {
@@ -44,14 +45,10 @@ function CredentialRow({ account }) {
 
 export default function DemoEnvironmentCard() {
   const [alert, setAlert] = useState(null);
-  const demoUrl = import.meta.env.VITE_DEMO_APP_URL || DEMO_APP_URL;
+  const demoEntry = (path) => getDemoAppUrl(path);
 
   const openDemo = () => {
-    if (!demoUrl) {
-      setAlert({ title: 'Demo URL not configured', message: 'Set VITE_DEMO_APP_URL on production Vercel.' });
-      return;
-    }
-    window.open(demoUrl, '_blank', 'noopener,noreferrer');
+    window.open(demoEntry('/login'), '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -82,8 +79,7 @@ export default function DemoEnvironmentCard() {
         </div>
 
         <p className="mt-3 text-[11px] text-slate-500">
-          One-click buttons open the demo and sign you in automatically. Masquerade shortcuts are available on the
-          demo admin dashboard.
+          One-click buttons open the demo and sign you in automatically.           Role switching is in Settings → Account → Account role on the demo site.
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           <a
@@ -97,7 +93,7 @@ export default function DemoEnvironmentCard() {
           {Object.entries(DEMO_ACCOUNTS).filter(([key]) => key !== 'admin').map(([key, acc]) => (
             <a
               key={acc.email}
-              href={`${demoUrl}/login?demo=${key}&auto=1`}
+              href={demoEntry(`/login?demo=${key}&auto=1`)}
               target="_blank"
               rel="noopener noreferrer"
               className="inline-flex items-center rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-50"

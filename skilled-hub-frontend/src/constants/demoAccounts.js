@@ -18,4 +18,4 @@ export const DEMO_ACCOUNTS = {
 };
 
 export const DEMO_APP_URL =
-  import.meta.env.VITE_DEMO_APP_URL || 'https://demo.techflash.app';
+  import.meta.env.VITE_DEMO_APP_URL || 'https://techflash.app/demo';

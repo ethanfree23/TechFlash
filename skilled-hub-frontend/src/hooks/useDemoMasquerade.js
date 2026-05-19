@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { adminUsersAPI } from '../api/api';
 import { auth } from '../auth';
 import { DEMO_ACCOUNTS } from '../constants/demoAccounts';
+import { withDemoPath } from '../utils/demoMode';
 
 async function resolveDemoUserId(email) {
   const rows = await adminUsersAPI.list({ q: email });
@@ -12,7 +12,6 @@ async function resolveDemoUserId(email) {
 }
 
 export default function useDemoMasquerade() {
-  const navigate = useNavigate();
   const [ids, setIds] = useState({});
   const [busy, setBusy] = useState(null);
   const [error, setError] = useState(null);
@@ -48,7 +47,7 @@ export default function useDemoMasquerade() {
       try {
         const res = await adminUsersAPI.masqueradeStart(id);
         auth.enterMasquerade(res.token, res.user);
-        navigate('/dashboard');
+        window.location.assign(withDemoPath('/settings?tab=account'));
         return true;
       } catch (e) {
         setError(e.message || 'Could not switch user.');
@@ -57,8 +56,13 @@ export default function useDemoMasquerade() {
         setBusy(null);
       }
     },
-    [ids, navigate]
+    [ids]
   );
 
-  return { ids, busy, error, clearError: () => setError(null), masqueradeAs };
+  const returnToAdmin = useCallback(() => {
+    auth.exitMasquerade();
+    window.location.assign(withDemoPath('/settings?tab=account'));
+  }, []);
+
+  return { ids, busy, error, clearError: () => setError(null), masqueradeAs, returnToAdmin };
 }

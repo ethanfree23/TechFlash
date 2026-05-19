@@ -1,6 +1,8 @@
+import { isDemoMode } from './utils/demoMode';
+
 /** Live key for production builds (`vite build` / hosted deploy). */
 export function getStripePublishableKey() {
-  if (import.meta.env.VITE_DEMO_MODE === 'true') {
+  if (isDemoMode()) {
     return (
       import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY_TEST ||
       import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ||

@@ -1,26 +1,29 @@
 import { Capacitor } from '@capacitor/core';
+import { auth } from '../auth';
+import { isDemoPath } from '../utils/demoMode';
 
 // API helper functions for interacting with the Rails API
 
 const isNativeApp = typeof window !== 'undefined' && Capacitor.isNativePlatform();
-const isDemoHost =
-  typeof window !== 'undefined' && window.location.hostname === 'demo.techflash.app';
+const onDemoPath = typeof window !== 'undefined' && isDemoPath();
 export const isProductionHost =
   isNativeApp ||
-  isDemoHost ||
   (typeof window !== 'undefined' &&
     (window.location.hostname === 'techflash.app' || window.location.hostname === 'www.techflash.app'));
+
+const demoApiBase =
+  import.meta.env?.VITE_DEMO_API_BASE_URL || 'https://skilledhub-demo.up.railway.app/api/v1';
+
 const API_BASE_URL =
+  (onDemoPath && demoApiBase) ||
   import.meta.env?.VITE_API_BASE_URL ||
-  (isDemoHost
-    ? 'https://skilledhub-demo.up.railway.app/api/v1'
-    : isProductionHost
-      ? 'https://skilledhub-production.up.railway.app/api/v1'
-      : 'http://localhost:3000/api/v1');
+  (isProductionHost
+    ? 'https://skilledhub-production.up.railway.app/api/v1'
+    : 'http://localhost:3000/api/v1');
 
 // Helper function to make API requests
 const apiRequest = async (endpoint, options = {}) => {
-  const token = localStorage.getItem('token');
+  const token = auth.getToken();
   
   const isFormData = options.body instanceof FormData;
   const config = {

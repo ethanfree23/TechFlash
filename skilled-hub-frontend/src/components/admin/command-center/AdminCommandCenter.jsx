@@ -6,8 +6,6 @@ import MarketplaceHealthCard from './MarketplaceHealthCard';
 import MarketplaceFunnel from './MarketplaceFunnel';
 import CommandCenterBody from './CommandCenterBody';
 import KpiCard from './KpiCard';
-import DemoEnvironmentCard from '../DemoEnvironmentCard';
-import DemoResetCard from '../DemoResetCard';
 import DemoWelcomeHero from '../../demo/DemoWelcomeHero';
 import { isDemoMode } from '../../../utils/demoMode';
 
@@ -114,7 +112,6 @@ export default function AdminCommandCenter({
 
   return (
     <div className="space-y-4 max-w-[100rem] mx-auto w-full">
-      {!isDemoMode() && <DemoEnvironmentCard />}
       {isDemoMode() && onStartTour && (
         <DemoWelcomeHero analytics={analytics} onStartTour={onStartTour} />
       )}
@@ -208,7 +205,6 @@ export default function AdminCommandCenter({
         </Link>
       </div>
 
-      {isDemoMode() && <DemoResetCard compact />}
     </div>
   );
 }
