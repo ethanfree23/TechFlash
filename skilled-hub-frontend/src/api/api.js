@@ -3,11 +3,20 @@ import { Capacitor } from '@capacitor/core';
 // API helper functions for interacting with the Rails API
 
 const isNativeApp = typeof window !== 'undefined' && Capacitor.isNativePlatform();
-const isProduction =
+const isDemoHost =
+  typeof window !== 'undefined' && window.location.hostname === 'demo.techflash.app';
+export const isProductionHost =
   isNativeApp ||
+  isDemoHost ||
   (typeof window !== 'undefined' &&
     (window.location.hostname === 'techflash.app' || window.location.hostname === 'www.techflash.app'));
-const API_BASE_URL = import.meta.env?.VITE_API_BASE_URL || (isProduction ? 'https://skilledhub-production.up.railway.app/api/v1' : 'http://localhost:3000/api/v1');
+const API_BASE_URL =
+  import.meta.env?.VITE_API_BASE_URL ||
+  (isDemoHost
+    ? 'https://skilledhub-demo.up.railway.app/api/v1'
+    : isProductionHost
+      ? 'https://skilledhub-production.up.railway.app/api/v1'
+      : 'http://localhost:3000/api/v1');
 
 // Helper function to make API requests
 const apiRequest = async (endpoint, options = {}) => {
@@ -102,6 +111,17 @@ export const publicApiRequest = async (endpoint, options = {}) => {
     console.error('Public API request failed:', error);
     throw error;
   }
+};
+
+export const metaAPI = {
+  get: () => publicApiRequest('/meta'),
+};
+
+export const adminDemoAPI = {
+  reset: () =>
+    apiRequest('/admin/demo_reset', {
+      method: 'POST',
+    }),
 };
 
 // Authentication endpoints
@@ -771,6 +791,16 @@ export const conversationsAPI = {
     return normalizeConversationsPayload(data);
   },
   getById: (id) => apiRequest(`/conversations/${id}`),
+  update: (id, data) =>
+    apiRequest(`/conversations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    }),
+  markRead: (id) =>
+    apiRequest(`/conversations/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ mark_read: true }),
+    }),
   createForJob: (jobId, technicianProfileId) => {
     const body = technicianProfileId ? { technician_profile_id: technicianProfileId } : {};
     return apiRequest(`/jobs/${jobId}/conversations`, {
@@ -783,10 +813,10 @@ export const conversationsAPI = {
 export const messagesAPI = {
   getByConversation: (conversationId) =>
     apiRequest(`/conversations/${conversationId}/messages`),
-  create: (conversationId, content) =>
+  create: (conversationId, content, { internal = false } = {}) =>
     apiRequest(`/conversations/${conversationId}/messages`, {
       method: 'POST',
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, internal }),
     }),
 };
 

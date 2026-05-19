@@ -2,7 +2,7 @@ module Api
   module V1
     class ConversationsController < ApplicationController
       before_action :authenticate_user
-      before_action :set_conversation, only: [:show]
+      before_action :set_conversation, only: %i[show update]
 
       def index
         conversations = conversations_for_current_user
@@ -17,6 +17,23 @@ module Api
         render json: @conversation, serializer: ConversationSerializer,
           include: [:job, :messages, { technician_profile: :user }, { company_profile: :user }],
           status: :ok
+      end
+
+      def update
+        unless @current_user.admin? && @conversation.feedback?
+          return render json: { error: "Access denied" }, status: :forbidden
+        end
+
+        @conversation.mark_read_for_admin! if ActiveModel::Type::Boolean.new.cast(params[:mark_read])
+
+        attrs = inbox_update_params
+        @conversation.assign_attributes(attrs) if attrs.any?
+
+        if @conversation.save
+          render_conversation(@conversation)
+        else
+          render json: { errors: @conversation.errors.full_messages }, status: :unprocessable_entity
+        end
       end
 
       def create
@@ -49,7 +66,14 @@ module Api
       def conversations_for_current_user
         if @current_user.admin?
           return Conversation.feedback_threads
-            .includes(:job, :technician_profile, :company_profile, :messages, :feedback_submission)
+            .includes(
+              :job,
+              :technician_profile,
+              :company_profile,
+              :messages,
+              :assigned_to,
+              { feedback_submission: :user }
+            )
             .order(updated_at: :desc)
         end
 
@@ -130,6 +154,24 @@ module Api
           experience_years: 0,
           availability: 'Full-time'
         )
+      end
+
+      def inbox_update_params
+        permitted = params.permit(:inbox_status, :priority, :assigned_to_id)
+        attrs = {}
+        attrs[:inbox_status] = permitted[:inbox_status] if permitted.key?(:inbox_status)
+        attrs[:priority] = permitted[:priority] if permitted.key?(:priority)
+        if permitted.key?(:assigned_to_id)
+          val = permitted[:assigned_to_id]
+          attrs[:assigned_to_id] = val.present? ? val : nil
+        end
+        attrs
+      end
+
+      def render_conversation(conversation)
+        render json: conversation.reload, serializer: ConversationSerializer,
+          include: [:job, :messages, { technician_profile: :user }, { company_profile: :user }, :assigned_to],
+          status: :ok
       end
     end
   end

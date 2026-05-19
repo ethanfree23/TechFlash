@@ -23,7 +23,7 @@ function inferSender(conv) {
     return {
       senderName: conv.submitter_email?.split('@')[0] || 'User',
       senderEmail: conv.submitter_email || '',
-      senderRole: 'company',
+      senderRole: conv.submitter_role || 'company',
     };
   }
   if (conv.technician_profile) {
@@ -56,7 +56,7 @@ function buildThreadFromMessages(conv, msgs) {
           ? 'company'
           : 'admin',
     body: m.content || '',
-    isInternalNote: false,
+    isInternalNote: Boolean(m.internal),
     createdAt: m.created_at,
   }));
 }
@@ -87,13 +87,14 @@ export function conversationToInboxMessage(conv, viewerRole) {
     senderRole: sender.senderRole,
     recipientName: viewerRole === 'admin' ? 'TechFlash Admin' : 'You',
     recipientRole: viewerRole === 'admin' ? 'admin' : viewerRole,
-    status: 'open',
-    priority: 'normal',
-    isUnread: false,
+    status: conv.inbox_status || 'open',
+    priority: conv.priority || 'normal',
+    isUnread: Boolean(conv.is_unread),
     relatedJobId: conv.job_id ? String(conv.job_id) : null,
     relatedCompanyId: conv.company_profile_id ? String(conv.company_profile_id) : null,
     relatedTechnicianId: conv.technician_profile_id ? String(conv.technician_profile_id) : null,
-    assignedTo: null,
+    assignedTo: conv.assigned_to_name || conv.assigned_to_email || null,
+    assignedToId: conv.assigned_to_id ?? null,
     createdAt: conv.created_at || new Date().toISOString(),
     updatedAt: conv.updated_at || conv.created_at || new Date().toISOString(),
     thread: buildThreadFromMessages(conv, msgs),
@@ -108,8 +109,31 @@ export function mergeMessages(seedMessages, apiMessages) {
   );
 }
 
-export async function sendConversationReply(conversationId, content) {
-  return messagesAPI.create(conversationId, content);
+export async function sendConversationReply(conversationId, content, options = {}) {
+  return messagesAPI.create(conversationId, content, options);
+}
+
+function formatDurationMs(ms) {
+  if (!ms || ms < 0) return '—';
+  const hours = Math.floor(ms / 3600000);
+  const mins = Math.floor((ms % 3600000) / 60000);
+  if (hours > 0) return `${hours}h ${mins}m`;
+  return `${mins}m`;
+}
+
+export function computeAvgResponseTime(messages) {
+  const deltas = [];
+  for (const msg of messages) {
+    const thread = msg.thread || [];
+    const firstAdmin = thread.find((t) => t.senderRole === 'admin');
+    if (!firstAdmin?.createdAt || !msg.createdAt) continue;
+    const start = new Date(msg.createdAt).getTime();
+    const end = new Date(firstAdmin.createdAt).getTime();
+    if (end > start) deltas.push(end - start);
+  }
+  if (deltas.length === 0) return '—';
+  const avg = deltas.reduce((sum, d) => sum + d, 0) / deltas.length;
+  return formatDurationMs(avg);
 }
 
 export function exportMessagesCsv(messages) {

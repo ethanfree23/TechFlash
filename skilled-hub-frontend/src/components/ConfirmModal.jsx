@@ -1,6 +1,6 @@
 import React from 'react';
 
-const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', variant = 'default' }) => {
+const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel', variant = 'default', keepOpenOnConfirm = false }) => {
   if (!isOpen) return null;
 
   const isDestructive = variant === 'destructive';
@@ -27,7 +27,7 @@ const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmLabel
               type="button"
               onClick={() => {
                 onConfirm?.();
-                onClose();
+                if (!keepOpenOnConfirm) onClose();
               }}
               className={`px-6 py-3 font-semibold text-white rounded-full transition ${
                 isDestructive ? 'bg-red-600 hover:bg-red-700' : 'bg-[#FE6711] hover:bg-[#e55a0a]'

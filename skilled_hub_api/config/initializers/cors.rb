@@ -11,6 +11,7 @@ default_origins = %w[
   http://127.0.0.1:5173
   https://www.techflash.app
   https://techflash.app
+  https://demo.techflash.app
 ]
 extra = ENV.fetch("CORS_ORIGINS", "").split(",").map(&:strip).reject(&:blank?)
 origins_list = (default_origins + extra).uniq

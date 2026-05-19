@@ -32,6 +32,11 @@ module MailDelivery
   # Returns { success: true, value: ... } or { success: false, error: "..." }.
   # Use this in admin/diagnostics UIs (e.g. Email QA).
   def self.safe_deliver_result
+    if defined?(DemoMode) && DemoMode.enabled?
+      Rails.logger.info("[mail] demo: simulated delivery (not sent)")
+      return { success: true, value: nil, simulated: true }
+    end
+
     st = audit_status
     mailtrap_http = st[:delivery_mode] == 'mailtrap_http'
 

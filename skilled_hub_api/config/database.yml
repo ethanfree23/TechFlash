@@ -16,3 +16,12 @@ test:
 production:
   <<: *default
   url: <%= ENV['DATABASE_URL'] %>
+
+demo:
+  <<: *default
+  <% if ENV['DATABASE_URL'].present? %>
+  url: <%= ENV['DATABASE_URL'] %>
+  <% else %>
+  adapter: sqlite3
+  database: db/demo.sqlite3
+  <% end %>

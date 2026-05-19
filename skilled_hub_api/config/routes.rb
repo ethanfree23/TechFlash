@@ -5,6 +5,7 @@ Rails.application.routes.draw do
   # API routes
   namespace :api do
     namespace :v1 do
+      get "meta", to: "meta#show"
       post "sessions", to: "sessions#create"
       post "auth/login", to: "sessions#create"
       post "auth/register", to: "users#create"
@@ -57,7 +58,7 @@ Rails.application.routes.draw do
           patch :deny
         end
       end
-      resources :conversations, only: [:index, :show] do
+      resources :conversations, only: %i[index show update] do
         resources :messages, only: [:index, :create]
       end
       post 'jobs/:job_id/conversations', to: 'conversations#create', as: :job_conversations
@@ -146,6 +147,7 @@ Rails.application.routes.draw do
         post "email_qa/preview", to: "email_qa#preview"
         post "email_qa/send", to: "email_qa#send_one"
         post "email_qa/send_all", to: "email_qa#send_all"
+        post "demo_reset", to: "demo_resets#create"
       end
     end
   end

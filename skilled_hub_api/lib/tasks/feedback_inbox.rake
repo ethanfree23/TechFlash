@@ -13,4 +13,10 @@ namespace :feedback do
     end
     puts "\nDone. Created #{n} inbox thread(s)."
   end
+
+  desc "Set inbox_status=open on feedback conversations missing it (after inbox fields migration)"
+  task backfill_inbox_status: :environment do
+    updated = Conversation.feedback_threads.where(inbox_status: [nil, ""]).update_all(inbox_status: "open", priority: "normal")
+    puts "Updated #{updated} feedback conversation(s)."
+  end
 end

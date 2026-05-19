@@ -10,6 +10,7 @@ export default function CommandCenterHeader({
   onRefresh,
   refreshing,
   onSearchSubmit,
+  demoMode = false,
 }) {
   const [localSearch, setLocalSearch] = React.useState(filters.search || '');
 
@@ -24,8 +25,9 @@ export default function CommandCenterHeader({
           <div>
             <h1 className="text-lg sm:text-xl font-semibold text-slate-900 tracking-tight">Command center</h1>
             <p className="mt-0.5 text-xs text-slate-600 max-w-3xl leading-relaxed">
-              Operations view for marketplace liquidity, verification, company activation, and revenue signals. Filters apply to
-              loaded platform insight slices.
+              {demoMode
+                ? 'Marketplace activity across Houston, Austin, and Dallas — filter by market, trade, or time period.'
+                : 'Operations view for marketplace liquidity, verification, company activation, and revenue signals. Filters apply to loaded platform insight slices.'}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -62,7 +64,7 @@ export default function CommandCenterHeader({
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
-          <label className="block text-[10px] font-medium text-slate-600">
+          <label className="block text-[10px] font-medium text-slate-600" data-demo="city-coverage">
             Market
             <select
               value={filters.market}

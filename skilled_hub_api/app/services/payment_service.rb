@@ -5,8 +5,29 @@ class PaymentService
 
   class PaymentError < StandardError; end
 
+  def self.demo_simulate_charge!(job)
+    payment = job.payments.create!(
+      amount_cents: job.tech_payout_cents,
+      status: "held",
+      stripe_payment_intent_id: "pi_demo_#{job.id}",
+      held_at: Time.current
+    )
+    { success: true, payment: payment, simulated: true }
+  end
+
+  def self.demo_simulate_release!(payment)
+    payment.update!(
+      status: "released",
+      stripe_transfer_id: "tr_demo_#{payment.id}",
+      released_at: Time.current
+    )
+    { success: true, payment: payment, simulated: true }
+  end
+
   # Check if company has a valid card on file (for posting jobs)
   def self.company_has_payment_method?(user)
+    return true if defined?(DemoMode) && DemoMode.enabled?
+
     return false if user.blank?
     return false if Stripe.api_key.blank?
 
@@ -23,6 +44,11 @@ class PaymentService
 
   # Charge company when tech claims a paid job (off-session, using saved card)
   def self.charge_company_on_claim(job)
+    if defined?(DemoMode) && DemoMode.enabled?
+      return demo_simulate_charge!(job) if job.job_amount_cents.present? && job.job_amount_cents.positive?
+      return { success: true, simulated: true }
+    end
+
     return { error: 'Job has no price' } if job.job_amount_cents.blank? || job.job_amount_cents <= 0
     return { error: 'Job already has a payment' } if job.payments.held.any? || job.payments.released.any?
 
@@ -77,6 +103,12 @@ class PaymentService
 
   # Refund payment when company denies the claimed tech
   def self.refund_payment(job)
+    if defined?(DemoMode) && DemoMode.enabled?
+      payment = job.payments.held.first
+      payment&.update!(status: "refunded")
+      return { success: true, simulated: true }
+    end
+
     payment = job.payments.held.first
     return { error: 'No held payment to refund' } unless payment
     return { error: 'No Stripe payment to refund' } if payment.stripe_payment_intent_id.blank?
@@ -215,6 +247,10 @@ class PaymentService
   end
 
   def self.release_to_technician(payment)
+    if defined?(DemoMode) && DemoMode.enabled?
+      return demo_simulate_release!(payment)
+    end
+
     job = payment.job
     accepted_app = job.job_applications.find_by(status: :accepted)
     technician_profile = accepted_app&.technician_profile

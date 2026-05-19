@@ -11,6 +11,7 @@
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "build:prod": "vite build --mode production",
+    "build:demo": "vite build --mode demo",
     "lint": "eslint .",
     "preview": "vite preview",
     "test:crm-import": "node scripts/crmImport.test.mjs",

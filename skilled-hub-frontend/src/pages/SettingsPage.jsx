@@ -24,6 +24,7 @@ import { requiresElectricalLicenseForState, setLocalOnlyLicenseStates } from '..
 import { formatPhoneInput } from '../utils/phone';
 import { TRADE_OPTIONS, TRADE_OTHER_SENTINEL } from '../constants/trades';
 import { getNotificationCategories } from '../config/notificationPreferenceCatalog';
+import { isDemoMode, demoSimulatedMessage } from '../utils/demoMode';
 import { parseSettingsUrl, replaceSettingsUrl } from '../utils/settingsUrl';
 import SettingsPageShell from '../components/settings/SettingsPageShell';
 import SettingsHeader from '../components/settings/SettingsHeader';
@@ -1413,10 +1414,16 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 id="settings-panel-payment"
                 role="tabpanel"
                 aria-labelledby="settings-tab-payment"
+                data-demo="payments-section"
                 className="overflow-visible"
               >
           {paymentError && <div className="mb-4 p-3 bg-red-50 text-red-700 rounded-lg text-sm">{paymentError}</div>}
           {paymentSuccess && <div className="mb-4 p-3 bg-green-50 text-green-700 rounded-lg text-sm">{paymentSuccess}</div>}
+          {isDemoMode() && (
+            <p className="mb-4 text-sm text-indigo-900 bg-indigo-50 border border-indigo-200 rounded-lg p-3">
+              {demoSimulatedMessage()} Stripe checkout and payouts run in test mode only.
+            </p>
+          )}
 
           {!isAdmin && (isTechnician || isCompany) && (
             <SettingsCard title="Promo code" description="Redeem a membership or billing promotion when applicable." collapsible defaultOpen={false}>
@@ -1633,6 +1640,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 id="settings-panel-notifications"
                 role="tabpanel"
                 aria-labelledby="settings-tab-notifications"
+                data-demo="notifications-section"
                 className="space-y-6"
               >
                 <SettingsSection

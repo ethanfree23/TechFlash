@@ -6,7 +6,7 @@ export default function MarketplaceHealthCard({ health }) {
   const badge =
     health.status === 'Healthy' ? 'success' : health.status === 'Critical' ? 'danger' : 'warning';
   return (
-    <div className="rounded-xl border border-slate-200 bg-white p-4 lg:col-span-5 flex flex-col min-h-[22rem]">
+    <div className="rounded-xl border border-slate-200 bg-white p-4 lg:col-span-5 flex flex-col min-h-[22rem]" data-demo="marketplace-health">
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h2 className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Marketplace health</h2>

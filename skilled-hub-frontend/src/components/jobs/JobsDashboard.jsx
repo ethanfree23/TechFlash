@@ -14,6 +14,7 @@ import JobsTableView from './JobsTableView';
 import JobsCalendarPlaceholder from './JobsCalendarPlaceholder';
 import JobLoadingSkeleton from './JobLoadingSkeleton';
 import JobEmptyState from './JobEmptyState';
+import FeaturedJobCallout from '../demo/FeaturedJobCallout';
 import AlertModal from '../AlertModal';
 import ReferralModal from '../ReferralModal';
 import MessageModal from '../MessageModal';
@@ -251,6 +252,10 @@ export default function JobsDashboard() {
 
       {loading && <JobLoadingSkeleton viewMode={viewMode} />}
 
+      {!loading && !error && !emptyVariant && viewMode === VIEW_MODES.CARD && (
+        <FeaturedJobCallout />
+      )}
+
       {!loading && error && (
         <JobEmptyState variant="error" onRetry={refetch} />
       )}
@@ -275,7 +280,7 @@ export default function JobsDashboard() {
       )}
 
       {!loading && !error && !emptyVariant && viewMode === VIEW_MODES.CARD && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch" data-demo="jobs-list">
           {currentJobs.filter((j) => j && j.title).map((job) => (
             <JobCard
               key={job.id}

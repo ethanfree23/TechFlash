@@ -127,6 +127,7 @@ export const TOAST = {
   assigned: 'Message assigned.',
   unassigned: 'Assignment cleared.',
   threadSyncFailed: 'Could not refresh this conversation.',
+  syncFailed: 'Could not save changes. Try again.',
 };
 
 export const FEEDBACK_TYPE_OPTIONS = [

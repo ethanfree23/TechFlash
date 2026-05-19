@@ -16,9 +16,9 @@ module Api
         return if blocked_between_participants?
 
         if @conversation.feedback?
-          return render json: {
-            error: 'Feedback inbox items are notifications only; replies are not supported.'
-          }, status: :forbidden
+          return render json: { error: "Access denied" }, status: :forbidden unless @current_user.admin?
+
+          return create_feedback_inbox_message
         end
 
         message = @conversation.messages.build(message_params)
@@ -60,6 +60,8 @@ module Api
       end
 
       def current_user_profile
+        return @current_user if @current_user.admin? && @conversation.feedback?
+
         if @current_user.technician?
           @current_user.technician_profile
         else
@@ -68,7 +70,23 @@ module Api
       end
 
       def message_params
-        params.permit(:content)
+        params.permit(:content, :internal)
+      end
+
+      def create_feedback_inbox_message
+        internal = ActiveModel::Type::Boolean.new.cast(params[:internal])
+        message = @conversation.messages.build(content: message_params[:content], internal: internal)
+        message.sender = @current_user
+
+        if message.save
+          @conversation.touch
+          unless internal
+            MailDelivery.safe_deliver { UserMailer.feedback_inbox_reply(message).deliver_now }
+          end
+          render json: message, serializer: MessageSerializer, status: :created
+        else
+          render json: { errors: message.errors.full_messages }, status: :unprocessable_entity
+        end
       end
 
       def blocked_between_participants?

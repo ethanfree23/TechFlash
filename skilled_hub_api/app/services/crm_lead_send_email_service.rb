@@ -3,10 +3,31 @@
 class CrmLeadSendEmailService
   class Error < StandardError; end
 
+  MARKDOWN_LINK = /\[([^\]]+)\]\(([^)]+)\)/
+
+  def self.plain_text_for_email(text)
+    text.to_s.gsub(MARKDOWN_LINK) { "#{::Regexp.last_match(1)} (#{::Regexp.last_match(2)})" }
+  end
+
+  def self.inline_html_from_plain(text)
+    result = +""
+    last = 0
+    text.to_s.scan(MARKDOWN_LINK) do
+      match = Regexp.last_match
+      result << ERB::Util.html_escape(text[last...match.begin(0)])
+      label = ERB::Util.html_escape(match[1])
+      url = ERB::Util.html_escape(match[2])
+      result << %(<a href="#{url}" target="_blank" rel="noopener" style="color: #2563eb; text-decoration: underline;">#{label}</a>)
+      last = match.end(0)
+    end
+    result << ERB::Util.html_escape(text[last..])
+    result
+  end
+
   def self.plain_text_to_html(text)
-    escaped = ERB::Util.html_escape(text.to_s)
-    paragraphs = escaped.split(/\n{2,}/).map(&:strip).reject(&:blank?)
-    paragraphs = [escaped] if paragraphs.empty?
+    htmlized = inline_html_from_plain(text)
+    paragraphs = htmlized.split(/\n{2,}/).map(&:strip).reject(&:blank?)
+    paragraphs = [htmlized] if paragraphs.empty?
     inner = paragraphs.map do |para|
       lines = para.split(/\n/).map { |line| line.strip }.reject(&:blank?)
       content = lines.join("<br>\n")
@@ -57,6 +78,7 @@ class CrmLeadSendEmailService
 
     template_key = @params[:template_key].to_s
     show_ctas = CrmEmailTemplates.show_ctas?(template_key) && template_key != "custom_email"
+    body_plain_for_email = self.class.plain_text_for_email(body_plain)
     body_html = self.class.plain_text_to_html(body_plain)
 
     mail = CrmMailer.crm_follow_up(
@@ -65,7 +87,7 @@ class CrmLeadSendEmailService
       bcc: bcc,
       subject: subject,
       body_html: body_html,
-      body_plain: body_plain,
+      body_plain: body_plain_for_email,
       reply_to: @admin_user.email,
       show_ctas: show_ctas,
       signup_url: context["signup_url"],

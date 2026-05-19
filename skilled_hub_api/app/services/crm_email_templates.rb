@@ -15,7 +15,7 @@ class CrmEmailTemplates
   SALES_CALL_BODY = <<~BODY.freeze
     Hi {{contact_first_name}},
 
-    Thanks again for taking a few minutes to speak with me today.
+    Thanks again for taking a few minutes to speak with me today. I wanted to get this more official email your way, helping describe what we do, in case you'd like to share this with a few of your colleagues.
 
     I wanted to send over a quick summary of TechFlash and how it can help when your team is short on labor or needs temporary skilled trade help.
 
@@ -30,11 +30,9 @@ class CrmEmailTemplates
 
     The goal is simple: make it easier for companies to find reliable short-term technicians, and make it easier for technicians to pick up work that fits their schedule.
 
-    You can learn more or create an account here:
-    {{signup_url}}
+    You can learn more or create an account [here]({{signup_url}}).
 
-    If you already have a job you want to test with TechFlash, you can post it here:
-    {{post_job_url}}
+    If you already have a job you want to test with TechFlash, you can post it [here]({{post_job_url}}).
 
     Happy to help get the first job posted or walk you through how it works.
 
@@ -43,6 +41,7 @@ class CrmEmailTemplates
     {{sender_name}}
     TechFlash
     {{sender_email}}
+    {{sender_phone}}
   BODY
 
   SHORT_FOLLOW_UP_BODY = <<~BODY.freeze
@@ -121,6 +120,7 @@ class CrmEmailTemplates
     post_job_url
     calendar_url
     sender_email
+    sender_phone
   ].freeze
 
   class << self
@@ -176,6 +176,7 @@ class CrmEmailTemplates
         "company_name" => lead.name.to_s.strip.presence || "your company",
         "sender_name" => sender_name,
         "sender_email" => admin.email.to_s,
+        "sender_phone" => admin.phone.to_s.strip,
         "techflash_url" => "#{base_url}/for-companies",
         "signup_url" => "#{base_url}/login?tab=signup&role=company",
         "post_job_url" => "#{base_url}/jobs/create",

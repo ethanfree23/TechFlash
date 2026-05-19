@@ -29,6 +29,14 @@ export const CRM_COMPANY_TYPES = [
 
 export const CRM_NOTE_CONTACT_METHODS = ['call', 'text', 'email', 'in_person', 'note'];
 
+/** Activity timeline sort — default is newest activity first. */
+export const CRM_TIMELINE_SORT_OPTIONS = [
+  { id: 'newest', label: 'Most recent' },
+  { id: 'oldest', label: 'Oldest first' },
+  { id: 'updated', label: 'Recently updated' },
+  { id: 'reminders', label: 'Upcoming reminders' },
+];
+
 export const CRM_MERGE_FIELDS = [
   { key: 'name', label: 'Company name' },
   { key: 'contact_name', label: 'Primary contact name' },

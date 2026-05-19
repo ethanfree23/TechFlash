@@ -33,6 +33,7 @@ import {
   CRM_QUICK_PIPELINE_FILTERS,
   CRM_SORT_OPTIONS,
   CRM_NOTE_QUICK_TEMPLATES,
+  CRM_TIMELINE_SORT_OPTIONS,
   CONTACT_JOB_TITLE_SUGGESTIONS,
 } from '../utils/crmConstants';
 import {
@@ -40,7 +41,7 @@ import {
   sortLeads,
   computeCrmStatsStrip,
   exportLeadsToCsv,
-  filterNotesForTimeline,
+  prepareTimelineNotes,
   getOperationalInsights,
   getOutreachSnapshot,
   isValidEmail,
@@ -551,6 +552,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [crmHasContactFilter, setCrmHasContactFilter] = useState('all');
   const [crmHasPhoneFilter, setCrmHasPhoneFilter] = useState('all');
   const [timelineFilter, setTimelineFilter] = useState('all');
+  const [timelineSort, setTimelineSort] = useState('newest');
   const [linkAccountModalOpen, setLinkAccountModalOpen] = useState(false);
   const [pipelineSidebarCollapsed, setPipelineSidebarCollapsed] = useState(false);
   const [crmActivitySectionOpen, setCrmActivitySectionOpen] = useState(true);
@@ -770,6 +772,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
 
   useEffect(() => {
     setTimelineFilter('all');
+    setTimelineSort('newest');
   }, [selectedId, isCreating]);
 
   useEffect(() => {
@@ -2719,7 +2722,10 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       }),
     [form, metrics, activity, crmNotes],
   );
-  const filteredTimelineNotes = useMemo(() => filterNotesForTimeline(crmNotes, timelineFilter), [crmNotes, timelineFilter]);
+  const filteredTimelineNotes = useMemo(
+    () => prepareTimelineNotes(crmNotes, timelineFilter, timelineSort),
+    [crmNotes, timelineFilter, timelineSort],
+  );
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -4120,11 +4126,27 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   </button>
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
                     <label className="text-xs text-gray-500 flex items-center gap-1">
+                      Sort
+                      <select
+                        value={timelineSort}
+                        onChange={(e) => setTimelineSort(e.target.value)}
+                        className="border border-gray-300 rounded-lg px-2 py-1 text-xs bg-white min-w-[8.5rem]"
+                        aria-label="Sort activity"
+                      >
+                        {CRM_TIMELINE_SORT_OPTIONS.map((opt) => (
+                          <option key={opt.id} value={opt.id}>
+                            {opt.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="text-xs text-gray-500 flex items-center gap-1">
                       Filter
                       <select
                         value={timelineFilter}
                         onChange={(e) => setTimelineFilter(e.target.value)}
                         className="border border-gray-300 rounded-lg px-2 py-1 text-xs bg-white"
+                        aria-label="Filter activity"
                       >
                         <option value="all">All activity</option>
                         <option value="calls">Calls</option>

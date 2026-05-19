@@ -219,6 +219,19 @@ class UserMailer < ApplicationMailer
     )
   end
 
+  def feedback_inbox_reply(message)
+    @message = message
+    @conversation = message.conversation
+    @recipient = @conversation.feedback_submission&.user
+    return if @recipient.blank?
+
+    mail(
+      to: @recipient.email,
+      reply_to: message.sender.is_a?(User) ? message.sender.email : nil,
+      subject: "Reply from TechFlash about your feedback"
+    )
+  end
+
   private
 
   def frontend_reset_password_url(token)

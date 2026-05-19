@@ -26,6 +26,10 @@ const toDatetimeLocal = (d) => {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 };
 
+import { sanitizeDemoJobNotes, isFlagshipDemoJob } from '../utils/demoMode';
+
+const sanitizeJobNotesForDisplay = (notes) => sanitizeDemoJobNotes(notes);
+
 const hasCustomGoLiveAt = (job) => {
   if (!job?.go_live_at || !job?.created_at) return false;
   const goLiveMs = new Date(job.go_live_at).getTime();
@@ -830,7 +834,7 @@ const JobDetail = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8" data-demo="job-detail-card">
       <div className="mb-6">
         <div className="flex items-center gap-4 mb-4">
           <Link to="/dashboard" className="text-blue-600 hover:text-blue-800 text-sm">Dashboard</Link>
@@ -847,7 +851,14 @@ const JobDetail = () => {
         </div>
         
         <div className="flex justify-between items-start mb-6 gap-4">
-          <h1 className="text-3xl font-bold text-gray-900 flex-1 min-w-0">{job.title}</h1>
+          <div className="min-w-0 flex-1">
+            {isFlagshipDemoJob(job) && (
+              <span className="inline-flex items-center gap-1 mb-2 rounded-md bg-orange-50 border border-orange-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-orange-800">
+                Featured job · Houston
+              </span>
+            )}
+            <h1 className="text-3xl font-bold text-gray-900">{job.title}</h1>
+          </div>
           <div className="flex items-center gap-3 flex-wrap justify-end shrink-0">
             {getStatusBadge(job)}
             {job.share_token && (
@@ -1266,10 +1277,10 @@ const JobDetail = () => {
               </div>
             )}
 
-            {job.notes && (
+            {sanitizeJobNotesForDisplay(job.notes) && (
               <div className="mb-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
                 <h3 className="text-sm font-bold uppercase tracking-wide text-gray-800 mb-2">Notes and conditions</h3>
-                <FormattedJobDescription text={job.notes} className="[&_p]:text-gray-800 [&_li]:text-gray-800" />
+                <FormattedJobDescription text={sanitizeJobNotesForDisplay(job.notes)} className="[&_p]:text-gray-800 [&_li]:text-gray-800" />
               </div>
             )}
 
@@ -1289,7 +1300,7 @@ const JobDetail = () => {
             )}
 
             {(job.status === 'finished' || job.status === 'filled') && (
-              <div className="mt-6 pt-6 border-t border-gray-200">
+              <div className="mt-6 pt-6 border-t border-gray-200" data-demo="reviews-section">
                 <h3 className="text-xl font-semibold text-gray-900 mb-3">Reviews</h3>
                 {canLeaveReview() && !hasAlreadyReviewed() && (
                   <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-4">

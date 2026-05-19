@@ -403,13 +403,14 @@ export function getOutreachSnapshot(crmNotes, lead) {
   const notes = Array.isArray(crmNotes) ? crmNotes : [];
   const calls = notes.filter((n) => n.contact_method === 'call').length;
   const emails = notes.filter((n) => n.contact_method === 'email').length;
-  const first = notes[0]?.created_at;
-  const last = notes.length ? notes[notes.length - 1].created_at : null;
+  const byCreated = [...notes].sort((a, b) => noteTimestamp(a) - noteTimestamp(b));
+  const first = byCreated[0]?.created_at ?? null;
+  const last = byCreated.length ? byCreated[byCreated.length - 1].created_at : null;
+  const latestNote = sortNotesForTimeline(notes, 'newest')[0];
   let outreach = 'Not contacted';
-  if (notes.length) {
-    const lastNote = notes[notes.length - 1];
-    if (lastNote.made_contact) outreach = 'Contacted';
-    else if (lastNote.contact_method === 'call') outreach = 'Needs follow-up';
+  if (latestNote) {
+    if (latestNote.made_contact) outreach = 'Contacted';
+    else if (latestNote.contact_method === 'call') outreach = 'Needs follow-up';
   }
   const status = String(lead?.status || '').toLowerCase();
   if (['contacted', 'qualified', 'proposal', 'prospect'].includes(status)) outreach = 'Contacted';
@@ -421,9 +422,14 @@ export function getOutreachSnapshot(crmNotes, lead) {
     calls,
     emails,
     notesCount: notes.length,
-    latestOutcome: notes.length ? (notes[notes.length - 1].title || '').trim() || '—' : '—',
+    latestOutcome: latestNote ? (latestNote.title || '').trim() || '—' : '—',
     outreachStatus: outreach,
   };
+}
+
+function noteTimestamp(note, field = 'created_at') {
+  const t = new Date(note?.[field] || 0).getTime();
+  return Number.isNaN(t) ? 0 : t;
 }
 
 export function filterNotesForTimeline(notes, filter) {
@@ -433,6 +439,37 @@ export function filterNotesForTimeline(notes, filter) {
   if (filter === 'emails') return list.filter((n) => n.contact_method === 'email');
   if (filter === 'notes') return list.filter((n) => n.contact_method === 'note' || !n.contact_method);
   return list;
+}
+
+/** Sort root timeline notes; comments stay oldest-first within each thread. */
+export function sortNotesForTimeline(notes, sortKey = 'newest') {
+  const list = Array.isArray(notes) ? notes : [];
+  const key = sortKey || 'newest';
+  const withSortedComments = list.map((note) => {
+    const comments = Array.isArray(note.comments) ? [...note.comments] : [];
+    comments.sort((a, b) => noteTimestamp(a) - noteTimestamp(b));
+    return { ...note, comments };
+  });
+
+  if (key === 'oldest') {
+    withSortedComments.sort((a, b) => noteTimestamp(a) - noteTimestamp(b));
+  } else if (key === 'updated') {
+    withSortedComments.sort((a, b) => noteTimestamp(b, 'updated_at') - noteTimestamp(a, 'updated_at'));
+  } else if (key === 'reminders') {
+    withSortedComments.sort((a, b) => {
+      const aRem = a.remind_at ? noteTimestamp(a, 'remind_at') : Number.POSITIVE_INFINITY;
+      const bRem = b.remind_at ? noteTimestamp(b, 'remind_at') : Number.POSITIVE_INFINITY;
+      if (aRem !== bRem) return aRem - bRem;
+      return noteTimestamp(b) - noteTimestamp(a);
+    });
+  } else {
+    withSortedComments.sort((a, b) => noteTimestamp(b) - noteTimestamp(a));
+  }
+  return withSortedComments;
+}
+
+export function prepareTimelineNotes(notes, filter, sortKey = 'newest') {
+  return sortNotesForTimeline(filterNotesForTimeline(notes, filter), sortKey);
 }
 
 export function exportLeadsToCsv(leads) {

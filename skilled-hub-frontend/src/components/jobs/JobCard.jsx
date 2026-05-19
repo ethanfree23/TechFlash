@@ -12,6 +12,7 @@ import {
 import JobStatusBadge from './JobStatusBadge';
 import JobCardActions from './JobCardActions';
 import { getCardSurfaceClasses } from '../../utils/jobStatus';
+import { isFlagshipDemoJob, sanitizeDemoJobNotes } from '../../utils/demoMode';
 import {
   formatCertifications,
   formatJobDuration,
@@ -48,6 +49,7 @@ export default function JobCard({
   onSaveJob,
   onRefresh,
   messagingBusy,
+  demoAnchor,
 }) {
   const pay = formatJobPay(job);
   const duration = formatJobDuration(job);
@@ -63,8 +65,12 @@ export default function JobCard({
   const isUnavailable = role === 'technician' && unavailableReason && !claimedByMe;
   const surfaceClasses = getCardSurfaceClasses(job);
 
+  const isFeatured = isFlagshipDemoJob(job);
+  const displayNotes = sanitizeDemoJobNotes(job.notes);
+
   return (
     <article
+      data-demo={demoAnchor || (isFeatured ? 'job-detail-card' : undefined)}
       className={`group flex h-full min-h-[22rem] flex-col rounded-xl border border-slate-200/90 shadow-sm transition-all hover:shadow-md hover:border-slate-300/90 ${surfaceClasses} ${
         isUnavailable ? 'opacity-[0.92]' : ''
       }`}
@@ -90,6 +96,15 @@ export default function JobCard({
           </div>
           <JobStatusBadge job={job} layout="stack" />
         </div>
+
+        {isFeatured && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            <span className="inline-flex items-center gap-1 text-[9px] font-bold uppercase tracking-wide text-orange-800 bg-orange-50 border border-orange-200/80 px-1.5 py-0.5 rounded">
+              <FaStar className="h-2.5 w-2.5 text-orange-500" />
+              Featured
+            </span>
+          </div>
+        )}
 
         {(matchesSaved || isBookmarked) && (
           <div className="flex flex-wrap gap-1 mt-2">
@@ -156,10 +171,10 @@ export default function JobCard({
           )}
         </div>
 
-        {job.notes && (
+        {displayNotes && (
           <div className="mt-3 rounded-lg bg-slate-50/80 border border-slate-100 px-2.5 py-2">
             <p className="text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-0.5">Notes</p>
-            <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed">{job.notes}</p>
+            <p className="text-[11px] text-slate-600 line-clamp-2 leading-relaxed">{displayNotes}</p>
           </div>
         )}
 

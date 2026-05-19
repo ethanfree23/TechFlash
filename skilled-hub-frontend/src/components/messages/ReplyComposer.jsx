@@ -14,16 +14,11 @@ export default function ReplyComposer({
   onArchive,
   onCannedSelect,
 }) {
-  const publicReplyDisabled = isFeedbackThread && isAdmin;
-
   const placeholder = isAdmin
-    ? publicReplyDisabled
-      ? 'Write an internal note for your team…'
-      : 'Write a public reply or switch to an internal note…'
+    ? 'Write a public reply or switch to an internal note…'
     : 'Write your reply…';
 
-  const sendDisabled =
-    !composerText.trim() || (publicReplyDisabled && replyMode === 'public');
+  const sendDisabled = !composerText.trim();
 
   return (
     <div className="border-t border-gray-200 bg-white p-4 space-y-3 shrink-0">
@@ -37,13 +32,12 @@ export default function ReplyComposer({
             <button
               type="button"
               onClick={() => onReplyModeChange('public')}
-              disabled={publicReplyDisabled}
-              aria-pressed={replyMode === 'public' && !publicReplyDisabled}
+              aria-pressed={replyMode === 'public'}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 ${
-                replyMode === 'public' && !publicReplyDisabled
+                replyMode === 'public'
                   ? 'bg-white text-gray-900 shadow-sm'
                   : 'text-gray-500 hover:text-gray-700'
-              } ${publicReplyDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+              }`}
             >
               Public reply
             </button>
@@ -80,9 +74,9 @@ export default function ReplyComposer({
         </div>
       )}
 
-      {publicReplyDisabled && replyMode === 'public' && (
-        <p className="text-xs text-amber-800 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2" role="status">
-          Public replies are not available on feedback threads yet. Use an internal note or follow up by email.
+      {isFeedbackThread && isAdmin && replyMode === 'public' && (
+        <p className="text-xs text-blue-800 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2" role="status">
+          Public replies are emailed to the submitter. Use internal notes for team-only context.
         </p>
       )}
 

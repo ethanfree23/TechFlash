@@ -8,6 +8,11 @@ require "uri"
 class SmsDeliveryService
 
   def self.deliver!(to:, body:)
+    if defined?(DemoMode) && DemoMode.enabled?
+      Rails.logger.info("[sms] demo: simulated SMS to=#{to.inspect} (not sent)")
+      return { status: :skipped, error: nil, simulated: true }
+    end
+
     sid = ENV["TWILIO_ACCOUNT_SID"].to_s.strip.presence
     token = ENV["TWILIO_AUTH_TOKEN"].to_s.strip.presence
     from = ENV["TWILIO_FROM_NUMBER"].to_s.strip.presence

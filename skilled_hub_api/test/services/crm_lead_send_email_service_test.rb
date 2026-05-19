@@ -10,7 +10,8 @@ class CrmLeadSendEmailServiceTest < ActiveSupport::TestCase
       password_confirmation: "password123",
       role: :admin,
       first_name: "Ethan",
-      last_name: "Admin"
+      last_name: "Admin",
+      phone: "(719) 339-5617"
     )
     @lead = CrmLead.create!(
       name: "Rodriguez Electric",
@@ -38,6 +39,48 @@ class CrmLeadSendEmailServiceTest < ActiveSupport::TestCase
     assert_includes result[:preview][:subject], "Mike"
     assert_includes result[:preview][:text_body], "Ethan Admin"
     assert_includes result[:preview][:text_body], "Rodriguez Electric"
+  end
+
+  test "converts markdown here links to html anchors and plain text fallbacks" do
+    signup = "https://www.techflash.app/login?tab=signup&role=company"
+    post_job = "https://www.techflash.app/jobs/create"
+    body = <<~BODY.strip
+      Learn more [here](#{signup}).
+
+      Post a job [here](#{post_job}).
+    BODY
+
+    result = CrmLeadSendEmailService.call(
+      lead: @lead,
+      admin_user: @admin,
+      params: {
+        template_key: "sales_call_follow_up",
+        to: "mike@rodiguez-electric.example.com",
+        subject: "Hi",
+        body: body
+      },
+      deliver: false,
+      log_activity: false
+    )
+
+    assert result[:success]
+    html = result[:preview][:html_body]
+    # HTML body escapes & as &amp; in attribute values
+    assert(
+      html.include?(%(href="#{signup}")) ||
+        html.include?(%(href="#{signup.gsub('&', '&amp;')}")),
+    )
+    assert_includes html, ">here</a>"
+    assert_includes result[:preview][:text_body], "here (#{signup})"
+    assert_includes result[:preview][:text_body], "here (#{post_job})"
+  end
+
+  test "default sales template includes sender phone when set on admin" do
+    context = CrmEmailTemplates.build_context(lead: @lead, admin: @admin)
+    body = CrmEmailTemplates.interpolate(CrmEmailTemplates.default_body("sales_call_follow_up"), context)
+
+    assert_includes body, "(719) 339-5617"
+    assert_includes body, "[here]("
   end
 
   test "rejects unknown template" do

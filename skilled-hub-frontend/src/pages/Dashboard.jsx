@@ -13,8 +13,9 @@ import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen, FaBuilding } from '
 import { AdminPlatformCharts, CompanyAnalyticsCharts, TechnicianAnalyticsCharts } from '../components/dashboard/RoleDashboardCharts';
 import AdminCommandCenter from '../components/admin/command-center/AdminCommandCenter';
 import { fetchAdminCommandCenterInsights } from '../services/fetchAdminCommandCenterData';
-
-// open, claimed (filled but not started), active (in progress), completed, expired
+import DemoWalkthrough from '../components/demo/DemoWalkthrough';
+import StartDemoButton from '../components/demo/StartDemoButton';
+import { isDemoMode } from '../utils/demoMode';
 const statusLabel = (job) => {
   if (!job) return <span className="capitalize text-gray-600">—</span>;
   const status = job.status;
@@ -277,8 +278,9 @@ const Dashboard = ({ user, onLogout }) => {
 };
 
 const AdminDashboardContent = ({ analytics, feedbackList, onDashboardReload }) => {
+  const [tourRun, setTourRun] = useState(false);
   const [filters, setFilters] = useState({
-    period: '30d',
+    period: isDemoMode() ? 'all' : '30d',
     market: 'all',
     trade: 'all',
     search: '',
@@ -322,8 +324,22 @@ const AdminDashboardContent = ({ analytics, feedbackList, onDashboardReload }) =
   const showBlockingError = combinedError && !analytics;
   const loading = insightsLoading && insightsByCategory === null;
 
+  const handleMarketFilter = useCallback((market) => {
+    setFilters((prev) => ({ ...prev, market }));
+  }, []);
+
   return (
     <div className="bg-[#F7F8FA] -mx-4 sm:-mx-6 lg:-mx-8 px-4 sm:px-6 lg:px-8 py-6 min-h-[60vh]">
+      {isDemoMode() && (
+        <>
+          <DemoWalkthrough
+            run={tourRun}
+            onFinish={() => setTourRun(false)}
+            onMarketFilter={handleMarketFilter}
+          />
+          {!tourRun && <StartDemoButton floating onClick={() => setTourRun(true)} />}
+        </>
+      )}
       <AdminCommandCenter
         analytics={analytics}
         insightsByCategory={insightsByCategory}
@@ -342,6 +358,7 @@ const AdminDashboardContent = ({ analytics, feedbackList, onDashboardReload }) =
         refreshing={refreshing}
         onRefresh={handleRefresh}
         dataError={combinedError && analytics ? combinedError : null}
+        onStartTour={() => setTourRun(true)}
       />
     </div>
   );

@@ -11,7 +11,10 @@ class FeedbackInboxThread
       feedback_submission: submission,
       job_id: nil,
       technician_profile_id: user.technician_profile&.id,
-      company_profile_id: user.company_profile&.id
+      company_profile_id: user.company_profile&.id,
+      inbox_status: "open",
+      priority: "normal",
+      admin_read_at: nil
     )
 
     content = <<~TXT.strip

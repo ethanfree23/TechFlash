@@ -27,10 +27,10 @@ export default function AppHeader({
   const [showReferralModal, setShowReferralModal] = useState(false);
   const canRefer = user?.role === 'company' || user?.role === 'technician';
 
-  const NavLink = ({ page, to, children }) => {
+  const NavLink = ({ page, to, children, ...rest }) => {
     const active = activePage === page;
     return (
-      <Link to={to} className={active ? navActive : navInactive}>
+      <Link to={to} className={active ? navActive : navInactive} {...rest}>
         {children}
       </Link>
     );
@@ -49,7 +49,7 @@ export default function AppHeader({
           <NavLink page="dashboard" to="/dashboard">
             Dashboard
           </NavLink>
-          <NavLink page="jobs" to="/jobs">
+          <NavLink page="jobs" to="/jobs" data-demo="jobs-tab">
             Jobs
           </NavLink>
           {navPreset === 'full' && (

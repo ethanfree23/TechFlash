@@ -12,6 +12,7 @@ export default function UsersSegmentedTabs({ activeTab, tabCounts, onChange }) {
             <button
               key={tab.id}
               type="button"
+              data-demo={tab.id === 'company' ? 'company-profile' : tab.id === 'technicians' ? 'technician-profile' : undefined}
               onClick={() => onChange(tab.id)}
               className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap transition-all ${
                 selected

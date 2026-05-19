@@ -1,5 +1,6 @@
 class MessageSerializer < ActiveModel::Serializer
-  attributes :id, :sender_id, :sender_type, :content, :conversation_id, :created_at, :updated_at
+  attributes :id, :sender_id, :sender_type, :content, :conversation_id, :created_at, :updated_at,
+             :internal
 
   attribute :sender_display_name do
     case object.sender

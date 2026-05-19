@@ -15,8 +15,19 @@ import {
   hasActiveClientFilters,
 } from '../../utils/jobFilterEngine';
 import { haversineMiles } from '../../utils/jobDisplayUtils';
+import { getDemoFlagshipJobId, isDemoMode } from '../../utils/demoMode';
 
 const JOBS_PER_PAGE = 9;
+
+export const pinFlagshipJobFirst = (jobList, flagshipId) => {
+  if (!flagshipId || !Array.isArray(jobList) || jobList.length < 2) return jobList;
+  const sorted = [...jobList];
+  const idx = sorted.findIndex((j) => j.id === flagshipId);
+  if (idx <= 0) return sorted;
+  const [job] = sorted.splice(idx, 1);
+  sorted.unshift(job);
+  return sorted;
+};
 
 export const sortJobs = (jobList, sortBy, technicianProfile) => {
   const sorted = [...jobList];
@@ -223,10 +234,13 @@ export default function useJobsDashboard() {
     [jobs, clientFilters, technicianProfile]
   );
 
-  const sortedJobs = useMemo(
-    () => sortJobs(clientFilteredJobs, sortBy, technicianProfile),
-    [clientFilteredJobs, sortBy, technicianProfile]
-  );
+  const sortedJobs = useMemo(() => {
+    const sorted = sortJobs(clientFilteredJobs, sortBy, technicianProfile);
+    if (isDemoMode()) {
+      return pinFlagshipJobFirst(sorted, getDemoFlagshipJobId());
+    }
+    return sorted;
+  }, [clientFilteredJobs, sortBy, technicianProfile]);
 
   const indexOfLastJob = currentPage * JOBS_PER_PAGE;
   const indexOfFirstJob = indexOfLastJob - JOBS_PER_PAGE;

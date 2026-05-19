@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_05_15_000002) do
+ActiveRecord::Schema[7.1].define(version: 2026_05_18_120000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -89,9 +89,16 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_15_000002) do
     t.datetime "updated_at", null: false
     t.string "conversation_type", default: "job", null: false
     t.integer "feedback_submission_id"
+    t.string "inbox_status", default: "open", null: false
+    t.string "priority", default: "normal", null: false
+    t.integer "assigned_to_id"
+    t.datetime "admin_read_at"
+    t.index ["assigned_to_id"], name: "index_conversations_on_assigned_to_id"
     t.index ["company_profile_id"], name: "index_conversations_on_company_profile_id"
+    t.index ["conversation_type", "admin_read_at"], name: "index_conversations_on_type_and_admin_read_at"
     t.index ["conversation_type"], name: "index_conversations_on_conversation_type"
     t.index ["feedback_submission_id"], name: "index_conversations_on_feedback_submission_id", unique: true
+    t.index ["inbox_status"], name: "index_conversations_on_inbox_status"
     t.index ["job_id"], name: "index_conversations_on_job_id"
     t.index ["technician_profile_id"], name: "index_conversations_on_technician_profile_id"
   end
@@ -364,6 +371,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_15_000002) do
     t.text "content"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.boolean "internal", default: false, null: false
     t.index ["conversation_id"], name: "index_messages_on_conversation_id"
     t.index ["sender_type", "sender_id"], name: "index_messages_on_sender"
   end
@@ -550,6 +558,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_15_000002) do
   add_foreign_key "conversations", "feedback_submissions"
   add_foreign_key "conversations", "jobs"
   add_foreign_key "conversations", "technician_profiles"
+  add_foreign_key "conversations", "users", column: "assigned_to_id"
   add_foreign_key "coupon_assignments", "coupons"
   add_foreign_key "coupon_assignments", "users"
   add_foreign_key "coupon_assignments", "users", column: "assigned_by_id"

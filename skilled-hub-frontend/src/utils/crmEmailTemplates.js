@@ -2,7 +2,7 @@ import { getPrimaryContactPreview } from './crmDisplayAdapter';
 
 const SALES_CALL_BODY = `Hi {{contact_first_name}},
 
-Thanks again for taking a few minutes to speak with me today.
+Thanks again for taking a few minutes to speak with me today. I wanted to get this more official email your way, helping describe what we do, in case you'd like to share this with a few of your colleagues.
 
 I wanted to send over a quick summary of TechFlash and how it can help when your team is short on labor or needs temporary skilled trade help.
 
@@ -17,11 +17,9 @@ It is built for situations like:
 
 The goal is simple: make it easier for companies to find reliable short-term technicians, and make it easier for technicians to pick up work that fits their schedule.
 
-You can learn more or create an account here:
-{{signup_url}}
+You can learn more or create an account [here]({{signup_url}}).
 
-If you already have a job you want to test with TechFlash, you can post it here:
-{{post_job_url}}
+If you already have a job you want to test with TechFlash, you can post it [here]({{post_job_url}}).
 
 Happy to help get the first job posted or walk you through how it works.
 
@@ -29,7 +27,8 @@ Best,
 
 {{sender_name}}
 TechFlash
-{{sender_email}}`;
+{{sender_email}}
+{{sender_phone}}`;
 
 const SHORT_FOLLOW_UP_BODY = `Hi {{contact_first_name}},
 
@@ -57,6 +56,7 @@ export const CRM_EMAIL_VARIABLES = [
   'post_job_url',
   'calendar_url',
   'sender_email',
+  'sender_phone',
 ];
 
 export const CRM_EMAIL_TEMPLATES = [
@@ -134,6 +134,7 @@ export function buildTemplateContext(form, user) {
     company_name: String(form?.name || '').trim() || 'your company',
     sender_name: senderName,
     sender_email: String(user?.email || '').trim(),
+    sender_phone: String(user?.phone || '').trim(),
     techflash_url: `${base}/for-companies`,
     signup_url: `${base}/login?tab=signup&role=company`,
     post_job_url: `${base}/jobs/create`,

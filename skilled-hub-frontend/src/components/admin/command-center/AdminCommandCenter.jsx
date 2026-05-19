@@ -6,6 +6,10 @@ import MarketplaceHealthCard from './MarketplaceHealthCard';
 import MarketplaceFunnel from './MarketplaceFunnel';
 import CommandCenterBody from './CommandCenterBody';
 import KpiCard from './KpiCard';
+import DemoEnvironmentCard from '../DemoEnvironmentCard';
+import DemoResetCard from '../DemoResetCard';
+import DemoWelcomeHero from '../../demo/DemoWelcomeHero';
+import { isDemoMode } from '../../../utils/demoMode';
 
 function SkeletonBar({ className }) {
   return <div className={`animate-pulse rounded-md bg-slate-200/90 ${className}`} />;
@@ -75,6 +79,7 @@ export default function AdminCommandCenter({
   lastUpdatedMs,
   refreshing,
   onRefresh,
+  onStartTour,
 }) {
   const model = useMemo(() => {
     if (!analytics && !(insightsByCategory && Object.keys(insightsByCategory).length)) return null;
@@ -109,7 +114,11 @@ export default function AdminCommandCenter({
 
   return (
     <div className="space-y-4 max-w-[100rem] mx-auto w-full">
-      {dataError && (
+      {!isDemoMode() && <DemoEnvironmentCard />}
+      {isDemoMode() && onStartTour && (
+        <DemoWelcomeHero analytics={analytics} onStartTour={onStartTour} />
+      )}
+      {dataError && !isDemoMode() && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
           <span className="font-semibold">Partial load.</span> {dataError} Some charts or tables may be incomplete until refresh succeeds.
         </div>
@@ -120,9 +129,10 @@ export default function AdminCommandCenter({
         lastUpdatedMs={lastUpdatedMs}
         onRefresh={onRefresh}
         refreshing={refreshing}
+        demoMode={isDemoMode()}
       />
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2" data-demo="admin-dashboard-stats">
         {(model.kpis || []).map((k) => (
           <KpiCard
             key={k.id}
@@ -183,7 +193,7 @@ export default function AdminCommandCenter({
         )}
       </section>
 
-      <div className="flex flex-wrap gap-2 pb-6">
+      <div className="flex flex-wrap gap-2 pb-2">
         <Link
           to="/crm"
           className="inline-flex items-center rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-50"
@@ -197,6 +207,8 @@ export default function AdminCommandCenter({
           View all jobs
         </Link>
       </div>
+
+      {isDemoMode() && <DemoResetCard compact />}
     </div>
   );
 }

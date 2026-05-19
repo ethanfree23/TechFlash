@@ -1,8 +1,10 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { TECHFLASH_LOGO_LOGIN } from '../constants/branding';
 import { authAPI, passwordResetsAPI } from '../api/api';
 import { auth } from '../auth';
+import { setApiDemoMode, setDemoFlagshipJobId, setDemoReviewedJobId, isDemoMode } from '../utils/demoMode';
+import { DEMO_ACCOUNTS } from '../constants/demoAccounts';
 import RegisterForm from '../components/RegisterForm';
 import { MarketingHeader } from '../components/marketing/MarketingHeader';
 import { readSignupRoleIntent } from '../utils/signupRoleIntent';
@@ -34,17 +36,43 @@ const LoginPage = ({ onLoginSuccess }) => {
 
   const [loginData, setLoginData] = useState({ email: '', password: '' });
   const navigate = useNavigate();
+  const autoLoginAttempted = useRef(false);
+
+  useEffect(() => {
+    if (tab === 'signup') return;
+    const demoParam = searchParams.get('demo');
+    if (demoParam === 'admin' || demoParam === 'company' || demoParam === 'technician') {
+      const account = DEMO_ACCOUNTS[demoParam];
+      if (account) {
+        setLoginData({ email: account.email, password: account.password });
+      }
+    } else if (isDemoMode() && !signupEmail) {
+      setLoginData({
+        email: DEMO_ACCOUNTS.admin.email,
+        password: DEMO_ACCOUNTS.admin.password,
+      });
+    } else if (signupEmail) {
+      setLoginData((prev) => ({ ...prev, email: signupEmail }));
+    }
+  }, [searchParams, tab, signupEmail]);
+
+  const completeLogin = async (email, password) => {
+    const response = await authAPI.login(email, password);
+    auth.setToken(response.token);
+    auth.setUser(response.user);
+    if (response.demo_mode != null) setApiDemoMode(response.demo_mode);
+    if (response.flagship_job_id) setDemoFlagshipJobId(response.flagship_job_id);
+    if (response.reviewed_job_id) setDemoReviewedJobId(response.reviewed_job_id);
+    onLoginSuccess(response.user);
+    setTimeout(() => navigate('/dashboard'), 100);
+  };
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
     try {
-      const response = await authAPI.login(loginData.email, loginData.password);
-      auth.setToken(response.token);
-      auth.setUser(response.user);
-      onLoginSuccess(response.user);
-      setTimeout(() => navigate('/dashboard'), 100);
+      await completeLogin(loginData.email, loginData.password);
     } catch (err) {
       console.error('Login error:', err);
       setError(err.message || 'Login failed');
@@ -52,6 +80,33 @@ const LoginPage = ({ onLoginSuccess }) => {
       setLoading(false);
     }
   };
+
+  const handleDemoLogin = useCallback(async (role) => {
+    const account = DEMO_ACCOUNTS[role];
+    if (!account) return;
+    setLoginData({ email: account.email, password: account.password });
+    setLoading(true);
+    setError('');
+    try {
+      await completeLogin(account.email, account.password);
+    } catch (err) {
+      console.error('Demo login error:', err);
+      setError(err.message || 'Demo login failed');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (tab === 'signup') return;
+    if (searchParams.get('auto') !== '1') return;
+    if (autoLoginAttempted.current) return;
+    const demoParam = searchParams.get('demo');
+    if (demoParam && DEMO_ACCOUNTS[demoParam]) {
+      autoLoginAttempted.current = true;
+      handleDemoLogin(demoParam);
+    }
+  }, [searchParams, tab, handleDemoLogin]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -152,6 +207,38 @@ const LoginPage = ({ onLoginSuccess }) => {
 
           {error && (
             <div className="mb-4 rounded border border-red-400 bg-red-100 p-3 text-red-700">{error}</div>
+          )}
+
+          {isDemoMode() && (
+            <div className="mb-4 space-y-3">
+              <button
+                type="button"
+                disabled={loading}
+                onClick={() => handleDemoLogin('admin')}
+                className="w-full rounded-lg bg-[#FE6711] px-4 py-3 text-sm font-semibold text-white hover:opacity-95 disabled:opacity-50"
+              >
+                {loading ? 'Signing in…' : 'Enter demo as Admin'}
+              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => handleDemoLogin('company')}
+                  className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
+                >
+                  Demo Company
+                </button>
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => handleDemoLogin('technician')}
+                  className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
+                >
+                  Demo Technician
+                </button>
+              </div>
+              <p className="text-center text-[11px] text-slate-500">Or sign in manually below</p>
+            </div>
           )}
 
           <form onSubmit={handleLoginSubmit} className="space-y-6">

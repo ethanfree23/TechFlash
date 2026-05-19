@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import { conversationsAPI, messagesAPI } from '../../api/api';
+import { conversationsAPI, messagesAPI, isProductionHost } from '../../api/api';
 import { getSeedMessagesForRole } from './messagesSeedData';
 import {
   conversationToInboxMessage,
@@ -9,8 +9,20 @@ import {
   getTabCounts,
   sendConversationReply,
   exportMessagesCsv,
+  computeAvgResponseTime,
 } from './messagesAdapter';
 import { ADMIN_TABS, USER_TABS, TOAST } from './constants';
+
+function mergeAdaptedInboxRow(existing, adapted) {
+  return {
+    ...existing,
+    ...adapted,
+    id: existing.id,
+    thread: adapted.thread,
+    preview: adapted.preview,
+    body: adapted.body,
+  };
+}
 
 export function useMessagesInbox(currentUser, { onNotify } = {}) {
   const role = currentUser?.role || 'technician';
@@ -43,7 +55,7 @@ export function useMessagesInbox(currentUser, { onNotify } = {}) {
   const fetchInbox = useCallback(async () => {
     setLoading(true);
     setLoadError(false);
-    const seeds = getSeedMessagesForRole(role);
+    const seeds = isProductionHost ? [] : getSeedMessagesForRole(role);
 
     try {
       const data = await conversationsAPI.getAll();
@@ -94,14 +106,15 @@ export function useMessagesInbox(currentUser, { onNotify } = {}) {
   );
 
   const kpis = useMemo(() => {
+    const isActive = (m) => m.status !== 'archived' && m.status !== 'resolved';
     const open = messages.filter((m) => m.status === 'open').length;
-    const problems = messages.filter((m) => m.type === 'problem').length;
-    const suggestions = messages.filter((m) => m.type === 'suggestion').length;
+    const problems = messages.filter((m) => m.type === 'problem' && isActive(m)).length;
+    const suggestions = messages.filter((m) => m.type === 'suggestion' && isActive(m)).length;
     return {
       openMessages: open,
       problems,
       suggestions,
-      avgResponseTime: '2h 14m',
+      avgResponseTime: computeAvgResponseTime(messages),
     };
   }, [messages]);
 
@@ -113,49 +126,97 @@ export function useMessagesInbox(currentUser, { onNotify } = {}) {
     setSortBy('newest');
   }, []);
 
-  const refreshThreadFromApi = useCallback(async (msg) => {
-    if (!msg?.sourceConversationId) return;
-    setDetailLoading(true);
-    try {
-      const [conv, msgsRaw] = await Promise.all([
-        conversationsAPI.getById(msg.sourceConversationId),
-        messagesAPI.getByConversation(msg.sourceConversationId),
-      ]);
-      const msgs = Array.isArray(msgsRaw) ? msgsRaw : msgsRaw?.messages || conv?.messages || [];
-      const updated = conversationToInboxMessage({ ...conv, messages: msgs }, role);
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === msg.id
-            ? {
-                ...m,
-                thread: updated.thread,
-                preview: updated.preview,
-                body: updated.body,
-              }
-            : m,
-        ),
-      );
-    } catch {
-      notify(TOAST.threadSyncFailed, 'error');
-    } finally {
-      setDetailLoading(false);
-    }
-  }, [role, notify]);
+  const applyConversationPatch = useCallback(
+    async (msg, payload, { optimistic } = {}) => {
+      if (!msg?.sourceConversationId) return false;
+      const snapshot = { ...msg };
+      if (optimistic) {
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id !== msg.id) return m;
+            const next = { ...m };
+            if (payload.inbox_status != null) next.status = payload.inbox_status;
+            if (payload.priority != null) next.priority = payload.priority;
+            if (Object.prototype.hasOwnProperty.call(payload, 'assigned_to_id')) {
+              next.assignedToId = payload.assigned_to_id;
+              if (payload.assigned_to_id == null) next.assignedTo = null;
+            }
+            if (payload.mark_read) next.isUnread = false;
+            return next;
+          }),
+        );
+      }
+      try {
+        const conv = await conversationsAPI.update(msg.sourceConversationId, payload);
+        const adapted = conversationToInboxMessage(conv, role);
+        setMessages((prev) =>
+          prev.map((m) => (m.id === msg.id ? mergeAdaptedInboxRow(m, adapted) : m)),
+        );
+        return true;
+      } catch {
+        if (optimistic) {
+          setMessages((prev) => prev.map((m) => (m.id === msg.id ? snapshot : m)));
+        }
+        notify(TOAST.syncFailed, 'error');
+        return false;
+      }
+    },
+    [role, notify],
+  );
+
+  const refreshThreadFromApi = useCallback(
+    async (msg) => {
+      if (!msg?.sourceConversationId) return;
+      setDetailLoading(true);
+      try {
+        const [conv, msgsRaw] = await Promise.all([
+          conversationsAPI.getById(msg.sourceConversationId),
+          messagesAPI.getByConversation(msg.sourceConversationId),
+        ]);
+        const msgs = Array.isArray(msgsRaw) ? msgsRaw : msgsRaw?.messages || conv?.messages || [];
+        const updated = conversationToInboxMessage({ ...conv, messages: msgs }, role);
+        setMessages((prev) =>
+          prev.map((m) => (m.id === msg.id ? mergeAdaptedInboxRow(m, updated) : m)),
+        );
+      } catch {
+        notify(TOAST.threadSyncFailed, 'error');
+      } finally {
+        setDetailLoading(false);
+      }
+    },
+    [role, notify],
+  );
 
   const selectMessage = useCallback(
     (id) => {
       setSelectedId(id);
       setViewMode('detail');
       setComposerText('');
-      setMessages((prev) => {
-        const msg = prev.find((m) => m.id === id);
-        if (msg?.sourceConversationId) {
-          refreshThreadFromApi(msg);
-        }
-        return prev.map((m) => (m.id === id ? { ...m, isUnread: false } : m));
-      });
+      const msg = messages.find((m) => m.id === id);
+      if (msg?.isFeedbackThread && msg?.isUnread && msg?.sourceConversationId) {
+        conversationsAPI
+          .markRead(msg.sourceConversationId)
+          .then((conv) => {
+            const adapted = conversationToInboxMessage(conv, role);
+            setMessages((prev) =>
+              prev.map((m) => (m.id === id ? mergeAdaptedInboxRow(m, adapted) : m)),
+            );
+          })
+          .catch(() => {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === id ? { ...m, isUnread: false } : m)),
+            );
+          });
+      } else {
+        setMessages((prev) =>
+          prev.map((m) => (m.id === id ? { ...m, isUnread: false } : m)),
+        );
+      }
+      if (msg?.sourceConversationId) {
+        refreshThreadFromApi(msg);
+      }
     },
-    [refreshThreadFromApi],
+    [messages, role, refreshThreadFromApi],
   );
 
   const backToList = useCallback(() => {
@@ -168,22 +229,6 @@ export function useMessagesInbox(currentUser, { onNotify } = {}) {
     );
   }, []);
 
-  const appendThreadItem = useCallback((id, item) => {
-    setMessages((prev) =>
-      prev.map((m) =>
-        m.id === id
-          ? {
-              ...m,
-              thread: [...(m.thread || []), item],
-              preview: item.body.slice(0, 120),
-              updatedAt: item.createdAt,
-              isUnread: false,
-            }
-          : m,
-      ),
-    );
-  }, []);
-
   const sendReply = useCallback(
     async (text, options = {}) => {
       if (!selectedId || !text?.trim()) return false;
@@ -191,15 +236,19 @@ export function useMessagesInbox(currentUser, { onNotify } = {}) {
       if (!msg) return false;
 
       const isInternal = options.internal || replyMode === 'internal';
-      const senderName = currentUser?.email?.split('@')[0] || 'You';
-      const threadItem = {
-        id: `local-${Date.now()}`,
-        senderName,
-        senderRole: role,
-        body: text.trim(),
-        isInternalNote: isInternal,
-        createdAt: new Date().toISOString(),
-      };
+
+      if (msg.sourceConversationId && (msg.isFeedbackThread || !isInternal)) {
+        try {
+          await sendConversationReply(msg.sourceConversationId, text.trim(), { internal: isInternal });
+          await refreshThreadFromApi(msg);
+          setComposerText('');
+          notify(isInternal ? TOAST.noteAdded : TOAST.replySent, 'success');
+          return true;
+        } catch {
+          notify(TOAST.replyFailed, 'error');
+          return false;
+        }
+      }
 
       if (!isInternal && msg.sourceConversationId && !msg.isFeedbackThread) {
         try {
@@ -210,61 +259,93 @@ export function useMessagesInbox(currentUser, { onNotify } = {}) {
         }
       }
 
-      appendThreadItem(selectedId, threadItem);
+      const senderName = currentUser?.email?.split('@')[0] || 'You';
+      const threadItem = {
+        id: `local-${Date.now()}`,
+        senderName,
+        senderRole: role,
+        body: text.trim(),
+        isInternalNote: isInternal,
+        createdAt: new Date().toISOString(),
+      };
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === selectedId
+            ? {
+                ...m,
+                thread: [...(m.thread || []), threadItem],
+                preview: threadItem.body.slice(0, 120),
+                updatedAt: threadItem.createdAt,
+                isUnread: false,
+              }
+            : m,
+        ),
+      );
       setComposerText('');
       notify(isInternal ? TOAST.noteAdded : TOAST.replySent, 'success');
       return true;
     },
-    [selectedId, messages, replyMode, role, currentUser, appendThreadItem, notify],
+    [selectedId, messages, replyMode, role, currentUser, refreshThreadFromApi, notify],
+  );
+
+  const patchSelectedInbox = useCallback(
+    (payload) => {
+      const msg = messages.find((m) => m.id === selectedId);
+      if (!msg) return Promise.resolve(false);
+      return applyConversationPatch(msg, payload, { optimistic: true });
+    },
+    [messages, selectedId, applyConversationPatch],
   );
 
   const markResolved = useCallback(() => {
     if (!selectedId) return;
-    // TODO: inboxMessagesAPI.patchStatus(selectedId, 'resolved')
-    updateMessage(selectedId, () => ({ status: 'resolved' }));
-    notify(TOAST.markedResolved, 'success');
-  }, [selectedId, updateMessage, notify]);
+    patchSelectedInbox({ inbox_status: 'resolved' }).then((ok) => {
+      if (ok) notify(TOAST.markedResolved, 'success');
+    });
+  }, [selectedId, patchSelectedInbox, notify]);
 
   const archiveMessage = useCallback(() => {
     if (!selectedId) return;
-    // TODO: inboxMessagesAPI.patchStatus(selectedId, 'archived')
-    updateMessage(selectedId, () => ({ status: 'archived' }));
-    notify(TOAST.archived, 'success');
-  }, [selectedId, updateMessage, notify]);
+    patchSelectedInbox({ inbox_status: 'archived' }).then((ok) => {
+      if (ok) notify(TOAST.archived, 'success');
+    });
+  }, [selectedId, patchSelectedInbox, notify]);
 
   const setPriority = useCallback(
     (priority) => {
       if (!selectedId) return;
-      // TODO: inboxMessagesAPI.patchPriority(selectedId, priority)
-      updateMessage(selectedId, () => ({ priority }));
-      notify(TOAST.priorityUpdated, 'info');
+      patchSelectedInbox({ priority }).then((ok) => {
+        if (ok) notify(TOAST.priorityUpdated, 'info');
+      });
     },
-    [selectedId, updateMessage, notify],
+    [selectedId, patchSelectedInbox, notify],
   );
 
   const setStatus = useCallback(
     (status) => {
       if (!selectedId) return;
-      // TODO: inboxMessagesAPI.patch(selectedId, { status })
-      updateMessage(selectedId, () => ({ status }));
-      notify(TOAST.statusUpdated, 'info');
+      patchSelectedInbox({ inbox_status: status }).then((ok) => {
+        if (ok) notify(TOAST.statusUpdated, 'info');
+      });
     },
-    [selectedId, updateMessage, notify],
+    [selectedId, patchSelectedInbox, notify],
   );
 
   const assignTo = useCallback(
     (assignee) => {
       if (!selectedId) return;
-      // TODO: inboxMessagesAPI.patch(selectedId, { assignedTo: assignee })
-      updateMessage(selectedId, () => ({ assignedTo: assignee }));
-      notify(assignee ? TOAST.assigned : TOAST.unassigned, 'info');
+      const msg = messages.find((m) => m.id === selectedId);
+      if (!msg) return;
+      const assigned_to_id = assignee === 'Admin' ? currentUser?.id ?? null : null;
+      applyConversationPatch(msg, { assigned_to_id }, { optimistic: true }).then((ok) => {
+        if (ok) notify(assignee ? TOAST.assigned : TOAST.unassigned, 'info');
+      });
     },
-    [selectedId, updateMessage, notify],
+    [selectedId, messages, currentUser?.id, applyConversationPatch, notify],
   );
 
   const deleteMessage = useCallback(() => {
     if (!selectedId) return;
-    // TODO: DELETE /messages/:id when backend supports inbox messages
     const remaining = messages.filter((m) => m.id !== selectedId);
     setMessages(remaining);
     const nextId = remaining[0]?.id ?? null;

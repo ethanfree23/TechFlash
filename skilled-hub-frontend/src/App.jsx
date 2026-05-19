@@ -29,7 +29,10 @@ import PublicJobSharePage from './pages/PublicJobSharePage';
 import DownloadAppPage from './pages/DownloadAppPage';
 import FeedbackWidget from './components/FeedbackWidget';
 import MasqueradeBanner from './components/MasqueradeBanner';
+import DemoModeBanner from './components/DemoModeBanner';
 import { auth } from './auth';
+import { metaAPI } from './api/api';
+import { setApiDemoMode, setDemoFlagshipJobId, setDemoReviewedJobId } from './utils/demoMode';
 
 // Protected Route component
 const ProtectedRoute = ({ children, isAuthenticated }) => {
@@ -58,6 +61,11 @@ function App() {
     };
 
     checkAuth();
+    metaAPI.get().then((m) => {
+      setApiDemoMode(m?.demo_mode);
+      if (m?.flagship_job_id) setDemoFlagshipJobId(m.flagship_job_id);
+      if (m?.reviewed_job_id) setDemoReviewedJobId(m.reviewed_job_id);
+    }).catch(() => {});
   }, []);
 
   const handleLoginSuccess = (userData) => {
@@ -90,6 +98,7 @@ function App() {
     <Router>
       <div className="App min-w-0 overflow-x-hidden">
         <MasqueradeBanner />
+        <DemoModeBanner />
         <FeedbackWidget user={user} />
         <Routes>
           {/* Marketing landing page */}
