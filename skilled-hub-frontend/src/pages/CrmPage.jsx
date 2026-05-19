@@ -89,9 +89,9 @@ const formatCurrency = (cents) => {
 };
 
 const formatDateTime = (value) => {
-  if (!value) return 'â€”';
+  if (!value) return '—';
   const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return 'â€”';
+  if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleString();
 };
 
@@ -171,7 +171,7 @@ function ensurePrimaryContactFlagsOnArray(contacts) {
   return list.map((c, i) => ({ ...c, is_primary: i === idx }));
 }
 
-/** CRM lead â†’ create-platform modal: company profile fields (login email/phone optional overrides). */
+/** CRM lead → create-platform modal: company profile fields (login email/phone optional overrides). */
 function companyProvisionFieldsFromLeadForm(form, overrides = {}) {
   const loc = [form.city, form.state]
     .map((x) => String(x || '').trim())
@@ -223,7 +223,7 @@ function companyProvisionFieldsFromLeadForm(form, overrides = {}) {
     location: loc,
     bio:
       String(form.bio || '').trim() ||
-      'Company profile pending â€” update from CRM record or complete during onboarding.',
+      'Company profile pending — update from CRM record or complete during onboarding.',
     state: st,
     website_url: String(form.website || '').trim(),
     facebook_url: String(form.facebook_url || '').trim(),
@@ -315,6 +315,16 @@ const normalizeContactDraftEntry = (entry) => {
 
 const hasContactValue = (entry) => Boolean(entry?.name || entry?.email || entry?.phone);
 
+/** Drop blank extra contact rows unless the user just clicked "+ Add contact". */
+const pruneEmptyAdditionalContacts = (contacts, pendingFocusIndex = null) => {
+  if (!Array.isArray(contacts) || contacts.length <= 1) return contacts;
+  const primary = contacts[0];
+  const rest = contacts.slice(1).filter(
+    (contact, idx) => hasContactValue(contact) || pendingFocusIndex === idx + 1,
+  );
+  return [primary, ...rest];
+};
+
 const normalizeContacts = (contacts, fallback = null) => {
   const normalized = Array.isArray(contacts)
     ? contacts.map((entry) => normalizeContactEntry(entry)).filter(Boolean)
@@ -331,6 +341,19 @@ const editableContacts = (contacts, fallback = null) => {
   if (normalized.length > 0) return normalized;
   const fallbackNormalized = normalizeContactDraftEntry(fallback);
   return hasContactValue(fallbackNormalized) ? [fallbackNormalized] : [];
+};
+
+/** Additional contacts to show in the editor (saved rows + one in-progress draft from "+ Add"). */
+const listAdditionalContactsForEditor = (contacts, fallback, pendingFocusIndex = null) => {
+  const all = editableContacts(contacts, fallback);
+  const rows = [];
+  all.slice(1).forEach((contact, idx) => {
+    const contactIndex = idx + 1;
+    if (hasContactValue(contact) || pendingFocusIndex === contactIndex) {
+      rows.push({ contact, contactIndex });
+    }
+  });
+  return rows;
 };
 
 function companyFieldsSnapshotFromLead(c) {
@@ -374,10 +397,10 @@ function contactsFieldsSnapshotFromLead(c) {
 }
 
 const mergeFieldDisplayValue = (lead, key) => {
-  if (!lead) return 'â€”';
+  if (!lead) return '—';
   const value = lead[key];
-  if (value == null || value === '') return 'â€”';
-  if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : 'â€”';
+  if (value == null || value === '') return '—';
+  if (Array.isArray(value)) return value.length > 0 ? value.join(', ') : '—';
   return String(value);
 };
 
@@ -896,7 +919,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     setProvisionModalOpen(true);
   }, [form]);
 
-  /** Prefill lead-level â€œCreate platform company accountâ€ from a specific CRM contact row (e.g. unlinked lead). */
+  /** Prefill lead-level "Create platform company account" from a specific CRM contact row (e.g. unlinked lead). */
   const openProvisionFromCrmContact = useCallback(
     (contact, resolved) => {
       const companyEmail = String(form.company_email || '').trim();
@@ -1591,11 +1614,13 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const first = contacts[0] || normalizeContactDraftEntry({});
       const socialKeys = ['instagram_url', 'facebook_url', 'linkedin_url'];
       if (socialKeys.includes(field)) {
-        const nextContacts = [{ ...first, is_primary: true, [field]: value }, ...contacts.slice(1)];
+        const merged = [{ ...first, is_primary: true, [field]: value }, ...contacts.slice(1)];
+        const nextContacts = pruneEmptyAdditionalContacts(merged, pendingAdditionalContactFocusIdx.current);
         return { ...f, contacts: nextContacts };
       }
       const formattedValue = field === 'phone' ? formatPhoneInput(value) : value;
-      const nextContacts = [{ ...first, is_primary: true, [field]: formattedValue }, ...contacts.slice(1)];
+      const merged = [{ ...first, is_primary: true, [field]: formattedValue }, ...contacts.slice(1)];
+      const nextContacts = pruneEmptyAdditionalContacts(merged, pendingAdditionalContactFocusIdx.current);
       return {
         ...f,
         contacts: nextContacts,
@@ -1623,7 +1648,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       };
       const next = { ...current, [part]: value };
       const combinedName = [next.firstName, next.lastName].filter(Boolean).join(' ').trim();
-      const nextContacts = [{ ...first, is_primary: true, name: combinedName }, ...contacts.slice(1)];
+      const merged = [{ ...first, is_primary: true, name: combinedName }, ...contacts.slice(1)];
+      const nextContacts = pruneEmptyAdditionalContacts(merged, pendingAdditionalContactFocusIdx.current);
       return {
         ...f,
         contacts: nextContacts,
@@ -2175,7 +2201,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     d.setHours(9, 0, 0, 0);
     const pad = (n) => String(n).padStart(2, '0');
     const local = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-    setReminderDraft({ remind_at: local, title: 'Reminder â€” call back', body: '' });
+    setReminderDraft({ remind_at: local, title: 'Reminder — call back', body: '' });
     setReminderModalOpen(true);
   };
 
@@ -2284,13 +2310,26 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const metrics = detail?.linked_metrics;
   const activity = detail?.activity;
   const recentJobs = detail?.recent_jobs || [];
-  const displayContacts = editableContacts(form.contacts, {
-    name: form.contact_name || '',
-    email: form.email || '',
-    phone: form.phone || '',
-    job_title: '',
-    extension: '',
-  });
+  const primaryContactFallback = useMemo(
+    () => ({
+      name: form.contact_name || '',
+      email: form.email || '',
+      phone: form.phone || '',
+      job_title: '',
+      extension: '',
+    }),
+    [form.contact_name, form.email, form.phone],
+  );
+  const displayContacts = editableContacts(form.contacts, primaryContactFallback);
+  const editorAdditionalContacts = useMemo(
+    () =>
+      listAdditionalContactsForEditor(
+        form.contacts,
+        primaryContactFallback,
+        pendingAdditionalContactFocusIdx.current,
+      ),
+    [form.contacts, primaryContactFallback],
+  );
   const platformCompanyUsers = useMemo(() => {
     const list = c?.platform_company_users;
     return Array.isArray(list) ? list : [];
@@ -2345,6 +2384,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const fb = { name: f.contact_name, email: f.email, phone: f.phone || '', job_title: '', extension: '' };
       const contacts = editableContacts(f.contacts, fb);
       const baseContacts = contacts.length > 0 ? contacts : [normalizeContactDraftEntry({})];
+      pendingAdditionalContactFocusIdx.current = baseContacts.length;
       const next = [...baseContacts, normalizeContactDraftEntry({})];
       return { ...f, contacts: ensurePrimaryContactFlagsOnArray(next) };
     });
@@ -2734,7 +2774,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           return (
             <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600 flex flex-wrap gap-x-6 gap-y-2">
               <span>
-                <strong className="text-slate-800">In view â€” missing phone:</strong> {missingPhone}
+                <strong className="text-slate-800">In view — missing phone:</strong> {missingPhone}
               </span>
               <span>
                 <strong className="text-slate-800">Missing email:</strong> {missingEmail}
@@ -2907,7 +2947,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   type="search"
                   value={pipelineNameFilter}
                   onChange={(e) => setPipelineNameFilter(e.target.value)}
-                  placeholder="Search name, email, phone, city, tradeâ€¦"
+                  placeholder="Search name, email, phone, city, trade…"
                   className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white"
                 />
                 <select
@@ -2995,7 +3035,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                             }}
                             className="shrink-0 self-stretch px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50/90 hover:bg-amber-100 border-l border-amber-100"
                           >
-                            Mergeâ€¦
+                            Merge…
                           </button>
                         ) : null}
                       </li>
@@ -3337,7 +3377,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                         <div>
                           <div className="text-xs font-medium text-gray-500 uppercase">Company name</div>
-                          <div className="mt-1 text-sm text-gray-900 font-medium">{form.name || 'â€”'}</div>
+                          <div className="mt-1 text-sm text-gray-900 font-medium">{form.name || '—'}</div>
                         </div>
                         <div>
                           <div className="text-xs font-medium text-gray-500 uppercase">Company email</div>
@@ -3347,13 +3387,13 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                 {form.company_email}
                               </a>
                             ) : (
-                              'â€”'
+                              '—'
                             )}
                           </div>
                         </div>
                         <div>
                           <div className="text-xs font-medium text-gray-500 uppercase">Company phone</div>
-                          <div className="mt-1 text-sm text-gray-900">{form.company_phone || 'â€”'}</div>
+                          <div className="mt-1 text-sm text-gray-900">{form.company_phone || '—'}</div>
                         </div>
                         <div className="md:col-span-2">
                           <div className="text-xs font-medium text-gray-500 uppercase">Website</div>
@@ -3368,7 +3408,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                 {formatWebsiteLabel(form.website)}
                               </a>
                             ) : (
-                              'â€”'
+                              '—'
                             )}
                           </div>
                         </div>
@@ -3386,16 +3426,16 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                 {fullAddress}
                               </a>
                             ) : (
-                              'â€”'
+                              '—'
                             )}
                           </div>
                         </div>
                         <div className="md:col-span-2">
                           <div className="text-xs font-medium text-gray-500 uppercase">Social</div>
                           <div className="mt-1 text-sm text-gray-900 space-y-1">
-                            <div>Instagram: {form.instagram_url || 'â€”'}</div>
-                            <div>Facebook: {form.facebook_url || 'â€”'}</div>
-                            <div>LinkedIn: {form.linkedin_url || 'â€”'}</div>
+                            <div>Instagram: {form.instagram_url || '—'}</div>
+                            <div>Facebook: {form.facebook_url || '—'}</div>
+                            <div>LinkedIn: {form.linkedin_url || '—'}</div>
                           </div>
                         </div>
                         <div className="md:col-span-2">
@@ -3406,7 +3446,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         </div>
                         <div className="md:col-span-2">
                           <div className="text-xs font-medium text-gray-500 uppercase">Notes</div>
-                          <div className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{form.notes || 'â€”'}</div>
+                          <div className="mt-1 text-sm text-gray-900 whitespace-pre-wrap">{form.notes || '—'}</div>
                         </div>
                       </div>
                       </div>
@@ -3611,15 +3651,16 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                             <div className="flex items-center justify-between gap-2">
                               <span className="text-xs font-medium text-gray-500 uppercase">Additional contacts</span>
                             </div>
-                            {displayContacts.slice(1).map((contact, idx) => {
-                              const contactIndex = idx + 1;
+                            {editorAdditionalContacts.map(({ contact, contactIndex }) => {
                               const sac = normalizeSameAsCompany(contact.same_as_company);
                               const splitName = splitContactName(contact.name);
+                              const openDraft =
+                                pendingAdditionalContactFocusIdx.current === contactIndex;
                               return (
                                 <details
                                   key={`extra-contact-${contactIndex}`}
                                   className="mt-3 rounded-lg border border-gray-200 bg-white overflow-hidden group"
-                                  open={idx === 0}
+                                  open={openDraft || undefined}
                                 >
                                   <summary className="list-none flex flex-wrap items-center justify-between gap-2 px-3 py-2 cursor-pointer text-xs font-semibold text-gray-600 uppercase bg-gray-50 border-b border-gray-100 hover:bg-gray-100 [&::-webkit-details-marker]:hidden">
                                     <span className="select-none inline-flex items-center gap-2 normal-case">
@@ -3757,14 +3798,15 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                 </details>
                               );
                             })}
-                            {displayContacts.length <= 1 && (
+                            {editorAdditionalContacts.length === 0 && (
                               <p className="mt-2 text-xs text-gray-500">No additional contacts yet.</p>
                             )}
                             <button
                               type="button"
                               onClick={addAdditionalContact}
-                              className="mt-2 text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-100"
+                              className="mt-2 inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 font-medium"
                             >
+                              <FaPlus className="h-3 w-3" aria-hidden />
                               Add contact
                             </button>
                           </div>
@@ -3821,14 +3863,14 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                           ) : null}
                                         </p>
                                         <p className="text-xs text-gray-600 mt-1 break-all">
-                                          {resolved.email || platformUser.email || 'â€”'}
+                                          {resolved.email || platformUser.email || '—'}
                                         </p>
                                         <p className="text-xs text-gray-600 mt-0.5">
-                                          {resolved.phone || platformUser.phone || 'â€”'}
+                                          {resolved.phone || platformUser.phone || '—'}
                                         </p>
                                       </div>
                                       <span className="text-xs font-semibold text-blue-700 shrink-0 self-center">
-                                        Open profile â†’
+                                        Open profile →
                                       </span>
                                     </div>
                                   </Link>
@@ -3857,7 +3899,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                             {resolved.instagram_url}
                                           </a>
                                         ) : (
-                                          'â€”'
+                                          '—'
                                         )}
                                       </div>
                                       <div>
@@ -3872,7 +3914,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                             {resolved.facebook_url}
                                           </a>
                                         ) : (
-                                          'â€”'
+                                          '—'
                                         )}
                                       </div>
                                       <div>
@@ -3887,7 +3929,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                             {resolved.linkedin_url}
                                           </a>
                                         ) : (
-                                          'â€”'
+                                          '—'
                                         )}
                                       </div>
                                     </div>
@@ -3952,11 +3994,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                             {resolved.email}
                                           </a>
                                         ) : (
-                                          'â€”'
+                                          '—'
                                         )}
                                       </div>
                                       <div>
-                                        <span className="text-gray-500">Phone:</span> {resolved.phone || 'â€”'}
+                                        <span className="text-gray-500">Phone:</span> {resolved.phone || '—'}
                                       </div>
                                       {contact.job_title ? (
                                         <div>
@@ -3989,7 +4031,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                             {resolved.instagram_url}
                                           </a>
                                         ) : (
-                                          'â€”'
+                                          '—'
                                         )}
                                       </div>
                                       <div>
@@ -4004,7 +4046,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                             {resolved.facebook_url}
                                           </a>
                                         ) : (
-                                          'â€”'
+                                          '—'
                                         )}
                                       </div>
                                       <div>
@@ -4019,7 +4061,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                             {resolved.linkedin_url}
                                           </a>
                                         ) : (
-                                          'â€”'
+                                          '—'
                                         )}
                                       </div>
                                     </div>
@@ -4043,7 +4085,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                                     </div>
                                     <div className="text-xs text-gray-600 break-all">{u.email}</div>
                                   </div>
-                                  <span className="text-xs font-semibold text-blue-700 shrink-0">Open profile â†’</span>
+                                  <span className="text-xs font-semibold text-blue-700 shrink-0">Open profile →</span>
                                 </div>
                               </Link>
                             ))}
@@ -4275,7 +4317,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                               <td className="px-4 py-2 font-medium text-gray-900">{j.title}</td>
                               <td className="px-4 py-2 capitalize text-gray-600">{j.status}</td>
                               <td className="px-4 py-2 text-gray-500">
-                                {j.created_at ? new Date(j.created_at).toLocaleDateString() : 'â€”'}
+                                {j.created_at ? new Date(j.created_at).toLocaleDateString() : '—'}
                               </td>
                               <td className="px-4 py-2">
                                 <Link to={`/jobs/${j.id}`} className="text-blue-600 hover:underline">
@@ -4357,11 +4399,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     <FaSearch className="text-gray-400 shrink-0" />
                     <input
                       className="flex-1 text-sm outline-none"
-                      placeholder="Type at least 2 characters of emailâ€¦"
+                      placeholder="Type at least 2 characters of email…"
                       value={searchQ}
                       onChange={(e) => setSearchQ(e.target.value)}
                     />
-                    {searchBusy && <span className="text-xs text-gray-400">Searchingâ€¦</span>}
+                    {searchBusy && <span className="text-xs text-gray-400">Searching…</span>}
                   </div>
                   {searchHits.length > 0 && (
                     <ul className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto text-sm">
@@ -4373,7 +4415,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                             onClick={() => selectLinkedAccountFromSearch(u)}
                           >
                             <span className="font-medium text-gray-900">{u.email}</span>
-                            {u.company_name && <span className="text-gray-500"> â€” {u.company_name}</span>}
+                            {u.company_name && <span className="text-gray-500"> — {u.company_name}</span>}
                           </button>
                         </li>
                       ))}
@@ -4456,7 +4498,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm min-h-[96px]"
                     value={reminderDraft.body}
                     onChange={(e) => setReminderDraft((d) => ({ ...d, body: e.target.value }))}
-                    placeholder="Who to call and what to follow up onâ€¦"
+                    placeholder="Who to call and what to follow up on…"
                   />
                 </label>
                 <div className="flex justify-end gap-2 pt-2">
@@ -4474,7 +4516,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     onClick={saveReminder}
                     className="px-4 py-2 bg-amber-600 text-white rounded-lg hover:bg-amber-700 text-sm font-medium disabled:opacity-50"
                   >
-                    {reminderSaving ? 'Savingâ€¦' : 'Save reminder'}
+                    {reminderSaving ? 'Saving…' : 'Save reminder'}
                   </button>
                 </div>
               </div>
@@ -4599,7 +4641,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     onClick={saveNote}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-50"
                   >
-                    {noteSaving ? 'Savingâ€¦' : noteDraft.id ? 'Update note' : noteDraft.parent_note_id ? 'Save comment' : 'Save note'}
+                    {noteSaving ? 'Saving…' : noteDraft.id ? 'Update note' : noteDraft.parent_note_id ? 'Save comment' : 'Save note'}
                   </button>
                 </div>
               </div>
@@ -4785,7 +4827,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                           disabled={importBusy}
                           className="px-3 py-1.5 text-xs rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
                         >
-                          {importBusy ? 'Importingâ€¦' : 'Import cleaned rows'}
+                          {importBusy ? 'Importing…' : 'Import cleaned rows'}
                         </button>
                       </div>
                     </div>
@@ -4894,7 +4936,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                           onClick={undoImportedRows}
                           className="px-3 py-1.5 text-xs rounded-lg border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50"
                         >
-                          {importBusy ? 'Undoingâ€¦' : `Undo last import (${importSummary.importedLeadIds.length})`}
+                          {importBusy ? 'Undoing…' : `Undo last import (${importSummary.importedLeadIds.length})`}
                         </button>
                       </div>
                     )}
@@ -4950,7 +4992,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   ) : provisionCrmNewCompanyFromLead ? (
                     <>
                       <span className="font-medium text-gray-800">New company only.</span> This creates one new
-                      platform company profile from this CRM record. The company does not have its own login â€” you
+                      platform company profile from this CRM record. The company does not have its own login — you
                       choose which CRM contacts get platform accounts, and you enter each person&apos;s signup email and
                       phone in their card below.
                     </>
@@ -5223,7 +5265,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                               <span className="font-semibold text-gray-900">
                                 CRM contact {Number(row.contact_index) + 1}
                               </span>
-                              <span className="block text-xs text-gray-500">Name on record: {row.name || 'â€”'}</span>
+                              <span className="block text-xs text-gray-500">Name on record: {row.name || '—'}</span>
                             </span>
                           </label>
                           <label className="block sm:col-span-2">
@@ -5305,7 +5347,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 font-medium disabled:opacity-50"
                     >
                       {provisionSaving
-                        ? 'Creatingâ€¦'
+                        ? 'Creating…'
                         : provisionModalIsAddLoginForLinkedCrm
                           ? 'Create login & send email'
                           : provisionCrmNewCompanyFromLead
@@ -5497,7 +5539,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                           defaultValue=""
                           onChange={(e) => setPrimaryContactFromDirectory(e.target.value)}
                         >
-                          <option value="">Choose a contactâ€¦</option>
+                          <option value="">Choose a contact…</option>
                           {crmContactOptions.map((contact, idx) => (
                             <option key={`${contact.name}-${contact.email}-${idx}`} value={JSON.stringify(contact)}>
                               {[contact.name || 'Unnamed', contact.company_name ? `(${contact.company_name})` : '', contact.email || contact.phone || '']
@@ -5612,10 +5654,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     <div className="flex items-center justify-between gap-2">
                       <span className="text-xs font-medium text-gray-500 uppercase">Additional contacts</span>
                     </div>
-                    {editableContacts(form.contacts, { name: form.contact_name, email: form.email, phone: form.phone || '' })
-                      .slice(1)
-                      .map((contact, idx) => {
-                        const contactIndex = idx + 1;
+                    {editorAdditionalContacts.map(({ contact, contactIndex }) => {
                         const splitName = splitContactName(contact.name);
                         return (
                           <div key={`new-extra-contact-${contactIndex}`} className="mt-2 grid grid-cols-1 sm:grid-cols-12 gap-2 items-start">
@@ -5654,14 +5693,15 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                           </div>
                         );
                       })}
-                    {editableContacts(form.contacts, { name: form.contact_name, email: form.email, phone: form.phone || '' }).length <= 1 && (
+                    {editorAdditionalContacts.length === 0 && (
                       <p className="mt-2 text-xs text-gray-500">No additional contacts yet.</p>
                     )}
                     <button
                       type="button"
                       onClick={addAdditionalContact}
-                      className="mt-2 text-xs px-2 py-1 rounded border border-gray-300 text-gray-700 hover:bg-gray-100"
+                      className="mt-2 inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-100 font-medium"
                     >
+                      <FaPlus className="h-3 w-3" aria-hidden />
                       Add contact
                     </button>
                   </div>
@@ -5761,11 +5801,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       <FaSearch className="text-gray-400 shrink-0" />
                       <input
                         className="flex-1 text-sm outline-none"
-                        placeholder="Type at least 2 characters of emailâ€¦"
+                        placeholder="Type at least 2 characters of email…"
                         value={searchQ}
                         onChange={(e) => setSearchQ(e.target.value)}
                       />
-                      {searchBusy && <span className="text-xs text-gray-400">Searchingâ€¦</span>}
+                      {searchBusy && <span className="text-xs text-gray-400">Searching…</span>}
                     </div>
                     {searchHits.length > 0 && (
                       <ul className="absolute z-30 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto text-sm">
@@ -5781,7 +5821,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                               }}
                             >
                               <span className="font-medium text-gray-900">{u.email}</span>
-                              {u.company_name && <span className="text-gray-500"> â€” {u.company_name}</span>}
+                              {u.company_name && <span className="text-gray-500"> — {u.company_name}</span>}
                             </button>
                           </li>
                         ))}
@@ -5818,7 +5858,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     onClick={saveRecord}
                     className="px-5 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
                   >
-                    {saving ? 'Savingâ€¦' : 'Save'}
+                    {saving ? 'Saving…' : 'Save'}
                   </button>
                   <button
                     type="button"
@@ -5985,7 +6025,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   onClick={mergeRecord}
                   className="px-4 py-2 rounded-lg bg-amber-600 text-white font-semibold hover:bg-amber-700 disabled:opacity-50"
                 >
-                  {mergeSaving ? 'Mergingâ€¦' : 'Merge CRM records'}
+                  {mergeSaving ? 'Merging…' : 'Merge CRM records'}
                 </button>
               </div>
             </div>

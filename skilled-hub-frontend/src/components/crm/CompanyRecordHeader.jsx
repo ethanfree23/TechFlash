@@ -68,7 +68,9 @@ export default function CompanyRecordHeader({
   const showCreateJob = linked;
 
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden mb-6">
+    <div
+      className={`rounded-2xl border border-slate-200 bg-white shadow-sm mb-6${sendMenuOpen ? ' relative z-30' : ''}`}
+    >
       <div className="border-b border-slate-100 bg-gradient-to-br from-white to-slate-50 px-4 py-4 sm:px-6">
         {/* Always stack meta above actions so the center column never squeezes text to one character wide */}
         <div className="flex flex-col gap-4">
@@ -180,7 +182,7 @@ export default function CompanyRecordHeader({
                   <FaChevronDown className="h-3 w-3 opacity-70" aria-hidden />
                 </button>
                 {sendMenuOpen ? (
-                  <div className="absolute left-0 top-full z-20 mt-1 min-w-[220px] rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                  <div className="absolute left-0 top-full z-50 mt-1 min-w-[220px] rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
                     <button
                       type="button"
                       className="block w-full px-3 py-2 text-left text-xs font-medium text-slate-800 hover:bg-slate-50"
