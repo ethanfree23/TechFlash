@@ -3,8 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import {
   DEMO_TOUR_STORAGE_KEY,
   DEMO_WALKTHROUGH_STEPS,
-} from '../demo/demoWalkthroughSteps';
-import { getDemoFlagshipJobId, getDemoReviewedJobId } from '../utils/demoMode';
+} from '../../demo/demoWalkthroughSteps';
+import { getDemoFlagshipJobId, getDemoReviewedJobId } from '../../utils/demoMode';
 
 function useTargetRect(selector, active, revision) {
   const [rect, setRect] = useState(null);
