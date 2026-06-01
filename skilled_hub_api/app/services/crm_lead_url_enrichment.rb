@@ -3,6 +3,7 @@
 require "net/http"
 require "uri"
 require "nokogiri"
+require "json"
 
 class CrmLeadUrlEnrichment
   class Error < StandardError; end
@@ -35,19 +36,23 @@ class CrmLeadUrlEnrichment
   rescue StandardError => e
     raise Error, "Could not fetch website: #{e.message}"
   else
-    doc = Nokogiri::HTML(html)
-    body_text = doc.text.to_s
-    links = doc.css("a[href]").map { |a| a["href"].to_s }
+    @doc = Nokogiri::HTML(html)
+    @body_text = @doc.text.to_s
+    links = @doc.css("a[href]").map { |a| a["href"].to_s }
 
     {
       website: final_url,
-      name: meta_content(doc, "og:site_name") || meta_content(doc, "og:title") || title_text(doc),
-      bio: meta_content(doc, "og:description") || meta_content(doc, "description"),
-      company_email: first_match(body_text, links, /mailto:([^\s"'?]+)/i) { |m| m[1] },
-      company_phone: first_phone(body_text, links),
-      instagram_url: find_social(:instagram_url, body_text, links),
-      facebook_url: find_social(:facebook_url, body_text, links),
-      linkedin_url: find_social(:linkedin_url, body_text, links)
+      name: meta_content(@doc, "og:site_name") || meta_content(@doc, "og:title") || title_text(@doc),
+      bio: meta_content(@doc, "og:description") || meta_content(@doc, "description"),
+      company_email: first_match(@body_text, links, /mailto:([^\s"'?]+)/i) { |m| m[1] },
+      company_phone: first_phone(@body_text, links),
+      street_address: parsed_address[:street_address],
+      city: parsed_address[:city],
+      state: parsed_address[:state],
+      zip: parsed_address[:zip],
+      instagram_url: find_social(:instagram_url, @body_text, links),
+      facebook_url: find_social(:facebook_url, @body_text, links),
+      linkedin_url: find_social(:linkedin_url, @body_text, links)
     }.transform_values { |v| v.presence }
   end
 
@@ -121,5 +126,71 @@ class CrmLeadUrlEnrichment
     hay = [text, *links].join("\n")
     m = hay.match(pattern)
     m&.to_s&.strip
+  end
+
+  def parsed_address
+    @parsed_address ||= begin
+      from_structured = parse_address_from_structured_data
+      if from_structured.values.any?(&:present?)
+        from_structured
+      else
+        parse_address_from_text
+      end
+    end
+  end
+
+  def parse_address_from_structured_data
+    scripts = @doc&.css("script[type='application/ld+json']") || []
+    scripts.each do |script|
+      raw = script.text.to_s.strip
+      next if raw.blank?
+
+      begin
+        parsed = JSON.parse(raw)
+      rescue JSON::ParserError
+        next
+      end
+      node = find_address_node(parsed)
+      next unless node.is_a?(Hash)
+
+      return {
+        street_address: node["streetAddress"].to_s.strip,
+        city: node["addressLocality"].to_s.strip,
+        state: node["addressRegion"].to_s.strip,
+        zip: node["postalCode"].to_s.strip
+      }
+    end
+    {}
+  end
+
+  def find_address_node(node)
+    case node
+    when Hash
+      return node["address"] if node["address"].is_a?(Hash)
+      node.each_value do |value|
+        found = find_address_node(value)
+        return found if found
+      end
+    when Array
+      node.each do |value|
+        found = find_address_node(value)
+        return found if found
+      end
+    end
+    nil
+  end
+
+  def parse_address_from_text
+    text = @body_text.to_s.gsub(/[[:space:]]+/, " ")
+    # Basic US pattern: "123 Main St, Houston, TX 77002"
+    m = text.match(/(\d{1,6}\s+[A-Za-z0-9.\-# ]{2,80}),\s*([A-Za-z .'-]{2,40}),\s*([A-Z]{2}|[A-Za-z ]{4,20})\s+(\d{5}(?:-\d{4})?)/)
+    return {} unless m
+
+    {
+      street_address: m[1].to_s.strip,
+      city: m[2].to_s.strip,
+      state: m[3].to_s.strip,
+      zip: m[4].to_s.strip
+    }
   end
 end

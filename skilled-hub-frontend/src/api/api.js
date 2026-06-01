@@ -1,30 +1,15 @@
-import { Capacitor } from '@capacitor/core';
 import { auth } from '../auth';
-import { isDemoPath } from '../utils/demoMode';
+import { formatApiFetchError, isProductionHost, resolveApiBaseUrl } from './apiConfig';
 
 // API helper functions for interacting with the Rails API
 
-const isNativeApp = typeof window !== 'undefined' && Capacitor.isNativePlatform();
-const onDemoPath = typeof window !== 'undefined' && isDemoPath();
-export const isProductionHost =
-  isNativeApp ||
-  (typeof window !== 'undefined' &&
-    (window.location.hostname === 'techflash.app' || window.location.hostname === 'www.techflash.app'));
-
-const demoApiBase =
-  import.meta.env?.VITE_DEMO_API_BASE_URL || 'https://skilledhub-demo.up.railway.app/api/v1';
-
-const API_BASE_URL =
-  (onDemoPath && demoApiBase) ||
-  import.meta.env?.VITE_API_BASE_URL ||
-  (isProductionHost
-    ? 'https://skilledhub-production.up.railway.app/api/v1'
-    : 'http://localhost:3000/api/v1');
+export { isProductionHost, resolveApiBaseUrl, resolveDemoApiBaseUrl } from './apiConfig';
 
 // Helper function to make API requests
 const apiRequest = async (endpoint, options = {}) => {
   const token = auth.getToken();
-  
+  const baseUrl = resolveApiBaseUrl();
+
   const isFormData = options.body instanceof FormData;
   const config = {
     headers: {
@@ -36,7 +21,7 @@ const apiRequest = async (endpoint, options = {}) => {
   };
 
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+    const response = await fetch(`${baseUrl}${endpoint}`, config);
     
     if (!response.ok) {
       const text = await response.text();
@@ -67,12 +52,13 @@ const apiRequest = async (endpoint, options = {}) => {
     }
   } catch (error) {
     console.error('API request failed:', error);
-    throw error;
+    throw formatApiFetchError(error);
   }
 };
 
 /** Same as apiRequest but never sends Authorization — for public endpoints (e.g. share preview). */
 export const publicApiRequest = async (endpoint, options = {}) => {
+  const baseUrl = resolveApiBaseUrl();
   const isFormData = options.body instanceof FormData;
   const config = {
     headers: {
@@ -83,7 +69,7 @@ export const publicApiRequest = async (endpoint, options = {}) => {
   };
 
   try {
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+    const response = await fetch(`${baseUrl}${endpoint}`, config);
 
     if (!response.ok) {
       const text = await response.text();
@@ -112,7 +98,7 @@ export const publicApiRequest = async (endpoint, options = {}) => {
     }
   } catch (error) {
     console.error('Public API request failed:', error);
-    throw error;
+    throw formatApiFetchError(error);
   }
 };
 

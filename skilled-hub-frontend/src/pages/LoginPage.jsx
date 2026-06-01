@@ -3,7 +3,8 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { TECHFLASH_LOGO_LOGIN } from '../constants/branding';
 import { authAPI, passwordResetsAPI } from '../api/api';
 import { auth } from '../auth';
-import { setApiDemoMode, setDemoFlagshipJobId, setDemoReviewedJobId, isDemoMode } from '../utils/demoMode';
+import { setApiDemoMode, setDemoFlagshipJobId, setDemoReviewedJobId, isDemoMode, isDemoPath } from '../utils/demoMode';
+import { resolveDemoApiBaseUrl } from '../api/apiConfig';
 import { DEMO_ACCOUNTS } from '../constants/demoAccounts';
 import RegisterForm from '../components/RegisterForm';
 import { MarketingHeader } from '../components/marketing/MarketingHeader';
@@ -101,6 +102,7 @@ const LoginPage = ({ onLoginSuccess }) => {
     if (tab === 'signup') return;
     if (searchParams.get('auto') !== '1') return;
     if (autoLoginAttempted.current) return;
+    if (isDemoPath() && !resolveDemoApiBaseUrl()) return;
     const demoParam = searchParams.get('demo');
     if (demoParam && DEMO_ACCOUNTS[demoParam]) {
       autoLoginAttempted.current = true;
@@ -206,14 +208,27 @@ const LoginPage = ({ onLoginSuccess }) => {
           </div>
 
           {error && (
-            <div className="mb-4 rounded border border-red-400 bg-red-100 p-3 text-red-700">{error}</div>
+            <div className="mb-4 rounded border border-red-400 bg-red-100 p-3 text-red-700 text-sm leading-relaxed">
+              {error}
+            </div>
+          )}
+
+          {isDemoMode() && !resolveDemoApiBaseUrl() && isDemoPath() && (
+            <div className="mb-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-3 text-sm text-amber-950 leading-relaxed">
+              <p className="font-semibold">Demo API not configured</p>
+              <p className="mt-1 text-xs">
+                Set <span className="font-mono">VITE_DEMO_API_BASE_URL</span> on Vercel to your demo Railway API
+                (RAILS_ENV=demo). See DEMO_SETUP.md. Locally, use{' '}
+                <span className="font-mono">/demo/login</span> with the API running on port 3000.
+              </p>
+            </div>
           )}
 
           {isDemoMode() && (
             <div className="mb-4 space-y-3">
               <button
                 type="button"
-                disabled={loading}
+                disabled={loading || (!resolveDemoApiBaseUrl() && isDemoPath())}
                 onClick={() => handleDemoLogin('admin')}
                 className="w-full rounded-lg bg-[#FE6711] px-4 py-3 text-sm font-semibold text-white hover:opacity-95 disabled:opacity-50"
               >
@@ -222,7 +237,7 @@ const LoginPage = ({ onLoginSuccess }) => {
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  disabled={loading}
+                  disabled={loading || (!resolveDemoApiBaseUrl() && isDemoPath())}
                   onClick={() => handleDemoLogin('company')}
                   className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
                 >
@@ -230,7 +245,7 @@ const LoginPage = ({ onLoginSuccess }) => {
                 </button>
                 <button
                   type="button"
-                  disabled={loading}
+                  disabled={loading || (!resolveDemoApiBaseUrl() && isDemoPath())}
                   onClick={() => handleDemoLogin('technician')}
                   className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
                 >

@@ -92,6 +92,7 @@ export function getStatusBadgeClasses(status) {
     customer: 'bg-emerald-50 text-emerald-800 border-emerald-200',
     competitor: 'bg-slate-200 text-slate-800 border-slate-300',
     churned: 'bg-rose-50 text-rose-800 border-rose-200',
+    unqualified: 'bg-orange-50 text-orange-800 border-orange-200',
     lost: 'bg-red-50 text-red-800 border-red-200',
   };
   return map[s] || map.lead;
@@ -256,6 +257,12 @@ export function sortLeads(list, sortId) {
     return (b.id || 0) - (a.id || 0);
   };
   switch (sortId) {
+    case 'updated_asc':
+      return arr.sort((a, b) => {
+        const ta = new Date(a.updated_at || 0) - new Date(b.updated_at || 0);
+        if (ta !== 0) return ta;
+        return (a.id || 0) - (b.id || 0);
+      });
     case 'created_desc':
       return arr.sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
     case 'created_asc':
@@ -438,6 +445,7 @@ export function filterNotesForTimeline(notes, filter) {
   if (filter === 'calls') return list.filter((n) => n.contact_method === 'call');
   if (filter === 'emails') return list.filter((n) => n.contact_method === 'email');
   if (filter === 'notes') return list.filter((n) => n.contact_method === 'note' || !n.contact_method);
+  if (filter === 'reminders') return list.filter((n) => Boolean(n.remind_at));
   return list;
 }
 

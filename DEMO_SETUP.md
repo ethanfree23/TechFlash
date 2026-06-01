@@ -96,6 +96,8 @@ Create a **new** service + **new** Postgres plugin.
 
 **Do not set:** `STRIPE_SECRET_KEY` (live), `TWILIO_*`, production `DATABASE_URL`.
 
+**Stripe boot error** (`Demo environment cannot use a live Stripe secret key`): on the **demo** service, delete `STRIPE_SECRET_KEY` if present and add `STRIPE_SECRET_KEY_TEST` = your `sk_test_...` key from Stripe (Test mode → Developers → API keys). Redeploy, then run `db:prepare` again.
+
 After first deploy:
 
 ```bash

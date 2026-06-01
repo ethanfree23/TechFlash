@@ -15,6 +15,10 @@ export function mergeInferredRowIntoForm(form, row, { formatPhone = formatPhoneI
   next.website = pick(row.website, form.website);
   next.bio = pick(row.bio, form.bio);
   next.company_email = pick(row.company_email, form.company_email);
+  next.street_address = pick(row.street_address, form.street_address);
+  next.city = pick(row.city, form.city);
+  next.state = pick(row.state, form.state);
+  next.zip = pick(row.zip, form.zip);
   if (row.company_phone && !String(form.company_phone || '').trim()) {
     next.company_phone = formatPhone(String(row.company_phone).trim());
   }
@@ -51,6 +55,10 @@ export function mergeEnrichmentIntoForm(form, enrichment) {
     bio: enrichment.bio,
     company_email: enrichment.company_email,
     company_phone: enrichment.company_phone,
+    street_address: enrichment.street_address || enrichment.address,
+    city: enrichment.city,
+    state: enrichment.state,
+    zip: enrichment.zip || enrichment.zip_code,
     instagram_url: enrichment.instagram_url,
     facebook_url: enrichment.facebook_url,
     linkedin_url: enrichment.linkedin_url,

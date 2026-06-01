@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import {
   FaPhone,
   FaEnvelope,
-  FaGlobe,
   FaStickyNote,
   FaLink,
   FaPencilAlt,
@@ -25,8 +24,6 @@ export default function CompanyRecordHeader({
   form,
   detailLead,
   onCall,
-  onEmail,
-  onWebsite,
   onAddNote,
   onReminder,
   onEdit,
@@ -36,21 +33,23 @@ export default function CompanyRecordHeader({
   onCreatePlatformAccount,
   onAddCompanyLogin,
   onLinkAccount,
-  onChangeStatus,
   onOpenGmail,
   onSendEmail,
 }) {
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const sendMenuRef = useRef(null);
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef(null);
 
   useEffect(() => {
-    if (!sendMenuOpen) return undefined;
+    if (!sendMenuOpen && !accountMenuOpen) return undefined;
     const onDoc = (e) => {
       if (sendMenuRef.current && !sendMenuRef.current.contains(e.target)) setSendMenuOpen(false);
+      if (accountMenuRef.current && !accountMenuRef.current.contains(e.target)) setAccountMenuOpen(false);
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
-  }, [sendMenuOpen]);
+  }, [sendMenuOpen, accountMenuOpen]);
   const name = String(form?.name || '').trim() || '—';
   const pc = getPrimaryContactPreview({
     ...detailLead,
@@ -150,31 +149,14 @@ export default function CompanyRecordHeader({
               <FaPhone className="h-3.5 w-3.5 text-blue-600" aria-hidden />
               Call
             </button>
-            <button
-              type="button"
-              onClick={onEmail}
-              disabled={!pc.email}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-40"
-            >
-              <FaEnvelope className="h-3.5 w-3.5 text-orange-500" aria-hidden />
-              Email
-            </button>
-            {typeof onOpenGmail === 'function' ? (
-              <button
-                type="button"
-                onClick={onOpenGmail}
-                disabled={!pc.email && !form?.company_email}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-40"
-              >
-                <FaEnvelope className="h-3.5 w-3.5 text-red-500" aria-hidden />
-                Open in Gmail
-              </button>
-            ) : null}
             {typeof onSendEmail === 'function' ? (
               <div className="relative" ref={sendMenuRef}>
                 <button
                   type="button"
-                  onClick={() => setSendMenuOpen((o) => !o)}
+                  onClick={() => {
+                    setAccountMenuOpen(false);
+                    setSendMenuOpen((o) => !o);
+                  }}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-900 hover:bg-orange-100"
                 >
                   <FaEnvelope className="h-3.5 w-3.5 text-orange-600" aria-hidden />
@@ -203,19 +185,23 @@ export default function CompanyRecordHeader({
                     >
                       Custom email
                     </button>
+                    {typeof onOpenGmail === 'function' ? (
+                      <button
+                        type="button"
+                        className="block w-full border-t border-slate-100 px-3 py-2 text-left text-xs font-medium text-slate-800 hover:bg-slate-50"
+                        disabled={!pc.email && !form?.company_email}
+                        onClick={() => {
+                          setSendMenuOpen(false);
+                          onOpenGmail();
+                        }}
+                      >
+                        Open in Gmail
+                      </button>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
             ) : null}
-            <button
-              type="button"
-              onClick={onWebsite}
-              disabled={!form?.website}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50 disabled:opacity-40"
-            >
-              <FaGlobe className="h-3.5 w-3.5 text-sky-600" aria-hidden />
-              Website
-            </button>
             {typeof onReminder === 'function' ? (
               <button
                 type="button"
@@ -233,13 +219,6 @@ export default function CompanyRecordHeader({
             >
               <FaStickyNote className="h-3.5 w-3.5 text-violet-600" aria-hidden />
               Note
-            </button>
-            <button
-              type="button"
-              onClick={onChangeStatus}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-800 hover:bg-slate-50"
-            >
-              Change status
             </button>
             {showCreateJob ? (
               <button
@@ -261,24 +240,50 @@ export default function CompanyRecordHeader({
                 Add company login
               </button>
             ) : null}
-            {!linked && typeof onCreatePlatformAccount === 'function' ? (
-              <button
-                type="button"
-                onClick={onCreatePlatformAccount}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-700"
-              >
-                <FaUserPlus className="h-3.5 w-3.5" aria-hidden />
-                Create platform account
-              </button>
+            {typeof onCreatePlatformAccount === 'function' || typeof onLinkAccount === 'function' ? (
+              <div className="relative" ref={accountMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSendMenuOpen(false);
+                    setAccountMenuOpen((o) => !o);
+                  }}
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-900 hover:bg-blue-100"
+                >
+                  <FaLink className="h-3.5 w-3.5" aria-hidden />
+                  Account
+                  <FaChevronDown className="h-3 w-3 opacity-70" aria-hidden />
+                </button>
+                {accountMenuOpen ? (
+                  <div className="absolute left-0 top-full z-50 mt-1 min-w-[230px] rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+                    {typeof onCreatePlatformAccount === 'function' ? (
+                      <button
+                        type="button"
+                        className="block w-full px-3 py-2 text-left text-xs font-medium text-slate-800 hover:bg-slate-50"
+                        onClick={() => {
+                          setAccountMenuOpen(false);
+                          onCreatePlatformAccount();
+                        }}
+                      >
+                        Create platform account
+                      </button>
+                    ) : null}
+                    {typeof onLinkAccount === 'function' ? (
+                      <button
+                        type="button"
+                        className="block w-full px-3 py-2 text-left text-xs font-medium text-slate-800 hover:bg-slate-50"
+                        onClick={() => {
+                          setAccountMenuOpen(false);
+                          onLinkAccount();
+                        }}
+                      >
+                        Link to existing account
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
             ) : null}
-            <button
-              type="button"
-              onClick={onLinkAccount}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-900 hover:bg-blue-100"
-            >
-              <FaLink className="h-3.5 w-3.5" aria-hidden />
-              Link account
-            </button>
             <button
               type="button"
               onClick={onEdit}

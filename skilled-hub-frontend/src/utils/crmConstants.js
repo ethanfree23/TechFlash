@@ -3,12 +3,12 @@
 export const CRM_STATUSES = [
   'lead',
   'contacted',
-  'qualified',
   'proposal',
   'prospect',
   'customer',
   'competitor',
   'churned',
+  'unqualified',
   'lost',
 ];
 
@@ -28,6 +28,16 @@ export const CRM_COMPANY_TYPES = [
 ];
 
 export const CRM_NOTE_CONTACT_METHODS = ['call', 'text', 'email', 'in_person', 'note'];
+
+/** Center-column detail tabs on CRM record view. */
+export const CRM_DETAIL_TAB_IDS = ['record', 'contacts', 'activity', 'account'];
+
+export const CRM_DETAIL_TABS = [
+  { id: 'record', label: 'Record' },
+  { id: 'contacts', label: 'Contacts' },
+  { id: 'activity', label: 'Activity' },
+  { id: 'account', label: 'Account' },
+];
 
 /** Activity timeline sort — default is newest activity first. */
 export const CRM_TIMELINE_SORT_OPTIONS = [
@@ -98,6 +108,7 @@ export const CRM_DATE_RANGE_OPTIONS = [
 
 export const CRM_SORT_OPTIONS = [
   { id: 'updated_desc', label: 'Recently updated' },
+  { id: 'updated_asc', label: 'Least recently updated' },
   { id: 'created_desc', label: 'Newest' },
   { id: 'created_asc', label: 'Oldest' },
   { id: 'name_asc', label: 'Name A–Z' },
