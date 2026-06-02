@@ -3093,8 +3093,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   tabs={crmDetailTabList}
                   activeTab={crmDetailTab}
                   onTabChange={setCrmDetailTab}
-                  panels={{
-                    record: (
+                  renderPanel={(tabId) => {
+                    if (tabId === 'record') {
+                      return (
                       <>
                 <div className="mb-4 flex items-center justify-end gap-2 flex-wrap">
                     <button
@@ -3387,8 +3388,10 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   <button type="button" onClick={removeRecord} className="px-5 py-2 border border-red-200 text-red-700 rounded-lg hover:bg-red-50 font-medium inline-flex items-center gap-2"><FaTrash /> Delete record</button>
                 </div>
                       </>
-                    ),
-                    contacts: (
+                      );
+                    }
+                    if (tabId === 'contacts') {
+                      return (
                       <>
                 <div className="mb-4 flex items-center justify-end gap-2 flex-wrap">
                     {contactsEditing ? (
@@ -3992,8 +3995,10 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         )}
                     </div>
                       </>
-                    ),
-                    activity: (
+                      );
+                    }
+                    if (tabId === 'activity') {
+                      return (
                       <>
                 <div className="flex flex-wrap items-center justify-end gap-2 mb-4">
                     <label className="text-xs text-gray-500 flex items-center gap-1">
@@ -4180,8 +4185,13 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   </div>
                 )}
                       </>
-                    ),
-                    account: (
+                      );
+                    }
+                    if (tabId === 'account') {
+                      if (!c?.linked_account || !metrics) {
+                        return <p className="text-sm text-slate-500">Account data is loading…</p>;
+                      }
+                      return (
                       <div className="space-y-6">
                 <div>
                   <h2 className="text-lg font-semibold text-gray-900 mb-1 flex items-center gap-2">
@@ -4189,7 +4199,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   </h2>
                   <p className="text-sm text-gray-500 mb-4">
                     Same aggregates as the company dashboard for{' '}
-                    {c.linked_account.company_profile_id ? (
+                    {c.linked_account?.company_profile_id ? (
                       <Link
                         to={`/companies/${c.linked_account.company_profile_id}`}
                         className="text-blue-600 hover:underline font-medium"
@@ -4197,7 +4207,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         {c.linked_account.company_name || c.linked_account.email}
                       </Link>
                     ) : (
-                      <span className="font-medium text-gray-800">{c.linked_account.company_name || c.linked_account.email}</span>
+                      <span className="font-medium text-gray-800">{c.linked_account?.company_name || c.linked_account?.email || '—'}</span>
                     )}
                     .
                   </p>
@@ -4290,7 +4300,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   </div>
                 )}
                       </div>
-                    ),
+                      );
+                    }
+                    return null;
                   }}
                 />
               </div>

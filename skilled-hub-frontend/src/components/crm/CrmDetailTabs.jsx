@@ -2,12 +2,13 @@ import React from 'react';
 
 /**
  * Segmented tab bar + single visible panel for CRM record detail.
+ * Uses renderPanel so inactive tab bodies are not evaluated (avoids crashes while detail loads).
  * @param {{ id: string, label: string, badge?: number | string | null }[]} tabs
  * @param {string} activeTab
  * @param {(id: string) => void} onTabChange
- * @param {Record<string, React.ReactNode>} panels
+ * @param {(id: string) => React.ReactNode} renderPanel
  */
-export default function CrmDetailTabs({ tabs, activeTab, onTabChange, panels }) {
+export default function CrmDetailTabs({ tabs, activeTab, onTabChange, renderPanel }) {
   const safeTabs = Array.isArray(tabs) ? tabs : [];
   const active = safeTabs.some((t) => t.id === activeTab) ? activeTab : safeTabs[0]?.id;
 
@@ -66,7 +67,7 @@ export default function CrmDetailTabs({ tabs, activeTab, onTabChange, panels }) 
             hidden={!isActive}
             className={isActive ? 'block p-6' : 'hidden'}
           >
-            {isActive ? panels[tab.id] : null}
+            {isActive && typeof renderPanel === 'function' ? renderPanel(tab.id) : null}
           </div>
         );
       })}
