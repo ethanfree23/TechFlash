@@ -25,7 +25,7 @@ module Api
         Rails.logger.error "Login error: #{e.class} - #{e.message}\n#{e.backtrace.first(5).join("\n")}"
         render json: {
           error: "Login failed",
-          message: (Rails.env.development? ? e.message : nil)
+          message: (Rails.env.development? || DemoMode.enabled? ? e.message : nil)
         }, status: :internal_server_error
       end
 

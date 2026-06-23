@@ -140,7 +140,8 @@ class MembershipPolicy
       h[config.slug] = config.rules_hash
     end
     rules.presence || legacy_rules_for(aud)
-  rescue ActiveRecord::StatementInvalid
+  rescue ActiveRecord::StatementInvalid, ActiveRecord::UnknownAttributeError, StandardError => e
+    Rails.logger.warn("[MembershipPolicy] build_rules fallback for #{aud}: #{e.class}: #{e.message}")
     legacy_rules_for(aud)
   end
 

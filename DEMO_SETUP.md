@@ -94,9 +94,11 @@ Create a **new** service + **new** Postgres plugin.
 | `APP_HOST` | Your demo API host (HTTPS) |
 | `CORS_ORIGINS` | `https://techflash.app` |
 
-**Do not set:** `STRIPE_SECRET_KEY` (live), `TWILIO_*`, production `DATABASE_URL`.
+**Do not set:** `STRIPE_SECRET_KEY` (live), `TWILIO_*`, production `DATABASE_URL`, **`REDIS_URL`** (unless you add Redis to demo — otherwise company/tech login fails when cache cannot connect).
 
-**Stripe boot error** (`Demo environment cannot use a live Stripe secret key`): on the **demo** service, delete `STRIPE_SECRET_KEY` if present and add `STRIPE_SECRET_KEY_TEST` = your `sk_test_...` key from Stripe (Test mode → Developers → API keys). Redeploy, then run `db:prepare` again.
+**Company/tech login fails, admin works:** remove `REDIS_URL` from demo variables or deploy the latest `config/environments/demo.rb` (`cache_store = :memory_store`).
+
+**Stripe boot error** (`Demo environment cannot use a live Stripe secret key`): on the **demo** service, delete `STRIPE_SECRET_KEY` (check **Shared Variables** too — duplicated envs often inherit production). Add `STRIPE_SECRET_KEY_TEST` = your `sk_test_...` key. Redeploy, then run `db:prepare` again.
 
 After first deploy:
 

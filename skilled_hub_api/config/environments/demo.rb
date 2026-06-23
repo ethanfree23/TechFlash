@@ -26,6 +26,9 @@ Rails.application.configure do
   config.log_level = ENV.fetch("RAILS_LOG_LEVEL", "info")
   config.active_job.queue_adapter = :inline
 
+  # Demo has no Redis service — duplicated env vars often set REDIS_URL anyway.
+  config.cache_store = :memory_store
+
   # Never send real email in demo — log only via :test store.
   config.action_mailer.perform_caching = false
   config.action_mailer.delivery_method = :test
