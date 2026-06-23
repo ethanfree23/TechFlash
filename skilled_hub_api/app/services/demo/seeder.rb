@@ -184,8 +184,8 @@ module Demo
           background_verified: i % 3 != 0,
           specialties: [trade]
         )
-        lat_offset = BigDecimal(((i % 5) - 2) * 0.02)
-        lng_offset = BigDecimal(((i % 7) - 3) * 0.02)
+        lat_offset = BigDecimal((((i % 5) - 2) * 0.02).to_s)
+        lng_offset = BigDecimal((((i % 7) - 3) * 0.02).to_s)
         tp.update_columns(
           latitude: market[:lat] + lat_offset,
           longitude: market[:lng] + lng_offset
@@ -230,8 +230,8 @@ module Demo
       days = 1 + (index % 3)
       hours = 6 + (index % 3)
 
-      lat_offset = BigDecimal(((index % 9) - 4) * 0.015)
-      lng_offset = BigDecimal(((index % 11) - 5) * 0.015)
+      lat_offset = BigDecimal((((index % 9) - 4) * 0.015).to_s)
+      lng_offset = BigDecimal((((index % 11) - 5) * 0.015).to_s)
       job_lat = market[:lat] + lat_offset
       job_lng = market[:lng] + lng_offset
 
@@ -392,16 +392,23 @@ module Demo
         reviewer: company,
         reviewee: tech,
         score: 5,
-        comment: "Professional, on time, and left the work area clean.",
-        category_scores: company_scores.transform_keys(&:to_s)
+        comment: "Professional, dependable, safe on site, and left the work area clean. Strong communication throughout the shift.",
+        category_scores: company_scores.transform_keys(&:to_s),
+        would_hire_again: true,
+        would_recommend: true,
+        on_time_status: :on_time,
+        request_again: true
       )
       Rating.create!(
         job: job,
         reviewer: tech,
         reviewee: company,
         score: 5.0,
-        comment: "Clear scope, safe site, and accurate job description.",
-        category_scores: tech_scores.transform_keys(&:to_s)
+        comment: "Clear scope, professional site lead, accurate job posting, and payment expectations were communicated clearly.",
+        category_scores: tech_scores.transform_keys(&:to_s),
+        would_work_again: true,
+        payment_on_time: true,
+        job_description_match: :yes
       )
       @stats[:ratings] += 2
     end
