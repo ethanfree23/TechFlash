@@ -388,29 +388,47 @@ module Demo
       tech_scores = Rating::TECH_REVIEW_CATEGORIES.keys.index_with { 5 }
 
       Rating.create!(
-        job: job,
-        reviewer: company,
-        reviewee: tech,
-        score: 5,
-        comment: "Professional, dependable, safe on site, and left the work area clean. Strong communication throughout the shift.",
-        category_scores: company_scores.transform_keys(&:to_s),
+        {
+          job: job,
+          reviewer: company,
+          reviewee: tech,
+          score: 5,
+          comment: "Professional, dependable, safe on site, and left the work area clean. Strong communication throughout the shift.",
+          category_scores: company_scores.transform_keys(&:to_s)
+        }.merge(company_marketplace_review_attrs)
+      )
+      Rating.create!(
+        {
+          job: job,
+          reviewer: tech,
+          reviewee: company,
+          score: 5.0,
+          comment: "Clear scope, professional site lead, accurate job posting, and payment expectations were communicated clearly.",
+          category_scores: tech_scores.transform_keys(&:to_s)
+        }.merge(technician_marketplace_review_attrs)
+      )
+      @stats[:ratings] += 2
+    end
+
+    def company_marketplace_review_attrs
+      return {} unless Rating.column_names.include?("would_hire_again")
+
+      {
         would_hire_again: true,
         would_recommend: true,
         on_time_status: :on_time,
         request_again: true
-      )
-      Rating.create!(
-        job: job,
-        reviewer: tech,
-        reviewee: company,
-        score: 5.0,
-        comment: "Clear scope, professional site lead, accurate job posting, and payment expectations were communicated clearly.",
-        category_scores: tech_scores.transform_keys(&:to_s),
+      }
+    end
+
+    def technician_marketplace_review_attrs
+      return {} unless Rating.column_names.include?("would_work_again")
+
+      {
         would_work_again: true,
         payment_on_time: true,
         job_description_match: :yes
-      )
-      @stats[:ratings] += 2
+      }
     end
 
     def seed_notifications_for_job!(job, company, tech, bucket)
