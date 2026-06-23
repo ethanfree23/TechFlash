@@ -68,6 +68,19 @@ module Api
             end
           end
           job_application.technician_profile = technician_profile
+
+          job = Job.find_by(id: job_application.job_id)
+          if job.blank?
+            return render json: { error: "Job not found" }, status: :not_found
+          end
+          verification_gate = VerificationEligibilityService.call(job: job, technician_profile: technician_profile)
+          unless verification_gate.eligible
+            return render json: {
+              error: "You are not eligible for this job yet due to verification requirements.",
+              verification_required: true,
+              verification_reasons: verification_gate.reasons
+            }, status: :forbidden
+          end
         end
         
         if job_application.save

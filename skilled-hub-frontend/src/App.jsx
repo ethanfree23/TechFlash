@@ -12,12 +12,15 @@ import Dashboard from './pages/Dashboard';
 import CreateJob from './pages/CreateJob';
 import EditJob from './pages/EditJob';
 import TechnicianProfilePage from './pages/TechnicianProfilePage';
+import TechnicianDirectoryPage from './pages/TechnicianDirectoryPage';
 import CompanyProfilePage from './pages/CompanyProfilePage';
 import SettingsPage from './pages/SettingsPage';
 import MessagesPage from './pages/MessagesPage';
 import CrmPage from './pages/CrmPage';
 import AdminUsersPage from './pages/AdminUsersPage';
 import AdminUserDetailPage from './pages/AdminUserDetailPage';
+import AdminReviewsPage from './pages/AdminReviewsPage';
+import AdminTrustSafetyPage from './pages/AdminTrustSafetyPage';
 import LegalPage from './pages/LegalPage';
 import TermsOfServicePage from './pages/TermsOfServicePage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
@@ -26,6 +29,7 @@ import PaymentTermsPage from './pages/PaymentTermsPage';
 import DmcaIpClaimsPage from './pages/DmcaIpClaimsPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import PublicJobSharePage from './pages/PublicJobSharePage';
+import ReferenceResponsePage from './pages/ReferenceResponsePage';
 import DownloadAppPage from './pages/DownloadAppPage';
 import FeedbackWidget from './components/FeedbackWidget';
 import MasqueradeBanner from './components/MasqueradeBanner';
@@ -149,6 +153,7 @@ function App() {
 
           {/* Public job share preview (no login) */}
           <Route path="/jobs/shared/:shareToken" element={<PublicJobSharePage />} />
+          <Route path="/references/respond/:token" element={<ReferenceResponsePage />} />
           
           {/* Dashboard - both company and technician */}
           <Route
@@ -193,6 +198,19 @@ function App() {
             element={
               <ProtectedRoute isAuthenticated={isAuthenticated && (user?.role === 'company' || user?.role === 'admin')}>
                 <EditJob />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route
+            path="/technicians"
+            element={
+              <ProtectedRoute isAuthenticated={isAuthenticated}>
+                {user?.role === 'company' || user?.role === 'admin' ? (
+                  <TechnicianDirectoryPage user={user} onLogout={handleLogout} />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )}
               </ProtectedRoute>
             }
           />
@@ -264,6 +282,30 @@ function App() {
               <ProtectedRoute isAuthenticated={isAuthenticated}>
                 {user?.role === 'admin' ? (
                   <AdminUsersPage user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )}
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/reviews"
+            element={
+              <ProtectedRoute isAuthenticated={isAuthenticated}>
+                {user?.role === 'admin' ? (
+                  <AdminReviewsPage user={user} onLogout={handleLogout} />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )}
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/trust-safety"
+            element={
+              <ProtectedRoute isAuthenticated={isAuthenticated}>
+                {user?.role === 'admin' ? (
+                  <AdminTrustSafetyPage user={user} onLogout={handleLogout} />
                 ) : (
                   <Navigate to="/dashboard" replace />
                 )}

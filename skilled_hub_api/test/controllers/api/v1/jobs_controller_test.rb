@@ -890,6 +890,56 @@ module Api
         ids = JSON.parse(response.body).map { |row| row["id"] }
         assert_includes ids, job.id
       end
+
+      test "claim is blocked when job requires background verification" do
+        reset_technician_tier_rules!
+
+        company_user = User.create!(
+          email: "company-verification-gate@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        company_profile = CompanyProfile.create!(
+          user: company_user,
+          membership_level: "premium",
+          membership_fee_waived: true
+        )
+        company_user.update_column(:company_profile_id, company_profile.id)
+
+        job = Job.create!(
+          company_profile: company_profile,
+          title: "Verification gated job",
+          description: "desc",
+          status: :open,
+          require_background_check: true,
+          go_live_at: 1.day.ago,
+          scheduled_start_at: 1.day.from_now,
+          scheduled_end_at: 2.days.from_now
+        )
+
+        technician_user = User.create!(
+          email: "tech-verification-gate@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        TechnicianProfile.create!(
+          user: technician_user,
+          trade_type: "General",
+          availability: "Full-time",
+          membership_level: "basic"
+        )
+
+        patch "/api/v1/jobs/#{job.id}/claim",
+              headers: auth_header_for(technician_user),
+              as: :json
+
+        assert_response :forbidden
+        body = JSON.parse(response.body)
+        assert_equal true, body["verification_required"]
+        assert body["verification_reasons"].any? { |r| r["code"] == "background_check_required" }
+      end
     end
   end
 end

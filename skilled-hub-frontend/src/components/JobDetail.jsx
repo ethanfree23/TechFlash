@@ -151,7 +151,17 @@ const JobDetail = () => {
   const [reviewedJobIds, setReviewedJobIds] = useState(new Set());
   const [showReviewForm, setShowReviewForm] = useState(false);
   const [reviewCategories, setReviewCategories] = useState({});
-  const [reviewData, setReviewData] = useState({ category_scores: {}, comment: '' });
+  const [reviewData, setReviewData] = useState({
+    category_scores: {},
+    comment: '',
+    would_hire_again: null,
+    would_recommend: null,
+    on_time_status: '',
+    request_again: null,
+    would_work_again: null,
+    payment_on_time: null,
+    job_description_match: '',
+  });
   const [submittingReview, setSubmittingReview] = useState(false);
   const [markingComplete, setMarkingComplete] = useState(false);
   const [denying, setDenying] = useState(false);
@@ -306,6 +316,14 @@ const JobDetail = () => {
           setReviewData(prev => ({
             ...prev,
             category_scores: Object.keys(cats).reduce((acc, k) => ({ ...acc, [k]: 5 }), {}),
+            comment: '',
+            would_hire_again: null,
+            would_recommend: null,
+            on_time_status: '',
+            request_again: null,
+            would_work_again: null,
+            payment_on_time: null,
+            job_description_match: '',
           }));
         })
         .catch(() => setReviewCategories({}));
@@ -358,7 +376,12 @@ const JobDetail = () => {
       await fetchJobDetails();
       setShowClaimModal(false);
     } catch (err) {
-      setAlertModal({ isOpen: true, title: 'Unable to claim job', message: err.message || 'Failed to claim job', variant: 'error' });
+      const reasons = Array.isArray(err?.details?.verification_reasons) ? err.details.verification_reasons : [];
+      const reasonText = reasons.map((r) => `- ${r.message || r.code}`).join('\n');
+      const message = reasonText
+        ? `This job has verification requirements you still need to complete:\n${reasonText}`
+        : (err.message || 'Failed to claim job');
+      setAlertModal({ isOpen: true, title: 'Unable to claim job', message, variant: 'error' });
     } finally {
       setClaiming(false);
     }
@@ -725,9 +748,34 @@ const JobDetail = () => {
       setAlertModal({ isOpen: true, title: 'Complete your rating', message: 'Please rate all categories (1-5 stars each).', variant: 'error' });
       return;
     }
+    if ((reviewData.comment || '').trim().length < 40) {
+      setAlertModal({ isOpen: true, title: 'Add more detail', message: 'Please write at least 40 characters so the review is useful.', variant: 'error' });
+      return;
+    }
+    if (user?.role === 'company') {
+      if (reviewData.would_hire_again == null || reviewData.would_recommend == null || reviewData.request_again == null || !reviewData.on_time_status) {
+        setAlertModal({ isOpen: true, title: 'Complete required questions', message: 'Please answer all required follow-up questions.', variant: 'error' });
+        return;
+      }
+    } else if (user?.role === 'technician') {
+      if (reviewData.would_work_again == null || reviewData.payment_on_time == null || !reviewData.job_description_match) {
+        setAlertModal({ isOpen: true, title: 'Complete required questions', message: 'Please answer all required follow-up questions.', variant: 'error' });
+        return;
+      }
+    }
     try {
       setSubmittingReview(true);
-      const payload = { category_scores: { ...category_scores }, comment: reviewData.comment || '' };
+      const payload = {
+        category_scores: { ...category_scores },
+        comment: reviewData.comment || '',
+        would_hire_again: reviewData.would_hire_again,
+        would_recommend: reviewData.would_recommend,
+        on_time_status: reviewData.on_time_status || undefined,
+        request_again: reviewData.request_again,
+        would_work_again: reviewData.would_work_again,
+        payment_on_time: reviewData.payment_on_time,
+        job_description_match: reviewData.job_description_match || undefined,
+      };
       await ratingsAPI.create(job.id, payload);
       setCurrentUserHasReviewed(true);
       setReviewedJobIds((prev) => new Set([...prev, job.id]));
@@ -737,7 +785,17 @@ const JobDetail = () => {
       setOtherPartyHasReviewed(Array.isArray(updated) ? false : (updated.other_party_has_reviewed ?? false));
       setCurrentUserHasReviewed(Array.isArray(updated) ? true : (updated.current_user_has_reviewed ?? true));
       setShowReviewForm(false);
-      setReviewData({ category_scores: {}, comment: '' });
+      setReviewData({
+        category_scores: {},
+        comment: '',
+        would_hire_again: null,
+        would_recommend: null,
+        on_time_status: '',
+        request_again: null,
+        would_work_again: null,
+        payment_on_time: null,
+        job_description_match: '',
+      });
     } catch (err) {
       setAlertModal({ isOpen: true, title: 'Unable to submit review', message: err.message || 'Failed to submit review', variant: 'error' });
     } finally {
@@ -1306,7 +1364,7 @@ const JobDetail = () => {
                   <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2 mb-4">
                     {otherPartyHasReviewed
                       ? `${user?.role === 'technician' ? 'Company' : 'Technician'} has left a review. Complete yours to view theirs.`
-                      : 'Reviews are hidden until you submit yours or 7 days have passed—so your feedback stays independent.'}
+                      : 'Reviews are hidden until you submit yours or 14 days have passed—so your feedback stays independent.'}
                   </p>
                 )}
                 <div className="space-y-4">
@@ -1345,7 +1403,7 @@ const JobDetail = () => {
                     ) : showReviewForm ? (
                       <form onSubmit={handleReviewSubmit} className="space-y-4">
                         <h4 className="font-medium text-gray-900">Leave your review for {user?.role === 'company' ? 'the technician' : 'the company'}</h4>
-                        <p className="text-sm text-gray-600">Rate each aspect from 1 to 5 stars.</p>
+                        <p className="text-sm text-gray-600">Step 1: Rate each aspect from 1 to 5 stars.</p>
                         <div className="space-y-4">
                           {Object.entries(reviewCategories).map(([key, label]) => (
                             <div key={key}>
@@ -1360,15 +1418,121 @@ const JobDetail = () => {
                             </div>
                           ))}
                         </div>
+                        <div className="rounded-md border border-gray-200 bg-gray-50 p-3 space-y-3">
+                          <p className="text-sm font-medium text-gray-800">Step 2: Quick follow-up questions</p>
+                          {user?.role === 'company' ? (
+                            <>
+                              <label className="block text-sm text-gray-700">
+                                Would hire again?
+                                <select
+                                  value={reviewData.would_hire_again == null ? '' : String(reviewData.would_hire_again)}
+                                  onChange={(e) => setReviewData((prev) => ({ ...prev, would_hire_again: e.target.value === '' ? null : e.target.value === 'true' }))}
+                                  className="mt-1 w-full border border-gray-300 rounded-md px-2 py-2 bg-white"
+                                  required
+                                >
+                                  <option value="">Select</option>
+                                  <option value="true">Yes</option>
+                                  <option value="false">No</option>
+                                </select>
+                              </label>
+                              <label className="block text-sm text-gray-700">
+                                Would recommend?
+                                <select
+                                  value={reviewData.would_recommend == null ? '' : String(reviewData.would_recommend)}
+                                  onChange={(e) => setReviewData((prev) => ({ ...prev, would_recommend: e.target.value === '' ? null : e.target.value === 'true' }))}
+                                  className="mt-1 w-full border border-gray-300 rounded-md px-2 py-2 bg-white"
+                                  required
+                                >
+                                  <option value="">Select</option>
+                                  <option value="true">Yes</option>
+                                  <option value="false">No</option>
+                                </select>
+                              </label>
+                              <label className="block text-sm text-gray-700">
+                                Was technician on time?
+                                <select
+                                  value={reviewData.on_time_status || ''}
+                                  onChange={(e) => setReviewData((prev) => ({ ...prev, on_time_status: e.target.value }))}
+                                  className="mt-1 w-full border border-gray-300 rounded-md px-2 py-2 bg-white"
+                                  required
+                                >
+                                  <option value="">Select</option>
+                                  <option value="early">Early</option>
+                                  <option value="on_time">On Time</option>
+                                  <option value="late">Late</option>
+                                </select>
+                              </label>
+                              <label className="block text-sm text-gray-700">
+                                Request this technician specifically in future?
+                                <select
+                                  value={reviewData.request_again == null ? '' : String(reviewData.request_again)}
+                                  onChange={(e) => setReviewData((prev) => ({ ...prev, request_again: e.target.value === '' ? null : e.target.value === 'true' }))}
+                                  className="mt-1 w-full border border-gray-300 rounded-md px-2 py-2 bg-white"
+                                  required
+                                >
+                                  <option value="">Select</option>
+                                  <option value="true">Yes</option>
+                                  <option value="false">No</option>
+                                </select>
+                              </label>
+                            </>
+                          ) : (
+                            <>
+                              <label className="block text-sm text-gray-700">
+                                Would work for this company again?
+                                <select
+                                  value={reviewData.would_work_again == null ? '' : String(reviewData.would_work_again)}
+                                  onChange={(e) => setReviewData((prev) => ({ ...prev, would_work_again: e.target.value === '' ? null : e.target.value === 'true' }))}
+                                  className="mt-1 w-full border border-gray-300 rounded-md px-2 py-2 bg-white"
+                                  required
+                                >
+                                  <option value="">Select</option>
+                                  <option value="true">Yes</option>
+                                  <option value="false">No</option>
+                                </select>
+                              </label>
+                              <label className="block text-sm text-gray-700">
+                                Was payment made on time?
+                                <select
+                                  value={reviewData.payment_on_time == null ? '' : String(reviewData.payment_on_time)}
+                                  onChange={(e) => setReviewData((prev) => ({ ...prev, payment_on_time: e.target.value === '' ? null : e.target.value === 'true' }))}
+                                  className="mt-1 w-full border border-gray-300 rounded-md px-2 py-2 bg-white"
+                                  required
+                                >
+                                  <option value="">Select</option>
+                                  <option value="true">Yes</option>
+                                  <option value="false">No</option>
+                                </select>
+                              </label>
+                              <label className="block text-sm text-gray-700">
+                                Did actual work match job posting?
+                                <select
+                                  value={reviewData.job_description_match || ''}
+                                  onChange={(e) => setReviewData((prev) => ({ ...prev, job_description_match: e.target.value }))}
+                                  className="mt-1 w-full border border-gray-300 rounded-md px-2 py-2 bg-white"
+                                  required
+                                >
+                                  <option value="">Select</option>
+                                  <option value="yes">Yes</option>
+                                  <option value="partially">Partially</option>
+                                  <option value="no">No</option>
+                                </select>
+                              </label>
+                            </>
+                          )}
+                        </div>
                         <div>
-                          <label className="block text-sm font-medium text-gray-700 mb-2">Comment (optional)</label>
+                          <label className="block text-sm font-medium text-gray-700 mb-2">Step 3: Written review (min 40 characters)</label>
                           <textarea
                             value={reviewData.comment}
                             onChange={e => setReviewData(prev => ({ ...prev, comment: e.target.value }))}
                             className="w-full px-3 py-2 border border-gray-300 rounded-md"
                             rows={3}
                             placeholder="How did the job go?"
+                            minLength={40}
+                            required
                           />
+                          <p className="text-xs text-gray-500 mt-1">{(reviewData.comment || '').trim().length} / 40 minimum</p>
                         </div>
                         <div className="flex gap-2">
                           <button type="button" onClick={() => setShowReviewForm(false)} className="px-4 py-2 bg-gray-200 rounded hover:bg-gray-300">Cancel</button>

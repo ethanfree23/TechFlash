@@ -422,7 +422,13 @@ module Api
           technician_user: @current_user,
           preferred_start_at: params[:preferred_start_at]
         )
-        return render json: { error: result[:error] }, status: (result[:status] || :unprocessable_entity) if result[:error]
+        if result[:error]
+          return render json: {
+            error: result[:error],
+            verification_required: result[:verification_required] || false,
+            verification_reasons: result[:verification_reasons] || []
+          }, status: (result[:status] || :unprocessable_entity)
+        end
 
         render json: job, serializer: JobSerializer, include: [:company_profile, { job_applications: { technician_profile: :user } }], status: :ok
       rescue ActiveRecord::RecordNotFound
@@ -454,6 +460,7 @@ module Api
                       :scheduled_start_at, :scheduled_end_at, :price_cents, :hourly_rate_cents, :hours_per_day, :days,
                       :address, :city, :state, :zip_code, :country, :latitude, :longitude,
                       :skill_class, :minimum_years_experience, :notes, :go_live_at, :start_mode,
+                      :require_background_check, :require_identity_verification, :minimum_verified_references, :require_insurance_verification,
                       :rolling_start_rule_type, :rolling_start_exact_start_at, :rolling_start_days_after_acceptance,
                       :rolling_start_weekday, :rolling_start_weekday_time)
       end

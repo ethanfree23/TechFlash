@@ -55,7 +55,7 @@ export default function DemoResetCard({ compact = false }) {
       >
         <h3 className="text-sm font-semibold text-slate-900">Reset demo data</h3>
         <p className="mt-1 text-xs text-slate-600 leading-relaxed max-w-2xl">
-          Restore the demo database to the polished seed state (96 jobs, marketplace activity, demo accounts).
+          Restore the demo database to the polished seed state (~1,900 jobs, marketplace activity, demo accounts).
         </p>
         <button
           type="button"

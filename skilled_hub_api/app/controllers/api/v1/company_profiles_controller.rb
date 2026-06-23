@@ -33,10 +33,12 @@ module Api
       def update
         company_profile = CompanyProfile.find(params[:id])
         return render json: { error: 'Access denied' }, status: :forbidden unless company_profile.id == @current_user.company_profile&.id
+
         attrs = company_profile_params.to_h
-        company_profile.avatar.attach(params[:avatar]) if params[:avatar].present?
-        if company_profile.update(attrs.except(:avatar))
-          render json: company_profile, serializer: CompanyProfileSerializer, status: :ok
+        attach_profile_avatar!(company_profile)
+        company_profile.assign_attributes(attrs.except(:avatar))
+        if company_profile.save
+          render json: company_profile.reload, serializer: CompanyProfileSerializer, status: :ok
         else
           render json: { errors: company_profile.errors.full_messages }, status: :unprocessable_entity
         end
@@ -113,6 +115,13 @@ module Api
           :state, :electrical_license_number,
           service_cities: []
         )
+      end
+
+      def attach_profile_avatar!(record)
+        return unless params[:avatar].present?
+
+        record.avatar.purge if record.avatar.attached?
+        record.avatar.attach(params[:avatar])
       end
     end
   end

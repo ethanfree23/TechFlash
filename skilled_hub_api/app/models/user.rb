@@ -37,6 +37,13 @@ class User < ApplicationRecord
 
   has_one :technician_profile, dependent: :destroy
   has_one :company_profile, foreign_key: :user_id, inverse_of: :user, dependent: :destroy
+  has_one :verification_profile, dependent: :destroy
+  has_many :background_checks, dependent: :destroy
+  has_many :verification_badges, dependent: :destroy
+  has_many :verification_references_as_technician, class_name: "VerificationReference", foreign_key: :technician_user_id, dependent: :destroy
+  has_many :verification_reference_reviews, class_name: "VerificationReference", foreign_key: :reviewed_by_user_id, dependent: :nullify
+  has_many :verification_audit_logs, dependent: :destroy
+  has_many :verification_audit_actions, class_name: "VerificationAuditLog", foreign_key: :actor_user_id, dependent: :destroy
   belongs_to :shared_company_profile, class_name: "CompanyProfile", foreign_key: :company_profile_id, optional: true, inverse_of: :company_users
 
   has_many :messages, foreign_key: :sender_id, dependent: :destroy

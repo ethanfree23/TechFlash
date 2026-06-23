@@ -28,7 +28,7 @@ export default function DemoResetButton({ variant = 'hero' }) {
       <ConfirmModal
         isOpen={confirmOpen}
         title="Reset demo database?"
-        message="This restores the demo to its polished seed state — 96 jobs across Houston, Austin, and Dallas. Safe to run between presentations."
+        message="This restores the demo to its polished seed state — ~1,900 jobs across Houston, Austin, and Dallas. Safe to run between presentations."
         confirmLabel={busy ? 'Resetting…' : 'Reset demo data'}
         onConfirm={runReset}
         onClose={() => !busy && setConfirmOpen(false)}

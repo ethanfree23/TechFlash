@@ -146,7 +146,12 @@ class EmailQaFixtureFactory
       reviewer: company_profile,
       reviewee: technician_profile,
       score: 5,
-      comment: "Great work and communication."
+      comment: "Great work, dependable communication, and followed site safety expectations throughout the shift.",
+      category_scores: Rating::COMPANY_REVIEW_CATEGORIES.keys.index_with { 5 }.transform_keys(&:to_s),
+      would_hire_again: true,
+      would_recommend: true,
+      on_time_status: :on_time,
+      request_again: true
     )
   end
 

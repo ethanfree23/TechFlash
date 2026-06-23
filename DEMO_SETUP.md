@@ -91,8 +91,12 @@ Create a **new** service + **new** Postgres plugin.
 | `DEMO_MODE` | `true` |
 | `ALLOW_DEMO_RESET` | `true` |
 | `STRIPE_SECRET_KEY_TEST` | `sk_test_...` only |
-| `APP_HOST` | Your demo API host (HTTPS) |
+| `APP_HOST` | Public demo API hostname only, e.g. `agile-courtesy-demo.up.railway.app` (no `https://`) |
 | `CORS_ORIGINS` | `https://techflash.app` |
+
+**Do not use `*.railway.internal` for `APP_HOST`.** That hostname is private to Railway’s network — browsers cannot load profile photos or other Active Storage files from it. Use the **public** domain from Railway → your demo service → **Settings → Networking** (ends in `.up.railway.app`). If `APP_HOST` is wrong, the app falls back to Railway’s `RAILWAY_PUBLIC_DOMAIN` when available.
+
+**Profile photos:** `APP_HOST` (or `RAILWAY_PUBLIC_DOMAIN`) must be the public API domain. Optional: mount a Railway volume at `/data/storage` and set `ACTIVE_STORAGE_ROOT=/data/storage` so uploads survive redeploys.
 
 **Do not set:** `STRIPE_SECRET_KEY` (live), `TWILIO_*`, production `DATABASE_URL`, **`REDIS_URL`** (unless you add Redis to demo — otherwise company/tech login fails when cache cannot connect).
 
@@ -143,6 +147,7 @@ Optional for local-only forced demo UI: `VITE_DEMO_MODE=true` in `.env.local`.
 
 ## Seed contents
 
-- **96 jobs** (32 each): Houston, Austin, Dallas
+- **~1,920 jobs** (640 per city): Houston, Austin, Dallas — 20× the original demo volume
 - Status mix: open, claimed, in progress, pending review, completed with reviews
-- ~24 companies, ~45 technicians, messages, ratings, payments (`pi_demo_*`), notifications
+- ~480 companies, ~900 technicians, messages, ratings, payments (`pi_demo_*`), notifications
+- Override scale locally with `DEMO_SEED_SCALE=1` for faster resets (default `20`)

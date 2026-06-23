@@ -5,6 +5,7 @@ import AdminCreateUserModal from '../components/AdminCreateUserModal';
 import AlertModal from '../components/AlertModal';
 import { profilesAPI, crmAPI } from '../api/api';
 import { buildImportDraftRows } from '../utils/crmImport';
+import { mediaUrlWithCacheBust } from '../utils/mediaUrl';
 import { FaUserPlus } from 'react-icons/fa';
 
 const CRM_STATUSES = ['lead', 'contacted', 'qualified', 'proposal', 'prospect', 'customer', 'competitor', 'churned', 'lost'];
@@ -357,6 +358,8 @@ const CompanyProfilePage = ({ user, onLogout }) => {
   }
 
   const ratings = profile.ratings_received || [];
+  const reviewSummary = profile.review_summary || {};
+  const summaryCategories = reviewSummary.categories || {};
   const companyUsers = Array.isArray(profile.company_users) ? profile.company_users : [];
 
   return (
@@ -373,7 +376,7 @@ const CompanyProfilePage = ({ user, onLogout }) => {
           <div className="p-6 border-b border-gray-200 bg-gray-50">
             <div className="flex items-start gap-6">
               {profile.avatar_url ? (
-                <img src={profile.avatar_url} alt="" className="w-20 h-20 rounded-full object-cover border-2 border-gray-200 shrink-0" />
+                <img src={mediaUrlWithCacheBust(profile.avatar_url, profile.updated_at)} alt="" className="w-20 h-20 rounded-full object-cover border-2 border-gray-200 shrink-0" />
               ) : (
                 <div className="w-20 h-20 rounded-full bg-gray-300 flex items-center justify-center text-2xl font-bold text-gray-500 shrink-0">
                   {(profile.company_name || 'C')[0].toUpperCase()}
@@ -416,6 +419,38 @@ const CompanyProfilePage = ({ user, onLogout }) => {
               <p className="text-gray-700 whitespace-pre-wrap">{profile.bio}</p>
             </div>
           )}
+
+          <div className="p-6 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">Review Insights</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">Overall rating</p>
+                <p className="text-lg font-semibold text-gray-900">{reviewSummary.overall_rating != null ? Number(reviewSummary.overall_rating).toFixed(1) : "—"}</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">Would work again</p>
+                <p className="text-lg font-semibold text-gray-900">{reviewSummary.would_work_again_pct != null ? `${reviewSummary.would_work_again_pct}%` : "—"}</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">Payment on time</p>
+                <p className="text-lg font-semibold text-gray-900">{reviewSummary.payment_on_time_pct != null ? `${reviewSummary.payment_on_time_pct}%` : "—"}</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">Repeat technicians</p>
+                <p className="text-lg font-semibold text-gray-900">{reviewSummary.repeat_counterparties_count ?? 0}</p>
+              </div>
+            </div>
+            {Object.keys(summaryCategories).length > 0 && (
+              <div className="space-y-2">
+                {Object.entries(summaryCategories).map(([key, value]) => (
+                  <div key={key} className="flex justify-between text-sm border-b border-gray-100 pb-1">
+                    <span className="text-gray-600">{key.replaceAll('_', ' ')}</span>
+                    <span className="font-medium text-gray-900">{Number(value).toFixed(1)} / 5</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {(profile.state || profile.electrical_license_number) && (
             <div className="p-6 border-b border-gray-200">

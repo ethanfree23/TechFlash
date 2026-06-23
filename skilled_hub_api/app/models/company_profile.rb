@@ -25,6 +25,10 @@ class CompanyProfile < ApplicationRecord
     Rating.average_for(self)
   end
 
+  def review_summary
+    Rating.weighted_summary_for(self)
+  end
+
   private
 
   def normalize_service_cities_list

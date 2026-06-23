@@ -17,6 +17,10 @@ export function noteDraftForReply(parentNoteId) {
   };
 }
 
+export function noteDraftForConvertReminder(note) {
+  return { ...noteDraftForEdit(note), remind_at: '' };
+}
+
 export function noteDraftForEdit(note) {
   const ra = note?.remind_at;
   let remindAt = '';

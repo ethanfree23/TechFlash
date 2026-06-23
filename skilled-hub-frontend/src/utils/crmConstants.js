@@ -29,6 +29,13 @@ export const CRM_COMPANY_TYPES = [
 
 export const CRM_NOTE_CONTACT_METHODS = ['call', 'text', 'email', 'in_person', 'note'];
 
+export const CRM_REMINDER_QUEUE_WHEN_FILTERS = [
+  { id: 'all', label: 'All reminders' },
+  { id: 'overdue', label: 'Overdue' },
+  { id: 'today', label: 'Due today' },
+  { id: 'upcoming', label: 'Upcoming' },
+];
+
 /** Center-column detail tabs on CRM record view. */
 export const CRM_DETAIL_TAB_IDS = ['record', 'contacts', 'activity', 'account'];
 

@@ -11,9 +11,9 @@ Rails.application.configure do
 
   config.active_storage.service = :local
 
-  if (host = ENV["APP_HOST"]).present?
-    config.action_controller.default_url_options = { host: host, protocol: "https" }
-    Rails.application.routes.default_url_options = config.action_controller.default_url_options
+  if (opts = AppHost.url_options).present?
+    config.action_controller.default_url_options = opts
+    Rails.application.routes.default_url_options = opts
   end
 
   config.force_ssl = true

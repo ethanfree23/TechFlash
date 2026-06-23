@@ -33,10 +33,10 @@ Rails.application.configure do
   # Store uploaded files on the local file system (see config/storage.yml for options).
   config.active_storage.service = :local
 
-  # Required for rails_blob_url in serializers (avatar_url). Set APP_HOST in Railway to your API domain.
-  if (host = ENV["APP_HOST"]).present?
-    config.action_controller.default_url_options = { host: host, protocol: "https" }
-    Rails.application.routes.default_url_options = config.action_controller.default_url_options
+  # Required for rails_blob_url in serializers (avatar_url). Set APP_HOST to API hostname only (no https://).
+  if (opts = AppHost.url_options).present?
+    config.action_controller.default_url_options = opts
+    Rails.application.routes.default_url_options = opts
   end
 
   # Mount Action Cable outside main process or domain.

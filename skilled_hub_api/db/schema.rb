@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_05_18_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_22_153000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -49,6 +49,49 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_18_120000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["user_id"], name: "index_app_notifications_on_user_id"
+  end
+
+  create_table "background_checks", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.string "provider", default: "checkr", null: false
+    t.string "provider_candidate_id"
+    t.string "provider_invitation_id"
+    t.string "provider_report_id"
+    t.string "package_name"
+    t.integer "status", default: 0, null: false
+    t.string "result"
+    t.integer "payment_status", default: 0, null: false
+    t.string "paid_by", default: "technician", null: false
+    t.datetime "started_at"
+    t.datetime "completed_at"
+    t.datetime "expires_at"
+    t.integer "admin_override_status", default: 0, null: false
+    t.text "admin_notes"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.integer "payment_amount_cents"
+    t.string "stripe_checkout_session_id"
+    t.string "stripe_payment_intent_id"
+    t.datetime "paid_at"
+    t.index ["expires_at"], name: "index_background_checks_on_expires_at"
+    t.index ["provider_candidate_id"], name: "index_background_checks_on_provider_candidate_id"
+    t.index ["provider_invitation_id"], name: "index_background_checks_on_provider_invitation_id"
+    t.index ["provider_report_id"], name: "index_background_checks_on_provider_report_id"
+    t.index ["status"], name: "index_background_checks_on_status"
+    t.index ["stripe_checkout_session_id"], name: "index_background_checks_on_stripe_checkout_session_id"
+    t.index ["stripe_payment_intent_id"], name: "index_background_checks_on_stripe_payment_intent_id"
+    t.index ["user_id"], name: "index_background_checks_on_user_id"
+  end
+
+  create_table "checkr_webhook_events", force: :cascade do |t|
+    t.string "checkr_event_id", null: false
+    t.string "event_type"
+    t.text "payload"
+    t.datetime "processed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["checkr_event_id"], name: "index_checkr_webhook_events_on_checkr_event_id", unique: true
+    t.index ["processed_at"], name: "index_checkr_webhook_events_on_processed_at"
   end
 
   create_table "company_profiles", force: :cascade do |t|
@@ -188,7 +231,20 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_18_120000) do
     t.string "doc_type"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "status", default: 0, null: false
+    t.integer "reviewed_by_user_id"
+    t.datetime "reviewed_at"
+    t.text "rejection_reason"
+    t.datetime "expires_at"
+    t.string "issuer"
+    t.string "document_number"
+    t.date "issued_on"
+    t.date "valid_until"
+    t.json "metadata", default: {}
+    t.index ["reviewed_by_user_id"], name: "index_documents_on_reviewed_by_user_id"
+    t.index ["status"], name: "index_documents_on_status"
     t.index ["uploadable_type", "uploadable_id"], name: "index_documents_on_uploadable"
+    t.index ["valid_until"], name: "index_documents_on_valid_until"
   end
 
   create_table "email_delivery_logs", force: :cascade do |t|
@@ -320,6 +376,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_18_120000) do
     t.integer "rolling_start_weekday"
     t.string "rolling_start_weekday_time"
     t.string "share_token", null: false
+    t.boolean "require_background_check", default: false, null: false
+    t.boolean "require_identity_verification", default: false, null: false
+    t.integer "minimum_verified_references", default: 0, null: false
+    t.boolean "require_insurance_verification", default: false, null: false
     t.index ["company_profile_id"], name: "index_jobs_on_company_profile_id"
     t.index ["rolling_start_rule_type"], name: "index_jobs_on_rolling_start_rule_type"
     t.index ["share_token"], name: "index_jobs_on_share_token", unique: true
@@ -410,9 +470,27 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_18_120000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.json "category_scores", default: {}
+    t.boolean "would_hire_again"
+    t.boolean "would_recommend"
+    t.integer "on_time_status"
+    t.boolean "request_again"
+    t.boolean "would_work_again"
+    t.boolean "payment_on_time"
+    t.integer "job_description_match"
+    t.datetime "review_window_expires_at"
+    t.datetime "visible_at"
+    t.integer "moderation_status", default: 0, null: false
+    t.datetime "hidden_at"
+    t.integer "hidden_by_user_id"
+    t.text "moderation_notes"
+    t.decimal "review_quality_weight", precision: 4, scale: 2, default: "1.0", null: false
+    t.index ["hidden_by_user_id"], name: "index_ratings_on_hidden_by_user_id"
+    t.index ["job_id", "reviewer_type"], name: "index_ratings_on_job_and_reviewer_type"
     t.index ["job_id"], name: "index_ratings_on_job_id"
+    t.index ["moderation_status"], name: "index_ratings_on_moderation_status"
     t.index ["reviewee_type", "reviewee_id"], name: "index_ratings_on_reviewee"
     t.index ["reviewer_type", "reviewer_id"], name: "index_ratings_on_reviewer"
+    t.index ["visible_at"], name: "index_ratings_on_visible_at"
   end
 
   create_table "referral_submissions", force: :cascade do |t|
@@ -436,6 +514,23 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_18_120000) do
     t.index ["referred_user_id"], name: "index_referral_submissions_on_referred_user_id"
     t.index ["referrer_user_id"], name: "index_referral_submissions_on_referrer_user_id"
     t.index ["reward_eligible_at"], name: "index_referral_submissions_on_reward_eligible_at"
+  end
+
+  create_table "review_flags", force: :cascade do |t|
+    t.integer "rating_id", null: false
+    t.string "reason", null: false
+    t.integer "risk_score", default: 0, null: false
+    t.json "details", default: {}, null: false
+    t.integer "status", default: 0, null: false
+    t.integer "reviewed_by_id"
+    t.datetime "reviewed_at"
+    t.text "review_notes"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["rating_id"], name: "index_review_flags_on_rating_id"
+    t.index ["reason"], name: "index_review_flags_on_reason"
+    t.index ["reviewed_by_id"], name: "index_review_flags_on_reviewed_by_id"
+    t.index ["status"], name: "index_review_flags_on_status"
   end
 
   create_table "saved_job_searches", force: :cascade do |t|
@@ -550,9 +645,82 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_18_120000) do
     t.index ["password_set_by"], name: "index_users_on_password_set_by"
   end
 
+  create_table "verification_audit_logs", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.integer "actor_user_id", null: false
+    t.string "entity_type", null: false
+    t.bigint "entity_id", null: false
+    t.string "action", null: false
+    t.json "details", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["action"], name: "index_verification_audit_logs_on_action"
+    t.index ["actor_user_id"], name: "index_verification_audit_logs_on_actor_user_id"
+    t.index ["created_at"], name: "index_verification_audit_logs_on_created_at"
+    t.index ["entity_type", "entity_id"], name: "index_verification_audit_logs_on_entity_type_and_entity_id"
+    t.index ["user_id"], name: "index_verification_audit_logs_on_user_id"
+  end
+
+  create_table "verification_badges", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.string "badge_type", null: false
+    t.string "source_type"
+    t.bigint "source_id"
+    t.integer "status", default: 0, null: false
+    t.datetime "earned_at"
+    t.datetime "expires_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["expires_at"], name: "index_verification_badges_on_expires_at"
+    t.index ["source_type", "source_id"], name: "index_verification_badges_on_source_type_and_source_id"
+    t.index ["status"], name: "index_verification_badges_on_status"
+    t.index ["user_id", "badge_type"], name: "index_verification_badges_on_user_id_and_badge_type", unique: true
+    t.index ["user_id"], name: "index_verification_badges_on_user_id"
+  end
+
+  create_table "verification_profiles", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.boolean "email_verified", default: false, null: false
+    t.boolean "phone_verified", default: false, null: false
+    t.integer "identity_status", default: 0, null: false
+    t.integer "background_status", default: 0, null: false
+    t.integer "references_status", default: 0, null: false
+    t.integer "licenses_status", default: 0, null: false
+    t.integer "insurance_status", default: 0, null: false
+    t.datetime "last_verified_at"
+    t.integer "overall_completion_percentage", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["user_id"], name: "index_verification_profiles_on_user_id", unique: true
+  end
+
+  create_table "verification_references", force: :cascade do |t|
+    t.integer "technician_user_id", null: false
+    t.string "full_name", null: false
+    t.string "email", null: false
+    t.string "phone"
+    t.string "company_name"
+    t.string "relationship", null: false
+    t.integer "status", default: 0, null: false
+    t.string "request_token", null: false
+    t.datetime "requested_at"
+    t.datetime "responded_at"
+    t.integer "reviewed_by_user_id"
+    t.datetime "reviewed_at"
+    t.text "review_notes"
+    t.json "answers", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["request_token"], name: "index_verification_references_on_request_token", unique: true
+    t.index ["reviewed_by_user_id"], name: "index_verification_references_on_reviewed_by_user_id"
+    t.index ["status"], name: "index_verification_references_on_status"
+    t.index ["technician_user_id"], name: "index_verification_references_on_technician_user_id"
+  end
+
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "app_notifications", "users"
+  add_foreign_key "background_checks", "users"
   add_foreign_key "company_profiles", "users"
   add_foreign_key "conversations", "company_profiles"
   add_foreign_key "conversations", "feedback_submissions"
@@ -566,6 +734,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_18_120000) do
   add_foreign_key "crm_leads", "users", column: "linked_user_id"
   add_foreign_key "crm_notes", "crm_leads"
   add_foreign_key "crm_notes", "crm_notes", column: "parent_note_id"
+  add_foreign_key "documents", "users", column: "reviewed_by_user_id"
   add_foreign_key "email_delivery_logs", "users"
   add_foreign_key "favorite_technicians", "company_profiles"
   add_foreign_key "favorite_technicians", "technician_profiles"
@@ -583,12 +752,21 @@ ActiveRecord::Schema[7.1].define(version: 2026_05_18_120000) do
   add_foreign_key "messages", "conversations"
   add_foreign_key "payments", "jobs"
   add_foreign_key "ratings", "jobs"
+  add_foreign_key "ratings", "users", column: "hidden_by_user_id"
   add_foreign_key "referral_submissions", "crm_leads"
   add_foreign_key "referral_submissions", "users", column: "referred_user_id"
   add_foreign_key "referral_submissions", "users", column: "referrer_user_id"
+  add_foreign_key "review_flags", "ratings"
+  add_foreign_key "review_flags", "users", column: "reviewed_by_id"
   add_foreign_key "saved_job_searches", "technician_profiles"
   add_foreign_key "sms_delivery_logs", "users"
   add_foreign_key "technician_profiles", "users"
   add_foreign_key "user_login_events", "users"
   add_foreign_key "users", "company_profiles"
+  add_foreign_key "verification_audit_logs", "users"
+  add_foreign_key "verification_audit_logs", "users", column: "actor_user_id"
+  add_foreign_key "verification_badges", "users"
+  add_foreign_key "verification_profiles", "users"
+  add_foreign_key "verification_references", "users", column: "reviewed_by_user_id"
+  add_foreign_key "verification_references", "users", column: "technician_user_id"
 end

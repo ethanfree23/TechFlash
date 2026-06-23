@@ -11,9 +11,16 @@ demo_stripe_secret_key = lambda do
   legacy = ENV["STRIPE_SECRET_KEY"].to_s.strip
   return legacy if legacy.start_with?("sk_test_")
 
-  if legacy.start_with?("sk_live_") || (test_env.present? && !test_env.start_with?("sk_test_"))
-    raise "Demo environment cannot use a live Stripe secret key. " \
-          "On Railway demo: remove STRIPE_SECRET_KEY, set STRIPE_SECRET_KEY_TEST to sk_test_... (Stripe → Test mode → API keys)."
+  if test_env.present? && !test_env.start_with?("sk_test_")
+    raise "Demo environment Stripe key must be sk_test_.... " \
+          "Fix STRIPE_SECRET_KEY_TEST on Railway demo (Stripe → Test mode → API keys)."
+  end
+
+  if legacy.start_with?("sk_live_")
+    Rails.logger.warn(
+      "[demo] Ignoring STRIPE_SECRET_KEY (live) on demo host. " \
+      "Remove it from Railway demo variables; use STRIPE_SECRET_KEY_TEST only."
+    )
   end
 
   nil # Do not fall back to credentials — production live keys share the same RAILS_MASTER_KEY.

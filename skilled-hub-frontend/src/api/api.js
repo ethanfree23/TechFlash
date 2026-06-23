@@ -39,7 +39,10 @@ const apiRequest = async (endpoint, options = {}) => {
         errorData.error ||
         (Array.isArray(errorData.errors) ? errorData.errors.join(', ') : null) ||
         `HTTP error! status: ${response.status}`;
-      throw new Error(msg);
+      const enrichedError = new Error(msg);
+      enrichedError.status = response.status;
+      enrichedError.details = errorData;
+      throw enrichedError;
     }
 
     // 204 No Content and other empty successful bodies (Rails uses this for DELETE)
@@ -207,6 +210,14 @@ export const signupPaymentsAPI = {
 // Admin CRM (company pipeline + optional link to platform company account)
 export const crmAPI = {
   list: () => apiRequest('/admin/crm_leads'),
+  listReminders: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v != null && String(v).trim() !== '') qs.set(k, String(v));
+    });
+    const query = qs.toString();
+    return apiRequest(`/admin/crm_leads/reminders${query ? `?${query}` : ''}`);
+  },
   get: (id) => apiRequest(`/admin/crm_leads/${id}`),
   create: (data) =>
     apiRequest('/admin/crm_leads', {
@@ -430,6 +441,32 @@ export const jobAlertPreferencesAPI = {
 export const appNotificationsAPI = {
   list: () => apiRequest('/app_notifications'),
   markRead: (id) => apiRequest(`/app_notifications/${id}/mark_read`, { method: 'PATCH' }),
+};
+
+export const verificationAPI = {
+  getCenter: () => apiRequest('/verification'),
+  startBackgroundCheck: () =>
+    apiRequest('/verification/start_background_check', {
+      method: 'POST',
+    }),
+  createBackgroundCheckCheckout: () =>
+    apiRequest('/verification/create_background_check_checkout', {
+      method: 'POST',
+    }),
+};
+
+export const verificationReferencesAPI = {
+  list: () => apiRequest('/verification_references'),
+  create: (payload) =>
+    apiRequest('/verification_references', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  respond: (token, payload) =>
+    apiRequest(`/verification_references/respond/${encodeURIComponent(token)}`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
 };
 
 export const adminLicensingSettingsAPI = {
@@ -728,6 +765,13 @@ export const documentsAPI = {
 
 // User profile endpoints
 export const profilesAPI = {
+  listTechnicians: (filters = {}) => {
+    const clean = Object.fromEntries(
+      Object.entries(filters).filter(([, v]) => v != null && String(v) !== '')
+    );
+    const query = new URLSearchParams(clean);
+    return apiRequest(`/technicians${query.toString() ? `?${query}` : ''}`);
+  },
   getTechnicianProfile: () => 
     apiRequest('/technicians/profile'),
   
@@ -758,11 +802,11 @@ export const profilesAPI = {
   
   updateCompanyProfile: (id, profileData) => {
     const body = profileData instanceof FormData ? profileData : JSON.stringify(profileData);
-    return apiRequest(`/company_profiles/${id}`, { method: 'PUT', body });
+    return apiRequest(`/company_profiles/${id}`, { method: 'PATCH', body });
   },
   updateTechnicianProfile: (id, profileData) => {
     const body = profileData instanceof FormData ? profileData : JSON.stringify(profileData);
-    return apiRequest(`/technicians/${id}`, { method: 'PUT', body });
+    return apiRequest(`/technicians/${id}`, { method: 'PATCH', body });
   },
 };
 
@@ -836,7 +880,61 @@ export const ratingsAPI = {
         score: data.score,
         comment: data.comment || '',
         category_scores: data.category_scores || undefined,
+        would_hire_again: data.would_hire_again,
+        would_recommend: data.would_recommend,
+        on_time_status: data.on_time_status,
+        request_again: data.request_again,
+        would_work_again: data.would_work_again,
+        payment_on_time: data.payment_on_time,
+        job_description_match: data.job_description_match,
       }),
+    }),
+};
+
+export const adminReviewsAPI = {
+  list: (params = {}) => {
+    const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && String(v) !== ''));
+    return apiRequest(`/admin/reviews${q.toString() ? `?${q}` : ''}`);
+  },
+  flags: (params = {}) => {
+    const q = new URLSearchParams(Object.entries(params).filter(([, v]) => v != null && String(v) !== ''));
+    return apiRequest(`/admin/reviews/flags${q.toString() ? `?${q}` : ''}`);
+  },
+  analytics: () => apiRequest('/admin/reviews/analytics'),
+  updateFlag: (id, payload) =>
+    apiRequest(`/admin/review_flags/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  hide: (id, notes = '') =>
+    apiRequest(`/ratings/${id}/hide`, {
+      method: 'PATCH',
+      body: JSON.stringify({ notes }),
+    }),
+  restore: (id, notes = '') =>
+    apiRequest(`/ratings/${id}/restore`, {
+      method: 'PATCH',
+      body: JSON.stringify({ notes }),
+    }),
+  moderationQueue: () => apiRequest('/ratings/moderation_queue'),
+};
+
+export const adminTrustSafetyAPI = {
+  dashboard: () => apiRequest('/admin/trust_safety/dashboard'),
+  overrideBackgroundCheck: (id, payload) =>
+    apiRequest(`/admin/trust_safety/background_checks/${id}/override`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  reviewReference: (id, payload) =>
+    apiRequest(`/admin/trust_safety/references/${id}/review`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  reviewDocument: (id, payload) =>
+    apiRequest(`/admin/trust_safety/documents/${id}/review`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
     }),
 };
 

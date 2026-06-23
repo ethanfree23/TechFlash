@@ -4,6 +4,7 @@ import AppHeader from '../components/AppHeader';
 import { profilesAPI, favoriteTechniciansAPI, adminUsersAPI } from '../api/api';
 import ReferralModal from '../components/ReferralModal';
 import AlertModal from '../components/AlertModal';
+import { mediaUrlWithCacheBust } from '../utils/mediaUrl';
 
 const TechnicianProfilePage = ({ user, onLogout }) => {
   const { id } = useParams();
@@ -142,6 +143,8 @@ const TechnicianProfilePage = ({ user, onLogout }) => {
   }
 
   const ratings = profile.ratings_received || [];
+  const reviewSummary = profile.review_summary || {};
+  const summaryCategories = reviewSummary.categories || {};
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -157,7 +160,7 @@ const TechnicianProfilePage = ({ user, onLogout }) => {
           <div className="p-6 border-b border-gray-200 bg-gray-50">
             <div className="flex items-start gap-6">
               {profile.avatar_url ? (
-                <img src={profile.avatar_url} alt="" className="w-20 h-20 rounded-full object-cover border-2 border-gray-200 shrink-0" />
+                <img src={mediaUrlWithCacheBust(profile.avatar_url, profile.updated_at)} alt="" className="w-20 h-20 rounded-full object-cover border-2 border-gray-200 shrink-0" />
               ) : (
                 <div className="w-20 h-20 rounded-full bg-gray-300 flex items-center justify-center text-2xl font-bold text-gray-500 shrink-0">
                   {(profile.user?.email || 'T')[0].toUpperCase()}
@@ -218,6 +221,54 @@ const TechnicianProfilePage = ({ user, onLogout }) => {
               <p className="text-gray-700 whitespace-pre-wrap">{profile.bio}</p>
             </div>
           )}
+
+          {Array.isArray(profile.verification_badges) && profile.verification_badges.length > 0 && (
+            <div className="p-6 border-b border-gray-200">
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">Verification Badges</h2>
+              <div className="flex flex-wrap gap-2">
+                {profile.verification_badges.map((badge) => (
+                  <span
+                    key={badge}
+                    className="inline-flex items-center rounded-full bg-emerald-50 border border-emerald-200 px-3 py-1 text-xs font-semibold text-emerald-800"
+                  >
+                    {String(badge).replaceAll('_', ' ')}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="p-6 border-b border-gray-200">
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">Review Insights</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">Overall rating</p>
+                <p className="text-lg font-semibold text-gray-900">{reviewSummary.overall_rating != null ? Number(reviewSummary.overall_rating).toFixed(1) : "—"}</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">Would hire again</p>
+                <p className="text-lg font-semibold text-gray-900">{reviewSummary.would_hire_again_pct != null ? `${reviewSummary.would_hire_again_pct}%` : "—"}</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">Would recommend</p>
+                <p className="text-lg font-semibold text-gray-900">{reviewSummary.would_recommend_pct != null ? `${reviewSummary.would_recommend_pct}%` : "—"}</p>
+              </div>
+              <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                <p className="text-xs text-gray-500">Repeat companies</p>
+                <p className="text-lg font-semibold text-gray-900">{reviewSummary.repeat_counterparties_count ?? 0}</p>
+              </div>
+            </div>
+            {Object.keys(summaryCategories).length > 0 && (
+              <div className="space-y-2">
+                {Object.entries(summaryCategories).map(([key, value]) => (
+                  <div key={key} className="flex justify-between text-sm border-b border-gray-100 pb-1">
+                    <span className="text-gray-600">{key.replaceAll('_', ' ')}</span>
+                    <span className="font-medium text-gray-900">{Number(value).toFixed(1)} / 5</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {profile.documents && profile.documents.filter((d) => d.doc_type === 'certificate').length > 0 && (
             <div className="p-6 border-b border-gray-200">

@@ -6,7 +6,7 @@ export const DEMO_WALKTHROUGH_STEPS = [
     target: '[data-demo="demo-welcome-hero"]',
     title: 'Welcome to TechFlash',
     content:
-      'This is a live Texas marketplace demo — 96 jobs across Houston, Austin, and Dallas. Tap Start Demo here anytime.',
+      'This is a live Texas marketplace demo — ~1,900 jobs across Houston, Austin, and Dallas. Tap Start Demo here anytime.',
   },
   {
     target: '[data-demo="admin-dashboard-stats"]',

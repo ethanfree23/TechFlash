@@ -129,6 +129,73 @@ module Api
         assert_in_delta(-95.3698, profile.longitude.to_f, 0.0001)
       end
 
+      test "company can filter technician directory by verification requirements" do
+        company_user = User.create!(
+          email: "company-tech-filter@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        company_profile = CompanyProfile.create!(user: company_user, membership_level: "basic")
+        company_user.update_column(:company_profile_id, company_profile.id)
+
+        verified_user = User.create!(
+          email: "verified-tech-filter@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician,
+          first_name: "Verified"
+        )
+        verified_profile = TechnicianProfile.create!(
+          user: verified_user,
+          trade_type: "Electrician",
+          experience_years: 8,
+          availability: "Full-time",
+          background_verified: true
+        )
+        VerificationProfile.create!(
+          user: verified_user,
+          identity_status: :verified,
+          references_status: :verified,
+          insurance_status: :verified
+        )
+        VerificationBadge.create!(user: verified_user, badge_type: "cert_osha_10", status: :active, earned_at: Time.current)
+
+        unverified_user = User.create!(
+          email: "unverified-tech-filter@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician,
+          first_name: "Unverified"
+        )
+        TechnicianProfile.create!(
+          user: unverified_user,
+          trade_type: "Electrician",
+          experience_years: 5,
+          availability: "Part-time",
+          background_verified: false
+        )
+        VerificationProfile.create!(user: unverified_user)
+
+        get "/api/v1/technicians",
+            params: {
+              q: "verified",
+              trade_type: "electrician",
+              background_verified: true,
+              identity_verified: true,
+              references_verified: true,
+              insurance_verified: true,
+              certification: "osha 10"
+            },
+            headers: auth_header_for(company_user),
+            as: :json
+
+        assert_response :ok
+        ids = JSON.parse(response.body).map { |row| row["id"] }
+        assert_includes ids, verified_profile.id
+        assert_equal 1, ids.size
+      end
+
       private
 
       def with_stubbed_geocode(return_coords)

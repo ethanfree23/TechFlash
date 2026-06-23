@@ -88,6 +88,10 @@ const CreateJob = () => {
   const [minimumYearsExperience, setMinimumYearsExperience] = useState("");
   const [notes, setNotes] = useState("");
   const [requiredCertifications, setRequiredCertifications] = useState([""]);
+  const [requireBackgroundCheck, setRequireBackgroundCheck] = useState(false);
+  const [requireIdentityVerification, setRequireIdentityVerification] = useState(false);
+  const [minimumVerifiedReferences, setMinimumVerifiedReferences] = useState("0");
+  const [requireInsuranceVerification, setRequireInsuranceVerification] = useState(false);
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("Texas");
@@ -153,6 +157,10 @@ const CreateJob = () => {
     setHoursPerDay(String(job.hours_per_day ?? '8'));
     setDays(job.days != null ? String(job.days) : '');
     setStatus('open');
+    setRequireBackgroundCheck(Boolean(job.require_background_check));
+    setRequireIdentityVerification(Boolean(job.require_identity_verification));
+    setMinimumVerifiedReferences(String(job.minimum_verified_references ?? 0));
+    setRequireInsuranceVerification(Boolean(job.require_insurance_verification));
     setStartMode(String(job.start_mode || 'hard_start'));
     if (job.scheduled_start_at) {
       setScheduledStartAt(toDatetimeLocal(job.scheduled_start_at));
@@ -196,6 +204,10 @@ const CreateJob = () => {
       setHoursPerDay(String(draft.hoursPerDay || '8'));
       setDays(String(draft.days || ''));
       setStatus(String(draft.status || 'open'));
+      setRequireBackgroundCheck(Boolean(draft.requireBackgroundCheck));
+      setRequireIdentityVerification(Boolean(draft.requireIdentityVerification));
+      setMinimumVerifiedReferences(String(draft.minimumVerifiedReferences ?? '0'));
+      setRequireInsuranceVerification(Boolean(draft.requireInsuranceVerification));
       setStartMode(String(draft.startMode || 'hard_start'));
       setScheduledStartAt(String(draft.scheduledStartAt || toDatetimeLocal(defaultStart)));
       setScheduledEndAt(String(draft.scheduledEndAt || computeEndFromPricing(toDatetimeLocal(defaultStart), 1, 8)));
@@ -226,6 +238,10 @@ const CreateJob = () => {
           hoursPerDay,
           days,
           status,
+          requireBackgroundCheck,
+          requireIdentityVerification,
+          minimumVerifiedReferences,
+          requireInsuranceVerification,
           startMode,
           scheduledStartAt,
           scheduledEndAt,
@@ -252,6 +268,10 @@ const CreateJob = () => {
     hoursPerDay,
     days,
     status,
+    requireBackgroundCheck,
+    requireIdentityVerification,
+    minimumVerifiedReferences,
+    requireInsuranceVerification,
     startMode,
     scheduledStartAt,
     scheduledEndAt,
@@ -382,6 +402,10 @@ const CreateJob = () => {
         required_certifications: requiredCertifications.filter((c) => c.trim()).length
           ? requiredCertifications.filter((c) => c.trim()).join(", ")
           : null,
+        require_background_check: requireBackgroundCheck,
+        require_identity_verification: requireIdentityVerification,
+        minimum_verified_references: Math.max(0, parseInt(minimumVerifiedReferences, 10) || 0),
+        require_insurance_verification: requireInsuranceVerification,
         address,
         city,
         state,
@@ -610,6 +634,47 @@ const CreateJob = () => {
             onChange={(e) => setNotes(e.target.value)}
             placeholder="e.g. OSHA 30 required, drug screening, crawl spaces, etc."
           />
+        </div>
+        <div>
+          <label className="block font-medium mb-2">Verification requirements</label>
+          <div className="rounded-lg border border-gray-200 p-4 bg-gray-50 space-y-3">
+            <label className="flex items-center justify-between text-sm gap-4">
+              <span>Require background check</span>
+              <input
+                type="checkbox"
+                checked={requireBackgroundCheck}
+                onChange={(e) => setRequireBackgroundCheck(e.target.checked)}
+              />
+            </label>
+            <label className="flex items-center justify-between text-sm gap-4">
+              <span>Require identity verification</span>
+              <input
+                type="checkbox"
+                checked={requireIdentityVerification}
+                onChange={(e) => setRequireIdentityVerification(e.target.checked)}
+              />
+            </label>
+            <div className="flex items-center justify-between text-sm gap-4">
+              <label htmlFor="minimum-verified-references">Minimum verified references</label>
+              <input
+                id="minimum-verified-references"
+                type="number"
+                min="0"
+                max="10"
+                className="w-24 border px-2 py-1 rounded bg-white"
+                value={minimumVerifiedReferences}
+                onChange={(e) => setMinimumVerifiedReferences(e.target.value)}
+              />
+            </div>
+            <label className="flex items-center justify-between text-sm gap-4">
+              <span>Require insurance verification</span>
+              <input
+                type="checkbox"
+                checked={requireInsuranceVerification}
+                onChange={(e) => setRequireInsuranceVerification(e.target.checked)}
+              />
+            </label>
+          </div>
         </div>
         <div>
           <label className="block font-medium mb-1">Required Certifications</label>

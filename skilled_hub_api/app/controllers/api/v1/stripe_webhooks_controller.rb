@@ -62,12 +62,16 @@ module Api
           )
         when 'checkout.session.completed'
           session = event.data.object
-          subscription_id = session.subscription.to_s
-          return if subscription_id.blank?
+          if session.mode.to_s == "subscription"
+            subscription_id = session.subscription.to_s
+            return if subscription_id.blank?
 
-          subscription = Stripe::Subscription.retrieve(subscription_id)
-          MembershipSubscriptionService.sync_from_subscription(subscription)
-          send_membership_checkout_email(session: session)
+            subscription = Stripe::Subscription.retrieve(subscription_id)
+            MembershipSubscriptionService.sync_from_subscription(subscription)
+            send_membership_checkout_email(session: session)
+          elsif session.mode.to_s == "payment"
+            process_background_check_checkout(session)
+          end
         when 'customer.subscription.updated', 'customer.subscription.created'
           subscription = event.data.object
           MembershipSubscriptionService.sync_from_subscription(subscription)
@@ -114,6 +118,26 @@ module Api
         return unless fee_cents.positive?
 
         MailDelivery.safe_deliver { UserMailer.membership_checkout_thanks(user, membership_level: tier).deliver_now }
+      end
+
+      def process_background_check_checkout(session)
+        background_check_id = session.metadata&.[]("background_check_id").to_s
+        return if background_check_id.blank?
+        check = BackgroundCheck.find_by(id: background_check_id)
+        return if check.blank?
+        return if check.payment_status.to_s == "paid"
+
+        check.update!(
+          payment_status: :paid,
+          stripe_checkout_session_id: session.id,
+          stripe_payment_intent_id: session.payment_intent.to_s.presence,
+          paid_at: Time.current
+        )
+        VerificationEventNotifier.background_payment_completed(check.user, check)
+        invitation = BackgroundCheckStartService.launch_checkr_invitation!(check)
+        check.update!(provider_invitation_id: invitation["id"]) if invitation["id"].present?
+      rescue BackgroundCheckStartService::Error => e
+        check&.update!(status: :failed, admin_notes: e.message)
       end
 
       def send_membership_invoice_paid_email(invoice:)

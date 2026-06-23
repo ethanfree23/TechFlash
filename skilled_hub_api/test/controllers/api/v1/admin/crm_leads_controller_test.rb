@@ -416,6 +416,90 @@ module Api
 
           assert_response :forbidden
         end
+
+        test "reminders index returns root notes with remind_at across leads" do
+          admin = User.create!(
+            email: "admin+crm_reminders@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+          lead_a = CrmLead.create!(name: "Alpha Co", status: "lead", phone: "5551112222")
+          lead_b = CrmLead.create!(name: "Beta Co", status: "prospect")
+          overdue_at = 2.days.ago.change(usec: 0)
+          upcoming_at = 2.days.from_now.change(usec: 0)
+          lead_a.crm_notes.create!(
+            contact_method: "call",
+            title: "Overdue task",
+            body: "Call back",
+            remind_at: overdue_at
+          )
+          lead_b.crm_notes.create!(
+            contact_method: "note",
+            title: "Upcoming task",
+            body: "Follow up",
+            remind_at: upcoming_at
+          )
+          parent = lead_a.crm_notes.order(:id).first
+          lead_a.crm_notes.create!(
+            parent_note_id: parent.id,
+            contact_method: "note",
+            body: "Reply should not appear",
+            remind_at: 1.day.from_now
+          )
+
+          get "/api/v1/admin/crm_leads/reminders",
+              headers: auth_header_for(admin),
+              as: :json
+
+          assert_response :ok
+          body = JSON.parse(response.body)
+          reminders = body.fetch("reminders")
+          assert_equal 2, reminders.length
+          assert_equal [overdue_at.iso8601, upcoming_at.iso8601], reminders.map { |r| r["remind_at"] }
+          assert_equal "Alpha Co", reminders.first["company_name"]
+          assert_equal "lead", reminders.first["lead_status"]
+          assert_equal "5551112222", reminders.first["phone"]
+        end
+
+        test "reminders index filters by when and status" do
+          admin = User.create!(
+            email: "admin+crm_reminders_filter@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+          lead_lead = CrmLead.create!(name: "Lead Status Co", status: "lead")
+          lead_prospect = CrmLead.create!(name: "Prospect Status Co", status: "prospect")
+          overdue_at = 1.day.ago.change(usec: 0)
+          upcoming_at = 1.day.from_now.change(usec: 0)
+          overdue_note = lead_lead.crm_notes.create!(
+            contact_method: "call",
+            body: "Overdue",
+            remind_at: overdue_at
+          )
+          lead_prospect.crm_notes.create!(
+            contact_method: "call",
+            body: "Upcoming prospect",
+            remind_at: upcoming_at
+          )
+
+          get "/api/v1/admin/crm_leads/reminders?when=overdue",
+              headers: auth_header_for(admin),
+              as: :json
+
+          assert_response :ok
+          overdue_ids = JSON.parse(response.body).fetch("reminders").map { |r| r["id"] }
+          assert_equal [overdue_note.id], overdue_ids
+
+          get "/api/v1/admin/crm_leads/reminders?status=prospect",
+              headers: auth_header_for(admin),
+              as: :json
+
+          assert_response :ok
+          prospect_names = JSON.parse(response.body).fetch("reminders").map { |r| r["company_name"] }
+          assert_equal ["Prospect Status Co"], prospect_names
+        end
       end
     end
   end

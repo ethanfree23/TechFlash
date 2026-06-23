@@ -232,11 +232,110 @@ class UserMailer < ApplicationMailer
     )
   end
 
+  def reference_request_email(to_email:, reference_name:, technician_name:, response_url:)
+    @reference_name = reference_name
+    @technician_name = technician_name
+    @response_url = response_url
+    mail(to: to_email, subject: "Reference request from TechFlash") do |format|
+      format.text do
+        render plain: <<~TEXT
+          Hi #{@reference_name},
+
+          #{technician_name} asked you to provide a professional reference on TechFlash.
+
+          Submit your response here:
+          #{@response_url}
+
+          Thank you,
+          TechFlash Trust & Safety
+        TEXT
+      end
+    end
+  end
+
+  def background_check_payment_required_email(user, background_check)
+    @user = user
+    @background_check = background_check
+    @settings_url = frontend_url('/settings')
+    mail(to: user.email, subject: "Background check payment required") do |format|
+      format.text do
+        render plain: <<~TEXT
+          Hi #{@user.first_name.presence || @user.email},
+
+          Your TechFlash background check requires payment before we can issue your Checkr invitation.
+
+          Continue in Settings:
+          #{@settings_url}
+        TEXT
+      end
+    end
+  end
+
+  def background_check_payment_completed_email(user, background_check)
+    @user = user
+    @background_check = background_check
+    @settings_url = frontend_url('/settings')
+    mail(to: user.email, subject: "Background check payment received") do |format|
+      format.text do
+        render plain: <<~TEXT
+          Hi #{@user.first_name.presence || @user.email},
+
+          We received your background check payment.
+          Your verification is now moving forward.
+
+          Track progress:
+          #{@settings_url}
+        TEXT
+      end
+    end
+  end
+
+  def background_check_started_email(user, background_check)
+    @user = user
+    @background_check = background_check
+    @settings_url = frontend_url('/settings')
+    mail(to: user.email, subject: "Background check started") do |format|
+      format.text do
+        render plain: <<~TEXT
+          Hi #{@user.first_name.presence || @user.email},
+
+          Your Checkr invitation has been issued and your background check is now in progress.
+
+          View your verification center:
+          #{@settings_url}
+        TEXT
+      end
+    end
+  end
+
+  def background_check_result_email(user, background_check)
+    @user = user
+    @background_check = background_check
+    @settings_url = frontend_url('/settings')
+    status = background_check.status.to_s.humanize
+    mail(to: user.email, subject: "Background check update: #{status}") do |format|
+      format.text do
+        render plain: <<~TEXT
+          Hi #{@user.first_name.presence || @user.email},
+
+          Your background check status is now: #{status}.
+
+          View details in Settings:
+          #{@settings_url}
+        TEXT
+      end
+    end
+  end
+
   private
 
   def frontend_reset_password_url(token)
     base = ENV.fetch('FRONTEND_URL', 'http://localhost:5173').chomp('/')
     "#{base}/reset-password?token=#{CGI.escape(token)}"
+  end
+
+  def frontend_url(path)
+    "#{ENV.fetch('FRONTEND_URL', 'http://localhost:5173').chomp('/')}#{path}"
   end
 
   def recipient_for_message(message)

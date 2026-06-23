@@ -420,11 +420,8 @@ module Api
         end
 
         def company_avatar_url(profile)
-          return nil unless profile.avatar.attached?
-
-          Rails.application.routes.url_helpers.rails_blob_url(profile.avatar)
-        rescue StandardError
-          nil
+          extend ActiveStorageUrlHelper
+          absolute_blob_url(profile.avatar)
         end
 
         def parse_service_cities_param

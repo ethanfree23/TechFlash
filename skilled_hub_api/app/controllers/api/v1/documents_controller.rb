@@ -56,6 +56,9 @@ module Api
 
       def create
         document = Document.new(document_params)
+        unless can_create_document?(document)
+          return render json: { error: "Access denied" }, status: :forbidden
+        end
         
         # Handle file attachment with better error handling
         if params[:file].present?
@@ -109,10 +112,34 @@ module Api
       private
 
       def document_params
-        params.permit(:uploadable_id, :uploadable_type, :doc_type)
+        params.permit(:uploadable_id, :uploadable_type, :doc_type, :issuer, :document_number, :issued_on, :valid_until, metadata: {})
+      end
+
+      def can_create_document?(document)
+        return true if @current_user.admin?
+        return false if document.uploadable_type.blank? || document.uploadable_id.blank?
+
+        case document.uploadable_type
+        when "TechnicianProfile"
+          @current_user.technician? && @current_user.technician_profile&.id == document.uploadable_id.to_i
+        when "CompanyProfile"
+          @current_user.company? && @current_user.company_profile&.id == document.uploadable_id.to_i
+        when "JobApplication"
+          if @current_user.technician?
+            @current_user.technician_profile&.job_applications&.exists?(id: document.uploadable_id)
+          elsif @current_user.company?
+            ja = JobApplication.find_by(id: document.uploadable_id)
+            ja.present? && ja.job.company_profile_id == @current_user.company_profile&.id
+          else
+            false
+          end
+        else
+          false
+        end
       end
       
       def can_access_document?(document)
+        return true if @current_user.admin?
         case document.uploadable_type
         when 'TechnicianProfile'
           # Technicians can access their own profile documents

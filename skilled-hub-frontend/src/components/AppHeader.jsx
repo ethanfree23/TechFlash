@@ -9,7 +9,7 @@ const navActive =
   'px-3 py-2 font-medium text-blue-600 bg-blue-50 rounded-md whitespace-nowrap shrink-0';
 
 /**
- * @param {'dashboard'|'jobs'|'messages'|'crm'|'users'|'settings'|'legal'|null|undefined} activePage
+ * @param {'dashboard'|'jobs'|'technicians'|'messages'|'crm'|'users'|'reviews'|'trust_safety'|'settings'|'legal'|null|undefined} activePage
  * @param {'full'|'minimal'} navPreset — minimal: Dashboard, Jobs, Settings (profile pages)
  * @param {boolean} profileAvatar — letter avatar linking to settings; hidden below md
  * @param {'none'|'welcome'|'simple'|'crm'} emailVariant — right-side user info (not used when profileAvatar)
@@ -23,6 +23,7 @@ export default function AppHeader({
   emailVariant = 'none',
 }) {
   const isAdmin = user?.role === 'admin';
+  const isCompany = user?.role === 'company';
   const showCrm = navPreset === 'full' && isAdmin;
   const [showReferralModal, setShowReferralModal] = useState(false);
   const canRefer = user?.role === 'company' || user?.role === 'technician';
@@ -68,12 +69,23 @@ export default function AppHeader({
                   <NavLink page="crm" to="/crm">
                     CRM
                   </NavLink>
+                  <NavLink page="reviews" to="/admin/reviews">
+                    Reviews
+                  </NavLink>
+                  <NavLink page="trust_safety" to="/admin/trust-safety">
+                    Trust & Safety
+                  </NavLink>
                   <NavLink page="settings" to="/settings">
                     Settings
                   </NavLink>
                 </>
               ) : (
                 <>
+                  {(isCompany || isAdmin) && (
+                    <NavLink page="technicians" to="/technicians">
+                      Technicians
+                    </NavLink>
+                  )}
                   <NavLink page="messages" to="/messages">
                     Messages
                   </NavLink>

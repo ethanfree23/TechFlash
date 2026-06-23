@@ -17,8 +17,10 @@ import {
   emptyNoteDraft,
   noteDraftForReply,
   noteDraftForEdit,
+  noteDraftForConvertReminder,
   noteWasEdited,
 } from '../utils/crmNotes';
+import CrmReminderQueueModal from '../components/crm/CrmReminderQueueModal';
 import { US_STATES } from '../data/statesByCountry';
 import { normalizeToUsStateName } from '../utils/crmUsState';
 import { parseUsAddressPaste } from '../utils/parseUsAddressPaste';
@@ -551,11 +553,19 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [reminderModalOpen, setReminderModalOpen] = useState(false);
   const [reminderDraft, setReminderDraft] = useState({ remind_at: '', title: '', body: '' });
   const [reminderSaving, setReminderSaving] = useState(false);
+  const [reminderQueueOpen, setReminderQueueOpen] = useState(false);
+  const [globalReminders, setGlobalReminders] = useState([]);
+  const [reminderQueueWhen, setReminderQueueWhen] = useState('all');
+  const [reminderQueueStatus, setReminderQueueStatus] = useState('all');
+  const [reminderQueueLoading, setReminderQueueLoading] = useState(false);
+  const [convertingReminderNoteId, setConvertingReminderNoteId] = useState(null);
   const [emailComposerOpen, setEmailComposerOpen] = useState(false);
   const [emailComposerTemplateKey, setEmailComposerTemplateKey] = useState('sales_call_follow_up');
   const [expandedSentEmailNotes, setExpandedSentEmailNotes] = useState({});
   const pendingAdditionalContactFocusIdx = useRef(null);
   const crmAddUserContactIdxRef = useRef(null);
+  const skipNoteResetOnLeadChangeRef = useRef(false);
+  const pendingConvertReminderRef = useRef(null);
   const [crmContactUserModalOpen, setCrmContactUserModalOpen] = useState(false);
   const [crmAddUserPrefill, setCrmAddUserPrefill] = useState(null);
   const crmLeadUiHydratedKeyRef = useRef(null);
@@ -726,6 +736,10 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   }, [selectedId, isCreating, loadDetail]);
 
   useEffect(() => {
+    if (skipNoteResetOnLeadChangeRef.current) {
+      skipNoteResetOnLeadChangeRef.current = false;
+      return;
+    }
     resetNoteDraft();
     setNoteComposerOpen(false);
     setReminderModalOpen(false);
@@ -2097,7 +2111,83 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
 
   function resetNoteDraft() {
     setNoteDraft(emptyNoteDraft());
+    setConvertingReminderNoteId(null);
   }
+
+  const fetchGlobalReminders = useCallback(async () => {
+    setReminderQueueLoading(true);
+    try {
+      const params = { when: reminderQueueWhen };
+      if (reminderQueueStatus && reminderQueueStatus !== 'all') {
+        params.status = reminderQueueStatus;
+      }
+      const res = await crmAPI.listReminders(params);
+      setGlobalReminders(res.reminders || []);
+    } catch (e) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not load reminders',
+        message: e.message || 'Failed to load reminder queue',
+        variant: 'error',
+      });
+      setGlobalReminders([]);
+    } finally {
+      setReminderQueueLoading(false);
+    }
+  }, [reminderQueueWhen, reminderQueueStatus]);
+
+  useEffect(() => {
+    if (reminderQueueOpen) fetchGlobalReminders();
+  }, [reminderQueueOpen, fetchGlobalReminders]);
+
+  const openReminderQueue = () => {
+    setReminderQueueOpen(true);
+  };
+
+  const openReminderInTimeline = (note) => {
+    setTimelineFilter('all');
+    setCrmDetailTab('activity');
+    window.requestAnimationFrame(() => {
+      document.getElementById(`crm-note-${note.id}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  };
+
+  const openConvertComposer = useCallback((sourceNote, options = {}) => {
+    const draft = noteDraftForConvertReminder(sourceNote);
+    if (options.contactMethod) draft.contact_method = options.contactMethod;
+    if (options.madeContact != null) draft.made_contact = Boolean(options.madeContact);
+    setConvertingReminderNoteId(sourceNote.id);
+    setNoteDraft(draft);
+    setNoteComposerOpen(true);
+  }, []);
+
+  const startConvertReminder = (note, options = {}) => {
+    const leadId = note.crm_lead_id ?? selectedId;
+    if (!leadId || !note?.id) return;
+
+    setCrmDetailTab('activity');
+    setReminderQueueOpen(false);
+
+    if (Number(leadId) !== Number(selectedId)) {
+      pendingConvertReminderRef.current = { note, options };
+      setIsCreating(false);
+      skipNoteResetOnLeadChangeRef.current = true;
+      setSelectedId(leadId);
+      return;
+    }
+
+    const sourceNote = crmNotes.find((n) => n.id === note.id) || note;
+    openConvertComposer(sourceNote, options);
+  };
+
+  useEffect(() => {
+    const pending = pendingConvertReminderRef.current;
+    if (!pending || detailLoading || !selectedId) return;
+    const sourceNote = crmNotes.find((n) => n.id === pending.note.id);
+    if (!sourceNote) return;
+    pendingConvertReminderRef.current = null;
+    openConvertComposer(sourceNote, pending.options);
+  }, [crmNotes, detailLoading, selectedId, openConvertComposer]);
 
   const startAddNote = () => {
     resetNoteDraft();
@@ -2105,11 +2195,13 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   };
 
   const startReply = (parentNoteId) => {
+    setConvertingReminderNoteId(null);
     setNoteDraft(noteDraftForReply(parentNoteId));
     setNoteComposerOpen(true);
   };
 
   const startEditNote = (note) => {
+    setConvertingReminderNoteId(null);
     setNoteDraft(noteDraftForEdit(note));
     setNoteComposerOpen(true);
   };
@@ -2134,12 +2226,16 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         body: noteDraft.body.trim(),
         parent_note_id: noteDraft.parent_note_id ?? undefined,
       };
-      const ra = (noteDraft.remind_at || '').trim();
-      if (ra) {
-        const dt = new Date(ra);
-        if (!Number.isNaN(dt.getTime())) payload.remind_at = dt.toISOString();
-      } else if (noteDraft.id) {
+      if (convertingReminderNoteId && noteDraft.id) {
         payload.remind_at = null;
+      } else {
+        const ra = (noteDraft.remind_at || '').trim();
+        if (ra) {
+          const dt = new Date(ra);
+          if (!Number.isNaN(dt.getTime())) payload.remind_at = dt.toISOString();
+        } else if (noteDraft.id) {
+          payload.remind_at = null;
+        }
       }
       const res = noteDraft.id
         ? await crmAPI.updateNote(selectedId, noteDraft.id, payload)
@@ -2147,6 +2243,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       setCrmNotes(res.crm_notes || []);
       resetNoteDraft();
       setNoteComposerOpen(false);
+      if (reminderQueueOpen) fetchGlobalReminders();
     } catch (e) {
       setAlertModal({
         isOpen: true,
@@ -2203,6 +2300,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       setCrmNotes(res.crm_notes || []);
       setReminderModalOpen(false);
       setReminderDraft({ remind_at: '', title: '', body: '' });
+      if (reminderQueueOpen) fetchGlobalReminders();
     } catch (e) {
       setAlertModal({
         isOpen: true,
@@ -4044,10 +4142,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     <h3 className="text-xs font-semibold uppercase tracking-wide text-amber-900">Task flow</h3>
                     <button
                       type="button"
-                      onClick={() => {
-                        setTimelineFilter('reminders');
-                        setTimelineSort('reminders');
-                      }}
+                      onClick={openReminderQueue}
                       className="text-xs font-semibold text-amber-900 hover:underline"
                     >
                       View reminder queue
@@ -4063,13 +4158,17 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                           <span className="min-w-0 flex-1 truncate">{note.title || note.body || 'Reminder'}</span>
                           <button
                             type="button"
-                            onClick={() => {
-                              setTimelineFilter('all');
-                              setTimelineSort('reminders');
-                            }}
+                            onClick={() => openReminderInTimeline(note)}
                             className="text-blue-700 hover:underline"
                           >
                             Open
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => startConvertReminder(note)}
+                            className="text-blue-700 hover:underline"
+                          >
+                            Log activity
                           </button>
                           <button
                             type="button"
@@ -4099,6 +4198,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       return (
                         <div
                           key={note.id}
+                          id={`crm-note-${note.id}`}
                           className={`rounded-xl border p-4 ${
                             isSentEmail
                               ? 'border-orange-200 bg-orange-50/40'
@@ -4149,6 +4249,15 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                             );
                           })()}
                           <div className="mt-2 flex flex-wrap gap-2">
+                            {note.remind_at ? (
+                              <button
+                                type="button"
+                                onClick={() => startConvertReminder(note)}
+                                className="text-xs font-semibold text-amber-900 hover:underline"
+                              >
+                                Log activity
+                              </button>
+                            ) : null}
                             <button type="button" onClick={() => startEditNote(note)} className="text-xs text-blue-700 hover:underline">
                               Edit
                             </button>
@@ -4508,7 +4617,13 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             <div className="bg-white rounded-2xl border border-gray-100 shadow-xl max-w-xl w-full max-h-[90vh] overflow-hidden flex flex-col">
               <div className="flex items-center justify-between gap-3 px-6 py-4 border-b border-gray-100 shrink-0">
                 <h2 id="crm-note-modal-title" className="text-lg font-semibold text-gray-900">
-                  {noteDraft.parent_note_id ? 'Comment' : noteDraft.id ? 'Edit note' : 'Note'}
+                  {convertingReminderNoteId
+                    ? 'Log activity'
+                    : noteDraft.parent_note_id
+                      ? 'Comment'
+                      : noteDraft.id
+                        ? 'Edit note'
+                        : 'Note'}
                 </h2>
                 <button
                   type="button"
@@ -4577,7 +4692,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                       placeholder={noteDraft.parent_note_id ? 'Add your follow-up comment...' : 'Enter call/email/text/in-person details...'}
                     />
                   </label>
-                  {!noteDraft.parent_note_id ? (
+                  {!noteDraft.parent_note_id && !convertingReminderNoteId ? (
                     <label className="block sm:col-span-3">
                       <span className="text-xs font-medium text-gray-500 uppercase">Reminder (optional)</span>
                       <input
@@ -4587,6 +4702,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         onChange={(e) => setNoteDraft((n) => ({ ...n, remind_at: e.target.value }))}
                       />
                     </label>
+                  ) : null}
+                  {convertingReminderNoteId ? (
+                    <p className="text-xs text-amber-800 sm:col-span-3">
+                      Saving will complete this reminder and remove it from your queue.
+                    </p>
                   ) : null}
                   <label className="inline-flex items-center gap-2 text-sm text-gray-700 sm:col-span-3">
                     <input
@@ -4615,13 +4735,38 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     onClick={saveNote}
                     className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-medium disabled:opacity-50"
                   >
-                    {noteSaving ? 'Saving…' : noteDraft.id ? 'Update note' : noteDraft.parent_note_id ? 'Save comment' : 'Save note'}
+                    {noteSaving
+                      ? 'Saving…'
+                      : convertingReminderNoteId
+                        ? 'Save activity'
+                        : noteDraft.id
+                          ? 'Update note'
+                          : noteDraft.parent_note_id
+                            ? 'Save comment'
+                            : 'Save note'}
                   </button>
                 </div>
               </div>
             </div>
           </div>
         ) : null}
+
+        <CrmReminderQueueModal
+          isOpen={reminderQueueOpen}
+          loading={reminderQueueLoading}
+          reminders={globalReminders}
+          whenFilter={reminderQueueWhen}
+          statusFilter={reminderQueueStatus}
+          onWhenFilterChange={setReminderQueueWhen}
+          onStatusFilterChange={setReminderQueueStatus}
+          onClose={() => setReminderQueueOpen(false)}
+          onOpenCompany={(leadId) => {
+            selectLead(leadId);
+            setCrmDetailTab('activity');
+            setReminderQueueOpen(false);
+          }}
+          onConvertReminder={(note) => startConvertReminder(note)}
+        />
 
         {profileImportOpen ? (
           <div

@@ -23,6 +23,16 @@ module Jobs
         return { error: "This job is not available for your tier yet.", status: :forbidden }
       end
 
+      verification_gate = VerificationEligibilityService.call(job: @job, technician_profile: technician_profile)
+      unless verification_gate.eligible
+        return {
+          error: "This job has verification requirements you have not completed.",
+          status: :forbidden,
+          verification_required: true,
+          verification_reasons: verification_gate.reasons
+        }
+      end
+
       apply_offer_terms! if @offer.present?
       ensure_schedule_for_start_mode!
       return { error: schedule_error_message } if schedule_invalid?

@@ -67,6 +67,11 @@ Rails.application.routes.draw do
         collection do
           get :review_categories
           get :reviewed_job_ids
+          get :moderation_queue
+        end
+        member do
+          patch :hide
+          patch :restore
         end
       end
       resources :company_profiles do
@@ -92,6 +97,13 @@ Rails.application.routes.draw do
       post 'favorite_technicians', to: 'favorite_technicians#create'
       delete 'favorite_technicians/:id', to: 'favorite_technicians#destroy'
       post 'stripe/webhook', to: 'stripe_webhooks#create'
+      post 'checkr/webhook', to: 'checkr_webhooks#create'
+      resource :verification, only: [:show], controller: :verifications do
+        post :start_background_check
+        post :create_background_check_checkout
+      end
+      resources :verification_references, only: [:index, :create]
+      post "verification_references/respond/:token", to: "verification_references#respond"
       post "coupons/redeem", to: "coupons#redeem"
       resource :job_alert_preference, only: %i[show update]
       resources :app_notifications, only: %i[index] do
@@ -101,6 +113,17 @@ Rails.application.routes.draw do
       end
 
       namespace :admin do
+        resources :reviews, only: [:index] do
+          collection do
+            get :flags
+            get :analytics
+          end
+        end
+        get "trust_safety/dashboard", to: "trust_safety#dashboard"
+        patch "trust_safety/background_checks/:id/override", to: "trust_safety#override_background_check"
+        patch "trust_safety/references/:id/review", to: "trust_safety#review_reference"
+        patch "trust_safety/documents/:id/review", to: "trust_safety#review_document"
+        patch "review_flags/:id", to: "reviews#update_flag"
         resources :membership_tier_configs, only: %i[index create update destroy] do
           member do
             post :provision_stripe
@@ -136,6 +159,7 @@ Rails.application.routes.draw do
             post :import
             post :bulk_destroy
             post :enrich_from_url
+            get :reminders
           end
           resources :crm_notes, only: %i[create update]
         end

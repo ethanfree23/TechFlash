@@ -4,13 +4,20 @@ module Demo
   class Seeder
     include MarketData
 
-    JOB_BUCKETS = [
+    # Default 20× vs original demo volume (15 techs / 32 jobs per city).
+    DEMO_SCALE = Integer(ENV.fetch("DEMO_SEED_SCALE", "20"))
+
+    BASE_JOB_BUCKETS = [
       { key: :open, count: 10 },
       { key: :claimed, count: 7 },
       { key: :in_progress, count: 6 },
       { key: :pending_review, count: 5 },
       { key: :reviewed, count: 4 }
     ].freeze
+
+    BASE_TECHNICIANS_PER_MARKET = 15
+    BASE_COMPANIES_PER_MARKET = 8
+    BASE_OPEN_JOBS_PER_CITY = 10
 
     class << self
       def reset!
@@ -133,7 +140,8 @@ module Demo
     def populate_market!(market_key)
       market = MARKETS[market_key]
       companies = []
-      market[:companies].each_with_index do |name, idx|
+      companies_per_market.times do |idx|
+        name = company_name_for(market, market_key, idx)
         next if name == "Bayou City Mechanical" && market_key == :houston
 
         email = "demo.co.#{market_key}.#{idx}@techflash.app"
@@ -160,7 +168,7 @@ module Demo
       @market_companies[market_key] = companies
 
       techs = []
-      15.times do |i|
+      technicians_per_market.times do |i|
         email = "demo.tech.#{market_key}.#{i}@techflash.app"
         fn = TECH_FIRST_NAMES[(i + market_key.to_s.length) % TECH_FIRST_NAMES.size]
         ln = TECH_LAST_NAMES[(i + 7) % TECH_LAST_NAMES.size]
@@ -197,7 +205,7 @@ module Demo
       @market_technicians[market_key] = techs.uniq
 
       job_index = 0
-      JOB_BUCKETS.each do |bucket|
+      job_buckets.each do |bucket|
         bucket[:count].times do
           create_job_for_bucket!(
             market_key: market_key,
@@ -211,7 +219,30 @@ module Demo
       end
     end
 
-    OPEN_JOBS_PER_CITY = 10
+    def job_buckets
+      BASE_JOB_BUCKETS.map { |bucket| { key: bucket[:key], count: bucket[:count] * DEMO_SCALE } }
+    end
+
+    def technicians_per_market
+      BASE_TECHNICIANS_PER_MARKET * DEMO_SCALE
+    end
+
+    def companies_per_market
+      BASE_COMPANIES_PER_MARKET * DEMO_SCALE
+    end
+
+    def open_jobs_per_city
+      BASE_OPEN_JOBS_PER_CITY * DEMO_SCALE
+    end
+
+    def company_name_for(market, market_key, idx)
+      seeded = market[:companies][idx]
+      return seeded if seeded.present?
+
+      skill = SKILL_CLASSES[idx % SKILL_CLASSES.size]
+      suffix = market_key.to_s.split("_").map(&:capitalize).join
+      "#{market[:city]} #{skill} Services #{suffix}-#{idx + 1}"
+    end
 
     def create_job_for_bucket!(market_key:, bucket:, index:, companies:, techs:)
       market = MARKETS[market_key]
@@ -220,7 +251,7 @@ module Demo
       skill = SKILL_CLASSES[index % SKILL_CLASSES.size]
       titles = JOB_TITLES[skill]
       title = titles[index % titles.size]
-      is_flagship = market_key == :houston && bucket == :claimed && index == OPEN_JOBS_PER_CITY
+      is_flagship = market_key == :houston && bucket == :claimed && index == open_jobs_per_city
       if is_flagship
         title = "URGENT: Commercial RTU coverage — Midtown Houston"
         skill = "HVAC"
@@ -451,8 +482,9 @@ module Demo
     end
 
     def seed_login_events!
+      per_user = @stats[:users].to_i > 250 ? 2 : rand(3..8)
       User.find_each do |u|
-        rand(3..8).times do |d|
+        per_user.times do |d|
           UserLoginEvent.create!(user_id: u.id, via_masquerade: false, created_at: d.days.ago + rand(0..3600).seconds)
         end
       end
@@ -463,9 +495,9 @@ module Demo
       return unless admin
 
       [
-        ["job_lifecycle", "Marketplace activity", "32 open jobs across Houston, Austin, and Dallas."],
-        ["messages", "Message threads active", "Companies and technicians are coordinating on claimed jobs."],
-        ["reviews", "Reviews pending", "Several completed jobs are awaiting bilateral reviews."]
+        ["job_lifecycle", "Marketplace activity", "#{@stats[:jobs]} jobs across Houston, Austin, and Dallas."],
+        ["messages", "Message threads active", "#{@stats[:messages]} messages on claimed and completed jobs."],
+        ["reviews", "Reviews pending", "#{@stats[:ratings] / 2} completed jobs with bilateral reviews."]
       ].each do |category, title, body|
         AppNotification.create!(user: admin, category: category, title: title, body: body, metadata: {})
       end
@@ -498,7 +530,8 @@ module Demo
 
     def pick_company_for_job(market_key, index, companies)
       if market_key == :houston && @demo_company_profile
-        demo_slots = [0, 1, 2, OPEN_JOBS_PER_CITY, OPEN_JOBS_PER_CITY + 1, OPEN_JOBS_PER_CITY + 2]
+        open = open_jobs_per_city
+        demo_slots = [0, 1, 2, open, open + 1, open + 2]
         return @demo_company_profile if demo_slots.include?(index)
       end
 

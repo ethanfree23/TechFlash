@@ -22,6 +22,19 @@ module Api
           }, status: :ok
         end
 
+        def reminders
+          scope = CrmNote.where(parent_note_id: nil).where.not(remind_at: nil).includes(:crm_lead)
+          scope = apply_reminder_when_filter(scope, params[:when].to_s)
+          status_filter = params[:status].to_s.strip
+          if status_filter.present? && status_filter != "all"
+            scope = scope.joins(:crm_lead).where(crm_leads: { status: status_filter })
+          end
+          notes = scope.order(remind_at: :asc).to_a
+          render json: {
+            reminders: notes.map { |note| reminder_queue_json(note) }
+          }, status: :ok
+        end
+
         def show
           payload = { crm_lead: lead_json(@lead) }
           append_linked_payload(payload, @lead)
@@ -515,6 +528,38 @@ module Api
             company_profile_id: company_profile&.id,
             company_name: company_profile&.company_name,
             company_user_count: company_profile ? company_profile.company_users.where(role: :company).count : 0
+          }
+        end
+
+        def apply_reminder_when_filter(scope, when_key)
+          key = when_key.presence || "all"
+          now = Time.current
+          case key
+          when "overdue"
+            scope.where(remind_at: ...now)
+          when "today"
+            scope.where(remind_at: now.beginning_of_day..now.end_of_day)
+          when "upcoming"
+            scope.where(remind_at: now..)
+          else
+            scope
+          end
+        end
+
+        def reminder_queue_json(note)
+          lead = note.crm_lead
+          {
+            id: note.id,
+            crm_lead_id: note.crm_lead_id,
+            company_name: lead&.name,
+            lead_status: lead&.status,
+            phone: lead&.phone,
+            company_phone: lead&.company_phone,
+            remind_at: note.remind_at&.iso8601,
+            contact_method: note.contact_method,
+            title: note.title,
+            body: note.body,
+            made_contact: note.made_contact
           }
         end
 

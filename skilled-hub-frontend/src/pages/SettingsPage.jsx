@@ -10,6 +10,8 @@ import {
   membershipsAPI,
   couponsAPI,
   jobAlertPreferencesAPI,
+  verificationAPI,
+  verificationReferencesAPI,
   feedbackAPI,
 } from '../api/api';
 import { auth } from '../auth';
@@ -25,6 +27,7 @@ import { formatPhoneInput } from '../utils/phone';
 import { TRADE_OPTIONS, TRADE_OTHER_SENTINEL } from '../constants/trades';
 import { getNotificationCategories } from '../config/notificationPreferenceCatalog';
 import { isDemoMode, demoSimulatedMessage } from '../utils/demoMode';
+import { mediaUrlWithCacheBust } from '../utils/mediaUrl';
 import AccountRolePanel from '../components/settings/AccountRolePanel';
 import { parseSettingsUrl, replaceSettingsUrl } from '../utils/settingsUrl';
 import SettingsPageShell from '../components/settings/SettingsPageShell';
@@ -129,6 +132,21 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [membershipTierEditing, setMembershipTierEditing] = useState(false);
   const [membershipTierDraft, setMembershipTierDraft] = useState('');
   const [savingMembership, setSavingMembership] = useState(false);
+  const [verificationCenter, setVerificationCenter] = useState(null);
+  const [loadingVerificationCenter, setLoadingVerificationCenter] = useState(false);
+  const [startingBackgroundCheck, setStartingBackgroundCheck] = useState(false);
+  const [verificationReferences, setVerificationReferences] = useState([]);
+  const [loadingReferences, setLoadingReferences] = useState(false);
+  const [submittingReference, setSubmittingReference] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState(null);
+  const [avatarBroken, setAvatarBroken] = useState(false);
+  const [newReference, setNewReference] = useState({
+    full_name: '',
+    email: '',
+    phone: '',
+    company_name: '',
+    relationship: '',
+  });
   const publishableKey = getStripePublishableKey();
   const stripe = useMemo(() => {
     if (window.Stripe && isValidStripePublishableKey(publishableKey)) {
@@ -141,6 +159,16 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const isTechnician = user?.role === 'technician';
   const isAdmin = user?.role === 'admin';
   const needsMapSetup = isTechnician && needsTechnicianMapSetup(profile);
+
+  const profileAvatarUrl = useMemo(() => {
+    if (avatarPreview) return avatarPreview;
+    if (!profile?.avatar_url || avatarBroken) return null;
+    return mediaUrlWithCacheBust(profile.avatar_url, profile.updated_at);
+  }, [avatarPreview, avatarBroken, profile?.avatar_url, profile?.updated_at]);
+
+  useEffect(() => {
+    setAvatarBroken(false);
+  }, [profile?.avatar_url, profile?.updated_at]);
 
   const mainTabs = useMemo(() => {
     const base = [
@@ -327,6 +355,44 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       setCertificates([]);
     }
   }, [isTechnician, profile?.id]);
+
+  useEffect(() => {
+    if (!isTechnician) return;
+    let cancelled = false;
+    setLoadingVerificationCenter(true);
+    verificationAPI.getCenter()
+      .then((data) => {
+        if (!cancelled) setVerificationCenter(data);
+      })
+      .catch(() => {
+        if (!cancelled) setVerificationCenter(null);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingVerificationCenter(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isTechnician]);
+
+  useEffect(() => {
+    if (!isTechnician) return;
+    let cancelled = false;
+    setLoadingReferences(true);
+    verificationReferencesAPI.list()
+      .then((rows) => {
+        if (!cancelled) setVerificationReferences(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (!cancelled) setVerificationReferences([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingReferences(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isTechnician]);
 
   useEffect(() => {
     setAccountEmail(user?.email || auth.getUser()?.email || '');
@@ -885,6 +951,14 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const handleAvatarChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file || !profile?.id) return;
+    if (!file.type.startsWith('image/')) {
+      setError('Please choose an image file (JPEG, PNG, etc.).');
+      e.target.value = '';
+      return;
+    }
+    const previewUrl = URL.createObjectURL(file);
+    setAvatarPreview(previewUrl);
+    setAvatarBroken(false);
     setSaving(true);
     setError(null);
     try {
@@ -896,11 +970,17 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         await profilesAPI.updateTechnicianProfile(profile.id, fd);
       }
       await fetchProfile();
+      setAvatarPreview(null);
+      URL.revokeObjectURL(previewUrl);
       setAlertModal({ isOpen: true, title: 'Photo updated!', message: 'Your profile photo has been updated.', variant: 'success' });
     } catch (err) {
+      URL.revokeObjectURL(previewUrl);
+      setAvatarPreview(null);
+      setAvatarBroken(true);
       setError(err.message || 'Failed to upload photo');
     } finally {
       setSaving(false);
+      e.target.value = '';
     }
   };
 
@@ -979,6 +1059,78 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       else throw new Error('No link received');
     } catch (err) {
       setPaymentError(err.message || 'Failed to start bank setup');
+    }
+  };
+
+  const handleStartBackgroundCheck = async () => {
+    setStartingBackgroundCheck(true);
+    try {
+      const res = await verificationAPI.startBackgroundCheck();
+      if (res?.invitation_url) {
+        window.location.href = res.invitation_url;
+        return;
+      }
+      if (res?.payment_required) {
+        const checkout = await verificationAPI.createBackgroundCheckCheckout();
+        if (checkout?.checkout_url) {
+          window.location.href = checkout.checkout_url;
+          return;
+        }
+        setAlertModal({
+          isOpen: true,
+          title: 'Payment required',
+          message: res?.message || 'Complete payment to continue your background check.',
+          variant: 'error',
+        });
+      }
+      const latest = await verificationAPI.getCenter();
+      setVerificationCenter(latest);
+    } catch (err) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Unable to start background check',
+        message: err.message || 'Try again in a few minutes.',
+        variant: 'error',
+      });
+    } finally {
+      setStartingBackgroundCheck(false);
+    }
+  };
+
+  const handleReferenceFieldChange = (e) => {
+    const { name, value } = e.target;
+    setNewReference((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleAddReference = async (e) => {
+    e.preventDefault();
+    setSubmittingReference(true);
+    try {
+      await verificationReferencesAPI.create(newReference);
+      const rows = await verificationReferencesAPI.list();
+      setVerificationReferences(Array.isArray(rows) ? rows : []);
+      setNewReference({
+        full_name: '',
+        email: '',
+        phone: '',
+        company_name: '',
+        relationship: '',
+      });
+      setAlertModal({
+        isOpen: true,
+        title: 'Reference request created',
+        message: 'Reference was added and marked as requested.',
+        variant: 'success',
+      });
+    } catch (err) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Unable to add reference',
+        message: err.message || 'Try again in a few minutes.',
+        variant: 'error',
+      });
+    } finally {
+      setSubmittingReference(false);
     }
   };
 
@@ -1150,11 +1302,105 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               </SettingsCard>
               {isTechnician && (
                 <SettingsCard title="Trust and verification" collapsible defaultOpen>
-                  <ul className="text-sm text-gray-700 space-y-2">
-                    <li>Background check: {profile?.background_verified ? 'Verified' : 'Not verified yet'}</li>
-                    <li>Certificates on file: {certificates.length}</li>
-                    <li>Map address: {needsMapSetup ? 'Incomplete' : 'Looks good'}</li>
-                  </ul>
+                  {loadingVerificationCenter ? (
+                    <p className="text-sm text-gray-500">Loading verification center...</p>
+                  ) : (
+                    <>
+                      <ul className="text-sm text-gray-700 space-y-2">
+                        {(verificationCenter?.sections || []).map((section) => (
+                          <li key={section.key} className="flex items-center justify-between gap-3">
+                            <span>{section.title}</span>
+                            <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">
+                              {String(section.status || 'not_started').replaceAll('_', ' ')}
+                            </span>
+                          </li>
+                        ))}
+                        <li>Certificates on file: {certificates.length}</li>
+                        <li>Map address: {needsMapSetup ? 'Incomplete' : 'Looks good'}</li>
+                      </ul>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={handleStartBackgroundCheck}
+                          disabled={startingBackgroundCheck}
+                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                        >
+                          {startingBackgroundCheck ? 'Starting...' : 'Start background check'}
+                        </button>
+                      </div>
+                      <div className="mt-4 border-t border-gray-200 pt-3">
+                        <h5 className="text-sm font-semibold text-gray-900 mb-2">Professional References</h5>
+                        {loadingReferences ? (
+                          <p className="text-xs text-gray-500 mb-2">Loading references...</p>
+                        ) : (
+                          <>
+                            <div className="space-y-1 mb-3">
+                              {verificationReferences.length === 0 ? (
+                                <p className="text-xs text-gray-500">No references added yet.</p>
+                              ) : (
+                                verificationReferences.slice(0, 5).map((ref) => (
+                                  <div key={ref.id} className="text-xs text-gray-700 flex items-center justify-between gap-3">
+                                    <span>{ref.full_name} ({ref.relationship})</span>
+                                    <span className="uppercase font-semibold text-gray-500">{ref.status}</span>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+                            <form onSubmit={handleAddReference} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <input
+                                className="border rounded px-2 py-1 text-xs"
+                                name="full_name"
+                                placeholder="Full name"
+                                value={newReference.full_name}
+                                onChange={handleReferenceFieldChange}
+                                required
+                              />
+                              <input
+                                className="border rounded px-2 py-1 text-xs"
+                                name="relationship"
+                                placeholder="Relationship"
+                                value={newReference.relationship}
+                                onChange={handleReferenceFieldChange}
+                                required
+                              />
+                              <input
+                                className="border rounded px-2 py-1 text-xs"
+                                name="email"
+                                type="email"
+                                placeholder="Email"
+                                value={newReference.email}
+                                onChange={handleReferenceFieldChange}
+                                required
+                              />
+                              <input
+                                className="border rounded px-2 py-1 text-xs"
+                                name="phone"
+                                placeholder="Phone"
+                                value={newReference.phone}
+                                onChange={handleReferenceFieldChange}
+                              />
+                              <input
+                                className="border rounded px-2 py-1 text-xs sm:col-span-2"
+                                name="company_name"
+                                placeholder="Company (optional)"
+                                value={newReference.company_name}
+                                onChange={handleReferenceFieldChange}
+                              />
+                              <div className="sm:col-span-2">
+                                <button
+                                  type="submit"
+                                  disabled={submittingReference}
+                                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50"
+                                >
+                                  {submittingReference ? 'Saving...' : 'Add reference'}
+                                </button>
+                              </div>
+                            </form>
+                          </>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </SettingsCard>
               )}
             </div>
@@ -1205,8 +1451,16 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           <form onSubmit={handleProfileSubmit} className="space-y-4">
             <div className="flex items-center gap-6">
               <div className="relative">
-                {profile?.avatar_url ? (
-                  <img src={profile.avatar_url} alt="Avatar" className="w-24 h-24 rounded-full object-cover border-2 border-gray-200" />
+                {profileAvatarUrl ? (
+                  <img
+                    src={profileAvatarUrl}
+                    alt=""
+                    className="w-24 h-24 rounded-full object-cover border-2 border-gray-200"
+                    onError={() => {
+                      setAvatarBroken(true);
+                      setAvatarPreview(null);
+                    }}
+                  />
                 ) : (
                   <div className="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center text-3xl text-gray-500 font-bold">
                     {(form.first_name || user?.first_name || user?.email || '?')[0]?.toUpperCase() || '?'}

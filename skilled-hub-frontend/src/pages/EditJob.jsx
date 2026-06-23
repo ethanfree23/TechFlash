@@ -45,6 +45,7 @@ const EditJob = () => {
   const [form, setForm] = useState({
     title: '', description: '', skill_class: '', minimum_years_experience: '', notes: '', required_certifications: [''], address: '', city: '', state: '', zip_code: '', country: '', status: 'open',
     hourly_rate_cents: '', hours_per_day: '8', days: '', start_mode: 'hard_start',
+    require_background_check: false, require_identity_verification: false, minimum_verified_references: '0', require_insurance_verification: false,
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -86,6 +87,10 @@ const EditJob = () => {
           country: data.country || 'United States',
           status: normalizeJobStatusKey(data),
           start_mode: data.start_mode || 'hard_start',
+          require_background_check: Boolean(data.require_background_check),
+          require_identity_verification: Boolean(data.require_identity_verification),
+          minimum_verified_references: String(data.minimum_verified_references ?? 0),
+          require_insurance_verification: Boolean(data.require_insurance_verification),
           hourly_rate_cents: hasHourlyRate ? (data.hourly_rate_cents / 100).toFixed(2) : '',
           hours_per_day: data.hours_per_day ?? 8,
           days: data.days ?? '',
@@ -194,6 +199,10 @@ const EditJob = () => {
         required_certifications: Array.isArray(form.required_certifications) && form.required_certifications.filter((c) => c?.trim()).length
           ? form.required_certifications.filter((c) => c?.trim()).join(", ")
           : null,
+        require_background_check: !!form.require_background_check,
+        require_identity_verification: !!form.require_identity_verification,
+        minimum_verified_references: Math.max(0, parseInt(form.minimum_verified_references, 10) || 0),
+        require_insurance_verification: !!form.require_insurance_verification,
         address: form.address,
         city: form.city,
         state: form.state,
@@ -345,6 +354,51 @@ const EditJob = () => {
             onChange={handleChange}
             placeholder="Safety, site conditions, or other requirements"
           />
+        </div>
+        <div>
+          <label className="block font-medium mb-2">Verification requirements</label>
+          <div className="rounded-lg border border-gray-200 p-4 bg-gray-50 space-y-3">
+            <label className="flex items-center justify-between text-sm gap-4">
+              <span>Require background check</span>
+              <input
+                type="checkbox"
+                name="require_background_check"
+                checked={!!form.require_background_check}
+                onChange={(e) => setForm((prev) => ({ ...prev, require_background_check: e.target.checked }))}
+              />
+            </label>
+            <label className="flex items-center justify-between text-sm gap-4">
+              <span>Require identity verification</span>
+              <input
+                type="checkbox"
+                name="require_identity_verification"
+                checked={!!form.require_identity_verification}
+                onChange={(e) => setForm((prev) => ({ ...prev, require_identity_verification: e.target.checked }))}
+              />
+            </label>
+            <div className="flex items-center justify-between text-sm gap-4">
+              <label htmlFor="edit-minimum-verified-references">Minimum verified references</label>
+              <input
+                id="edit-minimum-verified-references"
+                type="number"
+                min="0"
+                max="10"
+                name="minimum_verified_references"
+                className="w-24 border px-2 py-1 rounded bg-white"
+                value={form.minimum_verified_references}
+                onChange={handleChange}
+              />
+            </div>
+            <label className="flex items-center justify-between text-sm gap-4">
+              <span>Require insurance verification</span>
+              <input
+                type="checkbox"
+                name="require_insurance_verification"
+                checked={!!form.require_insurance_verification}
+                onChange={(e) => setForm((prev) => ({ ...prev, require_insurance_verification: e.target.checked }))}
+              />
+            </label>
+          </div>
         </div>
         <div>
           <label className="block font-medium mb-1">Required Certifications</label>

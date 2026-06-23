@@ -47,6 +47,7 @@ class Job < ApplicationRecord
   before_save :geocode_address
 
   validates :minimum_years_experience, numericality: { only_integer: true, greater_than_or_equal_to: 0, allow_nil: true }
+  validates :minimum_verified_references, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
   validates_safe_text :title, :description, :notes, :skill_class, max_length: 4_000
   has_many :conversations, dependent: :destroy
   has_many :ratings, dependent: :destroy

@@ -23,6 +23,14 @@ class TechnicianProfile < ApplicationRecord
     Rating.average_for(self)
   end
 
+  def review_summary
+    Rating.weighted_summary_for(self)
+  end
+
+  def verification_badges
+    VerificationBadge.active_now.where(user_id: user_id).pluck(:badge_type)
+  end
+
   private
 
   def sync_location_from_address
