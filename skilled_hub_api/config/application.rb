@@ -51,5 +51,9 @@ module SkilledHubApi
         ActionMailer::Base.add_delivery_method :mailtrap_http, MailtrapHttpDelivery
       end
     end
+
+    initializer :load_app_host, before: :load_environment_config do
+      require Rails.root.join("lib/app_host").to_s
+    end
   end
 end

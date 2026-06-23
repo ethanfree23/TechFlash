@@ -54,6 +54,6 @@ module AppHost
       end
 
     message += " Using #{resolved_host.inspect} instead." if resolved_host.present?
-    Rails.logger.warn(message)
+    Rails.logger&.warn(message)
   end
 end
