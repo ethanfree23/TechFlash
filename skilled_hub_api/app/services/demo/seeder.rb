@@ -18,6 +18,19 @@ module Demo
     BASE_TECHNICIANS_PER_MARKET = 15
     BASE_COMPANIES_PER_MARKET = 8
     BASE_OPEN_JOBS_PER_CITY = 10
+    DEMO_COMPANY_JOBS_TARGET = Integer(ENV.fetch("DEMO_COMPANY_JOBS", "105"))
+    DEMO_COMPANY_JOB_INDEX_OFFSET = 100_000
+    DEMO_TECHNICIAN_JOBS_TARGET = Integer(ENV.fetch("DEMO_TECHNICIAN_JOBS", "25"))
+    DEMO_TECHNICIAN_JOBS_FROM_DEMO_COMPANY = Integer(ENV.fetch("DEMO_TECHNICIAN_COMPANY_JOBS", "10"))
+    DEMO_TECHNICIAN_JOB_INDEX_OFFSET = 200_000
+
+    # Technician demo jobs: claimed/reserved, active, pending review, completed (no unclaimed open).
+    DEMO_TECHNICIAN_JOB_BUCKETS = [
+      { key: :claimed, count: 7 },
+      { key: :in_progress, count: 6 },
+      { key: :pending_review, count: 5 },
+      { key: :reviewed, count: 7 }
+    ].freeze
 
     class << self
       def reset!
@@ -45,6 +58,8 @@ module Demo
 
       create_demo_accounts!
       MARKETS.each_key { |market_key| populate_market!(market_key) }
+      seed_demo_company_jobs!
+      seed_demo_technician_jobs!
       seed_demo_feedback!
       seed_demo_admin_notifications!
       seed_login_events!
@@ -128,6 +143,7 @@ module Demo
         specialties: %w[HVAC Refrigeration]
       )
       demo_tech.update_columns(latitude: hou[:lat], longitude: hou[:lng])
+      company_user.update_column(:company_profile_id, demo_company.id)
 
       @demo_users = { admin: admin, company: company_user, technician: tech_user }
       @demo_company_profile = demo_company
@@ -244,14 +260,98 @@ module Demo
       "#{market[:city]} #{skill} Services #{suffix}-#{idx + 1}"
     end
 
-    def create_job_for_bucket!(market_key:, bucket:, index:, companies:, techs:)
+    def seed_demo_company_jobs!
+      return unless @demo_company_profile
+
+      techs = @market_technicians[:houston] || [@demo_technician_profile].compact
+      return if techs.empty?
+
+      job_index = DEMO_COMPANY_JOB_INDEX_OFFSET
+      demo_company_job_buckets.each do |bucket|
+        bucket[:count].times do
+          create_job_for_bucket!(
+            market_key: :houston,
+            bucket: bucket[:key],
+            index: job_index,
+            companies: [@demo_company_profile],
+            techs: techs,
+            forced_company: @demo_company_profile
+          )
+          job_index += 1
+        end
+      end
+      @stats[:demo_company_jobs] = @demo_company_profile.jobs.count
+    end
+
+    def seed_demo_technician_jobs!
+      return unless @demo_technician_profile && @demo_company_profile
+
+      other_companies = (@market_companies[:houston] || []).reject { |c| c.id == @demo_company_profile.id }
+      return if other_companies.empty?
+
+      job_index = DEMO_TECHNICIAN_JOB_INDEX_OFFSET
+      slot = 0
+      demo_technician_job_buckets.each do |bucket|
+        bucket[:count].times do
+          company =
+            if slot < DEMO_TECHNICIAN_JOBS_FROM_DEMO_COMPANY
+              @demo_company_profile
+            else
+              other_companies[(slot - DEMO_TECHNICIAN_JOBS_FROM_DEMO_COMPANY) % other_companies.size]
+            end
+          create_job_for_bucket!(
+            market_key: :houston,
+            bucket: bucket[:key],
+            index: job_index,
+            companies: [company],
+            techs: [@demo_technician_profile],
+            forced_company: company,
+            forced_technician: @demo_technician_profile
+          )
+          job_index += 1
+          slot += 1
+        end
+      end
+
+      accepted = Job.joins(:job_applications).where(
+        job_applications: { technician_profile_id: @demo_technician_profile.id, status: :accepted }
+      )
+      @stats[:demo_technician_jobs] = accepted.distinct.count
+      @stats[:demo_technician_jobs_from_demo_company] = accepted.where(company_profile_id: @demo_company_profile.id).distinct.count
+    end
+
+    def demo_technician_job_buckets
+      target = DEMO_TECHNICIAN_JOBS_TARGET
+      total_base = DEMO_TECHNICIAN_JOB_BUCKETS.sum { |bucket| bucket[:count] }
+      buckets = DEMO_TECHNICIAN_JOB_BUCKETS.map do |bucket|
+        share = ((bucket[:count].to_f / total_base) * target).round
+        { key: bucket[:key], count: [share, 1].max }
+      end
+      diff = target - buckets.sum { |bucket| bucket[:count] }
+      buckets[0][:count] += diff if diff.nonzero?
+      buckets
+    end
+
+    def demo_company_job_buckets
+      target = DEMO_COMPANY_JOBS_TARGET
+      total_base = BASE_JOB_BUCKETS.sum { |bucket| bucket[:count] }
+      buckets = BASE_JOB_BUCKETS.map do |bucket|
+        share = ((bucket[:count].to_f / total_base) * target).round
+        { key: bucket[:key], count: [share, 1].max }
+      end
+      diff = target - buckets.sum { |bucket| bucket[:count] }
+      buckets[0][:count] += diff if diff.nonzero?
+      buckets
+    end
+
+    def create_job_for_bucket!(market_key:, bucket:, index:, companies:, techs:, forced_company: nil, forced_technician: nil)
       market = MARKETS[market_key]
-      company = pick_company_for_job(market_key, index, companies)
+      company = forced_company || pick_company_for_job(market_key, index, companies)
       neighborhood = market[:neighborhoods][index % market[:neighborhoods].size].gsub("\\", "")
       skill = SKILL_CLASSES[index % SKILL_CLASSES.size]
       titles = JOB_TITLES[skill]
       title = titles[index % titles.size]
-      is_flagship = market_key == :houston && bucket == :claimed && index == open_jobs_per_city
+      is_flagship = forced_company.nil? && market_key == :houston && bucket == :claimed && index == open_jobs_per_city
       if is_flagship
         title = "URGENT: Commercial RTU coverage — Midtown Houston"
         skill = "HVAC"
@@ -313,7 +413,7 @@ module Demo
       )
       job.update_columns(latitude: job_lat, longitude: job_lng, status: Job.statuses[:open])
 
-      tech = techs[index % techs.size]
+      tech = forced_technician || techs[index % techs.size]
 
       case bucket
       when :open
@@ -349,7 +449,7 @@ module Demo
         seed_conversation!(job, company, tech, richer: true)
         if bucket == :reviewed
           seed_bilateral_reviews!(job, company, tech)
-          @reviewed_demo_job_id ||= job.id if market_key == :houston
+          @reviewed_demo_job_id ||= job.id if market_key == :houston && forced_technician == @demo_technician_profile
         end
       end
 
@@ -526,6 +626,16 @@ module Demo
       flagship = @flagship_jobs[:houston]
       @stats[:flagship_job_id] = flagship&.id
       @stats[:reviewed_job_id] = @reviewed_demo_job_id
+      @stats[:demo_company_jobs] ||= @demo_company_profile&.jobs&.count.to_i
+      if @demo_technician_profile
+        accepted = Job.joins(:job_applications).where(
+          job_applications: { technician_profile_id: @demo_technician_profile.id, status: :accepted }
+        )
+        @stats[:demo_technician_jobs] ||= accepted.distinct.count
+        @stats[:demo_technician_jobs_from_demo_company] ||= accepted.where(
+          company_profile_id: @demo_company_profile&.id
+        ).distinct.count
+      end
     end
 
     def pick_company_for_job(market_key, index, companies)
