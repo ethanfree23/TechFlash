@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { buildAdminCommandCenterModel } from '../../../data/adminCommandCenterAdapter';
+import SettingsTabs from '../../settings/SettingsTabs';
 import CommandCenterHeader from './CommandCenterHeader';
 import MarketplaceHealthCard from './MarketplaceHealthCard';
 import MarketplaceFunnel from './MarketplaceFunnel';
@@ -89,6 +90,15 @@ export default function AdminCommandCenter({
       filters,
     });
   }, [analytics, insightsByCategory, feedbackList, conversations, filters]);
+  const [dashboardTab, setDashboardTab] = React.useState('overview');
+  const dashboardTabs = useMemo(
+    () => [
+      { id: 'overview', label: 'Overview' },
+      { id: 'operations', label: 'Operations' },
+      { id: 'feedback', label: 'Feedback' },
+    ],
+    []
+  );
 
   if (error) {
     return (
@@ -128,66 +138,77 @@ export default function AdminCommandCenter({
         refreshing={refreshing}
         demoMode={isDemoMode()}
       />
-
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2" data-demo="admin-dashboard-stats">
-        {(model.kpis || []).map((k) => (
-          <KpiCard
-            key={k.id}
-            label={k.label}
-            value={k.value}
-            delta={k.delta}
-            spark={k.spark}
-            tone={k.tone}
-            footnote={k.footnote}
-            format={k.format}
-          />
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
-        <MarketplaceHealthCard health={model.health} />
-        <MarketplaceFunnel funnel={model.funnel} />
-      </div>
-
-      <CommandCenterBody model={model} />
-
-      <section className="border-t border-slate-200 pt-6">
-        <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">User feedback</h2>
-        <p className="text-[11px] text-slate-500 mt-0.5 mb-3">
-          Submissions from the in-app feedback widget (also visible in Messages for admins).
-        </p>
-        {!feedbackList?.length ? (
-          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-4 py-8 text-center text-xs text-slate-500">
-            No feedback submissions for this workspace.
-          </div>
-        ) : (
-          <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
-            <div className="overflow-x-auto max-h-[min(44vh,20rem)] overflow-y-auto">
-              <table className="min-w-full divide-y divide-slate-100 text-xs">
-                <thead className="bg-slate-50 sticky top-0 z-10">
-                  <tr>
-                    <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-slate-500">When</th>
-                    <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-slate-500">From</th>
-                    <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-slate-500">Type</th>
-                    <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-slate-500">Message</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {feedbackList.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50/80">
-                      <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap align-top">
-                        {row.created_at ? new Date(row.created_at).toLocaleString() : '—'}
-                      </td>
-                      <td className="px-3 py-1.5 text-slate-800 align-top">{row.user_email || '—'}</td>
-                      <td className="px-3 py-1.5 capitalize text-slate-700 align-top">{row.kind || '—'}</td>
-                      <td className="px-3 py-1.5 text-slate-800 whitespace-pre-wrap max-w-xl align-top">{row.body}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+      <section className="bg-white rounded-2xl shadow border border-slate-200 overflow-hidden" aria-label="Admin dashboard sections">
+        <SettingsTabs tabs={dashboardTabs} activeId={dashboardTab} onChange={setDashboardTab} ariaLabel="Admin dashboard sections" />
+        <div className="p-3 sm:p-4">
+          {dashboardTab === 'overview' && (
+            <div id="settings-panel-overview" role="tabpanel" aria-labelledby="settings-tab-overview" className="space-y-4">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2" data-demo="admin-dashboard-stats">
+                {(model.kpis || []).map((k) => (
+                  <KpiCard
+                    key={k.id}
+                    label={k.label}
+                    value={k.value}
+                    delta={k.delta}
+                    spark={k.spark}
+                    tone={k.tone}
+                    footnote={k.footnote}
+                    format={k.format}
+                  />
+                ))}
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 items-stretch">
+                <MarketplaceHealthCard health={model.health} />
+                <MarketplaceFunnel funnel={model.funnel} />
+              </div>
             </div>
-          </div>
-        )}
+          )}
+          {dashboardTab === 'operations' && (
+            <div id="settings-panel-operations" role="tabpanel" aria-labelledby="settings-tab-operations">
+              <CommandCenterBody model={model} />
+            </div>
+          )}
+          {dashboardTab === 'feedback' && (
+            <section id="settings-panel-feedback" role="tabpanel" aria-labelledby="settings-tab-feedback">
+              <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">User feedback</h2>
+              <p className="text-[11px] text-slate-500 mt-0.5 mb-3">
+                Submissions from the in-app feedback widget (also visible in Messages for admins).
+              </p>
+              {!feedbackList?.length ? (
+                <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/50 px-4 py-8 text-center text-xs text-slate-500">
+                  No feedback submissions for this workspace.
+                </div>
+              ) : (
+                <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+                  <div className="overflow-x-auto max-h-[min(44vh,20rem)] overflow-y-auto">
+                    <table className="min-w-full divide-y divide-slate-100 text-xs">
+                      <thead className="bg-slate-50 sticky top-0 z-10">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-slate-500">When</th>
+                          <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-slate-500">From</th>
+                          <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-slate-500">Type</th>
+                          <th className="px-3 py-2 text-left font-semibold uppercase tracking-wide text-slate-500">Message</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {feedbackList.map((row) => (
+                          <tr key={row.id} className="hover:bg-slate-50/80">
+                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap align-top">
+                              {row.created_at ? new Date(row.created_at).toLocaleString() : '—'}
+                            </td>
+                            <td className="px-3 py-1.5 text-slate-800 align-top">{row.user_email || '—'}</td>
+                            <td className="px-3 py-1.5 capitalize text-slate-700 align-top">{row.kind || '—'}</td>
+                            <td className="px-3 py-1.5 text-slate-800 whitespace-pre-wrap max-w-xl align-top">{row.body}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </section>
+          )}
+        </div>
       </section>
 
       <div className="flex flex-wrap gap-2 pb-2">

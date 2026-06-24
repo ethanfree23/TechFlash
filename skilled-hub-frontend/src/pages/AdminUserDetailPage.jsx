@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import AdminCollapsibleCard from '../components/AdminCollapsibleCard';
+import SettingsTabs from '../components/settings/SettingsTabs';
 import {
   CollapsibleSectionsProvider,
   useCollapsibleSections,
@@ -158,6 +159,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [jobAlertTradeDraft, setJobAlertTradeDraft] = useState('');
   const [jobAlertTradeSaveBusy, setJobAlertTradeSaveBusy] = useState(false);
+  const [detailTab, setDetailTab] = useState('profile');
 
   const load = useCallback(async () => {
     if (!userId) return;
@@ -201,6 +203,15 @@ export default function AdminUserDetailPage({ user, onLogout }) {
   const membershipLevel = profile?.membership_level || 'basic';
   const effectiveMembershipFeeCents = profile?.effective_membership_fee_cents ?? 0;
   const effectiveCommissionPercent = profile?.effective_commission_percent ?? 0;
+  const detailTabs = useMemo(
+    () => [
+      { id: 'profile', label: 'Profile' },
+      { id: 'activity', label: 'Activity' },
+      { id: 'work', label: 'Work and billing' },
+      { id: 'access', label: 'Access and danger' },
+    ],
+    []
+  );
 
   useEffect(() => {
     if (!isTech) {
@@ -664,7 +675,16 @@ export default function AdminUserDetailPage({ user, onLogout }) {
           {loading && <p className="text-gray-500">Loading analytics…</p>}
 
           {!loading && data && (
-            <div className="space-y-8">
+            <section className="bg-white rounded-2xl shadow border border-gray-200 overflow-hidden">
+              <SettingsTabs
+                tabs={detailTabs}
+                activeId={detailTab}
+                onChange={setDetailTab}
+                ariaLabel="Admin user detail sections"
+              />
+              <div className="p-4 sm:p-6">
+                <div className="space-y-8">
+            {detailTab === 'profile' && (
             <AdminCollapsibleCard
               title="Profile"
               actions={
@@ -1066,8 +1086,9 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                 </form>
               )}
             </AdminCollapsibleCard>
+            )}
 
-            {isTech && (
+            {detailTab === 'profile' && isTech && (
               <AdminCollapsibleCard
                 title="Job alert trade"
                 description="Override the trade label used when matching this technician to job alerts."
@@ -1100,7 +1121,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               </AdminCollapsibleCard>
             )}
 
-            {isCompany && u?.company_context && (
+            {detailTab === 'profile' && isCompany && u?.company_context && (
               <AdminCollapsibleCard
                 title="Company login users"
                 description="Accounts linked to this company profile."
@@ -1163,6 +1184,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               </AdminCollapsibleCard>
             )}
 
+            {detailTab === 'activity' && (
             <AdminCollapsibleCard title="Logins">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
                 <Stat label="In period" value={data.logins?.total_in_period ?? '—'} />
@@ -1187,7 +1209,9 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                 </div>
               )}
             </AdminCollapsibleCard>
+            )}
 
+            {detailTab === 'activity' && (
             <AdminCollapsibleCard title="Email history" description="Outbound emails recorded after successful delivery (no rows for failed sends).">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
                 <Stat label="In period" value={data.email_deliveries?.total_in_period ?? '—'} />
@@ -1225,7 +1249,9 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                 </p>
               )}
             </AdminCollapsibleCard>
+            )}
 
+            {detailTab === 'activity' && (
             <AdminCollapsibleCard title="Messages">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-sm">
                 <Stat label="Job threads (period)" value={data.messages?.job_threads_sent_in_period ?? 0} />
@@ -1234,8 +1260,9 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                 <Stat label="Feedback (all time)" value={data.messages?.feedback_messages_sent_all_time ?? 0} />
               </div>
             </AdminCollapsibleCard>
+            )}
 
-            {data.referrals && (
+            {detailTab === 'activity' && data.referrals && (
               <AdminCollapsibleCard title="Referrals">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4 text-sm">
                   <Stat label="Sent (window)" value={data.referrals.sent_in_period ?? 0} />
@@ -1287,7 +1314,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               </AdminCollapsibleCard>
             )}
 
-            {isCompany && data.jobs && (
+            {detailTab === 'work' && isCompany && data.jobs && (
               <AdminCollapsibleCard title="Jobs (company)">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
                   <Stat label="Total jobs" value={data.jobs.total ?? 0} />
@@ -1321,7 +1348,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               </AdminCollapsibleCard>
             )}
 
-            {isTech && data.jobs && data.applications && (
+            {detailTab === 'work' && isTech && data.jobs && data.applications && (
               <AdminCollapsibleCard title="Jobs & applications">
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
                     <Stat label="Accepted jobs (total)" value={data.jobs.accepted_total ?? 0} />
@@ -1354,7 +1381,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               </AdminCollapsibleCard>
             )}
 
-            {data.payments && (
+            {detailTab === 'work' && data.payments && (
               <AdminCollapsibleCard title={isCompany ? 'Payments (company)' : 'Payments (technician)'}>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
                   {isCompany && (
@@ -1399,7 +1426,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               </AdminCollapsibleCard>
             )}
 
-            {data.ratings && (
+            {detailTab === 'activity' && data.ratings && (
               <AdminCollapsibleCard title="Ratings & reviews">
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
                   <Stat label="Received (total)" value={data.ratings.received_total ?? 0} />
@@ -1451,7 +1478,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               </AdminCollapsibleCard>
             )}
 
-            {isCompany && profile && (
+            {detailTab === 'work' && isCompany && profile && (
               <AdminCollapsibleCard
                 title="Membership billing"
                 description="Configure company tier, billing exemption, and pricing overrides."
@@ -1536,7 +1563,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               </AdminCollapsibleCard>
             )}
 
-            {isTech && profile && (
+            {detailTab === 'work' && isTech && profile && (
               <AdminCollapsibleCard
                 title="Technician membership"
                 description="Configure technician tier, billing exemption, and pricing overrides."
@@ -1621,7 +1648,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               </AdminCollapsibleCard>
             )}
 
-            {canManagePassword && (
+            {detailTab === 'access' && canManagePassword && (
               <AdminCollapsibleCard title="Access management" description="Send a new setup email, generate a manual setup link, or set a password directly for this account.">
                 <div className="mb-4 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm text-gray-700">
                   <div>
@@ -1712,7 +1739,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               </AdminCollapsibleCard>
             )}
 
-            {(isCompany || isTech) && u?.id && (
+            {detailTab === 'access' && (isCompany || isTech) && u?.id && (
               <AdminCollapsibleCard
                 title="Danger zone"
                 description="Permanently delete this user account. If this user is the only login for a company, deleting them also removes that company profile and related company data."
@@ -1737,6 +1764,8 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               </AdminCollapsibleCard>
             )}
           </div>
+              </div>
+            </section>
           )}
         </CollapsibleSectionsProvider>
       </main>
