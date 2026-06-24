@@ -99,6 +99,17 @@ export default function AdminCommandCenter({
     ],
     []
   );
+  const [operationsSubTab, setOperationsSubTab] = React.useState('liquidity');
+  const operationsSubTabs = useMemo(
+    () => [
+      { id: 'liquidity', label: 'Liquidity' },
+      { id: 'ops', label: 'Job ops' },
+      { id: 'demand', label: 'Companies' },
+      { id: 'matching', label: 'Matching/revenue' },
+      { id: 'markets', label: 'Markets/queue' },
+    ],
+    []
+  );
 
   if (error) {
     return (
@@ -165,7 +176,15 @@ export default function AdminCommandCenter({
           )}
           {dashboardTab === 'operations' && (
             <div id="settings-panel-operations" role="tabpanel" aria-labelledby="settings-tab-operations">
-              <CommandCenterBody model={model} />
+              <div className="mb-4">
+                <SettingsTabs
+                  tabs={operationsSubTabs}
+                  activeId={operationsSubTab}
+                  onChange={setOperationsSubTab}
+                  ariaLabel="Operations sub-sections"
+                />
+              </div>
+              <CommandCenterBody model={model} section={operationsSubTab} />
             </div>
           )}
           {dashboardTab === 'feedback' && (

@@ -37,7 +37,7 @@ function SectionLabel({ children }) {
   );
 }
 
-export default function CommandCenterBody({ model }) {
+export default function CommandCenterBody({ model, section = 'all' }) {
   if (!model) return null;
 
   const { jobOps, techOps, companyOps, matching, revenue, markets, alerts, tasks, activity, tradeRows, supplyDemandSeries } =
@@ -60,6 +60,7 @@ export default function CommandCenterBody({ model }) {
 
   return (
     <div className="space-y-8">
+      {(section === 'all' || section === 'liquidity') && (
       <section>
         <SectionLabel>Liquidity — supply vs demand</SectionLabel>
         <SupplyDemandPanel series={supplyDemandSeries} />
@@ -147,7 +148,9 @@ export default function CommandCenterBody({ model }) {
           </div>
         </div>
       </section>
+      )}
 
+      {(section === 'all' || section === 'ops') && (
       <section>
         <SectionLabel>Operations — aging & bench</SectionLabel>
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -241,7 +244,9 @@ export default function CommandCenterBody({ model }) {
           </div>
         </div>
       </section>
+      )}
 
+      {(section === 'all' || section === 'demand') && (
       <section>
         <SectionLabel>Demand side — companies</SectionLabel>
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -279,7 +284,9 @@ export default function CommandCenterBody({ model }) {
           </div>
         </div>
       </section>
+      )}
 
+      {(section === 'all' || section === 'matching') && (
       <section>
         <SectionLabel>Matching & revenue</SectionLabel>
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
@@ -364,7 +371,9 @@ export default function CommandCenterBody({ model }) {
           </div>
         </div>
       </section>
+      )}
 
+      {(section === 'all' || section === 'markets') && (
       <section>
         <SectionLabel>Markets & admin queue</SectionLabel>
         <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
@@ -481,6 +490,7 @@ export default function CommandCenterBody({ model }) {
           </ul>
         </div>
       </section>
+      )}
     </div>
   );
 }
