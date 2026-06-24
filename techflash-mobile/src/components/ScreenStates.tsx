@@ -12,17 +12,43 @@ export function LoadingState({ label = 'Loading...' }: { label?: string }) {
 }
 
 export function EmptyState({ label }: { label: string }) {
-  return <Text style={styles.empty}>{label}</Text>;
+  return (
+    <View style={styles.emptyWrap}>
+      <Text style={styles.empty}>{label}</Text>
+    </View>
+  );
 }
 
 export function ErrorState({ error }: { error: string }) {
   if (!error) return null;
-  return <Text style={styles.error}>{error}</Text>;
+  return (
+    <View style={styles.errorWrap}>
+      <Text style={styles.error}>{error}</Text>
+    </View>
+  );
 }
 
 const styles = StyleSheet.create({
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg, gap: 10 },
   muted: { color: colors.muted },
-  empty: { marginTop: 30, textAlign: 'center', color: colors.muted },
-  error: { color: colors.danger, marginBottom: 8 },
+  emptyWrap: {
+    marginTop: 24,
+    borderWidth: 1,
+    borderColor: colors.border,
+    backgroundColor: colors.white,
+    borderRadius: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 18,
+  },
+  empty: { textAlign: 'center', color: colors.muted },
+  errorWrap: {
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.dangerBg,
+    backgroundColor: colors.dangerBg,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  error: { color: colors.danger, textAlign: 'center' },
 });

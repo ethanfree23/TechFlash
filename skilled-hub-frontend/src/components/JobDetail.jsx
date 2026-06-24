@@ -17,6 +17,7 @@ import StarRating from './StarRating';
 import JobAddressFields from './JobAddressFields';
 import { JOB_STATUS_KEYS, jobStatusLabel, normalizeJobStatusKey } from '../utils/jobStatus';
 import { FormattedJobDescription } from '../utils/formattedJobText';
+import JobStatusBadge from './jobs/JobStatusBadge';
 
 const toDatetimeLocal = (d) => {
   if (!d) return '';
@@ -478,26 +479,6 @@ const JobDetail = () => {
     navigate('/jobs');
   };
 
-  const getStatusBadge = (jobRow) => {
-    const status = normalizeJobStatusKey(jobRow);
-    if (status === 'open') return <span className="px-3 py-1 text-sm font-medium rounded-full bg-blue-100 text-blue-800">Open</span>;
-    if (status === 'finished' || status === 'completed') {
-      return <span className="px-3 py-1 text-sm font-medium rounded-full bg-green-200 text-green-800">Completed</span>;
-    }
-    if (status === 'accepted') {
-      return <span className="px-3 py-1 text-sm font-medium rounded-full bg-purple-100 text-purple-800">Accepted</span>;
-    }
-    if (status === 'reserved' || status === 'filled') {
-      const startAt = jobRow?.scheduled_start_at ? new Date(jobRow.scheduled_start_at).getTime() : null;
-      const now = Date.now();
-      if (startAt === null || startAt > now) {
-        return <span className="px-3 py-1 text-sm font-medium rounded-full bg-yellow-100 text-yellow-800">Claimed</span>;
-      }
-      return <span className="px-3 py-1 text-sm font-medium rounded-full bg-green-100 text-green-800">Active</span>;
-    }
-    return <span className="px-3 py-1 text-sm font-medium rounded-full bg-gray-100 text-gray-800">{jobStatusLabel(status)}</span>;
-  };
-
   const openEditModal = () => {
     const hasNewPricing = job.hourly_rate_cents != null && job.days != null;
     setEditData({
@@ -805,24 +786,30 @@ const JobDetail = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-lg text-gray-600">Loading job details...</div>
+      <div className="mx-auto mt-10 max-w-4xl px-4 sm:px-6 lg:px-8">
+        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-12 text-center shadow-sm">
+          <div className="text-base font-semibold text-slate-700">Loading job details...</div>
+        </div>
       </div>
     );
   }
 
   if (error) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-lg text-red-600">{error}</div>
+      <div className="mx-auto mt-10 max-w-4xl px-4 sm:px-6 lg:px-8">
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-12 text-center shadow-sm">
+          <div className="text-base font-semibold text-red-700">{error}</div>
+        </div>
       </div>
     );
   }
 
   if (!job) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="text-lg text-red-600">Job not found</div>
+      <div className="mx-auto mt-10 max-w-4xl px-4 sm:px-6 lg:px-8">
+        <div className="rounded-2xl border border-red-200 bg-red-50 px-6 py-12 text-center shadow-sm">
+          <div className="text-base font-semibold text-red-700">Job not found</div>
+        </div>
       </div>
     );
   }
@@ -892,14 +879,14 @@ const JobDetail = () => {
   };
 
   return (
-    <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8" data-demo="job-detail-card">
-      <div className="mb-6">
-        <div className="flex items-center gap-4 mb-4">
-          <Link to="/dashboard" className="text-blue-600 hover:text-blue-800 text-sm">Dashboard</Link>
-          <span className="text-gray-400">|</span>
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 pb-10" data-demo="job-detail-card">
+      <div className="mb-8">
+        <div className="mb-5 flex items-center gap-4">
+          <Link to="/dashboard" className="text-blue-600 hover:text-blue-800 text-sm font-medium">Dashboard</Link>
+          <span className="text-slate-400">|</span>
           <button 
             onClick={handleBackToList} 
-            className="flex items-center text-blue-600 hover:text-blue-800 text-sm"
+            className="flex items-center text-blue-600 hover:text-blue-800 text-sm font-medium"
           >
             <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -908,23 +895,23 @@ const JobDetail = () => {
           </button>
         </div>
         
-        <div className="flex justify-between items-start mb-6 gap-4">
+        <div className="flex flex-wrap justify-between items-start mb-6 gap-4">
           <div className="min-w-0 flex-1">
             {isFlagshipDemoJob(job) && (
               <span className="inline-flex items-center gap-1 mb-2 rounded-md bg-orange-50 border border-orange-200 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-orange-800">
                 Featured job · Houston
               </span>
             )}
-            <h1 className="text-3xl font-bold text-gray-900">{job.title}</h1>
+            <h1 className="text-3xl font-bold text-gray-900 leading-tight">{job.title}</h1>
           </div>
           <div className="flex items-center gap-3 flex-wrap justify-end shrink-0">
-            {getStatusBadge(job)}
+            <JobStatusBadge job={job} size="md" />
             {job.share_token && (
               <>
                 <button
                   type="button"
                   onClick={handleCopyPublicJobLink}
-                  className="px-3 py-1.5 text-sm font-medium rounded-md border border-gray-300 bg-white text-gray-800 hover:bg-gray-50"
+                className="px-3 py-1.5 text-sm font-medium rounded-lg border border-slate-300 bg-white text-slate-800 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40"
                 >
                   {shareLinkCopied ? 'Copied!' : 'Copy public link'}
                 </button>
@@ -932,7 +919,7 @@ const JobDetail = () => {
                   <button
                     type="button"
                     onClick={handleNativeShareJob}
-                    className="px-3 py-1.5 text-sm font-medium rounded-md bg-blue-600 text-white hover:bg-blue-700"
+                    className="px-3 py-1.5 text-sm font-semibold rounded-lg bg-blue-600 text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
                   >
                     Share
                   </button>
@@ -943,27 +930,27 @@ const JobDetail = () => {
         </div>
 
         {showTopTechOpenActions && (
-          <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
+          <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             {rollingSummaryText && (
-              <p className="text-sm text-gray-700 mb-3">{rollingSummaryText}</p>
+              <p className="text-sm text-slate-700 mb-3">{rollingSummaryText}</p>
             )}
             <div className="flex flex-wrap gap-3">
               <button
                 onClick={handleClaimJob}
                 disabled={claiming}
-                className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors disabled:opacity-50 font-medium"
+                className="px-4 py-2.5 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40"
               >
                 {claiming ? 'Claiming...' : 'Claim'}
               </button>
               <button
                 onClick={openCounterModal}
-                className="px-4 py-2 bg-amber-500 text-white rounded-md hover:bg-amber-600 transition-colors font-medium"
+                className="px-4 py-2.5 bg-amber-500 text-white rounded-lg hover:bg-amber-600 transition-colors font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40"
               >
                 Counter
               </button>
               <button
                 onClick={handleMessageCompany}
-                className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors font-medium"
+                className="px-4 py-2.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
               >
                 Message
               </button>

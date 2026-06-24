@@ -16,6 +16,7 @@ import {
 } from '../../utils/jobFilterEngine';
 import { haversineMiles } from '../../utils/jobDisplayUtils';
 import { getDemoFlagshipJobId, isDemoMode } from '../../utils/demoMode';
+import { normalizeJobsListResponse } from '../../utils/jobsApiResponse';
 
 const JOBS_PER_PAGE = 9;
 
@@ -109,9 +110,10 @@ export default function useJobsDashboard() {
   const statusFromUrl = searchParams.get('status') || '';
 
   const [jobs, setJobs] = useState([]);
-  const [allJobsSnapshot, setAllJobsSnapshot] = useState([]);
+  const [jobsMeta, setJobsMeta] = useState(null);
   const [analytics, setAnalytics] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [jobsLoading, setJobsLoading] = useState(true);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [locations, setLocations] = useState([]);
   const [technicianProfile, setTechnicianProfile] = useState(null);
@@ -138,6 +140,7 @@ export default function useJobsDashboard() {
   useEffect(() => {
     const status = searchParams.get('status') || '';
     setServerFilters((prev) => ({ ...prev, status }));
+    setCurrentPage(1);
   }, [searchParams]);
 
   useEffect(() => {
@@ -176,46 +179,51 @@ export default function useJobsDashboard() {
 
   const fetchJobs = useCallback(async () => {
     try {
-      setLoading(true);
+      setJobsLoading(true);
       const apiFilters = {
         location: serverFilters.location || undefined,
         keyword: serverFilters.keyword || undefined,
+        page: currentPage,
+        per_page: JOBS_PER_PAGE,
       };
       if (serverFilters.status) apiFilters.status = serverFilters.status;
       const data = await jobsAPI.getAll(apiFilters);
-      const list = Array.isArray(data) ? data : [];
+      const { jobs: list, meta } = normalizeJobsListResponse(data);
       setJobs(list);
+      setJobsMeta(meta);
       setError(null);
-      setCurrentPage(1);
     } catch (err) {
       setError('Failed to load jobs');
       console.error('Error fetching jobs:', err);
     } finally {
-      setLoading(false);
+      setJobsLoading(false);
     }
-  }, [serverFilters]);
+  }, [serverFilters, currentPage]);
 
-  const fetchKpiSnapshot = useCallback(async () => {
-    if (role === 'technician') return;
+  const fetchAnalytics = useCallback(async () => {
+    if (role === 'technician') {
+      setAnalyticsLoading(false);
+      return;
+    }
+    setAnalyticsLoading(true);
     try {
-      const [analyticsRes, allJobs] = await Promise.all([
-        jobsAPI.getAnalytics().catch(() => null),
-        jobsAPI.getAll({}).catch(() => []),
-      ]);
+      const analyticsRes = await jobsAPI.getAnalytics().catch(() => null);
       setAnalytics(analyticsRes);
-      if (Array.isArray(allJobs)) {
-        setAllJobsSnapshot(allJobs);
-      }
     } catch {
       setAnalytics(null);
+    } finally {
+      setAnalyticsLoading(false);
     }
   }, [role]);
 
   useEffect(() => {
     fetchJobs();
-    fetchKpiSnapshot();
+  }, [fetchJobs]);
+
+  useEffect(() => {
+    fetchAnalytics();
     fetchTechnicianProfile();
-  }, [fetchJobs, fetchKpiSnapshot, fetchTechnicianProfile]);
+  }, [fetchAnalytics, fetchTechnicianProfile]);
 
   useEffect(() => {
     jobsAPI
@@ -242,10 +250,21 @@ export default function useJobsDashboard() {
     return sorted;
   }, [clientFilteredJobs, sortBy, technicianProfile]);
 
-  const indexOfLastJob = currentPage * JOBS_PER_PAGE;
-  const indexOfFirstJob = indexOfLastJob - JOBS_PER_PAGE;
-  const currentJobs = sortedJobs.slice(indexOfFirstJob, indexOfLastJob);
-  const totalPages = Math.ceil(sortedJobs.length / JOBS_PER_PAGE) || 1;
+  const serverTotalPages = jobsMeta?.total_pages ?? 1;
+  const serverTotal = jobsMeta?.total ?? sortedJobs.length;
+  const useServerPagination = Boolean(jobsMeta);
+
+  const currentJobs = useServerPagination ? sortedJobs : sortedJobs.slice(
+    (currentPage - 1) * JOBS_PER_PAGE,
+    currentPage * JOBS_PER_PAGE
+  );
+  const totalPages = useServerPagination ? serverTotalPages : Math.ceil(sortedJobs.length / JOBS_PER_PAGE) || 1;
+  const indexOfFirstJob = useServerPagination
+    ? (currentPage - 1) * JOBS_PER_PAGE + 1
+    : (currentPage - 1) * JOBS_PER_PAGE + 1;
+  const indexOfLastJob = useServerPagination
+    ? Math.min(currentPage * JOBS_PER_PAGE, serverTotal)
+    : Math.min(currentPage * JOBS_PER_PAGE, sortedJobs.length);
 
   const hasServerFilters = Boolean(
     serverFilters.keyword || serverFilters.location || serverFilters.status
@@ -254,18 +273,20 @@ export default function useJobsDashboard() {
   const hasAnyFilters = hasServerFilters || hasClientFiltersActive;
 
   const emptyVariant = useMemo(() => {
-    if (jobs.length === 0 && !hasAnyFilters) return 'no_jobs';
-    if (sortedJobs.length === 0 && hasAnyFilters) return 'no_match';
-    if (sortedJobs.length === 0 && jobs.length > 0) return 'no_match';
+    if (!jobsLoading && jobs.length === 0 && !hasAnyFilters) return 'no_jobs';
+    if (!jobsLoading && sortedJobs.length === 0 && hasAnyFilters) return 'no_match';
+    if (!jobsLoading && sortedJobs.length === 0 && jobs.length > 0) return 'no_match';
     return null;
-  }, [jobs.length, sortedJobs.length, hasAnyFilters]);
+  }, [jobs.length, sortedJobs.length, hasAnyFilters, jobsLoading]);
 
   const handleServerFilterChange = (name, value) => {
     setServerFilters((prev) => ({ ...prev, [name]: value }));
+    setCurrentPage(1);
   };
 
   const handleStatusChange = (status) => {
     setServerFilters((prev) => ({ ...prev, status }));
+    setCurrentPage(1);
     setSearchParams((prev) => {
       const next = new URLSearchParams(prev);
       if (status) next.set('status', status);
@@ -276,6 +297,7 @@ export default function useJobsDashboard() {
 
   const handleSearch = () => {
     setServerFilters((prev) => ({ ...prev, keyword: searchInput }));
+    setCurrentPage(1);
   };
 
   const clearFilters = () => {
@@ -310,16 +332,17 @@ export default function useJobsDashboard() {
 
   const refetch = () => {
     fetchJobs();
-    fetchKpiSnapshot();
+    fetchAnalytics();
   };
 
   return {
     role,
     config,
     jobs,
-    allJobsSnapshot,
     analytics,
-    loading,
+    analyticsLoading,
+    loading: jobsLoading,
+    jobsLoading,
     error,
     locations,
     technicianProfile,

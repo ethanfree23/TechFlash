@@ -37,6 +37,11 @@ const WEEKDAY_OPTIONS = [
   { value: '6', label: 'Saturday' },
 ];
 
+const fieldClass =
+  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 outline-none';
+const sectionCardClass = 'rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3';
+const labelClass = 'block text-sm font-semibold text-slate-800 mb-1.5';
+
 const getDefaultStart = () => {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -450,21 +455,21 @@ const CreateJob = () => {
   };
 
   return (
-    <div className="max-w-3xl mx-auto mt-8 bg-white p-8 rounded-2xl border border-gray-200 shadow-sm">
+    <div className="max-w-4xl mx-auto mt-8 bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm">
       <button
         type="button"
         onClick={() => navigate(-1)}
-        className="mb-4 text-blue-600 hover:text-blue-800 text-sm font-medium"
+        className="mb-5 text-blue-600 hover:text-blue-800 text-sm font-medium"
       >
         ← Back
       </button>
-      <h1 className="text-2xl font-bold mb-2">Create New Job</h1>
-      <p className="text-sm text-gray-500 mb-6">Matches web parity fields and posting behavior used in production.</p>
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">Create New Job</h1>
+      <p className="text-sm text-slate-500 mb-6">Matches web parity fields and posting behavior used in production.</p>
+      <form onSubmit={handleSubmit} className="space-y-6">
         <div>
-          <label className="block font-medium mb-1">Title</label>
+          <label className={labelClass}>Title</label>
           <input
-            className="w-full border px-3 py-2 rounded"
+            className={fieldClass}
             value={title}
             onChange={e => setTitle(e.target.value)}
             required
@@ -472,13 +477,13 @@ const CreateJob = () => {
         </div>
         <div>
           {isAdmin && (
-            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-3 mb-4">
-              <h3 className="font-medium text-gray-900">Company Account</h3>
-              <p className="text-xs text-gray-500">
+            <div className={`${sectionCardClass} mb-4`}>
+              <h3 className="font-semibold text-slate-900">Company Account</h3>
+              <p className="text-xs text-slate-500">
                 Search and select the company account this job should be attached to.
               </p>
               <input
-                className="w-full border px-3 py-2 rounded bg-white"
+                className={fieldClass}
                 value={companyQuery}
                 onChange={(e) => setCompanyQuery(e.target.value)}
                 placeholder="Search by company name..."
@@ -490,10 +495,10 @@ const CreateJob = () => {
                 </p>
               )}
               {companySearchLoading && (
-                <p className="text-xs text-gray-500">Searching companies...</p>
+                <p className="text-xs text-slate-500">Searching companies...</p>
               )}
               {!companySelectionLocked && !companySearchLoading && companyOptions.length > 0 && (
-                <div className="max-h-44 overflow-y-auto border rounded bg-white">
+                <div className="max-h-44 overflow-y-auto border border-slate-200 rounded-lg bg-white">
                   {companyOptions.map((company) => (
                     (() => {
                       const contactName = [company.contact_first_name, company.contact_last_name]
@@ -513,7 +518,7 @@ const CreateJob = () => {
                         setCompanyOptions([]);
                         setCompanySelectionLocked(true);
                       }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b last:border-b-0"
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-slate-100 last:border-b-0"
                     >
                       {label}
                     </button>
@@ -543,9 +548,9 @@ const CreateJob = () => {
           )}
 
           {isAdmin && (
-            <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-2 mb-4">
-              <h3 className="font-medium text-gray-900">Card Validation</h3>
-              <p className="text-xs text-gray-500">
+            <div className={`${sectionCardClass} mb-4`}>
+              <h3 className="font-semibold text-slate-900">Card Validation</h3>
+              <p className="text-xs text-slate-500">
                 Toggle whether to require a saved card on the selected company before posting.
               </p>
               <label className="inline-flex items-center gap-2 text-sm">
@@ -559,9 +564,9 @@ const CreateJob = () => {
             </div>
           )}
 
-          <label className="block font-medium mb-1">Description</label>
+          <label className={labelClass}>Description</label>
           <textarea
-            className="w-full border px-3 py-2 rounded"
+            className={`${fieldClass} min-h-[120px]`}
             value={description}
             onChange={e => setDescription(e.target.value)}
             required
@@ -569,9 +574,9 @@ const CreateJob = () => {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block font-medium mb-1">Class</label>
+            <label className={labelClass}>Class</label>
             <input
-              className="w-full border px-3 py-2 rounded"
+              className={fieldClass}
               value={skillClass}
               onChange={(e) => setSkillClass(e.target.value)}
               placeholder="e.g. Journeyman, Residential"
@@ -584,9 +589,9 @@ const CreateJob = () => {
             </datalist>
           </div>
           <div>
-            <label className="block font-medium mb-1">Experience</label>
+            <label className={labelClass}>Experience</label>
             <select
-              className="w-full border px-3 py-2 rounded bg-white"
+              className={fieldClass}
               value={minimumYearsExperience}
               onChange={(e) => setMinimumYearsExperience(e.target.value)}
             >
@@ -598,9 +603,9 @@ const CreateJob = () => {
             </select>
           </div>
         </div>
-        <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-3">
-          <h3 className="font-medium text-gray-900">Go Live</h3>
-          <p className="text-xs text-gray-500">
+        <div className={sectionCardClass}>
+          <h3 className="font-semibold text-slate-900">Go Live</h3>
+          <p className="text-xs text-slate-500">
             By default, this job goes live when you post it.
           </p>
           <label className="inline-flex items-center gap-2 text-sm">
@@ -613,7 +618,7 @@ const CreateJob = () => {
           </label>
           {useCustomGoLiveAt && (
             <div>
-              <label className="block font-medium mb-1 text-sm">Go live date & time</label>
+              <label className="block text-sm font-semibold text-slate-800 mb-1.5">Go live date & time</label>
               <DateTimeInput
                 id="create-job-go-live-at"
                 value={goLiveAt}
@@ -624,20 +629,20 @@ const CreateJob = () => {
           )}
         </div>
         <div>
-          <label className="block font-medium mb-1">Notes and conditions</label>
-          <p className="text-xs text-gray-500 mb-2">
+          <label className={labelClass}>Notes and conditions</label>
+          <p className="text-xs text-slate-500 mb-2">
             Safety, certifications, site conditions, or other requirements—shown on the job listing like a referral sheet.
           </p>
           <textarea
-            className="w-full border px-3 py-2 rounded min-h-[100px]"
+            className={`${fieldClass} min-h-[100px]`}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             placeholder="e.g. OSHA 30 required, drug screening, crawl spaces, etc."
           />
         </div>
         <div>
-          <label className="block font-medium mb-2">Verification requirements</label>
-          <div className="rounded-lg border border-gray-200 p-4 bg-gray-50 space-y-3">
+          <label className="block text-sm font-semibold text-slate-800 mb-2">Verification requirements</label>
+          <div className="rounded-xl border border-slate-200 p-4 bg-slate-50/70 space-y-3">
             <label className="flex items-center justify-between text-sm gap-4">
               <span>Require background check</span>
               <input
@@ -661,7 +666,7 @@ const CreateJob = () => {
                 type="number"
                 min="0"
                 max="10"
-                className="w-24 border px-2 py-1 rounded bg-white"
+                className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 outline-none"
                 value={minimumVerifiedReferences}
                 onChange={(e) => setMinimumVerifiedReferences(e.target.value)}
               />
@@ -677,13 +682,13 @@ const CreateJob = () => {
           </div>
         </div>
         <div>
-          <label className="block font-medium mb-1">Required Certifications</label>
-          <p className="text-xs text-gray-500 mb-2">List certifications the tech must have. Techs upload certificate images; you verify they match.</p>
+          <label className={labelClass}>Required Certifications</label>
+          <p className="text-xs text-slate-500 mb-2">List certifications the tech must have. Techs upload certificate images; you verify they match.</p>
           <div className="space-y-2">
             {requiredCertifications.map((cert, idx) => (
               <div key={idx} className="flex gap-2">
                 <input
-                  className="flex-1 border px-3 py-2 rounded"
+                  className={`${fieldClass} flex-1`}
                   value={cert}
                   onChange={(e) => {
                     const next = [...requiredCertifications];
@@ -719,9 +724,9 @@ const CreateJob = () => {
           country={country}
           onChange={patchAddress}
         />
-        <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-4">
-          <h3 className="font-medium text-gray-900">Pricing</h3>
-          <p className="text-sm text-gray-600">
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
+          <h3 className="font-semibold text-slate-900">Pricing</h3>
+          <p className="text-sm text-slate-600">
             {feeLabel != null
               ? `When a tech claims this job, you will be charged the job total plus a ${feeLabel}% platform fee (your company tier).`
               : isAdmin
@@ -730,50 +735,50 @@ const CreateJob = () => {
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block font-medium mb-1 text-sm">Hourly rate (USD)</label>
+              <label className="block text-sm font-semibold text-slate-800 mb-1.5">Hourly rate (USD)</label>
               <input
                 type="number"
                 min="0"
                 step="0.01"
                 placeholder="e.g. 50"
-                className="w-full border px-3 py-2 rounded bg-white"
+                className={fieldClass}
                 value={hourlyRate}
                 onChange={e => setHourlyRate(e.target.value)}
               />
             </div>
             <div>
-              <label className="block font-medium mb-1 text-sm">Hours per day</label>
+              <label className="block text-sm font-semibold text-slate-800 mb-1.5">Hours per day</label>
               <input
                 type="number"
                 min="1"
                 max="24"
-                className="w-full border px-3 py-2 rounded bg-white"
+                className={fieldClass}
                 value={hoursPerDay}
                 onChange={e => setHoursPerDay(e.target.value)}
               />
-              <p className="text-xs text-gray-500 mt-0.5">Default: 8</p>
+              <p className="text-xs text-slate-500 mt-0.5">Default: 8</p>
             </div>
             <div>
-              <label className="block font-medium mb-1 text-sm">Number of days</label>
+              <label className="block text-sm font-semibold text-slate-800 mb-1.5">Number of days</label>
               <input
                 type="number"
                 min="0"
                 placeholder="e.g. 3"
-                className="w-full border px-3 py-2 rounded bg-white"
+                className={fieldClass}
                 value={days}
                 onChange={e => setDays(e.target.value)}
               />
             </div>
           </div>
           {jobAmount > 0 && (
-            <div className="text-sm space-y-1 pt-2 border-t border-gray-200">
+            <div className="text-sm space-y-1 pt-2 border-t border-slate-200">
               <p><span className="font-medium">Job total:</span> ${jobAmount.toFixed(2)}</p>
               {companyCharge != null && feeLabel != null ? (
                 <p>
                   <span className="font-medium">You pay (incl. {feeLabel}% fee):</span> ${companyCharge.toFixed(2)}
                 </p>
               ) : (
-                <p className="text-gray-500">
+                <p className="text-slate-500">
                   {isAdmin && !companyProfileId
                     ? 'Select a company account to preview the total you pay (includes tier-based fee).'
                     : 'Could not load fee rate yet.'}
@@ -784,9 +789,9 @@ const CreateJob = () => {
         </div>
         <div className="space-y-3">
           <div>
-            <label className="block font-medium mb-1">Start Mode</label>
+            <label className={labelClass}>Start Mode</label>
             <select
-              className="w-full border px-3 py-2 rounded"
+              className={fieldClass}
               value={startMode}
               onChange={(e) => setStartMode(e.target.value)}
             >
@@ -796,11 +801,11 @@ const CreateJob = () => {
           </div>
           {startMode === 'rolling_start' && (
             <div className="space-y-3">
-              <p className="text-xs text-gray-500">For rolling start jobs, start scheduling is set at claim time using the rule below.</p>
+              <p className="text-xs text-slate-500">For rolling start jobs, start scheduling is set at claim time using the rule below.</p>
               <div>
-                <label className="block font-medium mb-1 text-sm">Rolling start rule</label>
+                <label className="block text-sm font-semibold text-slate-800 mb-1.5">Rolling start rule</label>
                 <select
-                  className="w-full border px-3 py-2 rounded bg-white"
+                  className={fieldClass}
                   value={rollingStartRuleType}
                   onChange={(e) => setRollingStartRuleType(e.target.value)}
                 >
@@ -812,7 +817,7 @@ const CreateJob = () => {
               </div>
               {rollingStartRuleType === 'exact_datetime' && (
                 <div>
-                  <label className="block font-medium mb-1 text-sm">Exact start date & time</label>
+                  <label className="block text-sm font-semibold text-slate-800 mb-1.5">Exact start date & time</label>
                   <DateTimeInput
                     id="create-job-rolling-exact-start"
                     value={rollingStartExactStartAt}
@@ -823,11 +828,11 @@ const CreateJob = () => {
               )}
               {rollingStartRuleType === 'days_after_acceptance' && (
                 <div>
-                  <label className="block font-medium mb-1 text-sm">Days after acceptance</label>
+                  <label className="block text-sm font-semibold text-slate-800 mb-1.5">Days after acceptance</label>
                   <input
                     type="number"
                     min="1"
-                    className="w-full border px-3 py-2 rounded bg-white"
+                    className={fieldClass}
                     value={rollingStartDaysAfterAcceptance}
                     onChange={(e) => setRollingStartDaysAfterAcceptance(e.target.value)}
                   />
@@ -836,9 +841,9 @@ const CreateJob = () => {
               {rollingStartRuleType === 'following_weekday' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-medium mb-1 text-sm">Following weekday</label>
+                    <label className="block text-sm font-semibold text-slate-800 mb-1.5">Following weekday</label>
                     <select
-                      className="w-full border px-3 py-2 rounded bg-white"
+                      className={fieldClass}
                       value={rollingStartWeekday}
                       onChange={(e) => setRollingStartWeekday(e.target.value)}
                     >
@@ -848,10 +853,10 @@ const CreateJob = () => {
                     </select>
                   </div>
                   <div>
-                    <label className="block font-medium mb-1 text-sm">Start time</label>
+                    <label className="block text-sm font-semibold text-slate-800 mb-1.5">Start time</label>
                     <input
                       type="time"
-                      className="w-full border px-3 py-2 rounded bg-white"
+                      className={fieldClass}
                       value={rollingStartWeekdayTime}
                       onChange={(e) => setRollingStartWeekdayTime(e.target.value)}
                     />
@@ -863,7 +868,7 @@ const CreateJob = () => {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block font-medium mb-1">Start Date & Time</label>
+            <label className={labelClass}>Start Date & Time</label>
             <DateTimeInput
               id="create-job-start-at"
               value={scheduledStartAt}
@@ -873,20 +878,20 @@ const CreateJob = () => {
             />
           </div>
           <div>
-            <label className="block font-medium mb-1">End Date & Time</label>
+            <label className={labelClass}>End Date & Time</label>
             <DateTimeInput
               id="create-job-end-at"
               value={scheduledEndAt}
               onChange={(e) => setScheduledEndAt(e.target.value)}
               className="w-full"
             />
-            <p className="text-xs text-gray-500 mt-0.5">Auto-calculated from days and hours (incl. 1 hr lunch/day). Adjust if needed.</p>
+            <p className="text-xs text-slate-500 mt-0.5">Auto-calculated from days and hours (incl. 1 hr lunch/day). Adjust if needed.</p>
           </div>
         </div>
         <div>
-          <label className="block font-medium mb-1">Status</label>
+          <label className={labelClass}>Status</label>
           <select
-            className="w-full border px-3 py-2 rounded"
+            className={fieldClass}
             value={status}
             onChange={e => setStatus(e.target.value)}
           >
@@ -894,20 +899,20 @@ const CreateJob = () => {
             <option value="draft">Draft</option>
           </select>
           {isAdmin && (
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               Jobs go live immediately when status is set to Open.
             </p>
           )}
         </div>
         <button
           type="submit"
-          className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+          className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-50"
           disabled={saving || !companyProfileId}
         >
           {saving ? 'Creating...' : 'Create Job'}
         </button>
         {isAdmin && (
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-slate-600">
             Card validation:{" "}
             <span className={enforceCardValidation ? "font-semibold text-green-700" : "font-semibold text-amber-700"}>
               {enforceCardValidation ? "ON" : "OFF"}

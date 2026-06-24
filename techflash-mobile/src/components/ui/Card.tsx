@@ -15,7 +15,7 @@ const styles = StyleSheet.create({
     borderRadius: radii.xl,
     borderWidth: 1,
     borderColor: colors.border,
-    padding: 16,
-    marginBottom: 12,
+    padding: 18,
+    marginBottom: 14,
   },
 });

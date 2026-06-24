@@ -77,23 +77,7 @@ module Api
               )
               # #endregion
 
-              # Membership gating needs fields like minimum_years_experience/go_live_at.
-              # Avoid partial SELECT(:id), which can raise missing-attribute errors here.
-              visible_ids = jobs.select do |candidate|
-                MembershipPolicy.job_visible_to_technician?(job: candidate, technician_profile: technician_profile)
-              end.map(&:id)
-              jobs = jobs.where(id: visible_ids)
-              # #region agent log
-              debug_log(
-                hypothesis_id: 'B3',
-                location: 'jobs_controller.rb:index:post_membership_filter',
-                message: 'post membership gating',
-                data: {
-                  visible_ids_count: visible_ids.length,
-                  visible_ids_sample: visible_ids.first(5)
-                }
-              )
-              # #endregion
+              jobs = MembershipPolicy.apply_technician_visibility_scope(jobs, technician_profile)
             end
           end
         end
@@ -138,23 +122,8 @@ module Api
         end
 
         jobs = jobs.includes(:company_profile, :payments, job_applications: { technician_profile: :user })
-        # #region agent log
-        debug_log(
-          hypothesis_id: 'B4',
-          location: 'jobs_controller.rb:index:final_render',
-          message: 'jobs index final render',
-          data: {
-            status_param: params[:status].to_s,
-            final_count: jobs.count,
-            final_sample: jobs.limit(5).pluck(:id, :status, :go_live_at, :scheduled_end_at)
-          }
-        )
-        # #endregion
-        
-        render json: jobs,
-               each_serializer: JobSerializer,
-               include: [:company_profile, { job_applications: { technician_profile: :user } }],
-               status: :ok
+
+        render_paginated_jobs(jobs)
       end
 
       def locations
@@ -269,20 +238,25 @@ module Api
         company_profile ||= CompanyProfile.create!(user_id: @current_user.id)
         @current_user.update_column(:company_profile_id, company_profile.id) if @current_user.company_profile_id != company_profile.id
 
-        jobs = company_profile.jobs.includes(:job_applications)
+        limit = (params[:limit].presence || 25).to_i.clamp(1, 100)
+        recency = Arel.sql("COALESCE(jobs.finished_at, jobs.updated_at, jobs.created_at) DESC")
+        base = company_profile.jobs
 
-        # claimed = technician has claimed (reserved or filled); unclaimed = open; completed = finished
-        # Within each group: most recent first (by finished_at/updated_at/created_at)
-        sort_by_recency = ->(a, b) {
-          ta = a.finished_at || a.updated_at || a.created_at
-          tb = b.finished_at || b.updated_at || b.created_at
-          (tb || Time.at(0)) <=> (ta || Time.at(0))
-        }
-        claimed = jobs.select { |job| job.reserved? || job.filled? }.sort(&sort_by_recency)
-        unclaimed = jobs.select { |job| job.open? }.sort(&sort_by_recency)
-        completed = jobs.select { |job| job.finished? }.sort(&sort_by_recency)
+        claimed_scope = base.where(status: %i[reserved filled])
+        unclaimed_scope = base.where(status: :open)
+        completed_scope = base.where(status: :finished)
+
+        claimed = claimed_scope.includes(:job_applications).order(recency).limit(limit)
+        unclaimed = unclaimed_scope.includes(:job_applications).order(recency).limit(limit)
+        completed = completed_scope.includes(:job_applications).order(recency).limit(limit)
 
         render json: {
+          counts: {
+            requested: claimed_scope.count,
+            unrequested: unclaimed_scope.count,
+            completed: completed_scope.count,
+            total: base.count
+          },
           requested: ActiveModel::Serializer::CollectionSerializer.new(claimed, serializer: JobSerializer),
           unrequested: ActiveModel::Serializer::CollectionSerializer.new(unclaimed, serializer: JobSerializer),
           expired: ActiveModel::Serializer::CollectionSerializer.new(completed, serializer: JobSerializer)
@@ -516,6 +490,44 @@ module Api
       def can_manage_job?(job)
         return true if @current_user&.admin?
         @current_user&.company? && job.company_profile_id == @current_user.company_profile&.id
+      end
+
+      def render_paginated_jobs(jobs)
+        page = params[:page].presence&.to_i
+        per_page = (params[:per_page].presence || default_jobs_per_page).to_i.clamp(1, 100)
+
+        if page.present? && page.positive?
+          total = jobs.count
+          records = jobs.offset((page - 1) * per_page).limit(per_page)
+          serialized = ActiveModelSerializers::SerializableResource.new(
+            records,
+            each_serializer: JobSerializer,
+            include: [:company_profile, { job_applications: { technician_profile: :user } }]
+          ).as_json
+          render json: {
+            jobs: serialized,
+            meta: {
+              total: total,
+              page: page,
+              per_page: per_page,
+              total_pages: [(total.to_f / per_page).ceil, 1].max
+            }
+          }, status: :ok
+          return
+        end
+
+        # Legacy unpaginated response — cap technician browse to avoid multi-MB payloads.
+        cap = @current_user&.technician? ? 100 : nil
+        records = cap ? jobs.limit(cap) : jobs
+
+        render json: records,
+               each_serializer: JobSerializer,
+               include: [:company_profile, { job_applications: { technician_profile: :user } }],
+               status: :ok
+      end
+
+      def default_jobs_per_page
+        @current_user&.company? ? 24 : 36
       end
 
       # Companies must not reopen via arbitrary PATCH while a claim is accepted (use deny flow). Admins may override.

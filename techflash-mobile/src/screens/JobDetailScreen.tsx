@@ -170,6 +170,7 @@ export default function JobDetailScreen() {
           },
         ]
       : [];
+  const statusText = String(job.status || 'unknown');
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
@@ -179,6 +180,9 @@ export default function JobDetailScreen() {
         <MapJobsPreview markers={jobMapMarkers} height={200} />
       ) : null}
       <Card style={styles.mainCard}>
+        <View style={styles.statusPill}>
+          <Text style={styles.statusPillText}>{statusText}</Text>
+        </View>
         <Text style={styles.title}>{String(job.title || `Job #${job.id}`)}</Text>
         <View style={styles.timelineBox}>
           <Text style={styles.section}>Job and payment timeline</Text>
@@ -195,7 +199,7 @@ export default function JobDetailScreen() {
         </View>
         <View style={[styles.metaRow, styles.metaRowTop]}>
           <Text style={styles.metaLabel}>Status</Text>
-          <Text style={styles.metaValue}>{String(job.status || 'unknown')}</Text>
+          <Text style={styles.metaValue}>{statusText}</Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>Location</Text>
@@ -316,17 +320,17 @@ export default function JobDetailScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 14, paddingBottom: 40 },
+  content: { padding: 14, paddingBottom: 48 },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
-  title: { ...typography.title },
+  title: { ...typography.title, fontSize: 28, lineHeight: 34 },
   section: { ...typography.heading, color: colors.text, marginBottom: 8 },
   sub: { ...typography.body, color: colors.muted, marginTop: 5 },
-  mainCard: { marginTop: 10 },
+  mainCard: { marginTop: 8 },
   actionCard: { marginTop: 10 },
   metaRow: { marginTop: 8, flexDirection: 'row', justifyContent: 'space-between', gap: 8 },
   metaRowTop: { marginTop: 4 },
   metaLabel: { ...typography.caption, color: colors.muted, textTransform: 'uppercase' },
-  metaValue: { color: colors.text, fontWeight: '600', flex: 1, textAlign: 'right', lineHeight: 20 },
+  metaValue: { color: colors.text, fontWeight: '600', flex: 1, textAlign: 'right', lineHeight: 20, textTransform: 'capitalize' },
   timelineBox: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: 12, marginTop: 10, marginBottom: 10, backgroundColor: colors.white },
   paymentBox: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: 12, marginBottom: 10, backgroundColor: colors.bg },
   notesBox: { borderWidth: 1, borderColor: colors.border, borderRadius: radii.md, padding: 12, marginTop: 12, backgroundColor: colors.white },
@@ -359,4 +363,20 @@ const styles = StyleSheet.create({
   btnGhostText: { ...typography.body, color: colors.text, fontWeight: '600' },
   error: { ...typography.body, color: colors.danger, marginBottom: 8 },
   notice: { ...typography.body, color: colors.primaryBlue, marginBottom: 8 },
+  statusPill: {
+    alignSelf: 'flex-start',
+    borderWidth: 1,
+    borderColor: colors.primaryBlue,
+    backgroundColor: colors.primaryBlueMuted,
+    borderRadius: radii.full,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    marginBottom: 10,
+  },
+  statusPillText: {
+    color: colors.primaryBlueDark,
+    fontSize: 12,
+    fontWeight: '700',
+    textTransform: 'capitalize',
+  },
 });

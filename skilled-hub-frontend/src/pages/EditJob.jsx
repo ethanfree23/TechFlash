@@ -20,6 +20,11 @@ const WEEKDAY_OPTIONS = [
   { value: '6', label: 'Saturday' },
 ];
 
+const fieldClass =
+  'w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 outline-none';
+const sectionCardClass = 'rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-3';
+const labelClass = 'block text-sm font-semibold text-slate-800 mb-1.5';
+
 const toDatetimeLocal = (d) => {
   if (!d) return '';
   const date = new Date(d);
@@ -289,18 +294,18 @@ const EditJob = () => {
   const acceptedApp = job?.job_applications?.find((app) => app.status === 'accepted' || app.status === 1);
   const hasAcceptedApplication = Boolean(acceptedApp);
 
-  if (loading) return <div className="max-w-xl mx-auto mt-10">Loading...</div>;
-  if (error) return <div className="max-w-xl mx-auto mt-10 text-red-600">{error}</div>;
-  if (!job) return <div className="max-w-xl mx-auto mt-10 text-red-600">Job not found</div>;
+  if (loading) return <div className="max-w-4xl mx-auto mt-10 rounded-2xl border border-slate-200 bg-white px-6 py-12 text-slate-600">Loading...</div>;
+  if (error) return <div className="max-w-4xl mx-auto mt-10 rounded-2xl border border-red-200 bg-red-50 px-6 py-12 text-red-700">{error}</div>;
+  if (!job) return <div className="max-w-4xl mx-auto mt-10 rounded-2xl border border-red-200 bg-red-50 px-6 py-12 text-red-700">Job not found</div>;
 
   return (
-    <div className="max-w-xl mx-auto mt-10 bg-white p-8 rounded shadow">
-      <h1 className="text-2xl font-bold mb-6">Edit Job</h1>
-      <form onSubmit={handleSubmit} className="space-y-4">
+    <div className="max-w-4xl mx-auto mt-10 bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm">
+      <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-6">Edit Job</h1>
+      <form onSubmit={handleSubmit} className="space-y-6">
         <div>
-          <label className="block font-medium mb-1">Title</label>
+          <label className={labelClass}>Title</label>
           <input
-            className="w-full border px-3 py-2 rounded"
+            className={fieldClass}
             name="title"
             value={form.title}
             onChange={handleChange}
@@ -308,9 +313,9 @@ const EditJob = () => {
           />
         </div>
         <div>
-          <label className="block font-medium mb-1">Description</label>
+          <label className={labelClass}>Description</label>
           <textarea
-            className="w-full border px-3 py-2 rounded"
+            className={`${fieldClass} min-h-[120px]`}
             name="description"
             value={form.description}
             onChange={handleChange}
@@ -319,9 +324,9 @@ const EditJob = () => {
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block font-medium mb-1">Class</label>
+            <label className={labelClass}>Class</label>
             <input
-              className="w-full border px-3 py-2 rounded"
+              className={fieldClass}
               name="skill_class"
               value={form.skill_class}
               onChange={handleChange}
@@ -329,10 +334,10 @@ const EditJob = () => {
             />
           </div>
           <div>
-            <label className="block font-medium mb-1">Experience</label>
+            <label className={labelClass}>Experience</label>
             <select
               name="minimum_years_experience"
-              className="w-full border px-3 py-2 rounded bg-white"
+              className={fieldClass}
               value={form.minimum_years_experience}
               onChange={handleChange}
             >
@@ -345,10 +350,10 @@ const EditJob = () => {
           </div>
         </div>
         <div>
-          <label className="block font-medium mb-1">Notes and conditions</label>
-          <p className="text-xs text-gray-500 mb-2">Shown on the job listing for technicians.</p>
+          <label className={labelClass}>Notes and conditions</label>
+          <p className="text-xs text-slate-500 mb-2">Shown on the job listing for technicians.</p>
           <textarea
-            className="w-full border px-3 py-2 rounded min-h-[100px]"
+            className={`${fieldClass} min-h-[100px]`}
             name="notes"
             value={form.notes}
             onChange={handleChange}
@@ -356,8 +361,8 @@ const EditJob = () => {
           />
         </div>
         <div>
-          <label className="block font-medium mb-2">Verification requirements</label>
-          <div className="rounded-lg border border-gray-200 p-4 bg-gray-50 space-y-3">
+          <label className="block text-sm font-semibold text-slate-800 mb-2">Verification requirements</label>
+          <div className="rounded-xl border border-slate-200 p-4 bg-slate-50/70 space-y-3">
             <label className="flex items-center justify-between text-sm gap-4">
               <span>Require background check</span>
               <input
@@ -384,7 +389,7 @@ const EditJob = () => {
                 min="0"
                 max="10"
                 name="minimum_verified_references"
-                className="w-24 border px-2 py-1 rounded bg-white"
+                className="w-24 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-sm text-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 outline-none"
                 value={form.minimum_verified_references}
                 onChange={handleChange}
               />
@@ -401,13 +406,13 @@ const EditJob = () => {
           </div>
         </div>
         <div>
-          <label className="block font-medium mb-1">Required Certifications</label>
-          <p className="text-xs text-gray-500 mb-2">List certifications the tech must have. Techs upload certificate images; you verify they match.</p>
+          <label className={labelClass}>Required Certifications</label>
+          <p className="text-xs text-slate-500 mb-2">List certifications the tech must have. Techs upload certificate images; you verify they match.</p>
           <div className="space-y-2">
             {(form.required_certifications || ['']).map((cert, idx) => (
               <div key={idx} className="flex gap-2">
                 <input
-                  className="flex-1 border px-3 py-2 rounded"
+                  className={`${fieldClass} flex-1`}
                   value={cert}
                   onChange={(e) => handleCertChange(idx, e.target.value)}
                   placeholder="e.g. OSHA 10, EPA 608"
@@ -439,44 +444,44 @@ const EditJob = () => {
           country={form.country}
           onChange={patchAddress}
         />
-        <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-4">
-          <h3 className="font-medium text-gray-900">Pricing</h3>
-          <p className="text-sm text-gray-600">
+        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
+          <h3 className="font-semibold text-slate-900">Pricing</h3>
+          <p className="text-sm text-slate-600">
             When a tech claims this job, the company is charged the job total plus a {feeLabel}% platform fee (company tier).
           </p>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="block font-medium mb-1 text-sm">Hourly rate (USD)</label>
+              <label className="block text-sm font-semibold text-slate-800 mb-1.5">Hourly rate (USD)</label>
               <input
                 type="number"
                 min="0"
                 step="0.01"
                 name="hourly_rate_cents"
-                className="w-full border px-3 py-2 rounded bg-white"
+                className={fieldClass}
                 value={form.hourly_rate_cents}
                 onChange={handleChange}
                 placeholder="e.g. 50"
               />
             </div>
             <div>
-              <label className="block font-medium mb-1 text-sm">Hours per day</label>
+              <label className="block text-sm font-semibold text-slate-800 mb-1.5">Hours per day</label>
               <input
                 type="number"
                 min="1"
                 max="24"
                 name="hours_per_day"
-                className="w-full border px-3 py-2 rounded bg-white"
+                className={fieldClass}
                 value={form.hours_per_day}
                 onChange={handleChange}
               />
             </div>
             <div>
-              <label className="block font-medium mb-1 text-sm">Number of days</label>
+              <label className="block text-sm font-semibold text-slate-800 mb-1.5">Number of days</label>
               <input
                 type="number"
                 min="0"
                 name="days"
-                className="w-full border px-3 py-2 rounded bg-white"
+                className={fieldClass}
                 value={form.days}
                 onChange={handleChange}
                 placeholder="e.g. 3"
@@ -484,16 +489,16 @@ const EditJob = () => {
             </div>
           </div>
           {jobAmount > 0 && (
-            <div className="text-sm space-y-1 pt-2 border-t border-gray-200">
+            <div className="text-sm space-y-1 pt-2 border-t border-slate-200">
               <p><span className="font-medium">Job total:</span> ${jobAmount.toFixed(2)}</p>
               <p><span className="font-medium">You pay (incl. {feeLabel}% fee):</span> ${companyCharge.toFixed(2)}</p>
             </div>
           )}
         </div>
         <div>
-          <label className="block font-medium mb-1">Start Mode</label>
+          <label className={labelClass}>Start Mode</label>
           <select
-            className="w-full border px-3 py-2 rounded"
+            className={fieldClass}
             name="start_mode"
             value={form.start_mode}
             onChange={handleChange}
@@ -503,10 +508,10 @@ const EditJob = () => {
           </select>
         </div>
         {form.start_mode === 'rolling_start' && (
-          <div className="border border-gray-200 rounded-lg p-4 bg-gray-50 space-y-3">
-            <h3 className="font-medium text-gray-900">Rolling start rule</h3>
+          <div className={sectionCardClass}>
+            <h3 className="font-semibold text-slate-900">Rolling start rule</h3>
             <select
-              className="w-full border px-3 py-2 rounded bg-white"
+              className={fieldClass}
               value={rollingStartRuleType}
               onChange={(e) => setRollingStartRuleType(e.target.value)}
             >
@@ -517,7 +522,7 @@ const EditJob = () => {
             </select>
             {rollingStartRuleType === 'exact_datetime' && (
               <div>
-                <label className="block font-medium mb-1 text-sm">Exact start date & time</label>
+                <label className="block text-sm font-semibold text-slate-800 mb-1.5">Exact start date & time</label>
                 <DateTimeInput
                   id="edit-job-rolling-exact-start"
                   value={rollingStartExactStartAt}
@@ -528,11 +533,11 @@ const EditJob = () => {
             )}
             {rollingStartRuleType === 'days_after_acceptance' && (
               <div>
-                <label className="block font-medium mb-1 text-sm">Days after acceptance</label>
+                <label className="block text-sm font-semibold text-slate-800 mb-1.5">Days after acceptance</label>
                 <input
                   type="number"
                   min="1"
-                  className="w-full border px-3 py-2 rounded bg-white"
+                  className={fieldClass}
                   value={rollingStartDaysAfterAcceptance}
                   onChange={(e) => setRollingStartDaysAfterAcceptance(e.target.value)}
                 />
@@ -541,9 +546,9 @@ const EditJob = () => {
             {rollingStartRuleType === 'following_weekday' && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block font-medium mb-1 text-sm">Following weekday</label>
+                  <label className="block text-sm font-semibold text-slate-800 mb-1.5">Following weekday</label>
                   <select
-                    className="w-full border px-3 py-2 rounded bg-white"
+                    className={fieldClass}
                     value={rollingStartWeekday}
                     onChange={(e) => setRollingStartWeekday(e.target.value)}
                   >
@@ -553,10 +558,10 @@ const EditJob = () => {
                   </select>
                 </div>
                 <div>
-                  <label className="block font-medium mb-1 text-sm">Start time</label>
+                  <label className="block text-sm font-semibold text-slate-800 mb-1.5">Start time</label>
                   <input
                     type="time"
-                    className="w-full border px-3 py-2 rounded bg-white"
+                    className={fieldClass}
                     value={rollingStartWeekdayTime}
                     onChange={(e) => setRollingStartWeekdayTime(e.target.value)}
                   />
@@ -566,8 +571,8 @@ const EditJob = () => {
           </div>
         )}
         <div>
-          <label className="block font-medium mb-1">Go Live</label>
-          <p className="text-xs text-gray-500 mb-2">By default, this job goes live when posted/opened.</p>
+          <label className={labelClass}>Go Live</label>
+          <p className="text-xs text-slate-500 mb-2">By default, this job goes live when posted/opened.</p>
           <label className="inline-flex items-center gap-2 text-sm mb-2">
             <input
               type="checkbox"
@@ -586,9 +591,9 @@ const EditJob = () => {
           )}
         </div>
         <div>
-          <label className="block font-medium mb-1">Status</label>
+          <label className={labelClass}>Status</label>
           <select
-            className="w-full border px-3 py-2 rounded bg-white"
+            className={fieldClass}
             name="status"
             value={form.status}
             onChange={handleChange}
@@ -609,7 +614,7 @@ const EditJob = () => {
             </p>
           ) : null}
           {isAdmin && (
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-slate-500 mt-1">
               Jobs go live immediately when status is set to Open.
             </p>
           )}
@@ -617,7 +622,7 @@ const EditJob = () => {
         <div className="flex gap-4 items-center">
           <button
             type="submit"
-            className="bg-blue-600 text-white px-6 py-2 rounded hover:bg-blue-700"
+            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-50"
             disabled={saving}
           >
             {saving ? 'Saving...' : 'Save Changes'}
@@ -626,7 +631,7 @@ const EditJob = () => {
             type="button"
             onClick={handleDelete}
             disabled={deleting}
-            className="bg-red-600 text-white px-6 py-2 rounded hover:bg-red-700 disabled:opacity-50"
+            className="inline-flex items-center justify-center rounded-lg border border-red-200 bg-red-50 px-6 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:opacity-50"
           >
             {deleting ? 'Deleting...' : 'Delete Job'}
           </button>
@@ -634,12 +639,12 @@ const EditJob = () => {
       </form>
 
       {job?.status === 'reserved' && (
-        <div className="mt-8 p-6 border border-gray-200 rounded-lg bg-gray-50">
+        <div className="mt-8 p-6 border border-slate-200 rounded-xl bg-slate-50/70">
           <h2 className="text-lg font-semibold mb-4">Extend Job</h2>
-          <p className="text-sm text-gray-600 mb-4">Current end: {job.scheduled_end_at ? new Date(job.scheduled_end_at).toLocaleString() : 'Not set'}</p>
+          <p className="text-sm text-slate-600 mb-4">Current end: {job.scheduled_end_at ? new Date(job.scheduled_end_at).toLocaleString() : 'Not set'}</p>
           <form onSubmit={handleExtend} className="flex gap-4 items-end">
             <div className="flex-1">
-              <label className="block font-medium mb-1 text-sm">New End Date & Time</label>
+              <label className="block text-sm font-semibold text-slate-800 mb-1.5">New End Date & Time</label>
               <DateTimeInput
                 id="edit-job-extend-end-at"
                 value={extendEndAt}
@@ -649,7 +654,7 @@ const EditJob = () => {
             </div>
             <button
               type="submit"
-              className="bg-amber-600 text-white px-6 py-2 rounded hover:bg-amber-700"
+              className="inline-flex items-center justify-center rounded-lg bg-amber-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/40"
               disabled={extending}
             >
               {extending ? 'Extending...' : 'Extend'}

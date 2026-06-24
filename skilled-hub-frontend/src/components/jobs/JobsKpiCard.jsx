@@ -43,16 +43,16 @@ export default function JobsKpiCard({ id, label, value, tone = 'slate', onClick 
       type="button"
       onClick={onClick}
       disabled={!clickable}
-      className={`rounded-lg border px-3 py-2.5 text-left transition-all ${TONE_CLASSES[tone] || TONE_CLASSES.slate} ${
+      className={`rounded-xl border px-3 py-3 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 ${TONE_CLASSES[tone] || TONE_CLASSES.slate} ${
         clickable ? 'cursor-pointer' : 'cursor-default'
       }`}
     >
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0">
-          <p className="text-[9px] font-bold uppercase tracking-wider text-slate-500 leading-none truncate">{label}</p>
-          <p className="mt-1 text-lg font-bold tabular-nums text-slate-900 leading-none">{value ?? 0}</p>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 leading-none truncate">{label}</p>
+          <p className="mt-1.5 text-xl font-bold tabular-nums text-slate-900 leading-none">{value ?? 0}</p>
         </div>
-        <Icon className={`h-3.5 w-3.5 shrink-0 ${ICON_TONE[tone] || ICON_TONE.slate}`} aria-hidden />
+        <Icon className={`h-4 w-4 shrink-0 ${ICON_TONE[tone] || ICON_TONE.slate}`} aria-hidden />
       </div>
     </button>
   );

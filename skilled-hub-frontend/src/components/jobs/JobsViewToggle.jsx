@@ -19,7 +19,7 @@ export default function JobsViewToggle({ viewMode, onChange, allowedModes }) {
           type="button"
           onClick={() => onChange(id)}
           title={placeholder ? 'Schedule view coming soon' : undefined}
-          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+          className={`inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/35 ${
             viewMode === id
               ? 'bg-blue-600 text-white'
               : placeholder

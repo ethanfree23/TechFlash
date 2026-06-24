@@ -59,6 +59,10 @@ export default function EditJobScreen() {
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={{ padding: 14, paddingBottom: 40 }}>
+      <View style={styles.header}>
+        <Text style={styles.pageTitle}>Edit Job</Text>
+        <Text style={styles.pageSubtitle}>Update the listing while keeping current job flow intact.</Text>
+      </View>
       {!!error && <Text style={styles.error}>{error}</Text>}
       <Field label="Title" value={title} onChangeText={setTitle} />
       <Field label="Description" value={description} onChangeText={setDescription} multiline />
@@ -100,6 +104,9 @@ function Field({
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
+  header: { marginBottom: 6 },
+  pageTitle: { color: colors.text, fontSize: 24, fontWeight: '700' },
+  pageSubtitle: { color: colors.muted, marginTop: 4 },
   error: { color: colors.danger, marginBottom: 8 },
   label: { marginTop: 10, marginBottom: 4, color: colors.muted, textTransform: 'uppercase', fontSize: 12 },
   input: {

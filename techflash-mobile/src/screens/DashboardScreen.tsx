@@ -302,6 +302,10 @@ export default function DashboardScreen() {
 
   return (
     <View style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.pageTitle}>Dashboard</Text>
+        <Text style={styles.pageSubtitle}>Monitor jobs and key activity by role.</Text>
+      </View>
       {error ? (
         <View style={styles.banner}>
           <Text style={styles.bannerText}>{error}</Text>
@@ -425,6 +429,9 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bg },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
+  header: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  pageTitle: { ...typography.title, fontSize: 24, lineHeight: 30 },
+  pageSubtitle: { ...typography.body, color: colors.muted, marginTop: 2 },
   banner: {
     marginHorizontal: 16,
     marginTop: 12,
@@ -433,7 +440,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(254, 103, 17, 0.12)',
   },
   bannerText: { ...typography.body, color: colors.text },
-  mapWrap: { paddingHorizontal: 16, paddingTop: 12 },
+  mapWrap: { paddingHorizontal: 16, paddingTop: 10 },
   openWrap: { paddingHorizontal: 16, paddingBottom: 8 },
   snapshotWrap: { paddingHorizontal: 16, paddingBottom: 4 },
   adminGraphWrap: {

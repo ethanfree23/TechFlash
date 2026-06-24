@@ -57,29 +57,36 @@ export default function JobsScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.topRow}>
-        <TextInput
-          value={statusFilter}
-          onChangeText={setStatusFilter}
-          style={styles.filter}
-          placeholder="status (open, filled, reserved, finished, or blank for all)"
-          placeholderTextColor={colors.muted}
-          autoCapitalize="none"
-          onSubmitEditing={() => {
-            setLoading(true);
-            load();
-          }}
-        />
-        <Pressable style={styles.reload} onPress={() => { setLoading(true); load(); }}>
-          <Text style={styles.reloadText}>Load</Text>
-        </Pressable>
+      <View style={styles.header}>
+        <Text style={styles.pageTitle}>Jobs</Text>
+        <Text style={styles.pageSubtitle}>Search and manage active job postings.</Text>
       </View>
 
-      {canCreate ? (
-        <Pressable style={styles.createBtn} onPress={() => navigation.navigate('CreateJob')}>
-          <Text style={styles.createBtnText}>Create job</Text>
-        </Pressable>
-      ) : null}
+      <View style={styles.toolbarCard}>
+        <View style={styles.topRow}>
+          <TextInput
+            value={statusFilter}
+            onChangeText={setStatusFilter}
+            style={styles.filter}
+            placeholder="status (open, filled, reserved, finished, or blank for all)"
+            placeholderTextColor={colors.muted}
+            autoCapitalize="none"
+            onSubmitEditing={() => {
+              setLoading(true);
+              load();
+            }}
+          />
+          <Pressable style={styles.reload} onPress={() => { setLoading(true); load(); }}>
+            <Text style={styles.reloadText}>Load</Text>
+          </Pressable>
+        </View>
+
+        {canCreate ? (
+          <Pressable style={styles.createBtn} onPress={() => navigation.navigate('CreateJob')}>
+            <Text style={styles.createBtnText}>Create job</Text>
+          </Pressable>
+        ) : null}
+      </View>
 
       <ErrorState error={error} />
       {loading ? (
@@ -105,7 +112,10 @@ export default function JobsScreen() {
               <Card style={styles.cardWrap}>
                 <Text style={styles.title}>{String(item.title || `Job #${item.id}`)}</Text>
                 <Text style={styles.sub}>{formatJobAddress(item)}</Text>
-                <Text style={styles.sub}>Status: {String(item.status || 'unknown')}</Text>
+                <View style={styles.statusRow}>
+                  <Text style={styles.statusLabel}>Status</Text>
+                  <Text style={styles.statusValue}>{String(item.status || 'unknown')}</Text>
+                </View>
               </Card>
             </Pressable>
           )}
@@ -117,7 +127,19 @@ export default function JobsScreen() {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  topRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 14, paddingTop: 12 },
+  header: { paddingHorizontal: 14, paddingTop: 14, paddingBottom: 8 },
+  pageTitle: { color: colors.text, fontSize: 24, fontWeight: '700' },
+  pageSubtitle: { color: colors.muted, marginTop: 4 },
+  toolbarCard: {
+    marginHorizontal: 14,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 14,
+    backgroundColor: colors.white,
+    padding: 12,
+  },
+  topRow: { flexDirection: 'row', gap: 8 },
   filter: {
     flex: 1,
     borderColor: colors.border,
@@ -126,7 +148,7 @@ const styles = StyleSheet.create({
     backgroundColor: colors.white,
     color: colors.text,
     paddingHorizontal: 10,
-    paddingVertical: 9,
+    paddingVertical: 10,
   },
   reload: {
     backgroundColor: colors.primaryBlue,
@@ -137,7 +159,6 @@ const styles = StyleSheet.create({
   reloadText: { color: colors.white, fontWeight: '700' },
   createBtn: {
     marginTop: 10,
-    marginHorizontal: 14,
     backgroundColor: colors.primaryOrange,
     borderRadius: 10,
     paddingVertical: 11,
@@ -145,7 +166,17 @@ const styles = StyleSheet.create({
   },
   createBtnText: { color: colors.white, fontWeight: '700' },
   error: { marginTop: 8, marginHorizontal: 14, color: colors.danger },
-  cardWrap: { marginBottom: 10, paddingVertical: 14 },
-  title: { color: colors.text, fontWeight: '700', fontSize: 16 },
+  cardWrap: { marginBottom: 10, paddingVertical: 16 },
+  title: { color: colors.text, fontWeight: '700', fontSize: 17 },
   sub: { color: colors.muted, marginTop: 4 },
+  statusRow: {
+    marginTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    paddingTop: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  statusLabel: { color: colors.muted, fontSize: 12, textTransform: 'uppercase', fontWeight: '700' },
+  statusValue: { color: colors.text, fontWeight: '700', textTransform: 'capitalize' },
 });

@@ -14,6 +14,7 @@ import JobsTableView from './JobsTableView';
 import JobsCalendarPlaceholder from './JobsCalendarPlaceholder';
 import JobLoadingSkeleton from './JobLoadingSkeleton';
 import JobEmptyState from './JobEmptyState';
+import JobStatusBadge from './JobStatusBadge';
 import FeaturedJobCallout from '../demo/FeaturedJobCallout';
 import AlertModal from '../AlertModal';
 import ReferralModal from '../ReferralModal';
@@ -25,8 +26,9 @@ export default function JobsDashboard() {
     role,
     config,
     analytics,
-    allJobsSnapshot,
+    analyticsLoading,
     loading,
+    jobsLoading,
     error,
     locations,
     technicianProfile,
@@ -198,12 +200,12 @@ export default function JobsDashboard() {
   const pageNumbers = getPageNumbers(currentPage, totalPages);
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-5">
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
       <JobsCommandHeader
         config={config}
         role={role}
         analytics={analytics}
-        allJobsSnapshot={allJobsSnapshot}
+        analyticsLoading={analyticsLoading}
         onExport={handleExport}
         onKpiClick={setKpiFilter}
         onReferral={() => setShowReferralModal(true)}
@@ -232,14 +234,14 @@ export default function JobsDashboard() {
         showSaveView={config.showSaveView}
       />
 
-      {(config.viewModes.length > 1 || !loading) && (
-        <div className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-slate-200/80 bg-slate-50/50 px-3 py-2">
+      {(config.viewModes.length > 1 || !jobsLoading) && (
+        <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200/80 bg-slate-50/60 px-3 py-2.5">
           {config.viewModes.length > 1 ? (
             <JobsViewToggle viewMode={viewMode} onChange={handleViewModeChange} allowedModes={config.viewModes} />
           ) : (
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Job listings</p>
           )}
-          {!loading && (
+          {!jobsLoading && (
             <p className="text-xs text-slate-500 tabular-nums">
               {sortedJobs.length === 0
                 ? 'No results'
@@ -250,23 +252,23 @@ export default function JobsDashboard() {
         </div>
       )}
 
-      {loading && <JobLoadingSkeleton viewMode={viewMode} />}
+      {jobsLoading && <JobLoadingSkeleton viewMode={viewMode} />}
 
-      {!loading && !error && !emptyVariant && viewMode === VIEW_MODES.CARD && (
+      {!jobsLoading && !error && !emptyVariant && viewMode === VIEW_MODES.CARD && (
         <FeaturedJobCallout />
       )}
 
-      {!loading && error && (
+      {!jobsLoading && error && (
         <JobEmptyState variant="error" onRetry={refetch} />
       )}
 
-      {!loading && !error && emptyVariant && (
+      {!jobsLoading && !error && emptyVariant && (
         <JobEmptyState variant={emptyVariant} config={config} role={role} onClearFilters={clearFilters} />
       )}
 
-      {!loading && !error && !emptyVariant && viewMode === VIEW_MODES.CALENDAR && <JobsCalendarPlaceholder />}
+      {!jobsLoading && !error && !emptyVariant && viewMode === VIEW_MODES.CALENDAR && <JobsCalendarPlaceholder />}
 
-      {!loading && !error && !emptyVariant && viewMode === VIEW_MODES.TABLE && (
+      {!jobsLoading && !error && !emptyVariant && viewMode === VIEW_MODES.TABLE && (
         <JobsTableView
           jobs={currentJobs.filter((j) => j && j.title)}
           role={role}
@@ -279,8 +281,8 @@ export default function JobsDashboard() {
         />
       )}
 
-      {!loading && !error && !emptyVariant && viewMode === VIEW_MODES.CARD && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch" data-demo="jobs-list">
+      {!jobsLoading && !error && !emptyVariant && viewMode === VIEW_MODES.CARD && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 items-stretch" data-demo="jobs-list">
           {currentJobs.filter((j) => j && j.title).map((job) => (
             <JobCard
               key={job.id}
@@ -301,9 +303,9 @@ export default function JobsDashboard() {
         </div>
       )}
 
-      {!loading && !error && !emptyVariant && totalPages > 1 && (
+      {!jobsLoading && !error && !emptyVariant && totalPages > 1 && (
         <>
-          <nav className="mt-8 flex items-center justify-center gap-2">
+          <nav aria-label="Jobs pagination" className="mt-8 flex items-center justify-center gap-2 flex-wrap">
             <button
               type="button"
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
@@ -345,9 +347,9 @@ export default function JobsDashboard() {
       )}
 
       {config.showCompletedSection && serverFilters.status !== 'completed' && (
-        <div className="mt-10 pt-6 border-t border-slate-200">
+        <div className="mt-12 pt-8 border-t border-slate-200">
           <div className="mb-4">
-            <h2 className="text-lg font-bold text-slate-900">My Completed Jobs</h2>
+            <h2 className="text-xl font-bold text-slate-900">My Completed Jobs</h2>
             <p className="text-sm text-slate-500 mt-0.5">Leave a review for companies you&apos;ve worked with.</p>
           </div>
           {loadingCompleted ? (
@@ -357,17 +359,15 @@ export default function JobsDashboard() {
               No completed jobs yet. Complete a job and the company will mark it as finished.
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 items-stretch">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 items-stretch">
               {completedJobs.map((job) => (
                 <article
                   key={job.id}
-                  className="flex h-full min-h-[14rem] flex-col rounded-xl border border-l-[3px] border-l-emerald-400 border-slate-200 bg-white p-4 shadow-sm"
+                  className="flex h-full min-h-[14rem] flex-col rounded-2xl border border-l-[3px] border-l-emerald-400 border-slate-200 bg-white p-4 shadow-sm"
                 >
                   <div className="flex justify-between items-start gap-2 mb-2">
                     <h3 className="font-semibold text-slate-900">{job.title}</h3>
-                    <span className="text-[11px] font-semibold rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 px-2 py-0.5">
-                      Complete
-                    </span>
+                    <JobStatusBadge job={job} />
                   </div>
                   <p className="text-sm text-slate-600 line-clamp-2 mb-3">{job.description || '—'}</p>
                   <div className="text-xs text-slate-500 mb-4">

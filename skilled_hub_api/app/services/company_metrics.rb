@@ -20,6 +20,8 @@ class CompanyMetrics
     expired_open = jobs.where(status: :open).where("scheduled_end_at IS NOT NULL AND scheduled_end_at < ?", Time.current)
     active_jobs = jobs.where(status: %i[reserved filled])
       .where("scheduled_start_at IS NOT NULL AND scheduled_start_at <= ?", Time.current)
+    claimed_jobs = jobs.where(status: %i[reserved filled])
+      .where("scheduled_start_at IS NULL OR scheduled_start_at > ?", Time.current)
 
     total_spent_cents = completed_jobs.to_a.sum(&:company_charge_cents)
 
@@ -41,6 +43,7 @@ class CompanyMetrics
       jobs_open: open_jobs.count,
       jobs_expired: expired_open.count,
       jobs_active: active_jobs.count,
+      jobs_claimed: claimed_jobs.count,
       unique_technicians_hired: unique_technicians,
       total_jobs: jobs.count,
       jobs_created_by_day: jobs_created_by_day
@@ -55,6 +58,7 @@ class CompanyMetrics
       jobs_open: 0,
       jobs_expired: 0,
       jobs_active: 0,
+      jobs_claimed: 0,
       unique_technicians_hired: 0,
       total_jobs: 0,
       jobs_created_by_day: DashboardTrends.counts_per_day_by_created_at(Job.none)

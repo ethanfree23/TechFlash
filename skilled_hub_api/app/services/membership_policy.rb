@@ -124,6 +124,24 @@ class MembershipPolicy
     visible
   end
 
+  # SQL-first visibility filter — avoids loading thousands of jobs into Ruby for membership checks.
+  def self.apply_technician_visibility_scope(jobs, technician_profile)
+    return jobs if technician_profile.blank?
+
+    rule = rule_for(:technician, technician_profile.membership_level)
+    return jobs.none unless technician_additional_access_eligible?(technician_profile: technician_profile, rule: rule)
+
+    tier_min = rule[:job_access_min_experience_years].to_i
+    tech_years = technician_profile.experience_years.to_i
+    return jobs.none if tech_years < tier_min
+
+    scoped = jobs.where("COALESCE(jobs.minimum_years_experience, 0) <= ?", tech_years)
+
+    delay_hours = rule[:early_access_delay_hours].to_i
+    visible_cutoff = Time.current - delay_hours.hours
+    scoped.where("COALESCE(jobs.go_live_at, jobs.created_at) <= ?", visible_cutoff)
+  end
+
   def self.normalize_audience(audience)
     audience.to_s == "company" ? "company" : "technician"
   end

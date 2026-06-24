@@ -16,27 +16,11 @@ import { fetchAdminCommandCenterInsights } from '../services/fetchAdminCommandCe
 import DemoWalkthrough from '../components/demo/DemoWalkthrough';
 import StartDemoButton from '../components/demo/StartDemoButton';
 import { isDemoMode } from '../utils/demoMode';
+import { normalizeJobsListResponse } from '../utils/jobsApiResponse';
+import JobStatusBadge from '../components/jobs/JobStatusBadge';
 const statusLabel = (job) => {
   if (!job) return <span className="capitalize text-gray-600">—</span>;
-  const status = job.status;
-  if (status === 'open') {
-    const endAt = job.scheduled_end_at ? new Date(job.scheduled_end_at).getTime() : null;
-    const now = Date.now();
-    if (endAt !== null && endAt < now) {
-      return <span className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700">Expired</span>;
-    }
-    return <span className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-800">Open</span>;
-  }
-  if (status === 'finished') return <span className="px-2 py-1 text-xs rounded bg-green-200 text-green-800">Completed</span>;
-  if (status === 'reserved' || status === 'filled') {
-    const startAt = job.scheduled_start_at ? new Date(job.scheduled_start_at).getTime() : null;
-    const now = Date.now();
-    if (startAt === null || startAt > now) {
-      return <span className="px-2 py-1 text-xs rounded bg-yellow-100 text-yellow-800">Claimed</span>;
-    }
-    return <span className="px-2 py-1 text-xs rounded bg-green-100 text-green-800">Active</span>;
-  }
-  return <span className="px-2 py-1 text-xs rounded bg-gray-100 text-gray-800 capitalize">{status}</span>;
+  return <JobStatusBadge job={job} />;
 };
 
 const formatDate = (dateStr) => {
@@ -108,7 +92,10 @@ const loadGoogleMapsScript = () => {
 const Dashboard = ({ user, onLogout }) => {
   const [searchParams] = useSearchParams();
   const showWelcomeBanner = searchParams.get('welcome') === '1';
-  const [loading, setLoading] = useState(true);
+  const [jobsLoading, setJobsLoading] = useState(true);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [openJobsLoading, setOpenJobsLoading] = useState(false);
+  const [profileLoading, setProfileLoading] = useState(false);
   const [error, setError] = useState(null);
   const [jobs, setJobs] = useState(null);
   const [openJobs, setOpenJobs] = useState([]);
@@ -118,62 +105,89 @@ const Dashboard = ({ user, onLogout }) => {
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'error' });
   const navigate = useNavigate();
 
-  const fetchDashboard = useCallback(async () => {
-    setLoading(true);
+  const fetchPrimaryDashboard = useCallback(async () => {
+    setJobsLoading(true);
     setError(null);
     try {
       if (user?.role === 'company') {
-        setFeedbackList(null);
-        const [jobsRes, analyticsRes] = await Promise.all([
-          jobsAPI.getDashboard(),
-          jobsAPI.getAnalytics().catch(() => null),
-        ]);
+        const jobsRes = await jobsAPI.getDashboard();
         setJobs(jobsRes);
-        setAnalytics(analyticsRes);
       } else if (user?.role === 'technician') {
-        setFeedbackList(null);
-        const [jobsRes, analyticsRes, openJobsRes, technicianProfileRes] = await Promise.all([
-          jobsAPI.getTechnicianDashboard(),
-          jobsAPI.getAnalytics().catch(() => null),
-          jobsAPI.getAll({ status: 'open', include_past: 'true' }).catch(() => []),
-          profilesAPI.getTechnicianProfile().catch(() => null),
-        ]);
-        const now = Date.now();
-        const liveOpenJobs = (Array.isArray(openJobsRes) ? openJobsRes : []).filter((job) => {
-          const endAt = job?.scheduled_end_at ? new Date(job.scheduled_end_at).getTime() : null;
-          return endAt == null || endAt >= now;
-        });
+        const jobsRes = await jobsAPI.getTechnicianDashboard();
         setJobs(jobsRes);
-        setOpenJobs(liveOpenJobs);
-        setTechnicianProfile(technicianProfileRes);
-        setAnalytics(analyticsRes);
       } else if (user?.role === 'admin') {
-        const [analyticsRes, feedbackRes] = await Promise.all([
-          jobsAPI.getAnalytics().catch(() => null),
-          feedbackAPI.list().catch(() => null),
-        ]);
         setJobs(null);
-        setOpenJobs([]);
-        setTechnicianProfile(null);
-        setAnalytics(analyticsRes);
-        setFeedbackList(feedbackRes?.feedback_submissions ?? []);
       } else {
-        setFeedbackList(null);
         setJobs(null);
-        setOpenJobs([]);
-        setTechnicianProfile(null);
-        setAnalytics(null);
       }
     } catch {
       setError('Failed to load dashboard');
     } finally {
-      setLoading(false);
+      setJobsLoading(false);
     }
-  }, [user]);
+  }, [user?.role]);
+
+  const fetchAnalytics = useCallback(async () => {
+    if (!user?.role || user.role === 'job_seeker') return;
+    setAnalyticsLoading(true);
+    try {
+      const analyticsRes = await jobsAPI.getAnalytics().catch(() => null);
+      setAnalytics(analyticsRes);
+    } finally {
+      setAnalyticsLoading(false);
+    }
+  }, [user?.role]);
+
+  const fetchTechnicianExtras = useCallback(async () => {
+    if (user?.role !== 'technician') return;
+    setProfileLoading(true);
+    setOpenJobsLoading(true);
+    try {
+      const [openJobsRes, technicianProfileRes] = await Promise.all([
+        jobsAPI.getAll({ status: 'open', page: 1, per_page: 40 }).catch(() => ({ jobs: [] })),
+        profilesAPI.getTechnicianProfile().catch(() => null),
+      ]);
+      const { jobs: openList } = normalizeJobsListResponse(openJobsRes);
+      const now = Date.now();
+      const liveOpenJobs = openList.filter((job) => {
+        const endAt = job?.scheduled_end_at ? new Date(job.scheduled_end_at).getTime() : null;
+        return endAt == null || endAt >= now;
+      });
+      setOpenJobs(liveOpenJobs);
+      setTechnicianProfile(technicianProfileRes);
+    } finally {
+      setProfileLoading(false);
+      setOpenJobsLoading(false);
+    }
+  }, [user?.role]);
+
+  const fetchAdminFeedback = useCallback(async () => {
+    if (user?.role !== 'admin') return;
+    try {
+      const feedbackRes = await feedbackAPI.list().catch(() => null);
+      setFeedbackList(feedbackRes?.feedback_submissions ?? []);
+    } catch {
+      setFeedbackList([]);
+    }
+  }, [user?.role]);
+
+  const fetchDashboard = useCallback(async () => {
+    await fetchPrimaryDashboard();
+    fetchAnalytics();
+    fetchTechnicianExtras();
+    fetchAdminFeedback();
+  }, [fetchPrimaryDashboard, fetchAnalytics, fetchTechnicianExtras, fetchAdminFeedback]);
 
   useEffect(() => {
-    fetchDashboard();
-  }, [fetchDashboard]);
+    setOpenJobs([]);
+    setTechnicianProfile(null);
+    setAnalytics(null);
+    setFeedbackList(null);
+    fetchPrimaryDashboard();
+    fetchAnalytics();
+    fetchTechnicianExtras();
+    fetchAdminFeedback();
+  }, [fetchPrimaryDashboard, fetchAnalytics, fetchTechnicianExtras, fetchAdminFeedback]);
 
   useEffect(() => {
     if (user?.role !== 'technician') return undefined;
@@ -185,9 +199,10 @@ const Dashboard = ({ user, onLogout }) => {
     if (user?.role !== 'technician') return undefined;
     const refreshOpenJobsOnly = async () => {
       try {
-        const openJobsRes = await jobsAPI.getAll({ status: 'open', include_past: 'true' }).catch(() => []);
+        const openJobsRes = await jobsAPI.getAll({ status: 'open', page: 1, per_page: 40 }).catch(() => ({ jobs: [] }));
+        const { jobs: openList } = normalizeJobsListResponse(openJobsRes);
         const now = Date.now();
-        const liveOpenJobs = (Array.isArray(openJobsRes) ? openJobsRes : []).filter((job) => {
+        const liveOpenJobs = openList.filter((job) => {
           const endAt = job?.scheduled_end_at ? new Date(job.scheduled_end_at).getTime() : null;
           return endAt == null || endAt >= now;
         });
@@ -210,19 +225,7 @@ const Dashboard = ({ user, onLogout }) => {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-gray-50">
-        <AppHeader user={user} onLogout={onLogout} activePage="dashboard" profileAvatar />
-        <div className="p-8 text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-lg text-gray-600">Loading dashboard...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
+  if (error && jobsLoading) {
     return (
       <div className="min-h-screen bg-gray-50">
         <AppHeader user={user} onLogout={onLogout} activePage="dashboard" profileAvatar />
@@ -236,10 +239,15 @@ const Dashboard = ({ user, onLogout }) => {
       <AppHeader user={user} onLogout={onLogout} activePage="dashboard" profileAvatar />
       <main className="py-8">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          {error && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
+          )}
           {user?.role === 'company' && (
             <CompanyDashboardContent
               jobs={jobs}
+              jobsLoading={jobsLoading}
               analytics={analytics}
+              analyticsLoading={analyticsLoading}
               onFinish={handleFinish}
               onRefresh={fetchDashboard}
               navigate={navigate}
@@ -250,17 +258,25 @@ const Dashboard = ({ user, onLogout }) => {
           {user?.role === 'technician' && (
             <TechnicianDashboardContent
               jobs={jobs}
+              jobsLoading={jobsLoading}
               openJobs={openJobs}
+              openJobsLoading={openJobsLoading}
               technicianProfile={technicianProfile}
+              profileLoading={profileLoading}
               analytics={analytics}
+              analyticsLoading={analyticsLoading}
               navigate={navigate}
               user={user}
             />
           )}
           {user?.role === 'admin' && (
-            <AdminDashboardContent analytics={analytics} feedbackList={feedbackList} onDashboardReload={fetchDashboard} />
+            <AdminDashboardContent
+              analytics={analytics}
+              feedbackList={feedbackList}
+              onDashboardReload={fetchDashboard}
+            />
           )}
-          {user?.role !== 'company' && user?.role !== 'technician' && user?.role !== 'admin' && (
+          {user?.role !== 'company' && user?.role !== 'technician' && user?.role !== 'admin' && !jobsLoading && (
             <p className="text-gray-500">Dashboard not available for your role.</p>
           )}
         </div>
@@ -886,8 +902,27 @@ const TechnicianOpenJobsMap = ({
   return <div ref={mapContainerRef} className="h-full w-full min-h-[24rem]" />;
 };
 
-const CompanyDashboardContent = ({ jobs, analytics, onFinish, navigate, showWelcome = false }) => {
+const DashboardStatSkeleton = () => (
+  <div className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4 animate-pulse">
+    <div className="w-8 h-8 rounded bg-gray-200" />
+    <div className="flex-1 space-y-2">
+      <div className="h-3 w-20 bg-gray-200 rounded" />
+      <div className="h-7 w-12 bg-gray-200 rounded" />
+    </div>
+  </div>
+);
+
+const CompanyDashboardContent = ({
+  jobs,
+  jobsLoading,
+  analytics,
+  analyticsLoading,
+  onFinish,
+  navigate,
+  showWelcome = false,
+}) => {
   const now = Date.now();
+  const counts = jobs?.counts;
   const requested = sortByMostRecent(jobs?.requested || []);
   const unrequested = jobs?.unrequested || [];
   const openJobs = sortByMostRecent(unrequested.filter(j => {
@@ -899,14 +934,15 @@ const CompanyDashboardContent = ({ jobs, analytics, onFinish, navigate, showWelc
     return endAt !== null && endAt < now;
   }));
   const completed = sortByMostRecent(jobs?.expired || []);
-  const allJobs = [...requested, ...openJobs, ...expiredOpen, ...completed];
-  const openCount = openJobs.length;
-  // Active = claimed and in progress (started); must match backend filter for status=active
-  const activeCount = requested.filter((j) => {
+  const tableJobs = [...requested, ...openJobs, ...expiredOpen, ...completed].slice(0, 25);
+  const totalJobs = counts?.total ?? tableJobs.length;
+  const openCount = counts?.unrequested ?? openJobs.length;
+  const activeCount = analytics?.jobs_active ?? requested.filter((j) => {
     const startAt = j.scheduled_start_at ? new Date(j.scheduled_start_at).getTime() : null;
     return startAt !== null && startAt <= now;
   }).length;
-  const completedCount = completed.length;
+  const completedCount = counts?.completed ?? completed.length;
+  const statsLoading = jobsLoading && !counts && !jobs?.requested;
 
   return (
     <>
@@ -924,10 +960,21 @@ const CompanyDashboardContent = ({ jobs, analytics, onFinish, navigate, showWelc
           </Link>
         </div>
       )}
-      {/* Analytics Section */}
+      {analyticsLoading && !analytics && (
+        <div className="mb-8 h-48 rounded-2xl bg-white shadow animate-pulse" />
+      )}
       {analytics && <CompanyAnalyticsCharts analytics={analytics} />}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        {statsLoading ? (
+          <>
+            <DashboardStatSkeleton />
+            <DashboardStatSkeleton />
+            <DashboardStatSkeleton />
+            <DashboardStatSkeleton />
+          </>
+        ) : (
+          <>
         <Link
           to="/jobs"
           className="bg-white rounded-2xl shadow flex items-center p-6 space-x-4 hover:shadow-md transition-shadow cursor-pointer"
@@ -935,7 +982,7 @@ const CompanyDashboardContent = ({ jobs, analytics, onFinish, navigate, showWelc
           <FaBriefcase className="text-2xl text-blue-600" />
           <div>
             <div className="text-gray-500 text-sm font-medium">Total Jobs</div>
-            <div className="text-2xl font-bold text-gray-800">{allJobs.length}</div>
+            <div className="text-2xl font-bold text-gray-800">{totalJobs}</div>
           </div>
         </Link>
         <Link
@@ -968,19 +1015,34 @@ const CompanyDashboardContent = ({ jobs, analytics, onFinish, navigate, showWelc
             <div className="text-2xl font-bold text-gray-800">{completedCount}</div>
           </div>
         </Link>
+          </>
+        )}
       </div>
 
       <div className="bg-white rounded-2xl shadow p-6">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-lg font-semibold text-gray-800">My Jobs</h2>
-          <button
-            className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-5 py-2 rounded-lg shadow"
-            onClick={() => navigate('/jobs/create')}
-          >
-            Create Job
-          </button>
+          <h2 className="text-lg font-semibold text-gray-800">Recent Jobs</h2>
+          <div className="flex gap-2">
+            {counts?.total > tableJobs.length && (
+              <Link to="/jobs" className="text-sm text-blue-600 hover:underline self-center">
+                View all {counts.total} jobs
+              </Link>
+            )}
+            <button
+              className="bg-blue-700 hover:bg-blue-800 text-white font-semibold px-5 py-2 rounded-lg shadow"
+              onClick={() => navigate('/jobs/create')}
+            >
+              Create Job
+            </button>
+          </div>
         </div>
         <div className="overflow-x-auto">
+          {jobsLoading && tableJobs.length === 0 ? (
+            <div className="py-12 text-center text-gray-500">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-3" />
+              Loading jobs…
+            </div>
+          ) : (
           <table className="min-w-full divide-y divide-gray-200">
             <thead>
               <tr>
@@ -993,14 +1055,14 @@ const CompanyDashboardContent = ({ jobs, analytics, onFinish, navigate, showWelc
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {allJobs.length === 0 ? (
+              {tableJobs.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                     No jobs yet. <Link to="/jobs/create" className="text-blue-600 hover:underline">Create your first job</Link>
                   </td>
                 </tr>
               ) : (
-                allJobs.map((job) => (
+                tableJobs.map((job) => (
                   <tr key={job.id}>
                     <td className="px-4 py-2 font-medium text-gray-800">{job.title}</td>
                     <td className="px-4 py-2">{statusLabel(job)}</td>
@@ -1019,13 +1081,25 @@ const CompanyDashboardContent = ({ jobs, analytics, onFinish, navigate, showWelc
               )}
             </tbody>
           </table>
+          )}
         </div>
       </div>
     </>
   );
 };
 
-const TechnicianDashboardContent = ({ jobs, openJobs, technicianProfile, analytics, navigate, user }) => {
+const TechnicianDashboardContent = ({
+  jobs,
+  jobsLoading,
+  openJobs,
+  openJobsLoading,
+  technicianProfile,
+  profileLoading,
+  analytics,
+  analyticsLoading,
+  navigate,
+  user,
+}) => {
   const inProgress = jobs?.in_progress || [];
   const completed = jobs?.completed || [];
   const [selectedMapJobId, setSelectedMapJobId] = useState(null);
@@ -1133,6 +1207,15 @@ const TechnicianDashboardContent = ({ jobs, openJobs, technicianProfile, analyti
       <section className="mb-8 rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
         <div className="grid grid-cols-1 xl:grid-cols-3">
           <div className="xl:col-span-2 min-h-[24rem] bg-slate-100 relative">
+            {openJobsLoading && openJobs.length === 0 ? (
+              <div className="h-full min-h-[24rem] flex items-center justify-center text-gray-500 text-sm">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2" />
+                  Loading open jobs map…
+                </div>
+              </div>
+            ) : (
+              <>
             <TechnicianOpenJobsMap
               technicianProfile={technicianProfile}
               jobs={mapDisplayJobs}
@@ -1155,6 +1238,8 @@ const TechnicianDashboardContent = ({ jobs, openJobs, technicianProfile, analyti
                   No open listings within {searchRadiusMiles} miles of your profile.
                 </div>
               </div>
+            )}
+              </>
             )}
           </div>
           <div className="border-t xl:border-t-0 xl:border-l border-gray-200 p-5">
@@ -1209,9 +1294,17 @@ const TechnicianDashboardContent = ({ jobs, openJobs, technicianProfile, analyti
         </div>
       </section>
 
-      {/* Analytics Section */}
+      {analyticsLoading && !analytics && (
+        <div className="mb-8 h-48 rounded-2xl bg-white shadow animate-pulse" />
+      )}
       {analytics && <TechnicianAnalyticsCharts analytics={analytics} />}
 
+      {(jobsLoading && !jobs) ? (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
+          <DashboardStatSkeleton />
+          <DashboardStatSkeleton />
+        </div>
+      ) : (
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 mb-8">
         <Link
           to="/jobs?status=active"
@@ -1234,6 +1327,7 @@ const TechnicianDashboardContent = ({ jobs, openJobs, technicianProfile, analyti
           </div>
         </Link>
       </div>
+      )}
 
       <div className="space-y-8">
         {inProgress.length > 0 && (

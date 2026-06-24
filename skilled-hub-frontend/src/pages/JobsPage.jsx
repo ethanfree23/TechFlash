@@ -8,10 +8,10 @@ const JobsPage = ({ user, onLogout }) => {
   const showWelcome = searchParams.get('welcome') === '1' && user?.role === 'technician';
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-slate-50">
       <AppHeader user={user} onLogout={onLogout} activePage="jobs" emailVariant="welcome" />
 
-      <main className="py-8">
+      <main className="py-8 lg:py-10">
         {showWelcome && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-6">
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-emerald-950 shadow-sm">

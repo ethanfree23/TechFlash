@@ -12,9 +12,9 @@ import { DATE_RANGE_OPTIONS, hasActiveClientFilters } from '../../utils/jobFilte
 import { EXPERIENCE_YEAR_OPTIONS } from '../../constants/experienceSelect';
 
 const selectClass =
-  'h-9 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 outline-none';
+  'h-10 w-full rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-800 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 outline-none';
 const inputClass =
-  'h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 outline-none';
+  'h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-800 placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/15 outline-none';
 
 function FilterSelect({ label, value, onChange, children, className = '' }) {
   return (
@@ -92,11 +92,11 @@ export default function JobsFilterBar({
         : 'Search available jobs…';
 
   return (
-    <div className="mb-5 rounded-xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
+    <div className="mb-6 rounded-2xl border border-slate-200/90 bg-white shadow-sm overflow-hidden">
       {/* Primary toolbar */}
-      <div className="flex flex-col gap-2.5 px-3 py-3 sm:px-4 lg:flex-row lg:items-center lg:gap-3">
+      <div className="flex flex-col gap-3 px-3 py-3.5 sm:px-4 lg:flex-row lg:items-center lg:gap-3">
         {fields.includes('search') && (
-          <div className="relative flex-1 min-w-0 lg:max-w-sm xl:max-w-md">
+          <div className="relative flex-1 min-w-0 lg:max-w-md xl:max-w-lg">
             <FaSearch className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <input
               type="search"
@@ -109,13 +109,13 @@ export default function JobsFilterBar({
           </div>
         )}
 
-        <div className="flex flex-wrap items-center gap-2 flex-1 lg:justify-end">
+        <div className="flex flex-wrap items-center gap-2.5 flex-1 lg:justify-end">
           {fields.includes('location') && (
             <FilterSelect
               label="Location"
               value={serverFilters.location}
               onChange={(e) => onServerFilterChange('location', e.target.value)}
-              className="w-[9rem] sm:w-[9.5rem]"
+              className="w-[10rem] sm:w-[11rem]"
             >
               <option value="">All locations</option>
               {locations.map((loc) => (
@@ -131,7 +131,7 @@ export default function JobsFilterBar({
               label="Status"
               value={serverFilters.status}
               onChange={(e) => onStatusChange(e.target.value)}
-              className="w-[8rem] sm:w-[8.5rem]"
+              className="w-[8.5rem] sm:w-[9rem]"
             >
               {config.statusOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -146,7 +146,7 @@ export default function JobsFilterBar({
               label="Trade"
               value={clientFilters.trade}
               onChange={(e) => handleClientChange('trade', e.target.value)}
-              className="w-[8rem] sm:w-[9rem] hidden sm:block"
+              className="w-[8.5rem] sm:w-[9.5rem] hidden sm:block"
             >
               {TRADE_OPTIONS_EL(tradeOptions)}
             </FilterSelect>
@@ -157,7 +157,7 @@ export default function JobsFilterBar({
               label="Sort"
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="w-[8rem] hidden md:block"
+              className="w-[8.5rem] hidden md:block"
             >
               {config.sortOptions.map((opt) => (
                 <option key={opt.value} value={opt.value}>
@@ -171,7 +171,7 @@ export default function JobsFilterBar({
             <button
               type="button"
               onClick={onSearch}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 text-sm font-semibold text-white hover:bg-blue-700"
+              className="inline-flex h-10 items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
             >
               <FaSearch className="h-3 w-3" />
               Search
@@ -181,7 +181,7 @@ export default function JobsFilterBar({
               <button
                 type="button"
                 onClick={() => setShowAdvanced((v) => !v)}
-                className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors ${
+                className={`inline-flex h-10 items-center gap-1.5 rounded-lg border px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 ${
                   showAdvanced || hasActiveClientFilters(clientFilters)
                     ? 'border-blue-200 bg-blue-50 text-blue-700'
                     : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
@@ -197,7 +197,7 @@ export default function JobsFilterBar({
               <button
                 type="button"
                 onClick={onClear}
-                className="inline-flex h-9 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-600 hover:bg-slate-50"
+                className="inline-flex h-10 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-sm text-slate-600 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400/40"
                 title="Clear all filters"
               >
                 <FaTimes className="h-3 w-3" />
@@ -208,7 +208,7 @@ export default function JobsFilterBar({
       </div>
 
       {/* Mobile-only: trade + sort */}
-      <div className="border-t border-slate-100 px-3 py-2.5 grid grid-cols-2 gap-2 sm:hidden">
+      <div className="border-t border-slate-100 px-3 py-3 grid grid-cols-2 gap-2 sm:hidden">
         {fields.includes('trade') && (
           <FilterSelect
             label="Trade"
@@ -232,7 +232,7 @@ export default function JobsFilterBar({
       {/* Advanced filters panel */}
       {showAdvanced && hasAdvancedPanel && (
         <div className="border-t border-slate-100 bg-slate-50/60 px-3 py-3 sm:px-4">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-2.5">
             {fields.includes('distance') && (
               <label>
                 <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-slate-500">
@@ -368,7 +368,7 @@ export default function JobsFilterBar({
             )}
           </div>
 
-          <div className="mt-2.5 flex flex-wrap items-center gap-2">
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             {showSaveView && (
               <button
                 type="button"

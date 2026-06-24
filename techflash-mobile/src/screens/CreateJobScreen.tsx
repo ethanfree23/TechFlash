@@ -207,6 +207,10 @@ export default function CreateJobScreen() {
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={{ padding: 14, paddingBottom: 40 }}>
+      <View style={styles.header}>
+        <Text style={styles.pageTitle}>Create Job</Text>
+        <Text style={styles.pageSubtitle}>Post a clear listing with schedule and pay details.</Text>
+      </View>
       {!!error && <Text style={styles.error}>{error}</Text>}
       {!!validation && <Text style={styles.error}>{validation}</Text>}
       <Field label="Title" value={title} onChangeText={setTitle} />
@@ -336,13 +340,16 @@ function toDisplayTime(v: string) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
+  header: { marginBottom: 6 },
+  pageTitle: { color: colors.text, fontSize: 24, fontWeight: '700' },
+  pageSubtitle: { color: colors.muted, marginTop: 4 },
   error: { color: colors.danger, marginBottom: 8 },
   label: { marginTop: 10, marginBottom: 4, color: colors.muted, textTransform: 'uppercase', fontSize: 12 },
   section: { marginTop: 14, fontSize: 13, fontWeight: '700', color: colors.text, textTransform: 'uppercase' },
   input: {
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 10,
+    borderRadius: 12,
     backgroundColor: colors.white,
     color: colors.text,
     paddingHorizontal: 10,
@@ -351,7 +358,7 @@ const styles = StyleSheet.create({
   btn: {
     marginTop: 16,
     backgroundColor: colors.primaryOrange,
-    borderRadius: 10,
+    borderRadius: 12,
     paddingVertical: 12,
     alignItems: 'center',
   },

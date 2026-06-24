@@ -170,7 +170,7 @@ export const buildKpiCards = (role, analytics, allJobsSnapshot) => {
     return [
       { id: 'active', label: 'Active', value: analytics?.jobs_active ?? 0, tone: 'green', filterStatus: 'active' },
       { id: 'open', label: 'Open', value: analytics?.jobs_open ?? 0, tone: 'blue', filterStatus: 'open' },
-      { id: 'claimed', label: 'Claimed', value: computeClaimedCountFromJobs(jobs), tone: 'orange', filterStatus: 'reserved' },
+      { id: 'claimed', label: 'Claimed', value: analytics?.jobs_claimed ?? computeClaimedCountFromJobs(jobs), tone: 'orange', filterStatus: 'reserved' },
       { id: 'completed', label: 'Completed Jobs', value: analytics?.jobs_completed ?? 0, tone: 'green', filterStatus: 'completed' },
       { id: 'expired', label: 'Expired Jobs', value: analytics?.jobs_expired ?? computeExpiredCountFromJobs(jobs), tone: 'gray', filterStatus: 'expired' },
     ];

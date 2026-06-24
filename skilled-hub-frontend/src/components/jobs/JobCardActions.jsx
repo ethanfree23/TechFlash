@@ -9,12 +9,12 @@ import {
 } from '../../utils/jobDisplayUtils';
 import ConfirmModal from '../ConfirmModal';
 
-const btnBase = 'inline-flex justify-center items-center rounded-lg text-sm font-medium transition-colors disabled:opacity-45 disabled:cursor-not-allowed disabled:pointer-events-none';
+const btnBase = 'inline-flex justify-center items-center rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-45 disabled:cursor-not-allowed disabled:pointer-events-none';
 const btnPrimary = `${btnBase} bg-blue-600 text-white hover:bg-blue-700 px-3 py-2 font-semibold`;
 const btnSecondary = `${btnBase} border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 px-3 py-2`;
 const btnSuccess = `${btnBase} bg-emerald-600 text-white hover:bg-emerald-700 px-3 py-2 font-semibold`;
-const btnDanger = `${btnBase} bg-red-600 text-white hover:bg-red-700 px-3 py-2 font-semibold`;
-const btnCompact = 'inline-flex items-center rounded-md px-2 py-1 text-[11px] font-medium transition-colors';
+const btnDanger = `${btnBase} border border-red-200 bg-red-50 text-red-700 hover:bg-red-100 px-3 py-2 font-semibold`;
+const btnCompact = 'inline-flex items-center rounded-md px-2 py-1 text-[11px] font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40';
 
 export default function JobCardActions({
   job,
@@ -61,7 +61,7 @@ export default function JobCardActions({
   };
 
   const wrapCard = (children) => (
-    <div className={`grid grid-cols-2 gap-1.5 ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>{children}</div>
+    <div className={`grid grid-cols-2 gap-2 ${disabled ? 'opacity-60 pointer-events-none' : ''}`}>{children}</div>
   );
   const wrapCompact = (children) => <div className="flex flex-wrap gap-1">{children}</div>;
   const wrap = compact ? wrapCompact : wrapCard;
