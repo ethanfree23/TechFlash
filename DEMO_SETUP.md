@@ -150,6 +150,7 @@ Optional for local-only forced demo UI: `VITE_DEMO_MODE=true` in `.env.local`.
 - **~1,920 jobs** (640 per city): Houston, Austin, Dallas — 20× the original demo volume
 - **Demo company** (`demo.company@techflash.app`): **105+ jobs** across open, claimed, in progress, pending review, and completed
 - **Demo technician** (`demo.tech@techflash.app`): **25 assigned jobs** (7 reserved, 6 active, 5 pending review, 7 completed) — **10 with Bayou City Mechanical**
+- Financial-heavy seed defaults are enabled for demo-company/demo-tech jobs so analytics cards show large spend/earnings immediately
 - Status mix: open, claimed, in progress, pending review, completed with reviews
 - ~480 companies, ~900 technicians, messages, ratings, payments (`pi_demo_*`), notifications
 - Override scale locally with `DEMO_SEED_SCALE=1` for faster resets (default `20`)

@@ -393,6 +393,11 @@ export const adminMembershipTierConfigsAPI = {
     apiRequest(`/admin/membership_tier_configs/${id}`, {
       method: 'DELETE',
     }),
+  transferAssignments: (id, targetTierId) =>
+    apiRequest(`/admin/membership_tier_configs/${id}/transfer_assignments`, {
+      method: 'POST',
+      body: JSON.stringify({ target_tier_id: targetTierId }),
+    }),
   /** Creates a monthly recurring Stripe price from the saved tier (paid tiers only, server must have STRIPE secret key) */
   provisionStripe: (id) =>
     apiRequest(`/admin/membership_tier_configs/${id}/provision_stripe`, {

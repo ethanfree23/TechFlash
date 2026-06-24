@@ -23,6 +23,8 @@ module Demo
     DEMO_TECHNICIAN_JOBS_TARGET = Integer(ENV.fetch("DEMO_TECHNICIAN_JOBS", "25"))
     DEMO_TECHNICIAN_JOBS_FROM_DEMO_COMPANY = Integer(ENV.fetch("DEMO_TECHNICIAN_COMPANY_JOBS", "10"))
     DEMO_TECHNICIAN_JOB_INDEX_OFFSET = 200_000
+    DEMO_FINANCIAL_MULTIPLIER = BigDecimal(ENV.fetch("DEMO_FINANCIAL_MULTIPLIER", "2.4"))
+    DEMO_FINANCIAL_BASE_BOOST_CENTS = Integer(ENV.fetch("DEMO_FINANCIAL_BASE_BOOST_CENTS", "4800"))
 
     # Technician demo jobs: claimed/reserved, active, pending review, completed (no unclaimed open).
     DEMO_TECHNICIAN_JOB_BUCKETS = [
@@ -275,7 +277,8 @@ module Demo
             index: job_index,
             companies: [@demo_company_profile],
             techs: techs,
-            forced_company: @demo_company_profile
+            forced_company: @demo_company_profile,
+            financial_profile: :demo_company
           )
           job_index += 1
         end
@@ -306,7 +309,8 @@ module Demo
             companies: [company],
             techs: [@demo_technician_profile],
             forced_company: company,
-            forced_technician: @demo_technician_profile
+            forced_technician: @demo_technician_profile,
+            financial_profile: :demo_technician
           )
           job_index += 1
           slot += 1
@@ -344,7 +348,7 @@ module Demo
       buckets
     end
 
-    def create_job_for_bucket!(market_key:, bucket:, index:, companies:, techs:, forced_company: nil, forced_technician: nil)
+    def create_job_for_bucket!(market_key:, bucket:, index:, companies:, techs:, forced_company: nil, forced_technician: nil, financial_profile: nil)
       market = MARKETS[market_key]
       company = forced_company || pick_company_for_job(market_key, index, companies)
       neighborhood = market[:neighborhoods][index % market[:neighborhoods].size].gsub("\\", "")
@@ -360,6 +364,13 @@ module Demo
       hourly = 7200 if is_flagship
       days = 1 + (index % 3)
       hours = 6 + (index % 3)
+      hourly, days, hours = apply_demo_financial_profile(
+        hourly: hourly,
+        days: days,
+        hours: hours,
+        profile: financial_profile,
+        index: index
+      )
 
       lat_offset = BigDecimal((((index % 9) - 4) * 0.015).to_s)
       lng_offset = BigDecimal((((index % 11) - 5) * 0.015).to_s)
@@ -471,6 +482,16 @@ module Demo
       else
         [now + 1.day, now + 4.days, :open]
       end
+    end
+
+    def apply_demo_financial_profile(hourly:, days:, hours:, profile:, index:)
+      return [hourly, days, hours] if profile.blank?
+
+      boosted_hourly = (BigDecimal(hourly.to_s) * DEMO_FINANCIAL_MULTIPLIER).to_i + DEMO_FINANCIAL_BASE_BOOST_CENTS
+      boosted_hourly += ((index % 6) * 350)
+      boosted_days = [days + 1 + (index % 2), 5].min
+      boosted_hours = [hours + 2, 12].min
+      [boosted_hourly, boosted_days, boosted_hours]
     end
 
     def seed_conversation!(job, company, tech, richer: false)
@@ -627,6 +648,10 @@ module Demo
       @stats[:flagship_job_id] = flagship&.id
       @stats[:reviewed_job_id] = @reviewed_demo_job_id
       @stats[:demo_company_jobs] ||= @demo_company_profile&.jobs&.count.to_i
+      if @demo_company_profile
+        completed = @demo_company_profile.jobs.where(status: :finished)
+        @stats[:demo_company_total_spent_cents] = completed.sum { |job| job.company_charge_cents.to_i }
+      end
       if @demo_technician_profile
         accepted = Job.joins(:job_applications).where(
           job_applications: { technician_profile_id: @demo_technician_profile.id, status: :accepted }
@@ -635,6 +660,18 @@ module Demo
         @stats[:demo_technician_jobs_from_demo_company] ||= accepted.where(
           company_profile_id: @demo_company_profile&.id
         ).distinct.count
+        released = Payment.joins(:job)
+          .joins("INNER JOIN job_applications ON job_applications.job_id = jobs.id")
+          .where(job_applications: { technician_profile_id: @demo_technician_profile.id, status: :accepted })
+          .where(payments: { status: "released" })
+          .sum(:amount_cents)
+        held = Payment.joins(:job)
+          .joins("INNER JOIN job_applications ON job_applications.job_id = jobs.id")
+          .where(job_applications: { technician_profile_id: @demo_technician_profile.id, status: :accepted })
+          .where(payments: { status: "held" })
+          .sum(:amount_cents)
+        @stats[:demo_technician_released_cents] = released
+        @stats[:demo_technician_pending_cents] = held
       end
     end
 

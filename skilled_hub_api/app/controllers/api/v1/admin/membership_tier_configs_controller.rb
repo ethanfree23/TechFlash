@@ -6,7 +6,7 @@ module Api
       class MembershipTierConfigsController < ApplicationController
         before_action :authenticate_user
         before_action :require_admin
-        before_action :set_config, only: %i[update destroy provision_stripe]
+        before_action :set_config, only: %i[update destroy provision_stripe transfer_assignments]
 
         def index
           audience = parse_audience_param!
@@ -49,11 +49,39 @@ module Api
             return render json: { errors: ["Cannot delete the last tier for this audience."] }, status: :unprocessable_entity
           end
           if @config.in_use?
-            return render json: { errors: ["This tier is assigned to one or more profiles; reassign them before deleting."] }, status: :unprocessable_entity
+            assigned_users = assigned_users_for_config(@config)
+            return render json: {
+              errors: ["This tier is assigned to one or more profiles; reassign them before deleting."],
+              error_code: "tier_in_use",
+              tier: serialize(@config),
+              assigned_users: assigned_users.first(100),
+              total_assigned_users: assigned_users.length
+            }, status: :unprocessable_entity
           end
 
           @config.destroy!
           head :no_content
+        end
+
+        def transfer_assignments
+          target = MembershipTierConfig.find_by(id: params[:target_tier_id])
+          if target.blank?
+            return render json: { errors: ["Target tier not found"] }, status: :not_found
+          end
+          if target.id == @config.id
+            return render json: { errors: ["Target tier must be different from source tier"] }, status: :unprocessable_entity
+          end
+          if target.audience != @config.audience
+            return render json: { errors: ["Target tier must match audience"] }, status: :unprocessable_entity
+          end
+
+          moved_count = reassignment_scope_for_config(@config).update_all(membership_level: target.slug, updated_at: Time.current)
+          render json: {
+            message: "Reassigned #{moved_count} profiles from #{@config.slug} to #{target.slug}",
+            moved_count: moved_count,
+            from_tier: serialize(@config),
+            to_tier: serialize(target)
+          }, status: :ok
         end
 
         def provision_stripe
@@ -201,6 +229,59 @@ module Api
             is_highlighted: config.is_highlighted,
             active: config.active
           }
+        end
+
+        def reassignment_scope_for_config(config)
+          if config.audience == "company"
+            CompanyProfile.where(membership_level: config.slug)
+          else
+            TechnicianProfile.where(membership_level: config.slug)
+          end
+        end
+
+        def assigned_users_for_config(config)
+          if config.audience == "company"
+            profiles = CompanyProfile.where(membership_level: config.slug).select(:id, :user_id, :company_name, :membership_level)
+            profile_ids = profiles.map(&:id)
+            owner_ids = profiles.map(&:user_id).compact
+            return [] if profile_ids.empty? && owner_ids.empty?
+            profile_by_id = profiles.index_by(&:id)
+            profile_by_owner_id = profiles.index_by(&:user_id)
+            users = User.where(role: :company).where("company_profile_id IN (?) OR id IN (?)", profile_ids, owner_ids).order(:email).distinct
+            users.map do |u|
+              profile = u.shared_company_profile || profile_by_id[u.company_profile_id] || profile_by_owner_id[u.id]
+              {
+                id: u.id,
+                email: u.email,
+                first_name: u.first_name,
+                last_name: u.last_name,
+                user_name: [u.first_name, u.last_name].map(&:to_s).map(&:strip).reject(&:blank?).join(" ").presence,
+                role: u.role,
+                company_profile_id: u.company_profile_id,
+                membership_level: profile&.membership_level,
+                company_name: profile&.company_name
+              }
+            end
+          else
+            User
+              .joins(:technician_profile)
+              .where(role: :technician, technician_profiles: { membership_level: config.slug })
+              .order(:email)
+              .select("users.*, technician_profiles.id AS technician_profile_id, technician_profiles.membership_level AS technician_membership_level, technician_profiles.trade_type AS technician_trade_type")
+              .map do |u|
+                {
+                  id: u.id,
+                  email: u.email,
+                  first_name: u.first_name,
+                  last_name: u.last_name,
+                  user_name: [u.first_name, u.last_name].map(&:to_s).map(&:strip).reject(&:blank?).join(" ").presence,
+                  role: u.role,
+                  technician_profile_id: u.read_attribute(:technician_profile_id),
+                  membership_level: u.read_attribute(:technician_membership_level),
+                  trade_type: u.read_attribute(:technician_trade_type)
+                }
+              end
+          end
         end
       end
     end

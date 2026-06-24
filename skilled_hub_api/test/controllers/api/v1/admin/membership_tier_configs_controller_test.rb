@@ -89,6 +89,55 @@ module Api
           delete "/api/v1/admin/membership_tier_configs/#{orphan.id}", headers: auth_header_for(admin)
 
           assert_response :unprocessable_entity
+          body = JSON.parse(response.body)
+          assert_equal "tier_in_use", body["error_code"]
+          assert_equal 1, body["total_assigned_users"]
+          assert_equal "tech-on-orphan@example.com", body.dig("assigned_users", 0, "email")
+        end
+
+        test "admin transfers assignments to another tier" do
+          admin = User.create!(email: "admin-tier-transfer@example.com", password: "password123", password_confirmation: "password123", role: :admin)
+          source = MembershipTierConfig.create!(
+            audience: "technician",
+            slug: "transfer_src_#{SecureRandom.hex(2)}",
+            display_name: "Transfer Source",
+            monthly_fee_cents: 1000,
+            yearly_fee_cents: 0,
+            commission_percent: 10,
+            early_access_delay_hours: 12,
+            sort_order: 150,
+            feature_bullets: [],
+            active: true
+          )
+          target = MembershipTierConfig.create!(
+            audience: "technician",
+            slug: "transfer_dst_#{SecureRandom.hex(2)}",
+            display_name: "Transfer Target",
+            monthly_fee_cents: 1500,
+            yearly_fee_cents: 0,
+            commission_percent: 8,
+            early_access_delay_hours: 6,
+            sort_order: 151,
+            feature_bullets: [],
+            active: true
+          )
+          user = User.create!(email: "tech-transfer-src@example.com", password: "password123", password_confirmation: "password123", role: :technician)
+          profile = TechnicianProfile.create!(
+            user: user,
+            trade_type: "General",
+            availability: "Full-time",
+            membership_level: source.slug
+          )
+
+          post "/api/v1/admin/membership_tier_configs/#{source.id}/transfer_assignments",
+               params: { target_tier_id: target.id },
+               headers: auth_header_for(admin),
+               as: :json
+
+          assert_response :ok
+          body = JSON.parse(response.body)
+          assert_equal 1, body["moved_count"]
+          assert_equal target.slug, profile.reload.membership_level
         end
 
         test "admin provision_stripe creates price and returns ids" do

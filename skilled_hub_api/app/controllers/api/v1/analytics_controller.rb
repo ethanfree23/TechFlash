@@ -31,35 +31,36 @@ module Api
           .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })
           .where(status: [:reserved, :filled])
 
-        # Total earned: prefer Stripe (source of truth) over our DB
-        total_earned_cents = PaymentService.stripe_earnings_cents_for(technician_profile)
-        total_earned_cents = Payment.joins(:job)
-          .joins('INNER JOIN job_applications ON job_applications.job_id = jobs.id')
-          .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })
-          .where(payments: { status: 'released' })
-          .sum(:amount_cents) if total_earned_cents.nil?
+        released_scope = technician_payment_scope(technician_profile).where(payments: { status: 'released' })
+        held_scope = technician_payment_scope(technician_profile).where(payments: { status: 'held' })
+        earned_this_week_scope = released_scope.where('payments.released_at >= ?', 7.days.ago)
 
-        # Pending earnings (held, not yet released)
-        pending_earned_cents = Payment.joins(:job)
-          .joins('INNER JOIN job_applications ON job_applications.job_id = jobs.id')
-          .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })
-          .where(payments: { status: 'held' })
-          .sum(:amount_cents)
+        # Total earned: prefer Stripe outside demo, but in demo always rely on seeded DB values.
+        total_earned_cents =
+          if demo_mode?
+            released_scope.sum(:amount_cents)
+          else
+            PaymentService.stripe_earnings_cents_for(technician_profile)
+          end
+        total_earned_cents = released_scope.sum(:amount_cents) if total_earned_cents.nil?
 
-        earned_this_week_cents = Payment.joins(:job)
-          .joins('INNER JOIN job_applications ON job_applications.job_id = jobs.id')
-          .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })
-          .where(payments: { status: 'released' })
-          .where('payments.released_at >= ?', 7.days.ago)
-          .sum(:amount_cents)
+        # In demo, guarantee non-zero financial analytics when jobs exist.
+        if demo_mode? && total_earned_cents.to_i.zero? && completed_jobs.exists?
+          total_earned_cents = completed_jobs.to_a.sum(&:tech_payout_cents)
+        end
+
+        pending_earned_cents = held_scope.sum(:amount_cents)
+        if demo_mode? && pending_earned_cents.to_i.zero? && in_progress_jobs.exists?
+          pending_earned_cents = in_progress_jobs.to_a.sum(&:tech_payout_cents)
+        end
+
+        earned_this_week_cents = earned_this_week_scope.sum(:amount_cents)
+        if demo_mode? && earned_this_week_cents.to_i.zero?
+          earned_this_week_cents = [total_earned_cents.to_i / 3, 0].max
+        end
 
         average_rating = Rating.average_for(technician_profile)
         reviews_count = Rating.where(reviewee: technician_profile).count
-
-        released_scope = Payment.joins(:job)
-          .joins('INNER JOIN job_applications ON job_applications.job_id = jobs.id')
-          .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })
-          .where(payments: { status: 'released' })
 
         {
           total_earned_cents: total_earned_cents,
@@ -72,6 +73,16 @@ module Api
           total_jobs: completed_jobs.count + in_progress_jobs.count,
           released_earnings_by_day: DashboardTrends.released_payment_cents_per_day(released_scope)
         }
+      end
+
+      def technician_payment_scope(technician_profile)
+        Payment.joins(:job)
+          .joins('INNER JOIN job_applications ON job_applications.job_id = jobs.id')
+          .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })
+      end
+
+      def demo_mode?
+        defined?(DemoMode) && DemoMode.enabled?
       end
 
       def default_technician_analytics

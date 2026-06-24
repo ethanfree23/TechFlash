@@ -483,6 +483,7 @@ module Api
 
         def list_item(user)
           company_name = user.company_profile&.company_name
+          membership_profile = user.company? ? user.company_profile : user.technician_profile
           user_name = [user.first_name, user.last_name].map(&:to_s).map(&:strip).reject(&:blank?).join(" ")
           {
             id: user.id,
@@ -496,7 +497,9 @@ module Api
             label: user_list_label(user),
             company_name: company_name,
             technician_profile_id: user.technician_profile&.id,
-            company_profile_id: user.company_profile&.id
+            company_profile_id: user.company_profile&.id,
+            membership_level: membership_profile&.membership_level,
+            membership_status: membership_profile&.membership_status
           }
         end
 

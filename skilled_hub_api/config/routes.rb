@@ -127,6 +127,7 @@ Rails.application.routes.draw do
         resources :membership_tier_configs, only: %i[index create update destroy] do
           member do
             post :provision_stripe
+            post :transfer_assignments
           end
         end
         resources :simulated_technician_markers, only: %i[index create update destroy]

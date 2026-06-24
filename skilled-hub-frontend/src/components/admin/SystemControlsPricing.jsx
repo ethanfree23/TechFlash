@@ -154,6 +154,10 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [deleting, setDeleting] = useState(false);
+  const [deleteBlockedUsers, setDeleteBlockedUsers] = useState([]);
+  const [deleteBlockedTotalUsers, setDeleteBlockedTotalUsers] = useState(0);
+  const [transferTargetTierId, setTransferTargetTierId] = useState('');
+  const [transferBusy, setTransferBusy] = useState(false);
   const [provisionBusyId, setProvisionBusyId] = useState(null);
   const [localOnlyStateCodes, setLocalOnlyStateCodes] = useState([]);
   const [savingLicensing, setSavingLicensing] = useState(false);
@@ -308,6 +312,11 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
       avgComm: avgComm.toFixed(1),
     };
   }, [rows]);
+
+  const transferTargetOptions = useMemo(() => {
+    if (!deleteTarget) return [];
+    return rows.filter((r) => r.id !== deleteTarget.id);
+  }, [rows, deleteTarget]);
 
   const handleSaveAll = async () => {
     setSaving(true);
@@ -464,11 +473,49 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
       await adminMembershipTierConfigsAPI.remove(deleteTarget.id);
       setDeleteTarget(null);
       setDeleteConfirmText('');
+      setDeleteBlockedUsers([]);
+      setDeleteBlockedTotalUsers(0);
+      setTransferTargetTierId('');
       await load();
     } catch (err) {
-      setError(err.message || 'Delete failed');
+      if (err?.details?.error_code === 'tier_in_use') {
+        const blockedUsers = Array.isArray(err?.details?.assigned_users) ? err.details.assigned_users : [];
+        setDeleteBlockedUsers(blockedUsers);
+        setDeleteBlockedTotalUsers(
+          Number.isFinite(err?.details?.total_assigned_users)
+            ? err.details.total_assigned_users
+            : blockedUsers.length
+        );
+        setTransferTargetTierId((prev) => {
+          if (prev) return prev;
+          const first = rows.find((r) => r.id !== deleteTarget.id);
+          return first ? String(first.id) : '';
+        });
+      } else {
+        setError(err.message || 'Delete failed');
+      }
     } finally {
       setDeleting(false);
+    }
+  };
+
+  const transferUsersAndDeleteTier = async () => {
+    if (!deleteTarget || !transferTargetTierId) return;
+    setTransferBusy(true);
+    setError(null);
+    try {
+      await adminMembershipTierConfigsAPI.transferAssignments(deleteTarget.id, transferTargetTierId);
+      await adminMembershipTierConfigsAPI.remove(deleteTarget.id);
+      setDeleteTarget(null);
+      setDeleteConfirmText('');
+      setDeleteBlockedUsers([]);
+      setDeleteBlockedTotalUsers(0);
+      setTransferTargetTierId('');
+      await load();
+    } catch (err) {
+      setError(err.message || 'Transfer failed');
+    } finally {
+      setTransferBusy(false);
     }
   };
 
@@ -856,6 +903,9 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
                               onClick={() => {
                                 setDeleteTarget({ id: r.id, slug: r.slug });
                                 setDeleteConfirmText('');
+                                setDeleteBlockedUsers([]);
+                                setDeleteBlockedTotalUsers(0);
+                                setTransferTargetTierId('');
                               }}
                               className="text-red-600 hover:text-red-800 text-sm font-medium"
                             >
@@ -1517,13 +1567,71 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
       {deleteTarget && (
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" aria-hidden="true" />
-          <div className="relative bg-white rounded-xl shadow-xl max-w-md w-full p-6 border border-red-100">
+          <div className="relative bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 border border-red-100">
             <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete tier?</h3>
             <p className="text-sm text-gray-600 mb-4">
               This will permanently remove the <span className="font-mono font-medium">{deleteTarget.slug}</span>{' '}
               tier for this audience. Profiles must not be assigned to this tier. Type{' '}
               <span className="font-mono font-semibold">DELETE</span> to confirm.
             </p>
+            {deleteBlockedUsers.length > 0 && (
+              <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-3">
+                <p className="text-sm text-amber-900">
+                  This tier is still assigned to {deleteBlockedTotalUsers} user{deleteBlockedTotalUsers === 1 ? '' : 's'}.
+                  Pick another tier to transfer them, then delete.
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2 items-end">
+                  <label className="block">
+                    <span className="text-xs font-medium text-gray-700">Transfer users to</span>
+                    <select
+                      value={transferTargetTierId}
+                      onChange={(e) => setTransferTargetTierId(e.target.value)}
+                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                    >
+                      <option value="">Select a tier...</option>
+                      {transferTargetOptions.map((tier) => (
+                        <option key={tier.id} value={tier.id}>
+                          {tier.display_name || tier.slug} ({tier.slug})
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    type="button"
+                    disabled={!transferTargetTierId || transferBusy || deleting}
+                    onClick={transferUsersAndDeleteTier}
+                    className="px-3 py-2 bg-blue-600 text-white rounded-lg text-sm disabled:opacity-50"
+                  >
+                    {transferBusy ? 'Transferring…' : 'Transfer users and delete'}
+                  </button>
+                </div>
+                <div className="max-h-48 overflow-auto border border-amber-200 rounded-lg bg-white">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-amber-50 text-left text-amber-900">
+                      <tr>
+                        <th className="px-2 py-1.5 font-medium">User</th>
+                        <th className="px-2 py-1.5 font-medium">Email</th>
+                        <th className="px-2 py-1.5 font-medium">Type</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {deleteBlockedUsers.map((u) => (
+                        <tr key={u.id} className="border-t border-amber-100">
+                          <td className="px-2 py-1.5 text-gray-800">{u.user_name || 'Unnamed user'}</td>
+                          <td className="px-2 py-1.5 font-mono text-gray-700">{u.email}</td>
+                          <td className="px-2 py-1.5 capitalize text-gray-700">{u.role}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {deleteBlockedTotalUsers > deleteBlockedUsers.length && (
+                  <p className="text-xs text-amber-800">
+                    Showing first {deleteBlockedUsers.length} users out of {deleteBlockedTotalUsers}.
+                  </p>
+                )}
+              </div>
+            )}
             <input
               type="text"
               value={deleteConfirmText}
@@ -1539,6 +1647,9 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
                 onClick={() => {
                   setDeleteTarget(null);
                   setDeleteConfirmText('');
+                  setDeleteBlockedUsers([]);
+                  setDeleteBlockedTotalUsers(0);
+                  setTransferTargetTierId('');
                 }}
                 className="flex-1 py-2 border rounded-lg text-sm"
               >

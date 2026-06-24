@@ -94,6 +94,53 @@ module Api
           row = body["users"].find { |u| u["id"] == additional.id }
           assert_equal "Shared Org For Index Test", row["company_name"]
         end
+
+        test "index includes membership tier for company and technician users" do
+          admin = User.create!(
+            email: "admin-index-membership@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin,
+            phone: "713-555-0500"
+          )
+
+          company = User.create!(
+            email: "company-membership-index@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :company,
+            phone: "713-555-0501"
+          )
+          CompanyProfile.create!(
+            user: company,
+            company_name: "Membership Co",
+            membership_level: "pro",
+            membership_status: "active"
+          )
+
+          technician = User.create!(
+            email: "technician-membership-index@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :technician
+          )
+          TechnicianProfile.create!(
+            user: technician,
+            trade_type: "Electrical",
+            availability: "Full-time",
+            membership_level: "basic",
+            membership_status: "trialing"
+          )
+
+          get "/api/v1/admin/users", headers: auth_header_for(admin)
+          assert_response :ok
+
+          rows = JSON.parse(response.body).fetch("users").index_by { |r| r.fetch("id") }
+          assert_equal "pro", rows.fetch(company.id).fetch("membership_level")
+          assert_equal "active", rows.fetch(company.id).fetch("membership_status")
+          assert_equal "basic", rows.fetch(technician.id).fetch("membership_level")
+          assert_equal "trialing", rows.fetch(technician.id).fetch("membership_status")
+        end
       end
     end
   end

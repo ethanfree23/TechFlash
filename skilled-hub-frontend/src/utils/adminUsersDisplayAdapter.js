@@ -19,6 +19,7 @@ export const DEFAULT_TABLE_COLUMNS = [
   { key: 'company_trade', label: 'Company / Trade', visible: true },
   { key: 'location', label: 'Location', visible: true },
   { key: 'subscription', label: 'Subscription', visible: true },
+  { key: 'membership_tier', label: 'Membership tier', visible: true },
   { key: 'activity', label: 'Activity', visible: true },
   { key: 'jobs', label: 'Jobs', visible: true },
   { key: 'joined', label: 'Joined', visible: true },
@@ -123,9 +124,8 @@ function deriveRiskLevel(row) {
 
 function deriveSubscription(row, detail) {
   const profile = detail?.user?.profile;
-  if (!profile) return { tier: 'Free', status: null };
-  const level = displayOrFallback(profile.membership_level, 'Free');
-  const status = profile.membership_status;
+  const level = displayOrFallback(profile?.membership_level || row.membership_level, 'Free');
+  const status = profile?.membership_status || row.membership_status;
   if (status === 'past_due') return { tier: level, status: 'Past due' };
   if (status === 'trialing') return { tier: level, status: 'Trial' };
   return { tier: level, status: status || null };
@@ -156,6 +156,7 @@ export function enrichUserRow(row, detail = null) {
     riskLevel,
     subscriptionTier: subscription.tier,
     subscriptionStatus: subscription.status,
+    membershipTier: subscription.tier,
     logins30d,
     lastLoginAt,
     lastLoginDisplay: lastLoginAt ? formatRelativeTime(lastLoginAt) : 'No activity yet',

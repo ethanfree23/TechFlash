@@ -10,8 +10,8 @@ import UsersEmptyState from './UsersEmptyState';
 import { TableRowsSkeleton } from './UsersSkeleton';
 import { displayOrFallback } from '../../../utils/adminUsersDisplayAdapter';
 
-/** Tablet: hide subscription, risk, jobs */
-const HIDDEN_MD = new Set(['jobs', 'risk', 'subscription']);
+/** Tablet: hide subscription, membership tier, risk, jobs */
+const HIDDEN_MD = new Set(['jobs', 'risk', 'subscription', 'membership_tier']);
 /** Mobile table (lg breakpoint): also hide location, last_login, joined */
 const HIDDEN_LG = new Set(['location', 'last_login', 'joined']);
 
@@ -77,6 +77,12 @@ function renderCell(col, row) {
           <div className="text-slate-800 font-medium">{displayOrFallback(row.subscriptionTier, 'Free')}</div>
           {row.subscriptionStatus && <div className="text-[10px] text-slate-400 mt-0.5">{row.subscriptionStatus}</div>}
         </div>
+      );
+    case 'membership_tier':
+      return (
+        <span className="text-xs text-slate-700 whitespace-nowrap">
+          {displayOrFallback(row.membershipTier, 'Free')}
+        </span>
       );
     case 'activity':
       return (
@@ -215,6 +221,7 @@ export default function UsersTable({
           case 'company_trade': return row.companyTradeLabel || '';
           case 'location': return row.locationLabel || '';
           case 'subscription': return row.subscriptionTier || '';
+          case 'membership_tier': return row.membershipTier || '';
           case 'activity': return row.logins30d ?? 0;
           case 'jobs': return row.jobsSummary?.accepted ?? row.jobsSummary?.posted ?? 0;
           case 'joined': return row.created_at ? new Date(row.created_at).getTime() : 0;
