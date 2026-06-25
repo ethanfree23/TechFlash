@@ -31,6 +31,8 @@ module Api
         else
           render json: { errors: ref.errors.full_messages }, status: :unprocessable_entity
         end
+      rescue ActiveRecord::RecordNotUnique
+        render json: { errors: ["Email or phone has already been used for another reference"] }, status: :unprocessable_entity
       end
 
       # Public endpoint called by emailed reference link form.

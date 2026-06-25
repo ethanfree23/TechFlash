@@ -77,6 +77,18 @@ const durationSummary = (minWeeks, maxWeeks) => {
   return `${minWeeks}-${maxWeeks} weeks`;
 };
 
+const normalizeReferenceEmail = (value) => String(value || '').trim().toLowerCase();
+const normalizeReferencePhone = (value) => String(value || '').replace(/\D/g, '');
+
+const referenceStatusLabel = (status) => {
+  const key = String(status || '').toLowerCase();
+  if (key === 'requested') return 'Requested';
+  if (key === 'responded') return 'Completed';
+  if (key === 'approved') return 'Approved';
+  if (key === 'rejected') return 'Rejected';
+  return 'Not started';
+};
+
 const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1104,6 +1116,28 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
   const handleAddReference = async (e) => {
     e.preventDefault();
+
+    const nextEmail = normalizeReferenceEmail(newReference.email);
+    const nextPhone = normalizeReferencePhone(newReference.phone);
+    const duplicateEmail = verificationReferences.some(
+      (ref) => normalizeReferenceEmail(ref.email) === nextEmail
+    );
+    const duplicatePhone = nextPhone && verificationReferences.some(
+      (ref) => normalizeReferencePhone(ref.phone) === nextPhone
+    );
+
+    if (duplicateEmail || duplicatePhone) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Duplicate reference contact',
+        message: duplicateEmail
+          ? 'This email is already used by another reference. Please use a different contact.'
+          : 'This phone number is already used by another reference. Please use a different contact.',
+        variant: 'error',
+      });
+      return;
+    }
+
     setSubmittingReference(true);
     try {
       await verificationReferencesAPI.create(newReference);
@@ -1341,7 +1375,10 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                                 verificationReferences.slice(0, 5).map((ref) => (
                                   <div key={ref.id} className="text-xs text-gray-700 flex items-center justify-between gap-3">
                                     <span>{ref.full_name} ({ref.relationship})</span>
-                                    <span className="uppercase font-semibold text-gray-500">{ref.status}</span>
+                                    <span className="font-semibold text-gray-500">
+                                      {referenceStatusLabel(ref.status)}
+                                      {ref.responded_at ? ` (${new Date(ref.responded_at).toLocaleDateString()})` : ''}
+                                    </span>
                                   </div>
                                 ))
                               )}

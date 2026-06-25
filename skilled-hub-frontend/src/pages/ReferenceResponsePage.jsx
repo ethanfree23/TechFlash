@@ -23,6 +23,10 @@ export default function ReferenceResponsePage() {
 
   const onSubmit = async (e) => {
     e.preventDefault();
+    if (!form.reliability || !form.quality || !form.communication || !form.safety) {
+      setError('Please provide a star rating for each category.');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
@@ -48,10 +52,30 @@ export default function ReferenceResponsePage() {
         ) : (
           <form onSubmit={onSubmit} className="space-y-3">
             <Select name="would_rehire" label="Would you hire this technician again?" value={form.would_rehire} onChange={onChange} required />
-            <Select name="reliability" label="Reliability (1-5)" value={form.reliability} onChange={onChange} required numeric />
-            <Select name="quality" label="Quality of work (1-5)" value={form.quality} onChange={onChange} required numeric />
-            <Select name="communication" label="Communication (1-5)" value={form.communication} onChange={onChange} required numeric />
-            <Select name="safety" label="Safety professionalism (1-5)" value={form.safety} onChange={onChange} required numeric />
+            <StarRating
+              name="reliability"
+              label="Reliability"
+              value={form.reliability}
+              onChange={onChange}
+            />
+            <StarRating
+              name="quality"
+              label="Quality of work"
+              value={form.quality}
+              onChange={onChange}
+            />
+            <StarRating
+              name="communication"
+              label="Communication"
+              value={form.communication}
+              onChange={onChange}
+            />
+            <StarRating
+              name="safety"
+              label="Safety professionalism"
+              value={form.safety}
+              onChange={onChange}
+            />
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">Comments</label>
               <textarea
@@ -80,7 +104,7 @@ export default function ReferenceResponsePage() {
   );
 }
 
-function Select({ name, label, value, onChange, required, numeric = false }) {
+function Select({ name, label, value, onChange, required }) {
   return (
     <div>
       <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
@@ -92,15 +116,40 @@ function Select({ name, label, value, onChange, required, numeric = false }) {
         required={required}
       >
         <option value="">Select...</option>
-        {numeric ? (
-          [1, 2, 3, 4, 5].map((n) => <option key={n} value={String(n)}>{n}</option>)
-        ) : (
-          <>
-            <option value="yes">Yes</option>
-            <option value="no">No</option>
-          </>
-        )}
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
       </select>
+    </div>
+  );
+}
+
+function StarRating({ name, label, value, onChange }) {
+  const selected = Number(value) || 0;
+  const setRating = (rating) => {
+    onChange({ target: { name, value: String(rating) } });
+  };
+
+  return (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+      <div className="flex items-center gap-1" role="radiogroup" aria-label={`${label} from 1 to 5 stars`}>
+        {[1, 2, 3, 4, 5].map((rating) => (
+          <button
+            key={rating}
+            type="button"
+            role="radio"
+            aria-checked={selected === rating}
+            aria-label={`${rating} star${rating === 1 ? '' : 's'}`}
+            onClick={() => setRating(rating)}
+            className={`text-2xl leading-none transition-colors ${
+              rating <= selected ? 'text-amber-400' : 'text-gray-300 hover:text-amber-300'
+            }`}
+          >
+            ★
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-gray-500 mt-1">Left is 1 star, right is 5 stars.</p>
     </div>
   );
 }

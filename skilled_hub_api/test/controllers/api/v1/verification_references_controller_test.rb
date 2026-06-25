@@ -89,6 +89,59 @@ module Api
              as: :json
         assert_response :unprocessable_entity
       end
+
+      test "technician cannot reuse reference email or phone" do
+        tech_user = User.create!(
+          email: "reference-tech-duplicates@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        TechnicianProfile.create!(
+          user: tech_user,
+          trade_type: "HVAC",
+          availability: "Full-time",
+          membership_level: "basic"
+        )
+
+        post "/api/v1/verification_references",
+             params: {
+               full_name: "Jordan Smith",
+               email: "jordan@example.com",
+               phone: "(555) 111-2233",
+               company_name: "Smith Mechanical",
+               relationship: "Supervisor"
+             },
+             headers: auth_header_for(tech_user),
+             as: :json
+        assert_response :created
+
+        post "/api/v1/verification_references",
+             params: {
+               full_name: "Taylor Brown",
+               email: "JORDAN@example.com",
+               phone: "5559990000",
+               company_name: "North Service",
+               relationship: "Manager"
+             },
+             headers: auth_header_for(tech_user),
+             as: :json
+        assert_response :unprocessable_entity
+        assert_includes JSON.parse(response.body)["errors"], "Email has already been used for another reference"
+
+        post "/api/v1/verification_references",
+             params: {
+               full_name: "Casey Green",
+               email: "casey@example.com",
+               phone: "555-111-2233",
+               company_name: "West Service",
+               relationship: "Lead"
+             },
+             headers: auth_header_for(tech_user),
+             as: :json
+        assert_response :unprocessable_entity
+        assert_includes JSON.parse(response.body)["errors"], "Phone has already been used for another reference"
+      end
     end
   end
 end

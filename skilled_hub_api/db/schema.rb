@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_22_153000) do
+ActiveRecord::Schema[7.1].define(version: 2026_06_25_223000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -711,9 +711,13 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_22_153000) do
     t.json "answers", default: {}
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "email_normalized"
+    t.string "phone_normalized"
     t.index ["request_token"], name: "index_verification_references_on_request_token", unique: true
     t.index ["reviewed_by_user_id"], name: "index_verification_references_on_reviewed_by_user_id"
     t.index ["status"], name: "index_verification_references_on_status"
+    t.index ["technician_user_id", "email_normalized"], name: "index_verification_references_on_tech_and_email_normalized", unique: true
+    t.index ["technician_user_id", "phone_normalized"], name: "index_verification_references_on_tech_and_phone_normalized", unique: true
     t.index ["technician_user_id"], name: "index_verification_references_on_technician_user_id"
   end
 
