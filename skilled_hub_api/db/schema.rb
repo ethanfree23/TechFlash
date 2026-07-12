@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_06_25_223000) do
+ActiveRecord::Schema[7.1].define(version: 2026_07_12_202000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -73,7 +73,28 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_25_223000) do
     t.string "stripe_checkout_session_id"
     t.string "stripe_payment_intent_id"
     t.datetime "paid_at"
+    t.string "normalized_status", default: "not_started"
+    t.string "provider_status"
+    t.string "provider_assess_status"
+    t.text "invitation_url"
+    t.string "node_custom_id"
+    t.string "work_location_country"
+    t.string "work_location_state"
+    t.string "work_location_city"
+    t.datetime "report_eta_at"
+    t.string "report_url"
+    t.string "dashboard_url"
+    t.string "last_webhook_event_id"
+    t.integer "job_id"
+    t.integer "job_application_id"
+    t.integer "company_profile_id"
+    t.index ["company_profile_id"], name: "index_background_checks_on_company_profile_id"
     t.index ["expires_at"], name: "index_background_checks_on_expires_at"
+    t.index ["job_application_id"], name: "index_background_checks_on_job_application_id"
+    t.index ["job_id"], name: "index_background_checks_on_job_id"
+    t.index ["last_webhook_event_id"], name: "index_background_checks_on_last_webhook_event_id"
+    t.index ["node_custom_id"], name: "index_background_checks_on_node_custom_id"
+    t.index ["normalized_status"], name: "index_background_checks_on_normalized_status"
     t.index ["provider_candidate_id"], name: "index_background_checks_on_provider_candidate_id"
     t.index ["provider_invitation_id"], name: "index_background_checks_on_provider_invitation_id"
     t.index ["provider_report_id"], name: "index_background_checks_on_provider_report_id"
@@ -724,6 +745,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_06_25_223000) do
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "app_notifications", "users"
+  add_foreign_key "background_checks", "company_profiles"
+  add_foreign_key "background_checks", "job_applications"
+  add_foreign_key "background_checks", "jobs"
   add_foreign_key "background_checks", "users"
   add_foreign_key "company_profiles", "users"
   add_foreign_key "conversations", "company_profiles"

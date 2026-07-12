@@ -62,6 +62,7 @@ module Demo
       MARKETS.each_key { |market_key| populate_market!(market_key) }
       seed_demo_company_jobs!
       seed_demo_technician_jobs!
+      seed_checkr_demo_records!
       seed_demo_feedback!
       seed_demo_admin_notifications!
       seed_login_events!
@@ -141,7 +142,7 @@ module Demo
         phone: "713-882-0300",
         membership_level: "premium",
         membership_status: "active",
-        background_verified: true,
+        background_verified: false,
         specialties: %w[HVAC Refrigeration]
       )
       demo_tech.update_columns(latitude: hou[:lat], longitude: hou[:lng])
@@ -322,6 +323,35 @@ module Demo
       )
       @stats[:demo_technician_jobs] = accepted.distinct.count
       @stats[:demo_technician_jobs_from_demo_company] = accepted.where(company_profile_id: @demo_company_profile.id).distinct.count
+    end
+
+    def seed_checkr_demo_records!
+      return unless @demo_company_profile && @demo_technician_profile
+
+      job = Job.create!(
+        company_profile: @demo_company_profile,
+        title: "Checkr Demo Job - Houston Certification Run",
+        description: "Demo-only job to record Checkr hosted invitation flow end-to-end.",
+        notes: "CHECKR_DEMO_JOB",
+        status: :filled,
+        skill_class: "HVAC",
+        location: "Houston, TX",
+        address: "1400 Louisiana St",
+        city: "Houston",
+        state: "TX",
+        zip_code: "77002",
+        country: "United States",
+        hourly_rate_cents: 6200,
+        hours_per_day: 8,
+        days: 2,
+        require_background_check: true,
+        scheduled_start_at: 1.day.from_now,
+        scheduled_end_at: 3.days.from_now,
+        go_live_at: 1.day.ago
+      )
+      job.update_columns(latitude: BigDecimal("29.7566"), longitude: BigDecimal("-95.3636"), status: Job.statuses[:filled])
+      JobApplication.create!(job: job, technician_profile: @demo_technician_profile, status: :accepted)
+      @stats[:checkr_demo_job_id] = job.id
     end
 
     def demo_technician_job_buckets

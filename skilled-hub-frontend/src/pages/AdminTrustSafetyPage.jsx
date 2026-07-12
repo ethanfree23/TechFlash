@@ -89,7 +89,21 @@ export default function AdminTrustSafetyPage({ user, onLogout }) {
                     <Empty text="No pending background checks." />
                   ) : (
                     dashboard.pending_background_checks.map((check) => (
-                      <Row key={check.id} title={`Check #${check.id}`} subtitle={`User #${check.user_id} · ${check.status}`}>
+                      <Row
+                        key={check.id}
+                        title={`Check #${check.id}`}
+                        subtitle={`User #${check.user_id} · ${check.normalized_status || check.status} · ${check.package_name || 'package n/a'} · ${[check.work_location_city, check.work_location_state, check.work_location_country].filter(Boolean).join(', ') || 'location n/a'}`}
+                      >
+                        {(check.dashboard_url || check.report_url) && (
+                          <a
+                            href={check.dashboard_url || check.report_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-800 hover:bg-blue-200"
+                          >
+                            Report
+                          </a>
+                        )}
                         <Action onClick={() => reviewBackground(check.id, 'manually_approved')} tone="green">Approve</Action>
                         <Action onClick={() => reviewBackground(check.id, 'manually_rejected')} tone="red">Reject</Action>
                       </Row>

@@ -25,8 +25,8 @@ module Api
               verified_technicians: verified_technicians,
               verification_completion_rate: completion_rate
             },
-            pending_background_checks: BackgroundCheck.where(status: %i[pending processing consider invited]).order(created_at: :desc).limit(100),
-            expiring_background_checks: BackgroundCheck.where("expires_at IS NOT NULL AND expires_at <= ?", 30.days.from_now).order(:expires_at).limit(100),
+            pending_background_checks: serialize_checks(BackgroundCheck.where(status: %i[pending processing consider invited]).order(created_at: :desc).limit(100)),
+            expiring_background_checks: serialize_checks(BackgroundCheck.where("expires_at IS NOT NULL AND expires_at <= ?", 30.days.from_now).order(:expires_at).limit(100)),
             pending_references: VerificationReference.pending_review.limit(100),
             pending_documents: Document.pending_review_queue.where(doc_type: %w[license certificate cert insurance]).limit(100),
             audit_timeline: VerificationAuditLog.order(created_at: :desc).limit(200)
@@ -184,6 +184,34 @@ module Api
             JobApplication.find_by(id: doc.uploadable_id)&.technician_profile&.user
           else
             nil
+          end
+        end
+
+        def serialize_checks(scope)
+          scope.map do |check|
+            {
+              id: check.id,
+              user_id: check.user_id,
+              job_id: check.job_id,
+              job_application_id: check.job_application_id,
+              company_profile_id: check.company_profile_id,
+              status: check.status,
+              normalized_status: check.normalized_status_value,
+              provider_status: check.provider_status,
+              provider_assess_status: check.provider_assess_status,
+              package_name: check.package_name,
+              node_custom_id: check.node_custom_id,
+              work_location_country: check.work_location_country,
+              work_location_state: check.work_location_state,
+              work_location_city: check.work_location_city,
+              invitation_url: check.invitation_url,
+              report_url: check.report_url,
+              dashboard_url: check.dashboard_url,
+              report_eta_at: check.report_eta_at,
+              last_webhook_event_id: check.last_webhook_event_id,
+              created_at: check.created_at,
+              updated_at: check.updated_at
+            }
           end
         end
       end

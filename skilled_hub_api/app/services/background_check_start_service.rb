@@ -21,15 +21,30 @@ class BackgroundCheckStartService
     client = CheckrClient.new
     raise Error, "Checkr is not configured." unless client.configured?
 
-    candidate = client.create_candidate(user: @user)
+    candidate_id = reusable_candidate_id(client)
+    unless candidate_id.present?
+      candidate = client.create_candidate(
+        user: @user,
+        work_location: work_location_payload,
+        custom_id: "techflash_user_#{@user.id}",
+        zipcode: candidate_zipcode
+      )
+      candidate_id = candidate["id"]
+    end
+
     invitation = client.create_invitation(
-      candidate_id: candidate["id"],
+      candidate_id: candidate_id,
       package_name: @background_check.package_name,
-      redirect_url: ENV["CHECKR_REDIRECT_URL"].presence || "#{frontend_base_url}/settings"
+      redirect_url: ENV["CHECKR_REDIRECT_URL"].presence || "#{frontend_base_url}/settings",
+      work_location: work_location_payload,
+      node_custom_id: @background_check.node_custom_id
     )
     @background_check.update!(
-      provider_candidate_id: candidate["id"],
+      provider_candidate_id: candidate_id,
       provider_invitation_id: invitation["id"],
+      invitation_url: invitation["invitation_url"] || invitation["url"],
+      provider_status: invitation["status"] || "invitation_sent",
+      normalized_status: "invitation_sent",
       status: :invited,
       started_at: Time.current
     )
@@ -90,5 +105,28 @@ class BackgroundCheckStartService
 
   def background_check_fee_cents
     ENV.fetch("BACKGROUND_CHECK_FEE_CENTS", "4900").to_i
+  end
+
+  def work_location_payload
+    {
+      country: @background_check.work_location_country.presence || "US",
+      state: @background_check.work_location_state.presence || "TX",
+      city: @background_check.work_location_city.presence || "Houston"
+    }
+  end
+
+  def candidate_zipcode
+    @user.technician_profile&.zip_code.presence
+  end
+
+  def reusable_candidate_id(client)
+    candidate_id = @background_check.provider_candidate_id.presence ||
+      @user.background_checks.where.not(provider_candidate_id: nil).order(created_at: :desc).pick(:provider_candidate_id)
+    return nil if candidate_id.blank?
+
+    client.get_candidate(candidate_id: candidate_id)
+    candidate_id
+  rescue CheckrClient::Error
+    nil
   end
 end

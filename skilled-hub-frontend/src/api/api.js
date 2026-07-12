@@ -450,9 +450,20 @@ export const appNotificationsAPI = {
 
 export const verificationAPI = {
   getCenter: () => apiRequest('/verification'),
+  getBackgroundCheckOptions: (selectedNodeCustomId = null) => {
+    const params = new URLSearchParams();
+    if (selectedNodeCustomId) params.set('selected_node_custom_id', selectedNodeCustomId);
+    const qs = params.toString();
+    return apiRequest(`/verification/background_check_options${qs ? `?${qs}` : ''}`);
+  },
   startBackgroundCheck: () =>
     apiRequest('/verification/start_background_check', {
       method: 'POST',
+    }),
+  startBackgroundCheckWithSelection: (payload) =>
+    apiRequest('/verification/start_background_check', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
     }),
   createBackgroundCheckCheckout: () =>
     apiRequest('/verification/create_background_check_checkout', {

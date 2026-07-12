@@ -101,6 +101,7 @@ Rails.application.routes.draw do
       resource :verification, only: [:show], controller: :verifications do
         post :start_background_check
         post :create_background_check_checkout
+        get :background_check_options
       end
       resources :verification_references, only: [:index, :create]
       post "verification_references/respond/:token", to: "verification_references#respond"

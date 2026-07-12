@@ -26,6 +26,10 @@ module Api
 
       def start_background_check
         profile = VerificationProfile.for_user!(@current_user)
+        selected_package = params[:package_name].to_s.presence || CheckrClient.new.default_package
+        selected_node_custom_id = params[:node_custom_id].to_s.presence
+        context = resolve_background_check_context
+
         existing = BackgroundCheck.where(user_id: @current_user.id)
           .where("status IN (?) OR payment_status = ?", BackgroundCheck.statuses.values_at("invited", "pending", "processing"), BackgroundCheck.payment_statuses["pending"])
           .order(created_at: :desc)
@@ -40,8 +44,16 @@ module Api
         background_check = BackgroundCheck.create!(
           user_id: @current_user.id,
           provider: "checkr",
-          package_name: CheckrClient.new.default_package,
+          package_name: selected_package,
+          node_custom_id: selected_node_custom_id,
+          work_location_country: context[:work_location][:country],
+          work_location_state: context[:work_location][:state],
+          work_location_city: context[:work_location][:city],
+          job_id: context[:job]&.id,
+          job_application_id: context[:job_application]&.id,
+          company_profile_id: context[:job]&.company_profile_id,
           status: :not_started,
+          normalized_status: "not_started",
           payment_status: payment_status,
           paid_by: paid_by
         )
@@ -61,12 +73,19 @@ module Api
           render json: {
             background_check: background_check.reload,
             payment_required: false,
-            invitation_url: invitation["invitation_url"]
+            invitation_url: background_check.reload.invitation_url || invitation["invitation_url"],
+            background_check_options: build_background_check_options(selected_node_custom_id)
           }, status: :ok
         rescue BackgroundCheckStartService::Error => e
           background_check.update!(status: :failed, admin_notes: e.message)
           render json: { error: e.message }, status: :unprocessable_entity
         end
+      end
+
+      def background_check_options
+        render json: build_background_check_options(params[:selected_node_custom_id].to_s.presence), status: :ok
+      rescue CheckrClient::Error => e
+        render json: { error: e.message }, status: :unprocessable_entity
       end
 
       def create_background_check_checkout
@@ -87,6 +106,80 @@ module Api
 
       private
 
+      def build_background_check_options(selected_node_custom_id = nil)
+        client = CheckrClient.new
+        raise CheckrClient::Error, "Checkr is not configured." unless client.configured?
+
+        all_packages = client.list_packages
+        nodes = client.list_nodes
+        selected_node = nodes.find { |node| node["custom_id"].to_s == selected_node_custom_id.to_s } if selected_node_custom_id.present?
+
+        {
+          nodes_exist: nodes.any?,
+          selected_node_custom_id: selected_node_custom_id,
+          nodes: nodes.map { |node| serialize_node(node) },
+          packages: filter_packages_for_node(all_packages, selected_node).map { |pkg| serialize_package(pkg) }
+        }
+      end
+
+      def serialize_package(pkg)
+        {
+          id: pkg["id"],
+          slug: pkg["slug"] || pkg["name"],
+          name: pkg["name"] || pkg["slug"] || pkg["id"],
+          screenings: pkg["screenings"],
+          tier: pkg["tier"]
+        }
+      end
+
+      def serialize_node(node)
+        {
+          id: node["id"],
+          custom_id: node["custom_id"],
+          name: node["name"] || node["custom_id"] || node["id"],
+          package_ids: Array(node["package_ids"]).compact,
+          package_slugs: Array(node["package_slugs"]).compact
+        }
+      end
+
+      def filter_packages_for_node(packages, node)
+        return packages if node.blank?
+
+        package_ids = Array(node["package_ids"]).map(&:to_s).reject(&:blank?)
+        package_slugs = Array(node["package_slugs"]).map(&:to_s).reject(&:blank?)
+        node_packages = Array(node["packages"])
+        if node_packages.any?
+          package_ids |= node_packages.map { |pkg| pkg["id"].to_s }.reject(&:blank?)
+          package_slugs |= node_packages.map { |pkg| (pkg["slug"] || pkg["name"]).to_s }.reject(&:blank?)
+        end
+
+        return packages if package_ids.blank? && package_slugs.blank?
+
+        packages.select do |pkg|
+          package_ids.include?(pkg["id"].to_s) || package_slugs.include?((pkg["slug"] || pkg["name"]).to_s)
+        end
+      end
+
+      def resolve_background_check_context
+        job = nil
+        job_application = nil
+        if params[:job_application_id].present?
+          job_application = JobApplication.find_by(id: params[:job_application_id], technician_profile_id: @current_user.technician_profile&.id)
+          job = job_application&.job
+        elsif params[:job_id].present?
+          job = Job.find_by(id: params[:job_id])
+          job_application = JobApplication.find_by(job_id: job&.id, technician_profile_id: @current_user.technician_profile&.id)
+        end
+
+        work_location = {
+          country: job&.country.presence || @current_user.technician_profile&.country.presence || "US",
+          state: job&.state.presence || @current_user.technician_profile&.state.presence || "TX",
+          city: job&.city.presence || @current_user.technician_profile&.city.presence || "Houston"
+        }
+
+        { job: job, job_application: job_application, work_location: work_location }
+      end
+
       def sections_payload(profile:, background_check:, badges:, approved_references_count:)
         active_badge_types = badges.map(&:badge_type)
         [
@@ -102,7 +195,19 @@ module Api
           {
             key: "background_check",
             title: "Background Check",
-            status: (background_check&.status || "not_started"),
+            status: (background_check&.normalized_status_value || "not_started"),
+            provider_status: background_check&.provider_status,
+            provider_assess_status: background_check&.provider_assess_status,
+            package_name: background_check&.package_name,
+            invitation_url: background_check&.invitation_url,
+            report_eta_at: background_check&.report_eta_at,
+            work_location: {
+              country: background_check&.work_location_country,
+              state: background_check&.work_location_state,
+              city: background_check&.work_location_city
+            },
+            report_url: background_check&.report_url,
+            dashboard_url: background_check&.dashboard_url,
             cta: background_check.present? ? "View status" : "Start background check",
             why_it_matters: "Some companies only allow background-checked technicians to claim jobs.",
             badge_preview: "Background Checked",

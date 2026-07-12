@@ -56,6 +56,70 @@ module Api
         assert_equal "http://example.com/invite", body["invitation_url"]
       end
 
+      test "start background check stores selected package and node" do
+        user, = create_technician_with_membership("premium", "verification-selected-package@example.com")
+        with_stubbed_background_launch("http://example.com/invite-2") do
+          post "/api/v1/verification/start_background_check",
+               params: { package_name: "premium_criminal", node_custom_id: "houston_node" },
+               headers: auth_header_for(user),
+               as: :json
+        end
+
+        assert_response :ok
+        check = BackgroundCheck.order(:id).last
+        assert_equal "premium_criminal", check.package_name
+        assert_equal "houston_node", check.node_custom_id
+      end
+
+      test "start background check rejects duplicate in-progress check" do
+        user, = create_technician_with_membership("basic", "verification-duplicate@example.com")
+        BackgroundCheck.create!(
+          user: user,
+          provider: "checkr",
+          package_name: "essential_plus",
+          status: :invited,
+          payment_status: :not_required,
+          paid_by: "technician"
+        )
+
+        post "/api/v1/verification/start_background_check",
+             headers: auth_header_for(user),
+             as: :json
+
+        assert_response :unprocessable_entity
+      end
+
+      test "background check options endpoint returns data" do
+        user, = create_technician_with_membership("basic", "verification-options@example.com")
+        with_stubbed_checkr_options do
+          get "/api/v1/verification/background_check_options",
+              headers: auth_header_for(user),
+              as: :json
+        end
+
+        assert_response :ok
+        body = JSON.parse(response.body)
+        assert_equal true, body["nodes_exist"]
+        assert_equal "essential_plus", body["packages"][0]["slug"]
+      end
+
+      test "premium start returns error when checkr api key is missing" do
+        user, = create_technician_with_membership("premium", "verification-no-checkr-key@example.com")
+        old_staging = ENV["CHECKR_STAGING_API_KEY"]
+        old_api = ENV["CHECKR_API_KEY"]
+        ENV["CHECKR_STAGING_API_KEY"] = nil
+        ENV["CHECKR_API_KEY"] = nil
+
+        post "/api/v1/verification/start_background_check",
+             headers: auth_header_for(user),
+             as: :json
+
+        assert_response :unprocessable_entity
+      ensure
+        ENV["CHECKR_STAGING_API_KEY"] = old_staging
+        ENV["CHECKR_API_KEY"] = old_api
+      end
+
       test "create background checkout returns checkout url for pending payment" do
         user, profile = create_technician_with_membership("basic", "verification-checkout@example.com")
         check = BackgroundCheck.create!(
@@ -130,6 +194,22 @@ module Api
         yield
       ensure
         singleton.send(:define_method, :create_checkout_session!, original)
+      end
+
+      def with_stubbed_checkr_options
+        original_new = CheckrClient.method(:new)
+        fake_client = Object.new
+        fake_client.define_singleton_method(:configured?) { true }
+        fake_client.define_singleton_method(:list_packages) do
+          [{ "id" => "pkg_1", "slug" => "essential_plus", "name" => "Essential Plus" }]
+        end
+        fake_client.define_singleton_method(:list_nodes) do
+          [{ "id" => "node_1", "custom_id" => "houston_node", "name" => "Houston Node", "package_slugs" => ["essential_plus"] }]
+        end
+        CheckrClient.singleton_class.send(:define_method, :new) { fake_client }
+        yield
+      ensure
+        CheckrClient.singleton_class.send(:define_method, :new, original_new)
       end
     end
   end

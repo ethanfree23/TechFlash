@@ -147,6 +147,10 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [verificationCenter, setVerificationCenter] = useState(null);
   const [loadingVerificationCenter, setLoadingVerificationCenter] = useState(false);
   const [startingBackgroundCheck, setStartingBackgroundCheck] = useState(false);
+  const [backgroundCheckOptions, setBackgroundCheckOptions] = useState(null);
+  const [loadingBackgroundCheckOptions, setLoadingBackgroundCheckOptions] = useState(false);
+  const [selectedPackageName, setSelectedPackageName] = useState('');
+  const [selectedNodeCustomId, setSelectedNodeCustomId] = useState('');
   const [verificationReferences, setVerificationReferences] = useState([]);
   const [loadingReferences, setLoadingReferences] = useState(false);
   const [submittingReference, setSubmittingReference] = useState(false);
@@ -368,6 +372,22 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   }, [isTechnician, profile?.id]);
 
+  const loadBackgroundCheckOptions = useCallback(async (nodeCustomId = null) => {
+    if (!isTechnician) return;
+    setLoadingBackgroundCheckOptions(true);
+    try {
+      const opts = await verificationAPI.getBackgroundCheckOptions(nodeCustomId);
+      setBackgroundCheckOptions(opts || null);
+      const pkg = opts?.packages?.[0]?.slug || '';
+      setSelectedPackageName((prev) => prev || pkg);
+      setSelectedNodeCustomId(nodeCustomId || '');
+    } catch {
+      setBackgroundCheckOptions(null);
+    } finally {
+      setLoadingBackgroundCheckOptions(false);
+    }
+  }, [isTechnician]);
+
   useEffect(() => {
     if (!isTechnician) return;
     let cancelled = false;
@@ -382,10 +402,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       .finally(() => {
         if (!cancelled) setLoadingVerificationCenter(false);
       });
+    loadBackgroundCheckOptions().catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [isTechnician]);
+  }, [isTechnician, loadBackgroundCheckOptions]);
 
   useEffect(() => {
     if (!isTechnician) return;
@@ -1077,7 +1098,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const handleStartBackgroundCheck = async () => {
     setStartingBackgroundCheck(true);
     try {
-      const res = await verificationAPI.startBackgroundCheck();
+      const payload = {
+        package_name: selectedPackageName || backgroundCheckOptions?.packages?.[0]?.slug,
+      };
+      if (selectedNodeCustomId) payload.node_custom_id = selectedNodeCustomId;
+      const res = await verificationAPI.startBackgroundCheckWithSelection(payload);
       if (res?.invitation_url) {
         window.location.href = res.invitation_url;
         return;
@@ -1097,6 +1122,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       }
       const latest = await verificationAPI.getCenter();
       setVerificationCenter(latest);
+      await loadBackgroundCheckOptions(selectedNodeCustomId || null);
     } catch (err) {
       setAlertModal({
         isOpen: true,
@@ -1107,6 +1133,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     } finally {
       setStartingBackgroundCheck(false);
     }
+  };
+
+  const handleNodeChange = async (nextNodeCustomId) => {
+    setSelectedNodeCustomId(nextNodeCustomId);
+    setSelectedPackageName('');
+    await loadBackgroundCheckOptions(nextNodeCustomId || null);
   };
 
   const handleReferenceFieldChange = (e) => {
@@ -1352,11 +1384,91 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                         <li>Certificates on file: {certificates.length}</li>
                         <li>Map address: {needsMapSetup ? 'Incomplete' : 'Looks good'}</li>
                       </ul>
+                      <div className="mt-3 space-y-3">
+                        <div className="grid grid-cols-1 gap-2">
+                          <div className="text-xs text-gray-600">
+                            <span className="font-semibold text-gray-800">Technician:</span>{' '}
+                            {user?.first_name || ''} {user?.last_name || ''} ({user?.email || 'No email'})
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            <span className="font-semibold text-gray-800">Work location:</span>{' '}
+                            {verificationCenter?.background_check?.work_location_city || profile?.city || 'Houston'},{' '}
+                            {verificationCenter?.background_check?.work_location_state || profile?.state || 'TX'},{' '}
+                            {verificationCenter?.background_check?.work_location_country || profile?.country || 'US'}
+                          </div>
+                        </div>
+                        {loadingBackgroundCheckOptions ? (
+                          <p className="text-xs text-gray-500">Loading Checkr packages...</p>
+                        ) : (
+                          <>
+                            {backgroundCheckOptions?.nodes_exist ? (
+                              <label className="block">
+                                <span className="text-xs font-medium text-gray-600">Checkr node</span>
+                                <select
+                                  value={selectedNodeCustomId}
+                                  onChange={(e) => { handleNodeChange(e.target.value); }}
+                                  className="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1 text-xs"
+                                >
+                                  <option value="">Select node</option>
+                                  {(backgroundCheckOptions?.nodes || []).map((node) => (
+                                    <option key={node.custom_id || node.id} value={node.custom_id || ''}>
+                                      {node.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            ) : (
+                              <p className="text-xs text-gray-600">No nodes available for this account.</p>
+                            )}
+                            <label className="block">
+                              <span className="text-xs font-medium text-gray-600">Checkr package</span>
+                              <select
+                                value={selectedPackageName}
+                                onChange={(e) => setSelectedPackageName(e.target.value)}
+                                className="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1 text-xs"
+                              >
+                                {(backgroundCheckOptions?.packages || []).map((pkg) => (
+                                  <option key={pkg.id || pkg.slug} value={pkg.slug || pkg.name}>
+                                    {pkg.name || pkg.slug}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </>
+                        )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
+                          <p><span className="font-semibold text-gray-800">Associated job:</span> {verificationCenter?.background_check?.job_id ? `Job #${verificationCenter.background_check.job_id}` : 'Not linked'}</p>
+                          <p><span className="font-semibold text-gray-800">Invitation status:</span> {verificationCenter?.background_check?.normalized_status || verificationCenter?.background_check?.status || 'not_started'}</p>
+                          <p><span className="font-semibold text-gray-800">Report status:</span> {verificationCenter?.background_check?.provider_status || 'pending'}</p>
+                          <p><span className="font-semibold text-gray-800">ETA:</span> {verificationCenter?.background_check?.report_eta_at ? new Date(verificationCenter.background_check.report_eta_at).toLocaleString() : 'Not provided'}</p>
+                          <p><span className="font-semibold text-gray-800">Package:</span> {verificationCenter?.background_check?.package_name || selectedPackageName || 'Not selected'}</p>
+                        </div>
+                        {(verificationCenter?.background_check?.dashboard_url || verificationCenter?.background_check?.report_url) && (
+                          <a
+                            href={verificationCenter?.background_check?.dashboard_url || verificationCenter?.background_check?.report_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex text-xs font-medium text-blue-700 hover:text-blue-800"
+                          >
+                            Open Checkr dashboard/report
+                          </a>
+                        )}
+                        {verificationCenter?.background_check?.invitation_url && (
+                          <a
+                            href={verificationCenter.background_check.invitation_url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex text-xs font-medium text-blue-700 hover:text-blue-800"
+                          >
+                            Resume hosted invitation flow
+                          </a>
+                        )}
+                      </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={handleStartBackgroundCheck}
-                          disabled={startingBackgroundCheck}
+                          disabled={startingBackgroundCheck || !selectedPackageName}
                           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                         >
                           {startingBackgroundCheck ? 'Starting...' : 'Start background check'}
