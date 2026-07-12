@@ -1411,7 +1411,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                                 >
                                   <option value="">Select node</option>
                                   {(backgroundCheckOptions?.nodes || []).map((node) => (
-                                    <option key={node.custom_id || node.id} value={node.custom_id || ''}>
+                                    <option key={node.value || node.id} value={node.value || node.id || ''}>
                                       {node.name}
                                     </option>
                                   ))}

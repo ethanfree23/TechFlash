@@ -112,7 +112,11 @@ module Api
 
         all_packages = client.list_packages
         nodes = client.list_nodes
-        selected_node = nodes.find { |node| node["custom_id"].to_s == selected_node_custom_id.to_s } if selected_node_custom_id.present?
+        selected_node = if selected_node_custom_id.present?
+          nodes.find do |node|
+            node["custom_id"].to_s == selected_node_custom_id.to_s || node["id"].to_s == selected_node_custom_id.to_s
+          end
+        end
 
         {
           nodes_exist: nodes.any?,
@@ -136,6 +140,7 @@ module Api
         {
           id: node["id"],
           custom_id: node["custom_id"],
+          value: node["custom_id"].presence || node["id"],
           name: node["name"] || node["custom_id"] || node["id"],
           package_ids: Array(node["package_ids"]).compact,
           package_slugs: Array(node["package_slugs"]).compact

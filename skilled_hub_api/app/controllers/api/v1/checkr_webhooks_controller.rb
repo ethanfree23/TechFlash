@@ -7,8 +7,8 @@ module Api
         secret = ENV["CHECKR_WEBHOOK_SECRET"].presence || Rails.application.credentials.dig(:checkr, :webhook_secret).presence
 
         if secret.blank?
-          Rails.logger.error("[checkr_webhook] missing webhook secret")
-          return head :service_unavailable
+          Rails.logger.warn("[checkr_webhook] missing webhook secret")
+          return head :ok
         end
         return head :unauthorized unless valid_signature?(payload, signature, secret)
 
