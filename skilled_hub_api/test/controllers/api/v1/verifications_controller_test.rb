@@ -56,7 +56,7 @@ module Api
         assert_equal "http://example.com/invite", body["invitation_url"]
       end
 
-      test "start background check stores selected package and node" do
+      test "start background check ignores requested package and node and uses configured defaults" do
         user, = create_technician_with_membership("premium", "verification-selected-package@example.com")
         with_stubbed_background_launch("http://example.com/invite-2") do
           post "/api/v1/verification/start_background_check",
@@ -67,8 +67,8 @@ module Api
 
         assert_response :ok
         check = BackgroundCheck.order(:id).last
-        assert_equal "premium_criminal", check.package_name
-        assert_equal "houston_node", check.node_custom_id
+        assert_equal "essential", check.package_name
+        assert_nil check.node_custom_id
       end
 
       test "start background check rejects duplicate in-progress check" do
@@ -100,7 +100,10 @@ module Api
         assert_response :ok
         body = JSON.parse(response.body)
         assert_equal true, body["nodes_exist"]
-        assert_equal "essential_plus", body["packages"][0]["slug"]
+        assert_equal "essential", body["configured_package_name"]
+        assert_equal true, body["ready_for_start"]
+        assert_equal "essential", body["packages"][0]["slug"]
+        assert_includes body["packages"].map { |pkg| pkg["slug"] }, "essential_plus"
       end
 
       test "premium start returns error when checkr api key is missing" do
@@ -200,11 +203,16 @@ module Api
         original_new = CheckrClient.method(:new)
         fake_client = Object.new
         fake_client.define_singleton_method(:configured?) { true }
+        fake_client.define_singleton_method(:default_package) { "essential" }
+        fake_client.define_singleton_method(:default_node_custom_id) { nil }
         fake_client.define_singleton_method(:list_packages) do
-          [{ "id" => "pkg_1", "slug" => "essential_plus", "name" => "Essential Plus" }]
+          [
+            { "id" => "pkg_1", "slug" => "essential", "name" => "Essential" },
+            { "id" => "pkg_2", "slug" => "essential_plus", "name" => "Essential Plus" }
+          ]
         end
         fake_client.define_singleton_method(:list_nodes) do
-          [{ "id" => "node_1", "custom_id" => "houston_node", "name" => "Houston Node", "package_slugs" => ["essential_plus"] }]
+          [{ "id" => "node_1", "custom_id" => "houston_node", "name" => "Houston Node", "package_slugs" => ["essential", "essential_plus"] }]
         end
         CheckrClient.singleton_class.send(:define_method, :new) { fake_client }
         yield
