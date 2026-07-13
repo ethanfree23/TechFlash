@@ -89,6 +89,45 @@ const referenceStatusLabel = (status) => {
   return 'Not started';
 };
 
+const normalizeVerificationStatus = (status) => String(status || 'not_started').toLowerCase();
+
+const isVerificationCompleteStatus = (status) => {
+  const key = normalizeVerificationStatus(status);
+  return ['verified', 'completed', 'approved', 'clear'].includes(key);
+};
+
+const verificationStatusTone = (status) => {
+  const key = normalizeVerificationStatus(status);
+  if (isVerificationCompleteStatus(key)) {
+    return {
+      row: 'bg-emerald-50',
+      chip: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
+    };
+  }
+  if (['not_started', 'rejected', 'failed', 'denied'].includes(key)) {
+    return {
+      row: 'bg-red-50',
+      chip: 'bg-red-100 text-red-800 border border-red-200',
+    };
+  }
+  return {
+    row: 'bg-amber-50',
+    chip: 'bg-amber-100 text-amber-800 border border-amber-200',
+  };
+};
+
+const isIdentityVerificationSection = (section) => {
+  const key = String(section?.key || '').toLowerCase();
+  const title = String(section?.title || '').toLowerCase();
+  return key.includes('identity') || title.includes('identity');
+};
+
+const pickPreferredCheckrPackages = (packages) => {
+  const list = Array.isArray(packages) ? packages : [];
+  const essential = list.find((pkg) => String(pkg?.slug || pkg?.name || '').toLowerCase() === 'essential');
+  return essential ? [essential] : list;
+};
+
 const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -129,6 +168,10 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [certificates, setCertificates] = useState([]);
   const [uploadingCert, setUploadingCert] = useState(false);
   const [deletingCertId, setDeletingCertId] = useState(null);
+  const [identityUploadModalOpen, setIdentityUploadModalOpen] = useState(false);
+  const [identityDocumentType, setIdentityDocumentType] = useState('drivers_license');
+  const [identityDocumentFile, setIdentityDocumentFile] = useState(null);
+  const [uploadingIdentityDocument, setUploadingIdentityDocument] = useState(false);
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'success' });
   const [confirmCertId, setConfirmCertId] = useState(null);
   const [settingsTab, setSettingsTab] = useState('account');
@@ -175,6 +218,42 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const isTechnician = user?.role === 'technician';
   const isAdmin = user?.role === 'admin';
   const needsMapSetup = isTechnician && needsTechnicianMapSetup(profile);
+  const filteredCheckrPackages = useMemo(
+    () => pickPreferredCheckrPackages(backgroundCheckOptions?.packages),
+    [backgroundCheckOptions?.packages]
+  );
+  const verificationChecklistStatus = useMemo(() => {
+    const sections = verificationCenter?.sections || [];
+    const findStatusByKeyword = (keyword) => {
+      const hit = sections.find((section) => {
+        const key = String(section?.key || '').toLowerCase();
+        const title = String(section?.title || '').toLowerCase();
+        return key.includes(keyword) || title.includes(keyword);
+      });
+      return hit?.status;
+    };
+
+    const identityStatus = findStatusByKeyword('identity');
+    const backgroundStatus = findStatusByKeyword('background');
+    const referencesStatus = findStatusByKeyword('reference');
+
+    const hasCompletedReference = verificationReferences.some((ref) => {
+      const key = String(ref?.status || '').toLowerCase();
+      return ['approved', 'responded', 'completed'].includes(key);
+    });
+
+    return {
+      identityComplete: identityStatus
+        ? isVerificationCompleteStatus(identityStatus)
+        : Boolean(profile?.identity_verified),
+      backgroundComplete: backgroundStatus
+        ? isVerificationCompleteStatus(backgroundStatus)
+        : Boolean(profile?.background_verified),
+      referencesComplete: referencesStatus
+        ? isVerificationCompleteStatus(referencesStatus)
+        : hasCompletedReference,
+    };
+  }, [verificationCenter?.sections, verificationReferences, profile?.identity_verified, profile?.background_verified]);
 
   const profileAvatarUrl = useMemo(() => {
     if (avatarPreview) return avatarPreview;
@@ -241,23 +320,41 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const profileCompletion = useMemo(() => {
     if (!profile || isAdmin) return { pct: 100, missing: [] };
     const missing = [];
+    const requiredItems = ['First name', 'Last name', 'Phone', 'Profile photo'];
+
     if (!(form.first_name || '').trim()) missing.push('First name');
     if (!(form.last_name || '').trim()) missing.push('Last name');
     const phoneDigits = String(form.phone || '').replace(/\D/g, '');
     if (!phoneDigits || phoneDigits.length < 10) missing.push('Phone');
+    if (!profile?.avatar_url) missing.push('Profile photo');
+
     if (isCompany) {
+      requiredItems.push('Company name', 'Location');
       if (!(form.company_name || '').trim()) missing.push('Company name');
       if (!(form.location || '').trim()) missing.push('Location');
     }
+
     if (isTechnician) {
+      requiredItems.push(
+        'Trade type',
+        'Bio',
+        'Full address for maps',
+        'Identity verification',
+        'Background check',
+        'Reference verification'
+      );
       if (!(form.trade_type || '').trim()) missing.push('Trade type');
       if (!(form.bio || '').trim()) missing.push('Bio');
       if (needsMapSetup) missing.push('Full address for maps');
+      if (!verificationChecklistStatus.identityComplete) missing.push('Identity verification');
+      if (!verificationChecklistStatus.backgroundComplete) missing.push('Background check');
+      if (!verificationChecklistStatus.referencesComplete) missing.push('Reference verification');
     }
-    const total = isCompany ? 7 : 8;
+
+    const total = requiredItems.length;
     const pct = Math.round(((total - missing.length) / total) * 100);
     return { pct: Math.min(100, Math.max(0, pct)), missing };
-  }, [profile, isAdmin, isCompany, isTechnician, form, needsMapSetup]);
+  }, [profile, isAdmin, isCompany, isTechnician, form, needsMapSetup, verificationChecklistStatus]);
 
   const notificationCategories = useMemo(() => {
     const r = user?.role;
@@ -378,7 +475,8 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     try {
       const opts = await verificationAPI.getBackgroundCheckOptions(nodeCustomId);
       setBackgroundCheckOptions(opts || null);
-      const pkg = opts?.packages?.[0]?.slug || '';
+      const preferredPackages = pickPreferredCheckrPackages(opts?.packages);
+      const pkg = preferredPackages?.[0]?.slug || preferredPackages?.[0]?.name || '';
       setSelectedPackageName((prev) => prev || pkg);
       setSelectedNodeCustomId(nodeCustomId || '');
     } catch {
@@ -387,6 +485,19 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       setLoadingBackgroundCheckOptions(false);
     }
   }, [isTechnician]);
+
+  useEffect(() => {
+    if (!isTechnician) return;
+    if (!filteredCheckrPackages.length) {
+      setSelectedPackageName('');
+      return;
+    }
+    const validNames = filteredCheckrPackages
+      .map((pkg) => pkg?.slug || pkg?.name || '')
+      .filter(Boolean);
+    const defaultName = validNames[0] || '';
+    setSelectedPackageName((prev) => (validNames.includes(prev) ? prev : defaultName));
+  }, [isTechnician, filteredCheckrPackages]);
 
   useEffect(() => {
     if (!isTechnician) return;
@@ -965,6 +1076,46 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     setConfirmCertId(docId);
   };
 
+  const handleOpenIdentityUploadModal = () => {
+    setIdentityDocumentType('drivers_license');
+    setIdentityDocumentFile(null);
+    setIdentityUploadModalOpen(true);
+  };
+
+  const handleIdentityDocumentUpload = async (e) => {
+    e.preventDefault();
+    if (!profile?.id || !identityDocumentFile) return;
+    setUploadingIdentityDocument(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', identityDocumentFile);
+      fd.append('uploadable_type', 'TechnicianProfile');
+      fd.append('uploadable_id', profile.id);
+      fd.append('doc_type', identityDocumentType);
+      fd.append('metadata', JSON.stringify({ identity_document_type: identityDocumentType }));
+      await documentsAPI.upload(fd);
+      const latestCenter = await verificationAPI.getCenter();
+      setVerificationCenter(latestCenter);
+      setIdentityUploadModalOpen(false);
+      setIdentityDocumentFile(null);
+      setAlertModal({
+        isOpen: true,
+        title: 'Identity document uploaded',
+        message: 'Your document was submitted for verification review.',
+        variant: 'success',
+      });
+    } catch (err) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Upload failed',
+        message: err.message || 'Unable to upload identity document.',
+        variant: 'error',
+      });
+    } finally {
+      setUploadingIdentityDocument(false);
+    }
+  };
+
   const confirmCertificateDelete = async () => {
     const docId = confirmCertId;
     setConfirmCertId(null);
@@ -1099,7 +1250,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     setStartingBackgroundCheck(true);
     try {
       const payload = {
-        package_name: selectedPackageName || backgroundCheckOptions?.packages?.[0]?.slug,
+        package_name: selectedPackageName || filteredCheckrPackages?.[0]?.slug || filteredCheckrPackages?.[0]?.name,
       };
       if (selectedNodeCustomId) payload.node_custom_id = selectedNodeCustomId;
       const res = await verificationAPI.startBackgroundCheckWithSelection(payload);
@@ -1373,14 +1524,33 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   ) : (
                     <>
                       <ul className="text-sm text-gray-700 space-y-2">
-                        {(verificationCenter?.sections || []).map((section) => (
-                          <li key={section.key} className="flex items-center justify-between gap-3">
-                            <span>{section.title}</span>
-                            <span className="text-xs font-semibold uppercase tracking-wide text-gray-600">
-                              {String(section.status || 'not_started').replaceAll('_', ' ')}
-                            </span>
-                          </li>
-                        ))}
+                        {(verificationCenter?.sections || []).map((section) => {
+                          const status = section?.status || 'not_started';
+                          const tone = verificationStatusTone(status);
+                          const identitySection = isIdentityVerificationSection(section);
+                          const canUploadIdentityDoc = identitySection && !isVerificationCompleteStatus(status);
+                          return (
+                            <li
+                              key={section.key}
+                              className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 ${tone.row}`}
+                            >
+                              <span>{section.title}</span>
+                              {canUploadIdentityDoc ? (
+                                <button
+                                  type="button"
+                                  onClick={handleOpenIdentityUploadModal}
+                                  className={`text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 transition-colors ${tone.chip} hover:brightness-95`}
+                                >
+                                  {String(status).replaceAll('_', ' ')}
+                                </button>
+                              ) : (
+                                <span className={`text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${tone.chip}`}>
+                                  {String(status).replaceAll('_', ' ')}
+                                </span>
+                              )}
+                            </li>
+                          );
+                        })}
                         <li>Certificates on file: {certificates.length}</li>
                         <li>Map address: {needsMapSetup ? 'Incomplete' : 'Looks good'}</li>
                       </ul>
@@ -1425,9 +1595,10 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                               <select
                                 value={selectedPackageName}
                                 onChange={(e) => setSelectedPackageName(e.target.value)}
+                                disabled={filteredCheckrPackages.length <= 1}
                                 className="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1 text-xs"
                               >
-                                {(backgroundCheckOptions?.packages || []).map((pkg) => (
+                                {filteredCheckrPackages.map((pkg) => (
                                   <option key={pkg.id || pkg.slug} value={pkg.slug || pkg.name}>
                                     {pkg.name || pkg.slug}
                                   </option>
@@ -2381,6 +2552,60 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         onUpdateLocalAdvanced={(id, data) => setLocalAdvancedById((prev) => ({ ...prev, [id]: data }))}
       />
 
+      {identityUploadModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-2xl">
+            <h3 className="text-lg font-semibold text-gray-900">Upload identity document</h3>
+            <p className="mt-1 text-sm text-gray-600">Choose a government-issued document to verify your identity.</p>
+            <form onSubmit={handleIdentityDocumentUpload} className="mt-4 space-y-3">
+              <label className="block">
+                <span className="text-xs font-medium text-gray-600">Document type</span>
+                <select
+                  value={identityDocumentType}
+                  onChange={(e) => setIdentityDocumentType(e.target.value)}
+                  className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
+                >
+                  <option value="drivers_license">Driver&apos;s license</option>
+                  <option value="passport">Passport</option>
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-gray-600">Document file</span>
+                <input
+                  type="file"
+                  accept=".pdf,image/*"
+                  onChange={(e) => setIdentityDocumentFile(e.target.files?.[0] || null)}
+                  className="mt-1 block w-full text-sm text-gray-700 file:mr-3 file:rounded-md file:border-0 file:bg-gray-100 file:px-3 file:py-1.5 file:text-sm file:font-medium"
+                  required
+                />
+                {identityDocumentFile && (
+                  <p className="mt-1 text-xs text-gray-500">Selected: {identityDocumentFile.name}</p>
+                )}
+              </label>
+              <div className="flex justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIdentityUploadModalOpen(false);
+                    setIdentityDocumentFile(null);
+                  }}
+                  className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={uploadingIdentityDocument || !identityDocumentFile}
+                  className="px-3 py-1.5 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {uploadingIdentityDocument ? 'Uploading...' : 'Upload document'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <AlertModal
         isOpen={alertModal.isOpen}
         onClose={() => setAlertModal((p) => ({ ...p, isOpen: false }))}
@@ -2415,3 +2640,4 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 };
 
 export default SettingsPage;
+

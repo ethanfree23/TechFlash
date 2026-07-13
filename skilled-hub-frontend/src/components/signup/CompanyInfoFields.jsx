@@ -19,7 +19,7 @@ const HIRING_OPTIONS = [
 
 export function CompanyInfoFields({ registerData, setRegisterData, idPrefix, emailReadOnly }) {
   const set = (patch) => setRegisterData((prev) => ({ ...prev, ...patch }));
-  const needLicense = requiresElectricalLicenseForState(registerData.state);
+  const needLicense = requiresElectricalLicenseForState(registerData.business_state || registerData.state);
 
   return (
     <div className="space-y-8">
@@ -28,34 +28,34 @@ export function CompanyInfoFields({ registerData, setRegisterData, idPrefix, ema
         <p className="mt-1 text-xs text-gray-500">Primary contact for this company account.</p>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block text-sm font-medium text-gray-700">
-            Contact full name
+            First name
             <div className={inputWrap}>
               <FaUser className="h-4 w-4 text-gray-400" aria-hidden />
               <input
-                id={`${idPrefix}-full-name`}
+                id={`${idPrefix}-first-name`}
                 type="text"
-                value={registerData.full_name}
-                onChange={(e) => set({ full_name: e.target.value })}
-                placeholder="Jane Smith"
+                value={registerData.first_name}
+                onChange={(e) => set({ first_name: e.target.value })}
+                placeholder="Jane"
                 className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
               />
             </div>
           </label>
           <label className="block text-sm font-medium text-gray-700">
-            Phone number
+            Last name
             <div className={inputWrap}>
-              <FaPhone className="h-4 w-4 text-gray-400" aria-hidden />
+              <FaUser className="h-4 w-4 text-gray-400" aria-hidden />
               <input
-                id={`${idPrefix}-phone`}
-                type="tel"
-                value={registerData.phone}
-                onChange={(e) => set({ phone: e.target.value })}
-                placeholder="(555) 123-4567"
+                id={`${idPrefix}-last-name`}
+                type="text"
+                value={registerData.last_name}
+                onChange={(e) => set({ last_name: e.target.value })}
+                placeholder="Smith"
                 className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
               />
             </div>
           </label>
-          <label className="block text-sm font-medium text-gray-700 sm:col-span-2">
+          <label className="block text-sm font-medium text-gray-700">
             Email address
             <div className={`${inputWrap} ${emailReadOnly ? 'bg-gray-50' : ''}`}>
               <FaEnvelope className="h-4 w-4 text-gray-400" aria-hidden />
@@ -70,6 +70,20 @@ export function CompanyInfoFields({ registerData, setRegisterData, idPrefix, ema
               />
             </div>
             {emailReadOnly && <p className="mt-1 text-xs text-gray-500">This email was captured from your signup request.</p>}
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            Phone number
+            <div className={inputWrap}>
+              <FaPhone className="h-4 w-4 text-gray-400" aria-hidden />
+              <input
+                id={`${idPrefix}-phone`}
+                type="tel"
+                value={registerData.phone}
+                onChange={(e) => set({ phone: e.target.value })}
+                placeholder="(555) 123-4567"
+                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
+              />
+            </div>
           </label>
         </div>
       </section>
@@ -122,14 +136,29 @@ export function CompanyInfoFields({ registerData, setRegisterData, idPrefix, ema
             </select>
           </label>
           <label className="block text-sm font-medium text-gray-700 sm:col-span-2">
-            Company location / Service area
+            Business street address
             <div className={inputWrap}>
               <FaMapMarkerAlt className="h-4 w-4 text-gray-400" aria-hidden />
               <input
-                id={`${idPrefix}-city`}
+                id={`${idPrefix}-business-address`}
                 type="text"
-                value={registerData.city}
-                onChange={(e) => set({ city: e.target.value })}
+                value={registerData.business_address || ''}
+                onChange={(e) => set({ business_address: e.target.value })}
+                placeholder="123 Main St"
+                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-500">This address is used as your base service area.</p>
+          </label>
+          <label className="block text-sm font-medium text-gray-700 sm:col-span-2">
+            Business city
+            <div className={inputWrap}>
+              <FaMapMarkerAlt className="h-4 w-4 text-gray-400" aria-hidden />
+              <input
+                id={`${idPrefix}-business-city`}
+                type="text"
+                value={registerData.business_city || ''}
+                onChange={(e) => set({ business_city: e.target.value })}
                 placeholder="City"
                 className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
               />
@@ -138,9 +167,9 @@ export function CompanyInfoFields({ registerData, setRegisterData, idPrefix, ema
           <label className="block text-sm font-medium text-gray-700">
             State
             <select
-              id={`${idPrefix}-state`}
-              value={registerData.state}
-              onChange={(e) => set({ state: e.target.value })}
+              id={`${idPrefix}-business-state`}
+              value={registerData.business_state || ''}
+              onChange={(e) => set({ business_state: e.target.value })}
               className={`${inputWrap} cursor-pointer`}
             >
               <option value="">Select state</option>
@@ -155,11 +184,39 @@ export function CompanyInfoFields({ registerData, setRegisterData, idPrefix, ema
             ZIP code
             <div className={inputWrap}>
               <input
-                id={`${idPrefix}-zip`}
+                id={`${idPrefix}-business-zip`}
                 type="text"
-                value={registerData.zip_code}
-                onChange={(e) => set({ zip_code: e.target.value })}
+                value={registerData.business_zip_code || ''}
+                onChange={(e) => set({ business_zip_code: e.target.value })}
                 placeholder="ZIP"
+                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
+              />
+            </div>
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            Business phone
+            <div className={inputWrap}>
+              <FaPhone className="h-4 w-4 text-gray-400" aria-hidden />
+              <input
+                id={`${idPrefix}-business-phone`}
+                type="tel"
+                value={registerData.business_phone || ''}
+                onChange={(e) => set({ business_phone: e.target.value })}
+                placeholder="(555) 123-4567"
+                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
+              />
+            </div>
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            Business email
+            <div className={inputWrap}>
+              <FaEnvelope className="h-4 w-4 text-gray-400" aria-hidden />
+              <input
+                id={`${idPrefix}-business-email`}
+                type="email"
+                value={registerData.business_email || ''}
+                onChange={(e) => set({ business_email: e.target.value })}
+                placeholder="office@company.com"
                 className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
               />
             </div>

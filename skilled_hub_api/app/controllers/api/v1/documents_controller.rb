@@ -72,6 +72,7 @@ module Api
         end
 
         if document.save
+          update_identity_verification_status!(document)
           render json: document, serializer: DocumentSerializer, status: :created
         else
           render json: { errors: document.errors.full_messages }, status: :unprocessable_entity
@@ -177,6 +178,17 @@ module Api
           end
         end
         false
+      end
+
+      def update_identity_verification_status!(document)
+        return unless @current_user.technician?
+        return unless document.uploadable_type == "TechnicianProfile"
+        return unless document.uploadable_id == @current_user.technician_profile&.id
+        return unless %w[drivers_license passport identity].include?(document.doc_type.to_s)
+
+        VerificationProfile.for_user!(@current_user).update!(identity_status: :pending)
+      rescue StandardError
+        # Keep document uploads resilient even if verification profile sync fails.
       end
     end
   end

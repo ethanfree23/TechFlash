@@ -78,6 +78,16 @@ const FALLBACK_RAW_TIERS = {
 };
 
 const roleLabel = (role) => (role === 'company' ? 'Company' : 'Technician');
+const ONE_JOB_BASELINE_CENTS = 25 * 8 * 5 * 100;
+
+const parseCommissionPercent = (plan) => {
+  const rawPercent = Number(plan?.raw?.commission_percent);
+  if (!Number.isNaN(rawPercent) && rawPercent >= 0) return rawPercent;
+  const fromLabel = String(plan?.commissionLabel || '').match(/(\d+(?:\.\d+)?)\s*%/);
+  return fromLabel ? Number(fromLabel[1]) : null;
+};
+
+const formatLocationLabel = (city, state, zip) => [city, [state, zip].filter(Boolean).join(' ')].filter(Boolean).join(', ') || '—';
 
 const RegisterForm = ({
   onLoginSuccess,
@@ -107,7 +117,6 @@ const RegisterForm = ({
     email: initialEmail,
     password: '',
     password_confirmation: '',
-    full_name: '',
     first_name: '',
     last_name: '',
     phone: '',
@@ -115,6 +124,12 @@ const RegisterForm = ({
     city: '',
     state: '',
     zip_code: '',
+    business_email: '',
+    business_phone: '',
+    business_address: '',
+    business_city: '',
+    business_state: '',
+    business_zip_code: '',
     electrical_license_number: '',
     trade_type: '',
     company_name: '',
@@ -196,11 +211,22 @@ const RegisterForm = ({
     () => adaptedTiers.find((t) => t.id === registerData.membership_tier),
     [adaptedTiers, registerData.membership_tier]
   );
+  const basicPlan = useMemo(() => adaptedTiers.find((t) => t.id === 'basic') || adaptedTiers[0] || null, [adaptedTiers]);
 
   const yearlySavingsLabel = useMemo(
     () => (tierConfigRaw[registerData.role] || []).find((t) => t.yearly_savings_label)?.yearly_savings_label || '',
     [tierConfigRaw, registerData.role]
   );
+  const selectedPlanSavingsLabel = useMemo(() => {
+    if (!selectedPlan || !basicPlan) return '';
+    const selectedCommission = parseCommissionPercent(selectedPlan);
+    const basicCommission = parseCommissionPercent(basicPlan);
+    if (selectedCommission == null || basicCommission == null) return '';
+    const savingsPct = Math.max(0, basicCommission - selectedCommission) / 100;
+    const savingsCents = Math.round(ONE_JOB_BASELINE_CENTS * savingsPct);
+    if (savingsCents <= 0) return '';
+    return `After one 40-hour job at $25/hr, you keep $${(savingsCents / 100).toFixed(0)} more than Basic on commission.`;
+  }, [selectedPlan, basicPlan]);
 
   const validateStepOne = () => {
     if (!registerData.email?.trim()) {
@@ -223,24 +249,27 @@ const RegisterForm = ({
   };
 
   const validateStepTwo = () => {
-    const raw = registerData.full_name.trim();
-    const parts = raw.split(/\s+/).filter(Boolean);
-    if (parts.length < 2) {
-      setError('Please enter your full name (first and last).');
+    if (!registerData.first_name.trim() || !registerData.last_name.trim()) {
+      setError('First and last name are required.');
       return false;
     }
-    const first_name = parts[0];
-    const last_name = parts.slice(1).join(' ');
-    setRegisterData((prev) => ({ ...prev, first_name, last_name }));
     if (!registerData.phone.trim()) {
       setError('Phone is required.');
       return false;
     }
-    if (!registerData.city.trim() || !registerData.state.trim() || !registerData.zip_code.trim()) {
-      setError('City, state, and ZIP are required.');
+    if (!registerData.email.trim()) {
+      setError('Email is required.');
       return false;
     }
     if (registerData.role === 'technician') {
+      if (!registerData.address.trim()) {
+        setError('Street address is required.');
+        return false;
+      }
+      if (!registerData.city.trim() || !registerData.state.trim() || !registerData.zip_code.trim()) {
+        setError('City, state, and ZIP are required.');
+        return false;
+      }
       if (!registerData.trade_type.trim()) {
         setError('Select a primary trade.');
         return false;
@@ -258,9 +287,22 @@ const RegisterForm = ({
         setError('Select a primary hiring need.');
         return false;
       }
+      if (!registerData.business_phone?.trim() || !registerData.business_email?.trim()) {
+        setError('Business phone and business email are required.');
+        return false;
+      }
+      if (
+        !registerData.business_address?.trim() ||
+        !registerData.business_city?.trim() ||
+        !registerData.business_state?.trim() ||
+        !registerData.business_zip_code?.trim()
+      ) {
+        setError('Complete your full business address (street, city, state, ZIP).');
+        return false;
+      }
     }
     const stateRequiresLicense =
-      registerData.role === 'company' && requiresElectricalLicenseForState(registerData.state);
+      registerData.role === 'company' && requiresElectricalLicenseForState(registerData.business_state || registerData.state);
     if (stateRequiresLicense && !registerData.electrical_license_number.trim()) {
       setError('This state requires an electrical license number.');
       return false;
@@ -365,11 +407,20 @@ const RegisterForm = ({
         delete payload.company_name;
         delete payload.industry;
         delete payload.primary_hiring_need;
+        delete payload.business_email;
+        delete payload.business_phone;
+        delete payload.business_address;
+        delete payload.business_city;
+        delete payload.business_state;
+        delete payload.business_zip_code;
       } else {
+        payload.address = registerData.business_address.trim();
+        payload.city = registerData.business_city.trim();
+        payload.state = registerData.business_state.trim();
+        payload.zip_code = registerData.business_zip_code.trim();
         delete payload.trade_type;
         delete payload.specialties;
       }
-      delete payload.full_name;
       const response = await authAPI.register(payload);
       auth.setToken(response.token);
       auth.setUser(response.user);
@@ -552,6 +603,33 @@ const RegisterForm = ({
                       />
                     ))}
                   </div>
+                  {selectedPlan && (
+                    <section className="rounded-2xl border border-orange-100 bg-orange-50/40 p-4 text-sm text-gray-700">
+                      <h3 className="text-base font-bold text-tf-navy">{selectedPlan.name} plan benefits</h3>
+                      <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <p>
+                          <span className="font-semibold text-tf-navy">Job access: </span>
+                          {selectedPlan.jobAccessLabel}
+                        </p>
+                        <p>
+                          <span className="font-semibold text-tf-navy">Commission: </span>
+                          {selectedPlan.commissionLabel}
+                        </p>
+                        {selectedPlanSavingsLabel && (
+                          <p className="sm:col-span-2">
+                            <span className="font-semibold text-tf-navy">One-job savings: </span>
+                            {selectedPlanSavingsLabel}
+                          </p>
+                        )}
+                        <p className="sm:col-span-2">
+                          <span className="font-semibold text-tf-navy">Background check: </span>
+                          {selectedPlan.id === 'premium'
+                            ? 'Checkr background check cost is covered on Premium.'
+                            : 'You pay for the Checkr background check on this tier.'}
+                        </p>
+                      </div>
+                    </section>
+                  )}
                   <p className="flex items-center justify-center gap-2 text-center text-xs text-gray-500">
                     <FaLock className="h-3.5 w-3.5" aria-hidden />
                     Billing starts after signup is complete.
@@ -590,7 +668,13 @@ const RegisterForm = ({
                       <div className="sm:col-span-2">
                         <dt className="text-xs font-semibold uppercase text-gray-500">Location</dt>
                         <dd>
-                          {registerData.city}, {registerData.state} {registerData.zip_code}
+                          {registerData.role === 'company'
+                            ? formatLocationLabel(
+                                registerData.business_city,
+                                registerData.business_state,
+                                registerData.business_zip_code
+                              )
+                            : formatLocationLabel(registerData.city, registerData.state, registerData.zip_code)}
                         </dd>
                       </div>
                       {registerData.role === 'technician' ? (
@@ -611,12 +695,27 @@ const RegisterForm = ({
                             <dd>{registerData.company_name}</dd>
                           </div>
                           <div>
+                            <dt className="text-xs font-semibold uppercase text-gray-500">Business phone</dt>
+                            <dd>{registerData.business_phone || '—'}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-xs font-semibold uppercase text-gray-500">Business email</dt>
+                            <dd>{registerData.business_email || '—'}</dd>
+                          </div>
+                          <div>
                             <dt className="text-xs font-semibold uppercase text-gray-500">Trade focus</dt>
                             <dd>{registerData.industry}</dd>
                           </div>
                           <div>
                             <dt className="text-xs font-semibold uppercase text-gray-500">Hiring need</dt>
                             <dd>{registerData.primary_hiring_need}</dd>
+                          </div>
+                          <div className="sm:col-span-2">
+                            <dt className="text-xs font-semibold uppercase text-gray-500">Business location / service area</dt>
+                            <dd>
+                              {registerData.business_address}, {registerData.business_city}, {registerData.business_state}{' '}
+                              {registerData.business_zip_code}
+                            </dd>
                           </div>
                         </>
                       )}

@@ -6,17 +6,6 @@ import { TRADE_OPTIONS } from '../../constants/trades';
 const inputWrap =
   'mt-1 flex w-full items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm focus-within:border-[#3A7CA5] focus-within:ring-1 focus-within:ring-[#3A7CA5]';
 
-const SPECIALTY_SUGGESTIONS = [
-  'Heating',
-  'Air Conditioning',
-  'Ductwork',
-  'Commercial',
-  'Residential',
-  'Diagnostics',
-  'Install',
-  'Service calls',
-];
-
 export function TechnicianInfoFields({ registerData, setRegisterData, idPrefix, emailReadOnly }) {
   const [specialtyDraft, setSpecialtyDraft] = useState('');
 
@@ -46,18 +35,48 @@ export function TechnicianInfoFields({ registerData, setRegisterData, idPrefix, 
         <h3 className="text-base font-bold text-tf-navy">Personal Information</h3>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <label className="block text-sm font-medium text-gray-700">
-            Full name
+            First name
             <div className={inputWrap}>
               <FaUser className="h-4 w-4 text-gray-400" aria-hidden />
               <input
-                id={`${idPrefix}-full-name`}
+                id={`${idPrefix}-first-name`}
                 type="text"
-                value={registerData.full_name}
-                onChange={(e) => set({ full_name: e.target.value })}
-                placeholder="John Doe"
+                value={registerData.first_name}
+                onChange={(e) => set({ first_name: e.target.value })}
+                placeholder="John"
                 className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
               />
             </div>
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            Last name
+            <div className={inputWrap}>
+              <FaUser className="h-4 w-4 text-gray-400" aria-hidden />
+              <input
+                id={`${idPrefix}-last-name`}
+                type="text"
+                value={registerData.last_name}
+                onChange={(e) => set({ last_name: e.target.value })}
+                placeholder="Doe"
+                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
+              />
+            </div>
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            Email address
+            <div className={`${inputWrap} ${emailReadOnly ? 'bg-gray-50' : ''}`}>
+              <FaEnvelope className="h-4 w-4 text-gray-400" aria-hidden />
+              <input
+                id={`${idPrefix}-email`}
+                type="email"
+                value={registerData.email}
+                onChange={(e) => !emailReadOnly && set({ email: e.target.value })}
+                readOnly={emailReadOnly}
+                disabled={emailReadOnly}
+                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-700 outline-none ring-0 disabled:cursor-not-allowed"
+              />
+            </div>
+            {emailReadOnly && <p className="mt-1 text-xs text-gray-500">This email was captured from your signup request.</p>}
           </label>
           <label className="block text-sm font-medium text-gray-700">
             Phone number
@@ -74,34 +93,19 @@ export function TechnicianInfoFields({ registerData, setRegisterData, idPrefix, 
             </div>
           </label>
           <label className="block text-sm font-medium text-gray-700 sm:col-span-2">
-            Email address
-            <div className={`${inputWrap} ${emailReadOnly ? 'bg-gray-50' : ''}`}>
-              <FaEnvelope className="h-4 w-4 text-gray-400" aria-hidden />
-              <input
-                id={`${idPrefix}-email`}
-                type="email"
-                value={registerData.email}
-                onChange={(e) => !emailReadOnly && set({ email: e.target.value })}
-                readOnly={emailReadOnly}
-                disabled={emailReadOnly}
-                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-700 outline-none ring-0 disabled:cursor-not-allowed"
-              />
-            </div>
-            {emailReadOnly && <p className="mt-1 text-xs text-gray-500">This email was captured from your signup request.</p>}
-          </label>
-          <label className="block text-sm font-medium text-gray-700 sm:col-span-2">
-            Location / Service area
+            Street address
             <div className={inputWrap}>
               <FaMapMarkerAlt className="h-4 w-4 text-gray-400" aria-hidden />
               <input
-                id={`${idPrefix}-city`}
+                id={`${idPrefix}-address`}
                 type="text"
-                value={registerData.city}
-                onChange={(e) => set({ city: e.target.value })}
-                placeholder="City (e.g. Dallas)"
+                value={registerData.address}
+                onChange={(e) => set({ address: e.target.value })}
+                placeholder="123 Main St"
                 className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
               />
             </div>
+            <p className="mt-1 text-xs text-gray-500">This address is used as your base service area.</p>
           </label>
           <label className="block text-sm font-medium text-gray-700">
             State
@@ -133,14 +137,15 @@ export function TechnicianInfoFields({ registerData, setRegisterData, idPrefix, 
             </div>
           </label>
           <label className="block text-sm font-medium text-gray-700 sm:col-span-2">
-            Street address (optional)
+            City
             <div className={inputWrap}>
+              <FaMapMarkerAlt className="h-4 w-4 text-gray-400" aria-hidden />
               <input
-                id={`${idPrefix}-address`}
+                id={`${idPrefix}-city`}
                 type="text"
-                value={registerData.address}
-                onChange={(e) => set({ address: e.target.value })}
-                placeholder="123 Main St"
+                value={registerData.city}
+                onChange={(e) => set({ city: e.target.value })}
+                placeholder="City (e.g. Dallas)"
                 className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
               />
             </div>
@@ -190,8 +195,12 @@ export function TechnicianInfoFields({ registerData, setRegisterData, idPrefix, 
                 onChange={(e) => setSpecialtyDraft(e.target.value)}
                 className="flex-1 rounded-xl border border-gray-200 px-3 py-2 text-sm"
               >
-                <option value="">Add suggested specialty…</option>
-                {SPECIALTY_SUGGESTIONS.filter((s) => !(registerData.specialties || []).includes(s)).map((s) => (
+                <option value="">Add specialty...</option>
+                {TRADE_OPTIONS.filter(
+                  (s) =>
+                    s !== registerData.trade_type &&
+                    !(Array.isArray(registerData.specialties) ? registerData.specialties : []).includes(s)
+                ).map((s) => (
                   <option key={s} value={s}>
                     {s}
                   </option>

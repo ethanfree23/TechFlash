@@ -49,7 +49,7 @@ export function MembershipPlanCard({
               ))}
             </ul>
           )}
-          <div className="mt-4 space-y-2 rounded-xl border border-gray-100 bg-gray-50/80 px-3 py-2.5 text-xs text-gray-700">
+          <div className="mt-4 space-y-2 pr-1 text-sm text-gray-700">
             <p>
               <span className="font-bold text-tf-navy">Job access: </span>
               {plan.jobAccessLabel}

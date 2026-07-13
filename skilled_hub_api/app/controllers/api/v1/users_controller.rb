@@ -111,7 +111,8 @@ module Api
         email = params[:email].to_s.strip.downcase
         first_name = params[:first_name].to_s.strip
         last_name = params[:last_name].to_s.strip
-        phone = params[:phone].to_s.strip
+        owner_phone = params[:phone].to_s.strip
+        phone = owner_phone
         city = params[:city].to_s.strip
         state = params[:state].to_s.strip
         zip_code = params[:zip_code].to_s.strip
@@ -126,6 +127,13 @@ module Api
 
         # Registration only allows technician or company; admin is created manually
         permitted_role = %w[technician company].include?(params[:role].to_s) ? params[:role] : 'technician'
+        if permitted_role == 'company'
+          phone = params[:business_phone].to_s.strip.presence || owner_phone
+          city = params[:business_city].to_s.strip.presence || city
+          state = params[:business_state].to_s.strip.presence || state
+          zip_code = params[:business_zip_code].to_s.strip.presence || zip_code
+          address = params[:business_address].to_s.strip.presence || address
+        end
         return render json: { error: "first_name is required for signup" }, status: :unprocessable_entity if first_name.blank?
         return render json: { error: "last_name is required for signup" }, status: :unprocessable_entity if last_name.blank?
         return render json: { error: "phone is required for signup" }, status: :unprocessable_entity if phone.blank?
@@ -176,7 +184,11 @@ module Api
               phone: phone.presence,
               state: state.presence,
               service_cities: city.present? ? [city] : [],
-              location: [city.presence, [state.presence, zip_code.presence].compact.join(" ")].compact.join(", ").presence,
+              location: [
+                address.presence,
+                city.presence,
+                [state.presence, zip_code.presence].compact.join(" ").presence
+              ].compact.join(", ").presence,
               electrical_license_number: params[:electrical_license_number].to_s.strip.presence
             )
             unless profile.save

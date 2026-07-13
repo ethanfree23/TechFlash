@@ -30,6 +30,9 @@ const LoginPage = ({ onLoginSuccess }) => {
     if (tab === 'signup') setIsLogin(false);
     else if (tab === 'login') setIsLogin(true);
   }, [tab]);
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
+  }, [tab]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [resetLoading, setResetLoading] = useState(false);

@@ -14,7 +14,7 @@ class CheckrClient
       ENV["CHECKR_API_KEY"].presence ||
       Rails.application.credentials.dig(:checkr, :staging_api_key).presence ||
       Rails.application.credentials.dig(:checkr, :api_key).presence
-    @default_package = ENV["CHECKR_DEFAULT_PACKAGE"].presence || "essential_plus"
+    @default_package = ENV["CHECKR_DEFAULT_PACKAGE"].presence || "essential"
   end
 
   def configured?
