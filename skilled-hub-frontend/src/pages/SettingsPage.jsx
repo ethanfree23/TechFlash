@@ -124,8 +124,21 @@ const isIdentityVerificationSection = (section) => {
 
 const pickPreferredCheckrPackages = (packages) => {
   const list = Array.isArray(packages) ? packages : [];
-  const essential = list.find((pkg) => String(pkg?.slug || pkg?.name || '').toLowerCase() === 'essential');
-  return essential ? [essential] : list;
+  if (!list.length) return [];
+
+  const packageKey = (pkg) => String(pkg?.slug || pkg?.name || '').toLowerCase();
+  const hasToken = (key, token) => {
+    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(key);
+  };
+  const findPreferred = (predicate) => list.find((pkg) => predicate(packageKey(pkg)));
+
+  const preferred = findPreferred((key) => key.includes('essential') && key.includes('mvr'))
+    || findPreferred((key) => key.includes('essential_plus'))
+    || findPreferred((key) => hasToken(key, 'essential'))
+    || list[0];
+
+  return [preferred, ...list.filter((pkg) => pkg !== preferred)];
 };
 
 const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
@@ -195,6 +208,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [selectedPackageName, setSelectedPackageName] = useState('');
   const [selectedNodeCustomId, setSelectedNodeCustomId] = useState('');
   const [verificationReferences, setVerificationReferences] = useState([]);
+  const [expandedReferenceRows, setExpandedReferenceRows] = useState({});
   const [loadingReferences, setLoadingReferences] = useState(false);
   const [submittingReference, setSubmittingReference] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState(null);
@@ -222,6 +236,13 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     () => pickPreferredCheckrPackages(backgroundCheckOptions?.packages),
     [backgroundCheckOptions?.packages]
   );
+  const completedReferenceCount = useMemo(
+    () => verificationReferences.filter((ref) => {
+      const key = String(ref?.status || '').toLowerCase();
+      return ['approved', 'responded', 'completed'].includes(key);
+    }).length,
+    [verificationReferences]
+  );
   const verificationChecklistStatus = useMemo(() => {
     const sections = verificationCenter?.sections || [];
     const findStatusByKeyword = (keyword) => {
@@ -235,12 +256,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
     const identityStatus = findStatusByKeyword('identity');
     const backgroundStatus = findStatusByKeyword('background');
-    const referencesStatus = findStatusByKeyword('reference');
-
-    const hasCompletedReference = verificationReferences.some((ref) => {
-      const key = String(ref?.status || '').toLowerCase();
-      return ['approved', 'responded', 'completed'].includes(key);
-    });
 
     return {
       identityComplete: identityStatus
@@ -249,11 +264,9 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       backgroundComplete: backgroundStatus
         ? isVerificationCompleteStatus(backgroundStatus)
         : Boolean(profile?.background_verified),
-      referencesComplete: referencesStatus
-        ? isVerificationCompleteStatus(referencesStatus)
-        : hasCompletedReference,
+      referencesComplete: completedReferenceCount >= 3,
     };
-  }, [verificationCenter?.sections, verificationReferences, profile?.identity_verified, profile?.background_verified]);
+  }, [verificationCenter?.sections, completedReferenceCount, profile?.identity_verified, profile?.background_verified]);
 
   const profileAvatarUrl = useMemo(() => {
     if (avatarPreview) return avatarPreview;
@@ -475,10 +488,18 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     try {
       const opts = await verificationAPI.getBackgroundCheckOptions(nodeCustomId);
       setBackgroundCheckOptions(opts || null);
+      const nodeIds = (Array.isArray(opts?.nodes) ? opts.nodes : [])
+        .map((node) => String(node?.value || node?.id || node?.custom_id || '').trim())
+        .filter(Boolean);
       const preferredPackages = pickPreferredCheckrPackages(opts?.packages);
       const pkg = preferredPackages?.[0]?.slug || preferredPackages?.[0]?.name || '';
       setSelectedPackageName((prev) => prev || pkg);
-      setSelectedNodeCustomId(nodeCustomId || '');
+      setSelectedNodeCustomId((prev) => {
+        const requestedNodeId = String(nodeCustomId || '').trim();
+        if (requestedNodeId && nodeIds.includes(requestedNodeId)) return requestedNodeId;
+        if (prev && nodeIds.includes(prev)) return prev;
+        return nodeIds[0] || '';
+      });
     } catch {
       setBackgroundCheckOptions(null);
     } finally {
@@ -1286,15 +1307,13 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
-  const handleNodeChange = async (nextNodeCustomId) => {
-    setSelectedNodeCustomId(nextNodeCustomId);
-    setSelectedPackageName('');
-    await loadBackgroundCheckOptions(nextNodeCustomId || null);
-  };
-
   const handleReferenceFieldChange = (e) => {
     const { name, value } = e.target;
     setNewReference((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const toggleReferenceDetails = (referenceId) => {
+    setExpandedReferenceRows((prev) => ({ ...prev, [referenceId]: !prev[referenceId] }));
   };
 
   const handleAddReference = async (e) => {
@@ -1552,7 +1571,22 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                           );
                         })}
                         <li>Certificates on file: {certificates.length}</li>
-                        <li>Map address: {needsMapSetup ? 'Incomplete' : 'Looks good'}</li>
+                        <li
+                          className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 ${
+                            needsMapSetup ? 'bg-red-50' : 'bg-emerald-50'
+                          }`}
+                        >
+                          <span>Map address</span>
+                          <span
+                            className={`text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 border ${
+                              needsMapSetup
+                                ? 'bg-red-100 text-red-800 border-red-200'
+                                : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                            }`}
+                          >
+                            {needsMapSetup ? 'Incomplete' : 'Looks good'}
+                          </span>
+                        </li>
                       </ul>
                       <div className="mt-3 space-y-3">
                         <div className="grid grid-cols-1 gap-2">
@@ -1568,44 +1602,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                           </div>
                         </div>
                         {loadingBackgroundCheckOptions ? (
-                          <p className="text-xs text-gray-500">Loading Checkr packages...</p>
+                          <p className="text-xs text-gray-500">Loading background check options...</p>
                         ) : (
-                          <>
-                            {backgroundCheckOptions?.nodes_exist ? (
-                              <label className="block">
-                                <span className="text-xs font-medium text-gray-600">Checkr node</span>
-                                <select
-                                  value={selectedNodeCustomId}
-                                  onChange={(e) => { handleNodeChange(e.target.value); }}
-                                  className="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1 text-xs"
-                                >
-                                  <option value="">Select node</option>
-                                  {(backgroundCheckOptions?.nodes || []).map((node) => (
-                                    <option key={node.value || node.id} value={node.value || node.id || ''}>
-                                      {node.name}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                            ) : (
-                              <p className="text-xs text-gray-600">No nodes available for this account.</p>
-                            )}
-                            <label className="block">
-                              <span className="text-xs font-medium text-gray-600">Checkr package</span>
-                              <select
-                                value={selectedPackageName}
-                                onChange={(e) => setSelectedPackageName(e.target.value)}
-                                disabled={filteredCheckrPackages.length <= 1}
-                                className="mt-1 w-full border border-gray-300 rounded-lg px-2 py-1 text-xs"
-                              >
-                                {filteredCheckrPackages.map((pkg) => (
-                                  <option key={pkg.id || pkg.slug} value={pkg.slug || pkg.name}>
-                                    {pkg.name || pkg.slug}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
-                          </>
+                          <p className="text-xs text-gray-600">
+                            Package preset and node are auto-configured for this flow.
+                          </p>
                         )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
                           <p><span className="font-semibold text-gray-800">Associated job:</span> {verificationCenter?.background_check?.job_id ? `Job #${verificationCenter.background_check.job_id}` : 'Not linked'}</p>
@@ -1646,7 +1647,9 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                         </button>
                       </div>
                       <div className="mt-4 border-t border-gray-200 pt-3">
-                        <h5 className="text-sm font-semibold text-gray-900 mb-2">Professional References</h5>
+                        <h5 className="text-sm font-semibold text-gray-900 mb-2">
+                          Professional References ({completedReferenceCount}/3)
+                        </h5>
                         {loadingReferences ? (
                           <p className="text-xs text-gray-500 mb-2">Loading references...</p>
                         ) : (
@@ -1655,15 +1658,52 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                               {verificationReferences.length === 0 ? (
                                 <p className="text-xs text-gray-500">No references added yet.</p>
                               ) : (
-                                verificationReferences.slice(0, 5).map((ref) => (
-                                  <div key={ref.id} className="text-xs text-gray-700 flex items-center justify-between gap-3">
-                                    <span>{ref.full_name} ({ref.relationship})</span>
-                                    <span className="font-semibold text-gray-500">
-                                      {referenceStatusLabel(ref.status)}
-                                      {ref.responded_at ? ` (${new Date(ref.responded_at).toLocaleDateString()})` : ''}
-                                    </span>
-                                  </div>
-                                ))
+                                verificationReferences.slice(0, 5).map((ref) => {
+                                  const isExpanded = Boolean(expandedReferenceRows[ref.id]);
+                                  return (
+                                    <div key={ref.id} className="rounded-lg border border-gray-200 bg-white px-2 py-1.5">
+                                      <div className="text-xs text-gray-700 flex items-center justify-between gap-3">
+                                        <span>{ref.full_name} ({ref.relationship})</span>
+                                        <div className="flex items-center gap-2">
+                                          <span className="font-semibold text-gray-500">
+                                            {referenceStatusLabel(ref.status)}
+                                            {ref.responded_at ? ` (${new Date(ref.responded_at).toLocaleDateString()})` : ''}
+                                          </span>
+                                          <button
+                                            type="button"
+                                            onClick={() => toggleReferenceDetails(ref.id)}
+                                            className="px-2 py-0.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+                                          >
+                                            More info
+                                          </button>
+                                        </div>
+                                      </div>
+                                      {isExpanded && (
+                                        <div className="mt-2 border-t border-gray-200 pt-2 text-xs text-gray-600 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                                          <p><span className="font-semibold text-gray-800">Email:</span> {ref.email || 'Not provided'}</p>
+                                          <p><span className="font-semibold text-gray-800">Phone:</span> {ref.phone || 'Not provided'}</p>
+                                          <p><span className="font-semibold text-gray-800">Company:</span> {ref.company_name || 'Not provided'}</p>
+                                          <p><span className="font-semibold text-gray-800">Relationship:</span> {ref.relationship || 'Not provided'}</p>
+                                          <p>
+                                            <span className="font-semibold text-gray-800">Requested date:</span>{' '}
+                                            {ref.requested_at
+                                              ? new Date(ref.requested_at).toLocaleDateString()
+                                              : ref.created_at
+                                                ? new Date(ref.created_at).toLocaleDateString()
+                                                : 'Not available'}
+                                          </p>
+                                          <p>
+                                            <span className="font-semibold text-gray-800">Responded date:</span>{' '}
+                                            {ref.responded_at ? new Date(ref.responded_at).toLocaleDateString() : 'Not yet'}
+                                          </p>
+                                          <p className="sm:col-span-2">
+                                            <span className="font-semibold text-gray-800">Current status:</span> {referenceStatusLabel(ref.status)}
+                                          </p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })
                               )}
                             </div>
                             <form onSubmit={handleAddReference} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
