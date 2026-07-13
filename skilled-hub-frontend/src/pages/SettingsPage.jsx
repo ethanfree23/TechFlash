@@ -172,6 +172,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [adminSystemSubTab, setAdminSystemSubTab] = useState('pricing');
   const [modalNotificationItem, setModalNotificationItem] = useState(null);
   const [localAdvancedById, setLocalAdvancedById] = useState({});
+  const [showPasswordFields, setShowPasswordFields] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
@@ -764,7 +765,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     setAccountError(null);
     try {
       const payload = { email };
-      if (accountPassword) {
+      if (showPasswordFields && accountPassword) {
         payload.password = accountPassword;
         payload.password_confirmation = accountPasswordConfirm;
       }
@@ -773,6 +774,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       onUserUpdate?.(res.user);
       setAccountPassword('');
       setAccountPasswordConfirm('');
+      setShowPasswordFields(false);
       setShowPassword(false);
       setShowPasswordConfirm(false);
       setAlertModal({
@@ -1421,44 +1423,69 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                       required
                     />
                   </div>
-                  <div>
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <label className="block text-sm font-medium text-gray-700">New password (optional)</label>
+                  {!showPasswordFields ? (
+                    <button
+                      type="button"
+                      className="inline-flex items-center rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      onClick={() => setShowPasswordFields(true)}
+                    >
+                      Change password
+                    </button>
+                  ) : (
+                    <>
+                      <div>
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <label className="block text-sm font-medium text-gray-700">New password</label>
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-blue-700 hover:underline"
+                            onClick={() => setShowPassword((s) => !s)}
+                          >
+                            {showPassword ? 'Hide' : 'Show'}
+                          </button>
+                        </div>
+                        <SettingsInput
+                          type={showPassword ? 'text' : 'password'}
+                          value={accountPassword}
+                          onChange={(e) => setAccountPassword(e.target.value)}
+                          autoComplete="new-password"
+                          placeholder="Enter new password"
+                        />
+                      </div>
+                      <div>
+                        <div className="mb-1 flex items-center justify-between gap-2">
+                          <label className="block text-sm font-medium text-gray-700">Confirm new password</label>
+                          <button
+                            type="button"
+                            className="text-xs font-medium text-blue-700 hover:underline"
+                            onClick={() => setShowPasswordConfirm((s) => !s)}
+                          >
+                            {showPasswordConfirm ? 'Hide' : 'Show'}
+                          </button>
+                        </div>
+                        <SettingsInput
+                          type={showPasswordConfirm ? 'text' : 'password'}
+                          value={accountPasswordConfirm}
+                          onChange={(e) => setAccountPasswordConfirm(e.target.value)}
+                          autoComplete="new-password"
+                          placeholder="Confirm new password"
+                        />
+                      </div>
                       <button
                         type="button"
-                        className="text-xs font-medium text-blue-700 hover:underline"
-                        onClick={() => setShowPassword((s) => !s)}
+                        className="text-xs font-medium text-gray-600 hover:underline"
+                        onClick={() => {
+                          setShowPasswordFields(false);
+                          setShowPassword(false);
+                          setShowPasswordConfirm(false);
+                          setAccountPassword('');
+                          setAccountPasswordConfirm('');
+                        }}
                       >
-                        {showPassword ? 'Hide' : 'Show'}
+                        Cancel password change
                       </button>
-                    </div>
-                    <SettingsInput
-                      type={showPassword ? 'text' : 'password'}
-                      value={accountPassword}
-                      onChange={(e) => setAccountPassword(e.target.value)}
-                      autoComplete="new-password"
-                      placeholder="Leave blank to keep current"
-                    />
-                  </div>
-                  <div>
-                    <div className="mb-1 flex items-center justify-between gap-2">
-                      <label className="block text-sm font-medium text-gray-700">Confirm new password</label>
-                      <button
-                        type="button"
-                        className="text-xs font-medium text-blue-700 hover:underline"
-                        onClick={() => setShowPasswordConfirm((s) => !s)}
-                      >
-                        {showPasswordConfirm ? 'Hide' : 'Show'}
-                      </button>
-                    </div>
-                    <SettingsInput
-                      type={showPasswordConfirm ? 'text' : 'password'}
-                      value={accountPasswordConfirm}
-                      onChange={(e) => setAccountPasswordConfirm(e.target.value)}
-                      autoComplete="new-password"
-                      placeholder="Confirm new password"
-                    />
-                  </div>
+                    </>
+                  )}
                   <button type="submit" disabled={savingAccount} className="px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
                     {savingAccount ? 'Saving...' : 'Update account'}
                   </button>
