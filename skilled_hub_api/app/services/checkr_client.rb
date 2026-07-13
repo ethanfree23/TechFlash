@@ -15,6 +15,7 @@ class CheckrClient
       Rails.application.credentials.dig(:checkr, :staging_api_key).presence ||
       Rails.application.credentials.dig(:checkr, :api_key).presence
     @default_package = ENV["CHECKR_DEFAULT_PACKAGE"].presence || "essential"
+    @default_node_custom_id = ENV["CHECKR_DEFAULT_NODE_CUSTOM_ID"]
   end
 
   def configured?
@@ -23,6 +24,10 @@ class CheckrClient
 
   def default_package
     @default_package
+  end
+
+  def default_node_custom_id
+    @default_node_custom_id
   end
 
   def list_packages

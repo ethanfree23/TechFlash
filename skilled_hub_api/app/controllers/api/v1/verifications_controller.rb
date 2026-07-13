@@ -26,8 +26,12 @@ module Api
 
       def start_background_check
         profile = VerificationProfile.for_user!(@current_user)
-        selected_package = params[:package_name].to_s.presence || CheckrClient.new.default_package
-        selected_node_custom_id = params[:node_custom_id].to_s.presence
+        client = CheckrClient.new
+        selected_package = client.default_package.to_s.presence
+        selected_node_custom_id = client.default_node_custom_id.to_s.presence
+        if selected_package.blank?
+          return render json: { error: "Background check package is not configured." }, status: :unprocessable_entity
+        end
         context = resolve_background_check_context
 
         existing = BackgroundCheck.where(user_id: @current_user.id)
@@ -70,11 +74,29 @@ module Api
         begin
           invitation = BackgroundCheckStartService.launch_checkr_invitation!(background_check)
           profile.update!(background_status: :pending)
+          background_check_options = begin
+            build_background_check_options
+          rescue CheckrClient::Error => e
+            {
+              nodes_exist: false,
+              selected_node_custom_id: selected_node_custom_id,
+              nodes: [],
+              packages: [],
+              packages_available: false,
+              package_filter_fallback: false,
+              package_selection_reason: "checkr_options_unavailable",
+              configured_package_name: selected_package,
+              configured_node_custom_id: selected_node_custom_id,
+              ready_for_start: false,
+              options_error: e.message
+            }
+          end
+
           render json: {
             background_check: background_check.reload,
             payment_required: false,
             invitation_url: background_check.reload.invitation_url || invitation["invitation_url"],
-            background_check_options: build_background_check_options(selected_node_custom_id)
+            background_check_options: background_check_options
           }, status: :ok
         rescue BackgroundCheckStartService::Error => e
           background_check.update!(status: :failed, admin_notes: e.message)
@@ -83,7 +105,7 @@ module Api
       end
 
       def background_check_options
-        render json: build_background_check_options(params[:selected_node_custom_id].to_s.presence), status: :ok
+        render json: build_background_check_options, status: :ok
       rescue CheckrClient::Error => e
         render json: { error: e.message }, status: :unprocessable_entity
       end
@@ -106,23 +128,36 @@ module Api
 
       private
 
-      def build_background_check_options(selected_node_custom_id = nil)
+      def build_background_check_options
         client = CheckrClient.new
         raise CheckrClient::Error, "Checkr is not configured." unless client.configured?
 
+        configured_package_name = client.default_package.to_s.presence
+        configured_node_custom_id = client.default_node_custom_id.to_s.presence
         all_packages = client.list_packages
         nodes = client.list_nodes
-        selected_node = if selected_node_custom_id.present?
-          nodes.find do |node|
-            node["custom_id"].to_s == selected_node_custom_id.to_s || node["id"].to_s == selected_node_custom_id.to_s
+        selected_node = resolve_configured_node(nodes, configured_node_custom_id)
+        filtered_packages = filter_packages_for_node(all_packages, selected_node)
+        configured_package_available = package_available?(all_packages, configured_package_name)
+        package_selection_reason =
+          if configured_package_available
+            "configured_package_available"
+          else
+            "configured_package_missing"
           end
-        end
+        selected_node_custom_id = selected_node&.dig("custom_id").presence || selected_node&.dig("id").presence
 
         {
           nodes_exist: nodes.any?,
           selected_node_custom_id: selected_node_custom_id,
           nodes: nodes.map { |node| serialize_node(node) },
-          packages: filter_packages_for_node(all_packages, selected_node).map { |pkg| serialize_package(pkg) }
+          packages: filtered_packages.map { |pkg| serialize_package(pkg) },
+          packages_available: filtered_packages.any?,
+          package_filter_fallback: false,
+          package_selection_reason: package_selection_reason,
+          configured_package_name: configured_package_name,
+          configured_node_custom_id: configured_node_custom_id,
+          ready_for_start: configured_package_name.present? && configured_package_available
         }
       end
 
@@ -151,18 +186,43 @@ module Api
         return packages if node.blank?
 
         package_ids = Array(node["package_ids"]).map(&:to_s).reject(&:blank?)
-        package_slugs = Array(node["package_slugs"]).map(&:to_s).reject(&:blank?)
+        package_slugs = Array(node["package_slugs"]).map { |slug| normalize_key(slug) }.reject(&:blank?)
         node_packages = Array(node["packages"])
         if node_packages.any?
           package_ids |= node_packages.map { |pkg| pkg["id"].to_s }.reject(&:blank?)
-          package_slugs |= node_packages.map { |pkg| (pkg["slug"] || pkg["name"]).to_s }.reject(&:blank?)
+          package_slugs |= node_packages.map { |pkg| normalize_key(pkg["slug"] || pkg["name"]) }.reject(&:blank?)
         end
 
         return packages if package_ids.blank? && package_slugs.blank?
 
         packages.select do |pkg|
-          package_ids.include?(pkg["id"].to_s) || package_slugs.include?((pkg["slug"] || pkg["name"]).to_s)
+          package_ids.include?(pkg["id"].to_s) || package_slugs.include?(normalize_key(pkg["slug"] || pkg["name"]))
         end
+      end
+
+      def package_available?(packages, configured_package_name)
+        return false if configured_package_name.blank?
+
+        normalized_configured_package = normalize_key(configured_package_name)
+        packages.any? do |pkg|
+          normalize_key(pkg["slug"]) == normalized_configured_package ||
+            normalize_key(pkg["name"]) == normalized_configured_package ||
+            normalize_key(pkg["id"]) == normalized_configured_package
+        end
+      end
+
+      def resolve_configured_node(nodes, configured_node_custom_id)
+        return nil if configured_node_custom_id.blank?
+
+        normalized_configured_node = normalize_key(configured_node_custom_id)
+        nodes.find do |node|
+          normalize_key(node["custom_id"]) == normalized_configured_node ||
+            normalize_key(node["id"]) == normalized_configured_node
+        end
+      end
+
+      def normalize_key(value)
+        value.to_s.strip.downcase
       end
 
       def resolve_background_check_context

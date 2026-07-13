@@ -122,25 +122,6 @@ const isIdentityVerificationSection = (section) => {
   return key.includes('identity') || title.includes('identity');
 };
 
-const pickPreferredCheckrPackages = (packages) => {
-  const list = Array.isArray(packages) ? packages : [];
-  if (!list.length) return [];
-
-  const packageKey = (pkg) => String(pkg?.slug || pkg?.name || '').toLowerCase();
-  const hasToken = (key, token) => {
-    const escaped = token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`).test(key);
-  };
-  const findPreferred = (predicate) => list.find((pkg) => predicate(packageKey(pkg)));
-
-  const preferred = findPreferred((key) => key.includes('essential') && key.includes('mvr'))
-    || findPreferred((key) => key.includes('essential_plus'))
-    || findPreferred((key) => hasToken(key, 'essential'))
-    || list[0];
-
-  return [preferred, ...list.filter((pkg) => pkg !== preferred)];
-};
-
 const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -205,8 +186,8 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [startingBackgroundCheck, setStartingBackgroundCheck] = useState(false);
   const [backgroundCheckOptions, setBackgroundCheckOptions] = useState(null);
   const [loadingBackgroundCheckOptions, setLoadingBackgroundCheckOptions] = useState(false);
+  const [backgroundCheckOptionsError, setBackgroundCheckOptionsError] = useState('');
   const [selectedPackageName, setSelectedPackageName] = useState('');
-  const [selectedNodeCustomId, setSelectedNodeCustomId] = useState('');
   const [verificationReferences, setVerificationReferences] = useState([]);
   const [expandedReferenceRows, setExpandedReferenceRows] = useState({});
   const [loadingReferences, setLoadingReferences] = useState(false);
@@ -232,9 +213,13 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const isTechnician = user?.role === 'technician';
   const isAdmin = user?.role === 'admin';
   const needsMapSetup = isTechnician && needsTechnicianMapSetup(profile);
-  const filteredCheckrPackages = useMemo(
-    () => pickPreferredCheckrPackages(backgroundCheckOptions?.packages),
-    [backgroundCheckOptions?.packages]
+  const backgroundCheckReady = backgroundCheckOptions?.ready_for_start === true;
+  const displayBackgroundCheckPackageName = useMemo(
+    () => verificationCenter?.background_check?.package_name
+      || backgroundCheckOptions?.configured_package_name
+      || selectedPackageName
+      || '',
+    [verificationCenter?.background_check?.package_name, backgroundCheckOptions?.configured_package_name, selectedPackageName]
   );
   const completedReferenceCount = useMemo(
     () => verificationReferences.filter((ref) => {
@@ -482,43 +467,31 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   }, [isTechnician, profile?.id]);
 
-  const loadBackgroundCheckOptions = useCallback(async (nodeCustomId = null) => {
+  const loadBackgroundCheckOptions = useCallback(async () => {
     if (!isTechnician) return;
     setLoadingBackgroundCheckOptions(true);
+    setBackgroundCheckOptionsError('');
     try {
-      const opts = await verificationAPI.getBackgroundCheckOptions(nodeCustomId);
-      setBackgroundCheckOptions(opts || null);
-      const nodeIds = (Array.isArray(opts?.nodes) ? opts.nodes : [])
-        .map((node) => String(node?.value || node?.id || node?.custom_id || '').trim())
-        .filter(Boolean);
-      const preferredPackages = pickPreferredCheckrPackages(opts?.packages);
-      const pkg = preferredPackages?.[0]?.slug || preferredPackages?.[0]?.name || '';
-      setSelectedPackageName((prev) => prev || pkg);
-      setSelectedNodeCustomId((prev) => {
-        const requestedNodeId = String(nodeCustomId || '').trim();
-        if (requestedNodeId && nodeIds.includes(requestedNodeId)) return requestedNodeId;
-        if (prev && nodeIds.includes(prev)) return prev;
-        return nodeIds[0] || '';
-      });
+      const options = await verificationAPI.getBackgroundCheckOptions();
+      setBackgroundCheckOptions(options || null);
+      const configuredPackageName = String(options?.configured_package_name || '').trim();
+      if (configuredPackageName) {
+        setSelectedPackageName(configuredPackageName);
+      }
+      if (!options || Object.keys(options).length === 0) {
+        setBackgroundCheckOptionsError(
+          'Background check setup is not available yet. TechFlash admin configuration is incomplete. Please retry or contact support.'
+        );
+      }
     } catch {
       setBackgroundCheckOptions(null);
+      setBackgroundCheckOptionsError(
+        'Background check setup could not be loaded. TechFlash admin configuration may be incomplete. Please retry or contact support.'
+      );
     } finally {
       setLoadingBackgroundCheckOptions(false);
     }
   }, [isTechnician]);
-
-  useEffect(() => {
-    if (!isTechnician) return;
-    if (!filteredCheckrPackages.length) {
-      setSelectedPackageName('');
-      return;
-    }
-    const validNames = filteredCheckrPackages
-      .map((pkg) => pkg?.slug || pkg?.name || '')
-      .filter(Boolean);
-    const defaultName = validNames[0] || '';
-    setSelectedPackageName((prev) => (validNames.includes(prev) ? prev : defaultName));
-  }, [isTechnician, filteredCheckrPackages]);
 
   useEffect(() => {
     if (!isTechnician) return;
@@ -534,7 +507,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       .finally(() => {
         if (!cancelled) setLoadingVerificationCenter(false);
       });
-    loadBackgroundCheckOptions().catch(() => {});
+    loadBackgroundCheckOptions();
     return () => {
       cancelled = true;
     };
@@ -800,6 +773,8 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       onUserUpdate?.(res.user);
       setAccountPassword('');
       setAccountPasswordConfirm('');
+      setShowPassword(false);
+      setShowPasswordConfirm(false);
       setAlertModal({
         isOpen: true,
         title: 'Account updated',
@@ -1268,13 +1243,18 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   };
 
   const handleStartBackgroundCheck = async () => {
+    if (!backgroundCheckReady) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Background check unavailable',
+        message: 'Background check is not ready because TechFlash backend configuration is incomplete or still processing. Please retry later or contact support.',
+        variant: 'error',
+      });
+      return;
+    }
     setStartingBackgroundCheck(true);
     try {
-      const payload = {
-        package_name: selectedPackageName || filteredCheckrPackages?.[0]?.slug || filteredCheckrPackages?.[0]?.name,
-      };
-      if (selectedNodeCustomId) payload.node_custom_id = selectedNodeCustomId;
-      const res = await verificationAPI.startBackgroundCheckWithSelection(payload);
+      const res = await verificationAPI.startBackgroundCheckWithSelection({});
       if (res?.invitation_url) {
         window.location.href = res.invitation_url;
         return;
@@ -1294,7 +1274,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       }
       const latest = await verificationAPI.getCenter();
       setVerificationCenter(latest);
-      await loadBackgroundCheckOptions(selectedNodeCustomId || null);
+      await loadBackgroundCheckOptions();
     } catch (err) {
       setAlertModal({
         isOpen: true,
@@ -1442,7 +1422,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                     />
                   </div>
                   <div>
-                    <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="mb-1 flex items-center justify-between gap-2">
                       <label className="block text-sm font-medium text-gray-700">New password (optional)</label>
                       <button
                         type="button"
@@ -1461,7 +1441,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                     />
                   </div>
                   <div>
-                    <div className="flex items-center justify-between gap-2 mb-1">
+                    <div className="mb-1 flex items-center justify-between gap-2">
                       <label className="block text-sm font-medium text-gray-700">Confirm new password</label>
                       <button
                         type="button"
@@ -1603,9 +1583,20 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                         </div>
                         {loadingBackgroundCheckOptions ? (
                           <p className="text-xs text-gray-500">Loading background check options...</p>
+                        ) : backgroundCheckOptionsError ? (
+                          <div className="rounded-lg border border-rose-200 bg-rose-50 p-2">
+                            <p className="text-xs text-rose-800">{backgroundCheckOptionsError}</p>
+                            <button
+                              type="button"
+                              onClick={loadBackgroundCheckOptions}
+                              className="mt-1 inline-flex rounded border border-rose-300 bg-white px-2 py-0.5 text-xs font-medium text-rose-800 hover:bg-rose-100"
+                            >
+                              Retry
+                            </button>
+                          </div>
                         ) : (
                           <p className="text-xs text-gray-600">
-                            Package preset and node are auto-configured for this flow.
+                            Background check package is preset by TechFlash and managed by backend configuration.
                           </p>
                         )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
@@ -1613,7 +1604,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                           <p><span className="font-semibold text-gray-800">Invitation status:</span> {verificationCenter?.background_check?.normalized_status || verificationCenter?.background_check?.status || 'not_started'}</p>
                           <p><span className="font-semibold text-gray-800">Report status:</span> {verificationCenter?.background_check?.provider_status || 'pending'}</p>
                           <p><span className="font-semibold text-gray-800">ETA:</span> {verificationCenter?.background_check?.report_eta_at ? new Date(verificationCenter.background_check.report_eta_at).toLocaleString() : 'Not provided'}</p>
-                          <p><span className="font-semibold text-gray-800">Package:</span> {verificationCenter?.background_check?.package_name || selectedPackageName || 'Not selected'}</p>
+                          <p><span className="font-semibold text-gray-800">Package:</span> {displayBackgroundCheckPackageName || 'Not configured'}</p>
                         </div>
                         {(verificationCenter?.background_check?.dashboard_url || verificationCenter?.background_check?.report_url) && (
                           <a
@@ -1640,7 +1631,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                         <button
                           type="button"
                           onClick={handleStartBackgroundCheck}
-                          disabled={startingBackgroundCheck || !selectedPackageName}
+                          disabled={startingBackgroundCheck || loadingBackgroundCheckOptions || !backgroundCheckReady}
                           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                         >
                           {startingBackgroundCheck ? 'Starting...' : 'Start background check'}
