@@ -20,6 +20,7 @@ Rails.application.routes.draw do
       get 'company_profiles/profile', to: 'company_profiles#profile'
       patch 'users/me', to: 'users#update_me'
       delete 'users/me', to: 'users#destroy_me'
+      get 'users/me/login_history', to: 'users#login_history'
       get 'users/blocks', to: 'users#blocked_users'
       post 'users/blocks', to: 'users#block_user'
       delete 'users/blocks/:id', to: 'users#unblock_user'

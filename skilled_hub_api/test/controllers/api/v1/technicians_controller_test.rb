@@ -129,6 +129,39 @@ module Api
         assert_in_delta(-95.3698, profile.longitude.to_f, 0.0001)
       end
 
+      test "technician can save multiple trade types as specialties" do
+        user = User.create!(
+          email: "tech-specialties-update@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        profile = TechnicianProfile.create!(
+          user: user,
+          trade_type: "Electrician",
+          specialties: ["Electrician"],
+          experience_years: 2,
+          availability: "Full-time",
+          phone: "713-555-0388",
+          city: "Austin"
+        )
+
+        patch "/api/v1/technicians/#{profile.id}",
+              params: {
+                trade_type: "Electrician",
+                specialties: ["Electrician", "HVAC Technician", "Plumber"]
+              },
+              headers: auth_header_for(user),
+              as: :json
+
+        assert_response :ok
+        profile.reload
+        assert_equal ["Electrician", "HVAC Technician", "Plumber"], profile.specialties
+
+        body = JSON.parse(response.body)
+        assert_equal ["Electrician", "HVAC Technician", "Plumber"], body["specialties"]
+      end
+
       test "company can filter technician directory by verification requirements" do
         company_user = User.create!(
           email: "company-tech-filter@example.com",

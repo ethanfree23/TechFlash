@@ -34,7 +34,7 @@ module Api
         'General Laborer / Helper'
       ].freeze
 
-      before_action :authenticate_user, only: [:show, :update_me, :destroy_me, :blocked_users, :block_user, :unblock_user]
+      before_action :authenticate_user, only: [:show, :update_me, :destroy_me, :blocked_users, :block_user, :unblock_user, :login_history]
 
       def update_me
         if params[:password].present?
@@ -69,6 +69,26 @@ module Api
         head :no_content
       rescue StandardError => e
         render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      def login_history
+        limit = params[:limit].to_i
+        limit = 20 if limit <= 0
+        limit = [limit, 100].min
+
+        events = @current_user.user_login_events
+          .where(via_masquerade: false)
+          .order(created_at: :desc)
+          .limit(limit)
+
+        render json: {
+          login_history: events.map do |event|
+            {
+              id: event.id,
+              logged_in_at: event.created_at
+            }
+          end
+        }, status: :ok
       end
 
       def blocked_users

@@ -2,7 +2,7 @@ class TechnicianProfileDetailSerializer < ActiveModel::Serializer
   include ActiveStorageUrlHelper
 
   attributes :id, :trade_type, :experience_years, :availability, :bio, :location, :avatar_url, :user_id, :average_rating, :created_at, :updated_at,
-             :address, :city, :state, :zip_code, :country,
+             :address, :city, :state, :zip_code, :country, :specialties,
              :membership_level, :membership_fee_override_cents, :commission_override_percent, :membership_fee_waived,
              :membership_status, :membership_current_period_end_at, :effective_membership_fee_cents, :effective_commission_percent,
              :background_verified, :review_summary, :verification_badges

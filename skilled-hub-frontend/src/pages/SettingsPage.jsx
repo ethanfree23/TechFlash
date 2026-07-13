@@ -79,6 +79,12 @@ const durationSummary = (minWeeks, maxWeeks) => {
 
 const normalizeReferenceEmail = (value) => String(value || '').trim().toLowerCase();
 const normalizeReferencePhone = (value) => String(value || '').replace(/\D/g, '');
+const normalizeTradeSelections = (tradeType, specialties) => {
+  const set = new Set(Array.isArray(specialties) ? specialties : []);
+  const primary = String(tradeType || '').trim();
+  if (primary) set.add(primary);
+  return Array.from(set).filter((trade) => TRADE_OPTIONS.includes(trade));
+};
 
 const referenceStatusLabel = (status) => {
   const key = String(status || '').toLowerCase();
@@ -135,6 +141,9 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [accountPasswordConfirm, setAccountPasswordConfirm] = useState('');
   const [savingAccount, setSavingAccount] = useState(false);
   const [accountError, setAccountError] = useState(null);
+  const [loginHistory, setLoginHistory] = useState([]);
+  const [loadingLoginHistory, setLoadingLoginHistory] = useState(false);
+  const [loginHistoryError, setLoginHistoryError] = useState('');
   const [notificationPrefs, setNotificationPrefs] = useState({
     email_notifications_enabled: true,
     job_alert_notifications_enabled: true,
@@ -414,6 +423,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           ...nameFields(),
           phone: p?.phone ?? phoneFromUser(),
           trade_type: p?.trade_type || '',
+          specialties: normalizeTradeSelections(p?.trade_type, p?.specialties),
           experience_years: p?.experience_years ?? '',
           availability: p?.availability || '',
           bio: p?.bio || '',
@@ -435,6 +445,20 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       if (!quiet) setLoading(false);
     }
   }, [isCompany, isTechnician, user?.first_name, user?.last_name, user?.phone]);
+
+  const loadLoginHistory = useCallback(async () => {
+    setLoadingLoginHistory(true);
+    setLoginHistoryError('');
+    try {
+      const res = await authAPI.getLoginHistory(20);
+      setLoginHistory(Array.isArray(res?.login_history) ? res.login_history : []);
+    } catch (err) {
+      setLoginHistory([]);
+      setLoginHistoryError(err?.message || 'Failed to load login history');
+    } finally {
+      setLoadingLoginHistory(false);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -659,6 +683,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   }, [settingsTab, adminSystemSubTab, isAdmin]);
 
   useEffect(() => {
+    if (settingsTab !== 'account') return;
+    loadLoginHistory();
+  }, [settingsTab, loadLoginHistory]);
+
+  useEffect(() => {
     if (settingsTab !== 'membership' || (!isTechnician && !isCompany)) return undefined;
     let cancelled = false;
     setMembershipTierConfigsLoading(true);
@@ -739,6 +768,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         });
       } else if (isTechnician) {
         const { first_name: _fn2, last_name: _ln2, ...techPayload } = form;
+        techPayload.specialties = normalizeTradeSelections(techPayload.trade_type, techPayload.specialties);
         await profilesAPI.updateTechnicianProfile(profile.id, {
           ...techPayload,
           experience_years: form.experience_years === '' ? null : parseInt(form.experience_years, 10),
@@ -1491,14 +1521,35 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   </button>
                 </form>
 
-                <SettingsCard title="Two-factor authentication" description="Add an extra layer of protection for your TechFlash account." collapsible defaultOpen={false}>
-                  <p className="text-sm text-gray-600">Not available yet. TODO(backend): TOTP or WebAuthn enrollment and recovery codes.</p>
-                </SettingsCard>
-                <SettingsCard title="Active sessions and devices" collapsible defaultOpen={false}>
-                  <p className="text-sm text-gray-600">Session listing is not wired for this build. TODO(backend): GET /sessions for device/IP and remote sign-out.</p>
-                </SettingsCard>
                 <SettingsCard title="Login history" collapsible defaultOpen={false}>
-                  <p className="text-sm text-gray-600">Recent sign-ins will appear here when audit logging is exposed to the app.</p>
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm text-gray-600">Recent successful sign-ins for this account.</p>
+                      <button
+                        type="button"
+                        onClick={loadLoginHistory}
+                        disabled={loadingLoginHistory}
+                        className="text-xs font-medium text-blue-700 hover:underline disabled:opacity-50"
+                      >
+                        {loadingLoginHistory ? 'Refreshing...' : 'Refresh'}
+                      </button>
+                    </div>
+                    {loadingLoginHistory ? (
+                      <p className="text-sm text-gray-500">Loading login history...</p>
+                    ) : loginHistoryError ? (
+                      <p className="text-sm text-red-700">{loginHistoryError}</p>
+                    ) : loginHistory.length === 0 ? (
+                      <p className="text-sm text-gray-500">No recent login activity yet.</p>
+                    ) : (
+                      <ul className="space-y-1">
+                        {loginHistory.map((event) => (
+                          <li key={event.id} className="text-sm text-gray-700">
+                            Signed in on {new Date(event.logged_in_at).toLocaleString()}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
                 </SettingsCard>
 
                 <SettingsDangerZone
@@ -1938,7 +1989,14 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                     <select
                       name="trade_type"
                       value={form.trade_type || ''}
-                      onChange={handleChange}
+                      onChange={(e) => {
+                        const nextTrade = e.target.value;
+                        setForm((prev) => ({
+                          ...prev,
+                          trade_type: nextTrade,
+                          specialties: normalizeTradeSelections(nextTrade, prev.specialties),
+                        }));
+                      }}
                       className="w-full border rounded-lg px-3 py-2 bg-white"
                       required
                     >
@@ -1957,6 +2015,37 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Availability</label>
                     <input name="availability" value={form.availability} onChange={handleChange} className="w-full border rounded-lg px-3 py-2" placeholder="e.g. Full-time, Part-time" />
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Additional trade types</label>
+                  <p className="mb-2 text-xs text-gray-500">Select any additional trades you can perform.</p>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                    {TRADE_OPTIONS.filter((trade) => trade !== form.trade_type).map((trade) => {
+                      const selected = Array.isArray(form.specialties) && form.specialties.includes(trade);
+                      return (
+                        <label key={trade} className="flex items-center gap-2 text-sm text-gray-700">
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={(e) => {
+                              setForm((prev) => {
+                                const current = normalizeTradeSelections(prev.trade_type, prev.specialties);
+                                const next = e.target.checked
+                                  ? [...current, trade]
+                                  : current.filter((item) => item !== trade);
+                                return {
+                                  ...prev,
+                                  specialties: normalizeTradeSelections(prev.trade_type, next),
+                                };
+                              });
+                            }}
+                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                          />
+                          <span>{trade}</span>
+                        </label>
+                      );
+                    })}
                   </div>
                 </div>
 

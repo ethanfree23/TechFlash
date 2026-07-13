@@ -144,6 +144,8 @@ export const authAPI = {
     apiRequest('/users/me', {
       method: 'DELETE',
     }),
+  getLoginHistory: (limit = 20) =>
+    apiRequest(`/users/me/login_history?limit=${encodeURIComponent(String(limit))}`),
 };
 
 export const passwordResetsAPI = {

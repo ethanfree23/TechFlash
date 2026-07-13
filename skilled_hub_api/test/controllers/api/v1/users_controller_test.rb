@@ -314,6 +314,38 @@ module Api
         assert_equal [{ "key" => "status", "visible" => false }],
                      user.ui_preferences_hash.dig("table_columns", "crm_pipeline")
       end
+
+      test "login history returns current user login events only" do
+        user = User.create!(
+          email: "login-history-user@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        other = User.create!(
+          email: "login-history-other@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+
+        older = UserLoginEvent.create!(user: user, via_masquerade: false, created_at: 2.days.ago, updated_at: 2.days.ago)
+        newer = UserLoginEvent.create!(user: user, via_masquerade: false, created_at: 1.day.ago, updated_at: 1.day.ago)
+        UserLoginEvent.create!(user: user, via_masquerade: true, created_at: 1.hour.ago, updated_at: 1.hour.ago)
+        UserLoginEvent.create!(user: other, via_masquerade: false, created_at: Time.current, updated_at: Time.current)
+
+        get "/api/v1/users/me/login_history",
+            headers: auth_header_for(user),
+            as: :json
+
+        assert_response :ok
+        body = JSON.parse(response.body)
+        history = body["login_history"]
+        assert_equal 2, history.length
+        assert_equal newer.id, history[0]["id"]
+        assert_equal older.id, history[1]["id"]
+        assert_not_nil history[0]["logged_in_at"]
+      end
     end
   end
 end
