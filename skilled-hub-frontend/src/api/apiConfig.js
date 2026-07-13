@@ -29,12 +29,13 @@ export function resolveDemoApiBaseUrl() {
 export function resolveApiBaseUrl() {
   if (isDemoPath()) {
     const demo = resolveDemoApiBaseUrl();
-    if (!demo) {
-      throw new Error(
-        'Demo API is not configured. Add VITE_DEMO_API_BASE_URL on Vercel to your demo Railway service URL (see DEMO_SETUP.md). For local dev, run the API with RAILS_ENV=demo on port 3000.'
-      );
-    }
-    return demo;
+    if (demo) return demo;
+
+    // Keep /demo usable even if Vercel env is temporarily missing.
+    const override = import.meta.env?.VITE_API_BASE_URL?.trim();
+    if (override) return override.replace(/\/$/, '');
+    if (isProductionHost()) return PRODUCTION_API;
+    return LOCAL_API;
   }
 
   const override = import.meta.env?.VITE_API_BASE_URL?.trim();
@@ -45,10 +46,6 @@ export function resolveApiBaseUrl() {
 }
 
 export function formatApiFetchError(error) {
-  if (error instanceof Error && error.message.includes('Demo API is not configured')) {
-    return error;
-  }
-
   const isNetwork =
     error instanceof TypeError ||
     (error instanceof Error && /failed to fetch|networkerror|load failed/i.test(error.message));
