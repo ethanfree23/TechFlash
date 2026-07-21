@@ -169,6 +169,8 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [couponCode, setCouponCode] = useState('');
   const [couponBusy, setCouponBusy] = useState(false);
   const [certificates, setCertificates] = useState([]);
+  const [certificateTitle, setCertificateTitle] = useState('');
+  const [certificateReferenceNumber, setCertificateReferenceNumber] = useState('');
   const [uploadingCert, setUploadingCert] = useState(false);
   const [deletingCertId, setDeletingCertId] = useState(null);
   const [identityUploadModalOpen, setIdentityUploadModalOpen] = useState(false);
@@ -1086,11 +1088,15 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       fd.append('uploadable_type', 'TechnicianProfile');
       fd.append('uploadable_id', profile.id);
       fd.append('doc_type', 'certificate');
+      if (certificateTitle.trim()) fd.append('issuer', certificateTitle.trim());
+      if (certificateReferenceNumber.trim()) fd.append('document_number', certificateReferenceNumber.trim());
       await documentsAPI.upload(fd);
       const docs = await documentsAPI.getAll();
       setCertificates((docs || []).filter(
         (d) => d.doc_type === 'certificate' && d.uploadable_type === 'TechnicianProfile' && d.uploadable_id === profile.id
       ));
+      setCertificateTitle('');
+      setCertificateReferenceNumber('');
       setAlertModal({ isOpen: true, title: 'Certificate uploaded!', message: 'Your certificate has been added.', variant: 'success' });
     } catch (err) {
       setAlertModal({ isOpen: true, title: 'Upload failed', message: err.message || 'Failed to upload certificate', variant: 'error' });
@@ -2087,16 +2093,42 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 </div>
 
                 <div className="border-t border-gray-200 pt-4 mt-4">
-                  <h4 className="font-medium text-gray-900 mb-2">Certificates</h4>
+                  <h4 className="font-medium text-gray-900 mb-2">Licenses and certificates</h4>
                   <p className="text-sm text-gray-600 mb-3">
                     Upload images of your certifications (e.g. OSHA, EPA, trade licenses). Companies will verify these match their job requirements.
                   </p>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Document title</label>
+                      <input
+                        type="text"
+                        value={certificateTitle}
+                        onChange={(e) => setCertificateTitle(e.target.value)}
+                        className="w-full border rounded-lg px-3 py-2"
+                        placeholder="e.g. ASE Master Technician"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Reference / license number</label>
+                      <input
+                        type="text"
+                        value={certificateReferenceNumber}
+                        onChange={(e) => setCertificateReferenceNumber(e.target.value)}
+                        className="w-full border rounded-lg px-3 py-2"
+                        placeholder="Enter reference or license #"
+                      />
+                    </div>
+                  </div>
                   <div className="flex flex-wrap gap-4 mb-4">
                     {certificates.map((doc) => (
-                      <div key={doc.id} className="relative group border rounded-lg overflow-hidden bg-gray-50 w-32 h-32">
+                      <div key={doc.id} className="relative group border rounded-lg overflow-hidden bg-gray-50 w-32 min-h-32">
                         {doc.file_url && (
-                          <img src={doc.file_url} alt="Certificate" className="w-full h-full object-cover" />
+                          <img src={doc.file_url} alt={doc.issuer || 'Certificate'} className="w-full h-24 object-cover" />
                         )}
+                        <div className="p-1.5">
+                          {doc.issuer ? <p className="truncate text-[10px] font-medium text-gray-700">{doc.issuer}</p> : null}
+                          {doc.document_number ? <p className="truncate text-[10px] text-gray-500">{doc.document_number}</p> : null}
+                        </div>
                         <button
                           type="button"
                           onClick={() => handleCertificateDelete(doc.id)}

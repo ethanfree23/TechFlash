@@ -13,6 +13,7 @@ module Api
         'Electrician',
         'HVAC Technician',
         'Plumber',
+        'Automobile Technician',
         'Roofer',
         'Carpenter',
         'Machine Technician (Industrial Maintenance)',

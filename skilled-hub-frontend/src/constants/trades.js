@@ -10,6 +10,7 @@ export const TRADE_OPTIONS = [
   'Electrician',
   'HVAC Technician',
   'Plumber',
+  'Automobile Technician',
   'Roofer',
   'Carpenter',
   'Machine Technician (Industrial Maintenance)',
