@@ -86,6 +86,12 @@ const normalizeTradeSelections = (tradeType, specialties) => {
   return Array.from(set).filter((trade) => TRADE_OPTIONS.includes(trade));
 };
 
+const makeLicenseLineItem = () => ({
+  id: `license-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+  title: '',
+  reference: '',
+});
+
 const referenceStatusLabel = (status) => {
   const key = String(status || '').toLowerCase();
   if (key === 'requested') return 'Requested';
@@ -169,9 +175,9 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [couponCode, setCouponCode] = useState('');
   const [couponBusy, setCouponBusy] = useState(false);
   const [certificates, setCertificates] = useState([]);
-  const [certificateTitle, setCertificateTitle] = useState('');
-  const [certificateReferenceNumber, setCertificateReferenceNumber] = useState('');
+  const [licenseLineItems, setLicenseLineItems] = useState([makeLicenseLineItem()]);
   const [uploadingCert, setUploadingCert] = useState(false);
+  const [uploadingCertLineItemId, setUploadingCertLineItemId] = useState(null);
   const [deletingCertId, setDeletingCertId] = useState(null);
   const [identityUploadModalOpen, setIdentityUploadModalOpen] = useState(false);
   const [identityDocumentType, setIdentityDocumentType] = useState('drivers_license');
@@ -1078,32 +1084,57 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
-  const handleCertificateUpload = async (e) => {
+  const handleCertificateUpload = async (lineItemId, e) => {
     const file = e.target.files?.[0];
     if (!file || !profile?.id) return;
+    const lineItem = licenseLineItems.find((item) => item.id === lineItemId);
     setUploadingCert(true);
+    setUploadingCertLineItemId(lineItemId);
     try {
       const fd = new FormData();
       fd.append('file', file);
       fd.append('uploadable_type', 'TechnicianProfile');
       fd.append('uploadable_id', profile.id);
       fd.append('doc_type', 'certificate');
-      if (certificateTitle.trim()) fd.append('issuer', certificateTitle.trim());
-      if (certificateReferenceNumber.trim()) fd.append('document_number', certificateReferenceNumber.trim());
+      if (lineItem?.title?.trim()) fd.append('issuer', lineItem.title.trim());
+      if (lineItem?.reference?.trim()) fd.append('document_number', lineItem.reference.trim());
       await documentsAPI.upload(fd);
       const docs = await documentsAPI.getAll();
       setCertificates((docs || []).filter(
         (d) => d.doc_type === 'certificate' && d.uploadable_type === 'TechnicianProfile' && d.uploadable_id === profile.id
       ));
-      setCertificateTitle('');
-      setCertificateReferenceNumber('');
+      setLicenseLineItems((prev) => prev.map((item) => (
+        item.id === lineItemId
+          ? { ...item, title: '', reference: '' }
+          : item
+      )));
       setAlertModal({ isOpen: true, title: 'Certificate uploaded!', message: 'Your certificate has been added.', variant: 'success' });
     } catch (err) {
       setAlertModal({ isOpen: true, title: 'Upload failed', message: err.message || 'Failed to upload certificate', variant: 'error' });
     } finally {
       setUploadingCert(false);
+      setUploadingCertLineItemId(null);
       e.target.value = '';
     }
+  };
+
+  const addLicenseLineItem = () => {
+    setLicenseLineItems((prev) => [...prev, makeLicenseLineItem()]);
+  };
+
+  const updateLicenseLineItem = (lineItemId, patch) => {
+    setLicenseLineItems((prev) => prev.map((item) => (
+      item.id === lineItemId ? { ...item, ...patch } : item
+    )));
+  };
+
+  const removeLicenseLineItem = (lineItemId) => {
+    setLicenseLineItems((prev) => {
+      if (prev.length <= 1) {
+        return [{ ...prev[0], title: '', reference: '' }];
+      }
+      return prev.filter((item) => item.id !== lineItemId);
+    });
   };
 
   const handleCertificateDelete = (docId) => {
@@ -2097,27 +2128,66 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   <p className="text-sm text-gray-600 mb-3">
                     Upload images of your certifications (e.g. OSHA, EPA, trade licenses). Companies will verify these match their job requirements.
                   </p>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Document title</label>
-                      <input
-                        type="text"
-                        value={certificateTitle}
-                        onChange={(e) => setCertificateTitle(e.target.value)}
-                        className="w-full border rounded-lg px-3 py-2"
-                        placeholder="e.g. ASE Master Technician"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-1">Reference / license number</label>
-                      <input
-                        type="text"
-                        value={certificateReferenceNumber}
-                        onChange={(e) => setCertificateReferenceNumber(e.target.value)}
-                        className="w-full border rounded-lg px-3 py-2"
-                        placeholder="Enter reference or license #"
-                      />
-                    </div>
+                  <div className="space-y-3 mb-4">
+                    {licenseLineItems.map((lineItem, index) => {
+                      const isUploadingRow = uploadingCert && uploadingCertLineItemId === lineItem.id;
+                      return (
+                        <div key={lineItem.id} className="rounded-lg border border-gray-200 p-3">
+                          <div className="mb-3 flex items-center justify-between">
+                            <p className="text-sm font-semibold text-gray-800">License item {index + 1}</p>
+                            <button
+                              type="button"
+                              onClick={() => removeLicenseLineItem(lineItem.id)}
+                              className="text-xs font-medium text-red-600 hover:text-red-700"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Document title</label>
+                              <input
+                                type="text"
+                                value={lineItem.title}
+                                onChange={(e) => updateLicenseLineItem(lineItem.id, { title: e.target.value })}
+                                className="w-full border rounded-lg px-3 py-2"
+                                placeholder="e.g. ASE Master Technician"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-700 mb-1">Reference / license number</label>
+                              <input
+                                type="text"
+                                value={lineItem.reference}
+                                onChange={(e) => updateLicenseLineItem(lineItem.id, { reference: e.target.value })}
+                                className="w-full border rounded-lg px-3 py-2"
+                                placeholder="Enter reference or license #"
+                              />
+                            </div>
+                          </div>
+                          <div className="mt-3 flex items-center gap-2">
+                            <label className="inline-flex cursor-pointer items-center rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                              <input
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => handleCertificateUpload(lineItem.id, e)}
+                                disabled={isUploadingRow}
+                              />
+                              {isUploadingRow ? 'Uploading image...' : 'Attach image'}
+                            </label>
+                            <span className="text-xs text-gray-500">Uploads this line item as a certificate.</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={addLicenseLineItem}
+                      className="inline-flex items-center rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                    >
+                      + Add another line item
+                    </button>
                   </div>
                   <div className="flex flex-wrap gap-4 mb-4">
                     {certificates.map((doc) => (
@@ -2140,14 +2210,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                         </button>
                       </div>
                     ))}
-                    <label className="w-32 h-32 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-colors">
-                      <input type="file" accept="image/*" className="hidden" onChange={handleCertificateUpload} disabled={uploadingCert} />
-                      {uploadingCert ? (
-                        <span className="text-sm text-gray-500">Uploading...</span>
-                      ) : (
-                        <span className="text-3xl text-gray-400">+</span>
-                      )}
-                    </label>
                   </div>
                 </div>
               </>
