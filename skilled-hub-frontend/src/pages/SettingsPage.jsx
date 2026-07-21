@@ -90,7 +90,16 @@ const makeLicenseLineItem = () => ({
   id: `license-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
   title: '',
   reference: '',
+  file: null,
 });
+
+const CERTIFICATE_DOC_TYPES = new Set(['certificate', 'cert', 'license']);
+
+const isTechnicianCertificateDocument = (doc, technicianProfileId) => (
+  CERTIFICATE_DOC_TYPES.has(String(doc?.doc_type || '').toLowerCase())
+  && String(doc?.uploadable_type || '') === 'TechnicianProfile'
+  && Number(doc?.uploadable_id) === Number(technicianProfileId)
+);
 
 const referenceStatusLabel = (status) => {
   const key = String(status || '').toLowerCase();
@@ -177,7 +186,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [certificates, setCertificates] = useState([]);
   const [licenseLineItems, setLicenseLineItems] = useState([makeLicenseLineItem()]);
   const [uploadingCert, setUploadingCert] = useState(false);
-  const [uploadingCertLineItemId, setUploadingCertLineItemId] = useState(null);
   const [deletingCertId, setDeletingCertId] = useState(null);
   const [identityUploadModalOpen, setIdentityUploadModalOpen] = useState(false);
   const [identityDocumentType, setIdentityDocumentType] = useState('drivers_license');
@@ -489,9 +497,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     if (isTechnician && profile?.id) {
       documentsAPI.getAll()
         .then((docs) => {
-          const certs = (docs || []).filter(
-            (d) => d.doc_type === 'certificate' && d.uploadable_type === 'TechnicianProfile' && d.uploadable_id === profile.id
-          );
+          const certs = (docs || []).filter((d) => isTechnicianCertificateDocument(d, profile.id));
           setCertificates(certs);
         })
         .catch(() => setCertificates([]));
@@ -781,12 +787,38 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           ...techPayload,
           experience_years: form.experience_years === '' ? null : parseInt(form.experience_years, 10),
         });
+
+        const incompleteLicenseItems = licenseLineItems.filter((item) => (
+          (String(item.title || '').trim() || String(item.reference || '').trim()) && !item.file
+        ));
+        if (incompleteLicenseItems.length > 0) {
+          throw new Error('Attach an image for each license line item before saving.');
+        }
+
+        const pendingLicenseUploads = licenseLineItems.filter((item) => item.file);
+        if (pendingLicenseUploads.length > 0) {
+          setUploadingCert(true);
+          for (const item of pendingLicenseUploads) {
+            const fd = new FormData();
+            fd.append('file', item.file);
+            fd.append('uploadable_type', 'TechnicianProfile');
+            fd.append('uploadable_id', profile.id);
+            fd.append('doc_type', 'certificate');
+            if (String(item.title || '').trim()) fd.append('issuer', String(item.title || '').trim());
+            if (String(item.reference || '').trim()) fd.append('document_number', String(item.reference || '').trim());
+            await documentsAPI.upload(fd);
+          }
+          const docs = await documentsAPI.getAll();
+          setCertificates((docs || []).filter((d) => isTechnicianCertificateDocument(d, profile.id)));
+          setLicenseLineItems([makeLicenseLineItem()]);
+        }
       }
       await fetchProfile();
       setAlertModal({ isOpen: true, title: 'Profile saved!', message: 'Your profile has been updated.', variant: 'success' });
     } catch (err) {
       setError(err.message || 'Failed to save profile');
     } finally {
+      setUploadingCert(false);
       setSaving(false);
     }
   };
@@ -1084,38 +1116,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
-  const handleCertificateUpload = async (lineItemId, e) => {
+  const handleLicenseLineItemFileSelect = (lineItemId, e) => {
     const file = e.target.files?.[0];
-    if (!file || !profile?.id) return;
-    const lineItem = licenseLineItems.find((item) => item.id === lineItemId);
-    setUploadingCert(true);
-    setUploadingCertLineItemId(lineItemId);
-    try {
-      const fd = new FormData();
-      fd.append('file', file);
-      fd.append('uploadable_type', 'TechnicianProfile');
-      fd.append('uploadable_id', profile.id);
-      fd.append('doc_type', 'certificate');
-      if (lineItem?.title?.trim()) fd.append('issuer', lineItem.title.trim());
-      if (lineItem?.reference?.trim()) fd.append('document_number', lineItem.reference.trim());
-      await documentsAPI.upload(fd);
-      const docs = await documentsAPI.getAll();
-      setCertificates((docs || []).filter(
-        (d) => d.doc_type === 'certificate' && d.uploadable_type === 'TechnicianProfile' && d.uploadable_id === profile.id
-      ));
-      setLicenseLineItems((prev) => prev.map((item) => (
-        item.id === lineItemId
-          ? { ...item, title: '', reference: '' }
-          : item
-      )));
-      setAlertModal({ isOpen: true, title: 'Certificate uploaded!', message: 'Your certificate has been added.', variant: 'success' });
-    } catch (err) {
-      setAlertModal({ isOpen: true, title: 'Upload failed', message: err.message || 'Failed to upload certificate', variant: 'error' });
-    } finally {
-      setUploadingCert(false);
-      setUploadingCertLineItemId(null);
-      e.target.value = '';
-    }
+    setLicenseLineItems((prev) => prev.map((item) => (
+      item.id === lineItemId ? { ...item, file: file || null } : item
+    )));
+    e.target.value = '';
   };
 
   const addLicenseLineItem = () => {
@@ -1131,7 +1137,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const removeLicenseLineItem = (lineItemId) => {
     setLicenseLineItems((prev) => {
       if (prev.length <= 1) {
-        return [{ ...prev[0], title: '', reference: '' }];
+        return [{ ...prev[0], title: '', reference: '', file: null }];
       }
       return prev.filter((item) => item.id !== lineItemId);
     });
@@ -2130,7 +2136,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   </p>
                   <div className="space-y-3 mb-4">
                     {licenseLineItems.map((lineItem, index) => {
-                      const isUploadingRow = uploadingCert && uploadingCertLineItemId === lineItem.id;
                       return (
                         <div key={lineItem.id} className="rounded-lg border border-gray-200 p-3">
                           <div className="mb-3 flex items-center justify-between">
@@ -2171,12 +2176,14 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                                 type="file"
                                 accept="image/*"
                                 className="hidden"
-                                onChange={(e) => handleCertificateUpload(lineItem.id, e)}
-                                disabled={isUploadingRow}
+                                onChange={(e) => handleLicenseLineItemFileSelect(lineItem.id, e)}
+                                disabled={uploadingCert}
                               />
-                              {isUploadingRow ? 'Uploading image...' : 'Attach image'}
+                              {lineItem.file ? 'Change image' : 'Attach image'}
                             </label>
-                            <span className="text-xs text-gray-500">Uploads this line item as a certificate.</span>
+                            <span className="text-xs text-gray-500">
+                              {lineItem.file ? `Selected: ${lineItem.file.name}` : 'Will upload when you click Save Changes.'}
+                            </span>
                           </div>
                         </div>
                       );
