@@ -747,19 +747,32 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
   const handleProfileSubmit = async (e) => {
     e.preventDefault();
+    console.info('[Settings] Profile save started');
     const firstName = (form.first_name || '').trim();
     const lastName = (form.last_name || '').trim();
     const phoneDigits = String(form.phone || '').replace(/\D/g, '');
+    const failProfileSave = (message) => {
+      setError(message);
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not save',
+        message,
+        variant: 'error',
+      });
+    };
     if (!firstName || !lastName) {
-      setError('First name and last name are required.');
+      failProfileSave('First name and last name are required.');
       return;
     }
     if (!phoneDigits || phoneDigits.length < 10) {
-      setError('A valid phone number is required (10 digits).');
+      failProfileSave('A valid phone number is required (10 digits).');
       return;
     }
 
-    if (!isAdmin && !profile?.id) return;
+    if (!isAdmin && !profile?.id) {
+      failProfileSave('Profile is still loading. Please wait a moment and try again.');
+      return;
+    }
     setSaving(true);
     setError(null);
     try {
@@ -776,8 +789,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         const companyState = (form.state || '').trim();
         const stateRequiresLicense = requiresElectricalLicenseForState(companyState);
         if (stateRequiresLicense && !(form.electrical_license_number || '').trim()) {
-          setError('This state requires an electrical license number.');
-          setSaving(false);
+          failProfileSave('This state requires an electrical license number.');
           return;
         }
         const { first_name: _fn, last_name: _ln, ...companyPayload } = form;
@@ -798,7 +810,8 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           (String(item.title || '').trim() || String(item.reference || '').trim()) && !item.file
         ));
         if (incompleteLicenseItems.length > 0) {
-          throw new Error('Attach an image for each license line item before saving.');
+          failProfileSave('Attach an image for each license line item before saving.');
+          return;
         }
 
         const pendingLicenseUploads = licenseLineItems.filter((item) => item.file);
@@ -822,7 +835,15 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       await fetchProfile();
       setAlertModal({ isOpen: true, title: 'Profile saved!', message: 'Your profile has been updated.', variant: 'success' });
     } catch (err) {
-      setError(err.message || 'Failed to save profile');
+      const message = err.message || 'Failed to save profile';
+      console.error('[Settings] Profile save failed', err);
+      setError(message);
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not save',
+        message,
+        variant: 'error',
+      });
     } finally {
       setUploadingCert(false);
       setSaving(false);
@@ -1884,7 +1905,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
             </div>
           )}
           {isAdmin ? (
-            <form onSubmit={handleProfileSubmit} className="space-y-4">
+            <form onSubmit={handleProfileSubmit} className="space-y-4" noValidate>
               <p className="text-gray-500">Admin accounts do not have technician or company profiles, but you can update your name here.</p>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
@@ -1926,7 +1947,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               </button>
             </form>
           ) : (
-          <form onSubmit={handleProfileSubmit} className="space-y-4">
+          <form onSubmit={handleProfileSubmit} className="space-y-4" noValidate>
             <div className="flex items-center gap-6">
               <div className="relative">
                 {profileAvatarUrl ? (
