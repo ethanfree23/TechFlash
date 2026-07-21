@@ -762,8 +762,12 @@ export const jobApplicationsAPI = {
 
 // Documents endpoints
 export const documentsAPI = {
-  getAll: () => 
-    apiRequest('/documents'),
+  getAll: async () => {
+    const payload = await apiRequest('/documents');
+    if (Array.isArray(payload)) return payload;
+    if (Array.isArray(payload?.documents)) return payload.documents;
+    return [];
+  },
   
   getById: (id) => 
     apiRequest(`/documents/${id}`),

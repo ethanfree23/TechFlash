@@ -101,6 +101,12 @@ const isTechnicianCertificateDocument = (doc, technicianProfileId) => (
   && Number(doc?.uploadable_id) === Number(technicianProfileId)
 );
 
+const extractDocumentsList = (payload) => {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.documents)) return payload.documents;
+  return [];
+};
+
 const referenceStatusLabel = (status) => {
   const key = String(status || '').toLowerCase();
   if (key === 'requested') return 'Requested';
@@ -496,8 +502,8 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   useEffect(() => {
     if (isTechnician && profile?.id) {
       documentsAPI.getAll()
-        .then((docs) => {
-          const certs = (docs || []).filter((d) => isTechnicianCertificateDocument(d, profile.id));
+        .then((docsPayload) => {
+          const certs = extractDocumentsList(docsPayload).filter((d) => isTechnicianCertificateDocument(d, profile.id));
           setCertificates(certs);
         })
         .catch(() => setCertificates([]));
@@ -808,8 +814,8 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
             if (String(item.reference || '').trim()) fd.append('document_number', String(item.reference || '').trim());
             await documentsAPI.upload(fd);
           }
-          const docs = await documentsAPI.getAll();
-          setCertificates((docs || []).filter((d) => isTechnicianCertificateDocument(d, profile.id)));
+          const docsPayload = await documentsAPI.getAll();
+          setCertificates(extractDocumentsList(docsPayload).filter((d) => isTechnicianCertificateDocument(d, profile.id)));
           setLicenseLineItems([makeLicenseLineItem()]);
         }
       }
