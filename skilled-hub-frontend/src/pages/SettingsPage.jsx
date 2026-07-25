@@ -27,7 +27,7 @@ import { formatPhoneInput } from '../utils/phone';
 import { TRADE_OPTIONS, TRADE_OTHER_SENTINEL } from '../constants/trades';
 import { getNotificationCategories } from '../config/notificationPreferenceCatalog';
 import { isDemoMode, demoSimulatedMessage } from '../utils/demoMode';
-import { mediaUrlWithCacheBust } from '../utils/mediaUrl';
+import { mediaUrlWithCacheBust, resolveMediaUrl } from '../utils/mediaUrl';
 import AccountRolePanel from '../components/settings/AccountRolePanel';
 import { parseSettingsUrl, replaceSettingsUrl } from '../utils/settingsUrl';
 import SettingsPageShell from '../components/settings/SettingsPageShell';
@@ -94,6 +94,14 @@ const makeLicenseLineItem = () => ({
 });
 
 const CERTIFICATE_DOC_TYPES = new Set(['certificate', 'cert', 'license']);
+const LICENSE_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png']);
+
+const isAllowedLicenseImageFile = (file) => {
+  if (!file) return false;
+  const mime = String(file.type || '').toLowerCase();
+  if (LICENSE_IMAGE_MIME_TYPES.has(mime)) return true;
+  return /\.(jpe?g|png)$/i.test(String(file.name || '').trim());
+};
 
 const isTechnicianCertificateDocument = (doc, technicianProfileId) => (
   CERTIFICATE_DOC_TYPES.has(String(doc?.doc_type || '').toLowerCase())
@@ -192,6 +200,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [certificates, setCertificates] = useState([]);
   const [licenseLineItems, setLicenseLineItems] = useState([makeLicenseLineItem()]);
   const [uploadingCert, setUploadingCert] = useState(false);
+  const [certificatePreviewErrors, setCertificatePreviewErrors] = useState({});
   const [deletingCertId, setDeletingCertId] = useState(null);
   const [identityUploadModalOpen, setIdentityUploadModalOpen] = useState(false);
   const [identityDocumentType, setIdentityDocumentType] = useState('drivers_license');
@@ -815,6 +824,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         }
 
         const pendingLicenseUploads = licenseLineItems.filter((item) => item.file);
+        const invalidLicenseFile = pendingLicenseUploads.find((item) => !isAllowedLicenseImageFile(item.file));
+        if (invalidLicenseFile) {
+          failProfileSave('License images must be JPG, JPEG, or PNG files.');
+          return;
+        }
         if (pendingLicenseUploads.length > 0) {
           setUploadingCert(true);
           for (const item of pendingLicenseUploads) {
@@ -829,6 +843,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           }
           const docsPayload = await documentsAPI.getAll();
           setCertificates(extractDocumentsList(docsPayload).filter((d) => isTechnicianCertificateDocument(d, profile.id)));
+          setCertificatePreviewErrors({});
           setLicenseLineItems([makeLicenseLineItem()]);
         }
       }
@@ -1145,6 +1160,16 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
   const handleLicenseLineItemFileSelect = (lineItemId, e) => {
     const file = e.target.files?.[0];
+    if (file && !isAllowedLicenseImageFile(file)) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Invalid file type',
+        message: 'License images must be JPG, JPEG, or PNG files.',
+        variant: 'error',
+      });
+      e.target.value = '';
+      return;
+    }
     setLicenseLineItems((prev) => prev.map((item) => (
       item.id === lineItemId ? { ...item, file: file || null } : item
     )));
@@ -2201,7 +2226,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                             <label className="inline-flex cursor-pointer items-center rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
                               <input
                                 type="file"
-                                accept="image/*"
+                                accept=".jpg,.jpeg,.png,image/jpeg,image/png"
                                 className="hidden"
                                 onChange={(e) => handleLicenseLineItemFileSelect(lineItem.id, e)}
                                 disabled={uploadingCert}
@@ -2224,14 +2249,38 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                     </button>
                   </div>
                   <div className="flex flex-wrap gap-4 mb-4">
-                    {certificates.map((doc) => (
+                    {certificates.map((doc) => {
+                      const documentUrl = resolveMediaUrl(doc.file_url);
+                      const hasPreviewError = certificatePreviewErrors[doc.id] === true;
+                      return (
                       <div key={doc.id} className="relative group border rounded-lg overflow-hidden bg-gray-50 w-32 min-h-32">
-                        {doc.file_url && (
-                          <img src={doc.file_url} alt={doc.issuer || 'Certificate'} className="w-full h-24 object-cover" />
+                        {documentUrl && !hasPreviewError ? (
+                          <img
+                            src={documentUrl}
+                            alt={doc.issuer || 'Certificate'}
+                            className="w-full h-24 object-cover"
+                            onError={() => setCertificatePreviewErrors((prev) => ({ ...prev, [doc.id]: true }))}
+                          />
+                        ) : (
+                          <div className="flex h-24 items-center justify-center bg-gray-100 px-2 text-center text-[10px] text-gray-500">
+                            Preview unavailable
+                          </div>
                         )}
                         <div className="p-1.5">
                           {doc.issuer ? <p className="truncate text-[10px] font-medium text-gray-700">{doc.issuer}</p> : null}
                           {doc.document_number ? <p className="truncate text-[10px] text-gray-500">{doc.document_number}</p> : null}
+                          {documentUrl ? (
+                            <a
+                              href={documentUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="mt-1 inline-block text-[10px] font-medium text-blue-600 hover:text-blue-700"
+                            >
+                              View document
+                            </a>
+                          ) : (
+                            <p className="mt-1 text-[10px] text-gray-500">Document unavailable</p>
+                          )}
                         </div>
                         <button
                           type="button"
@@ -2243,7 +2292,8 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                         </button>
                       </div>
-                    ))}
+                    );
+                    })}
                   </div>
                 </div>
               </>

@@ -9,15 +9,16 @@ export { isProductionHost, resolveApiBaseUrl, resolveDemoApiBaseUrl } from './ap
 const apiRequest = async (endpoint, options = {}) => {
   const token = auth.getToken();
   const baseUrl = resolveApiBaseUrl();
+  const { headers: optionHeaders = {}, ...requestOptions } = options;
 
-  const isFormData = options.body instanceof FormData;
+  const isFormData = requestOptions.body instanceof FormData;
   const config = {
+    ...requestOptions,
     headers: {
       ...(!isFormData && { 'Content-Type': 'application/json' }),
       ...(token && { 'Authorization': `Bearer ${token}` }),
-      ...options.headers,
+      ...optionHeaders,
     },
-    ...options,
   };
 
   try {
@@ -62,13 +63,14 @@ const apiRequest = async (endpoint, options = {}) => {
 /** Same as apiRequest but never sends Authorization — for public endpoints (e.g. share preview). */
 export const publicApiRequest = async (endpoint, options = {}) => {
   const baseUrl = resolveApiBaseUrl();
-  const isFormData = options.body instanceof FormData;
+  const { headers: optionHeaders = {}, ...requestOptions } = options;
+  const isFormData = requestOptions.body instanceof FormData;
   const config = {
+    ...requestOptions,
     headers: {
       ...(!isFormData && { 'Content-Type': 'application/json' }),
-      ...options.headers,
+      ...optionHeaders,
     },
-    ...options,
   };
 
   try {

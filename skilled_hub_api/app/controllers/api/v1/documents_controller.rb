@@ -38,7 +38,7 @@ module Api
           end
         end
         
-        render json: documents, each_serializer: DocumentSerializer, status: :ok
+        render json: documents, each_serializer: DocumentSerializer, base_url: request.base_url, status: :ok
       end
 
       def show
@@ -49,7 +49,7 @@ module Api
           return render json: { error: "Access denied" }, status: :forbidden
         end
         
-        render json: document, serializer: DocumentSerializer, status: :ok
+        render json: document, serializer: DocumentSerializer, base_url: request.base_url, status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Document not found" }, status: :not_found
       end
@@ -73,7 +73,7 @@ module Api
 
         if document.save
           update_identity_verification_status!(document)
-          render json: document, serializer: DocumentSerializer, status: :created
+          render json: document, serializer: DocumentSerializer, base_url: request.base_url, status: :created
         else
           render json: { errors: document.errors.full_messages }, status: :unprocessable_entity
         end
@@ -88,7 +88,7 @@ module Api
         end
         
         if document.update(document_params)
-          render json: document, serializer: DocumentSerializer, status: :ok
+          render json: document, serializer: DocumentSerializer, base_url: request.base_url, status: :ok
         else
           render json: { errors: document.errors.full_messages }, status: :unprocessable_entity
         end
