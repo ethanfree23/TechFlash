@@ -157,6 +157,21 @@ const isIdentityVerificationSection = (section) => {
   return key.includes('identity') || title.includes('identity');
 };
 
+const isLicenseVerificationSection = (section) => {
+  const fields = [
+    section?.key,
+    section?.title,
+    section?.name,
+    section?.slug,
+    section?.description,
+  ];
+  const haystack = fields
+    .map((v) => String(v || '').toLowerCase())
+    .join(' ');
+  // Match broad stems so variants like "licenses", "licensing", "certifications", etc. are covered.
+  return haystack.includes('licens') || haystack.includes('certif') || haystack.includes('cert');
+};
+
 const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -1698,9 +1713,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                       <ul className="text-sm text-gray-700 space-y-2">
                         {(verificationCenter?.sections || []).map((section) => {
                           const status = section?.status || 'not_started';
-                          const tone = verificationStatusTone(status);
+                          const shouldOverrideLicenseStatus = isLicenseVerificationSection(section) && certificates.length > 0;
+                          const displayStatus = shouldOverrideLicenseStatus ? 'verified' : status;
+                          const tone = verificationStatusTone(displayStatus);
                           const identitySection = isIdentityVerificationSection(section);
-                          const canUploadIdentityDoc = identitySection && !isVerificationCompleteStatus(status);
+                          const canUploadIdentityDoc = identitySection && !isVerificationCompleteStatus(displayStatus);
                           return (
                             <li
                               key={section.key}
@@ -1713,11 +1730,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                                   onClick={handleOpenIdentityUploadModal}
                                   className={`text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 transition-colors ${tone.chip} hover:brightness-95`}
                                 >
-                                  {String(status).replaceAll('_', ' ')}
+                                  {String(displayStatus).replaceAll('_', ' ')}
                                 </button>
                               ) : (
                                 <span className={`text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${tone.chip}`}>
-                                  {String(status).replaceAll('_', ' ')}
+                                  {String(displayStatus).replaceAll('_', ' ')}
                                 </span>
                               )}
                             </li>
