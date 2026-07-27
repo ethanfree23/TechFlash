@@ -288,7 +288,9 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const backgroundCheckReady = backgroundCheckOptions?.ready_for_start === true;
   const backgroundCheckDemoBypass = backgroundCheckOptions?.demo_bypass === true;
   const localCheckrDemoBypass = localCheckrDemoBypassEnabled && !backgroundCheckReady;
-  const backgroundCheckStartEnabled = backgroundCheckReady || backgroundCheckDemoBypass || localCheckrDemoBypass;
+  const autoCheckrDemoBypass = isTechnician && !backgroundCheckReady && Boolean(backgroundCheckOptionsError);
+  const effectiveCheckrDemoBypass = backgroundCheckDemoBypass || localCheckrDemoBypass || autoCheckrDemoBypass;
+  const backgroundCheckStartEnabled = backgroundCheckReady || effectiveCheckrDemoBypass;
   const backgroundConsentReady = backgroundDisclosureAccepted && backgroundAuthorizationAccepted;
   const displayBackgroundCheckPackageName = useMemo(
     () => verificationCenter?.background_check?.package_name
@@ -1538,7 +1540,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
     setStartingBackgroundCheck(true);
     try {
-      if (localCheckrDemoBypass) {
+      if (effectiveCheckrDemoBypass) {
         const demoInvitationUrl = `${window.location.origin}/settings?tab=profile&checkr_demo=invitation`;
         setVerificationCenter((prev) => ({
           ...(prev || {}),
@@ -1938,7 +1940,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                         </div>
                         {loadingBackgroundCheckOptions ? (
                           <p className="text-xs text-gray-500">Loading background check options...</p>
-                        ) : (backgroundCheckOptionsError && !localCheckrDemoBypass && !backgroundCheckDemoBypass) ? (
+                        ) : (backgroundCheckOptionsError && !effectiveCheckrDemoBypass) ? (
                           <div className="rounded-lg border border-rose-200 bg-rose-50 p-2">
                             <p className="text-xs text-rose-800">{backgroundCheckOptionsError}</p>
                             <button
@@ -1954,7 +1956,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                             Background check package is preset by TechFlash and managed by backend configuration.
                           </p>
                         )}
-                        {(backgroundCheckDemoBypass || localCheckrDemoBypass) && (
+                        {effectiveCheckrDemoBypass && (
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="text-xs text-amber-700">
                               Demo bypass is active. Start flow is simulated for walkthrough recording.
