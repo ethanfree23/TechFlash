@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
+import AppFooter from '../components/layout/AppFooter';
 import { crmAPI } from '../api/api';
 import AlertModal from '../components/AlertModal';
 import { useTableColumnPreferences } from '../hooks/useTableColumnPreferences';
@@ -2819,7 +2820,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     <div className="min-h-screen bg-slate-50">
       <AppHeader user={user} onLogout={onLogout} activePage="crm" emailVariant="crm" />
 
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
+      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-24 sm:pb-14">
         <datalist id="crm-contact-job-titles">
           {CONTACT_JOB_TITLE_SUGGESTIONS.map((t) => (
             <option key={t} value={t} />
@@ -6205,6 +6206,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         message={alertModal.message}
         variant={alertModal.variant}
       />
+      <AppFooter />
     </div>
   );
 };

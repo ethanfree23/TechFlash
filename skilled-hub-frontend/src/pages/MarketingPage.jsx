@@ -7,10 +7,9 @@ import { ClosingCtaBanner } from '../components/marketing/ClosingCtaBanner';
 import { HeroSection } from '../components/marketing/HeroSection';
 import { HowItWorksHomeTeaser } from '../components/marketing/HowItWorksHomeTeaser';
 import { IndustryChips } from '../components/marketing/IndustryChips';
-import { MarketingHeader } from '../components/marketing/MarketingHeader';
 import { SignupCtaPanel } from '../components/marketing/SignupCtaPanel';
-import { TrustFooterStrip } from '../components/marketing/TrustFooterStrip';
 import { WhyTechFlashHomeTeaser } from '../components/marketing/WhyTechFlashHomeTeaser';
+import MarketingPageLayout from '../components/layout/MarketingPageLayout';
 import { goCompanyPostJob } from '../utils/companyJobPostNavigate';
 import { goTechnicianFindWork } from '../utils/technicianMarketingNavigate';
 import { readSignupRoleIntent, writeSignupRoleIntent } from '../utils/signupRoleIntent';
@@ -66,16 +65,14 @@ const MarketingPage = () => {
   };
 
   return (
-    <div className="min-h-screen min-w-0 bg-tf-muted text-gray-800">
+    <MarketingPageLayout className="bg-tf-muted" footerVariant="default">
       <div
-        className="min-h-screen"
+        className="h-full"
         style={{
           background:
             'linear-gradient(180deg, #ffffff 0%, #F7F7F7 18%, #F7F7F7 60%, rgba(254, 103, 17, 0.06) 100%)',
         }}
       >
-        <MarketingHeader />
-
         <HeroSection onPostJob={() => goCompanyPostJob(navigate)} onFindWork={() => goTechnicianFindWork(navigate)} />
 
         <IndustryChips />
@@ -101,10 +98,8 @@ const MarketingPage = () => {
         />
 
         <ClosingCtaBanner onJoin={() => goSignupDirect(readSignupRoleIntent())} />
-
-        <TrustFooterStrip />
       </div>
-    </div>
+    </MarketingPageLayout>
   );
 };
 

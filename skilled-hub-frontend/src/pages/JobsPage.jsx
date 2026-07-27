@@ -2,6 +2,7 @@ import React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import JobsDashboard from '../components/jobs/JobsDashboard';
 import AppHeader from '../components/AppHeader';
+import AppFooter from '../components/layout/AppFooter';
 
 const JobsPage = ({ user, onLogout }) => {
   const [searchParams] = useSearchParams();
@@ -11,7 +12,7 @@ const JobsPage = ({ user, onLogout }) => {
     <div className="min-h-screen bg-slate-50">
       <AppHeader user={user} onLogout={onLogout} activePage="jobs" emailVariant="welcome" />
 
-      <main className="py-8 lg:py-10">
+      <main className="py-8 lg:py-10 pb-24 sm:pb-14">
         {showWelcome && (
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mb-6">
             <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-emerald-950 shadow-sm">
@@ -25,6 +26,7 @@ const JobsPage = ({ user, onLogout }) => {
         )}
         <JobsDashboard />
       </main>
+      <AppFooter />
     </div>
   );
 };

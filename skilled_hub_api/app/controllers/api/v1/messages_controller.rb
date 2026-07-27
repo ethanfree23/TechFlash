@@ -21,8 +21,9 @@ module Api
           return create_feedback_inbox_message
         end
 
-        message = @conversation.messages.build(message_params)
+        message = @conversation.messages.build(message_params.except(:attachments))
         message.sender = current_user_profile
+        attach_uploaded_files(message)
         if message.save
           MailDelivery.safe_deliver { UserMailer.new_message(message).deliver_now } if @conversation.job_thread?
           render json: message, serializer: MessageSerializer, status: :created
@@ -70,13 +71,14 @@ module Api
       end
 
       def message_params
-        params.permit(:content, :internal)
+        params.permit(:content, :internal, attachments: [])
       end
 
       def create_feedback_inbox_message
         internal = ActiveModel::Type::Boolean.new.cast(params[:internal])
         message = @conversation.messages.build(content: message_params[:content], internal: internal)
         message.sender = @current_user
+        attach_uploaded_files(message)
 
         if message.save
           @conversation.touch
@@ -103,6 +105,13 @@ module Api
           render json: { error: "Messaging is unavailable because one participant has blocked the other." }, status: :forbidden
         end
         blocked
+      end
+
+      def attach_uploaded_files(message)
+        files = Array(message_params[:attachments]).compact
+        return if files.empty?
+
+        message.attachments.attach(files)
       end
     end
   end

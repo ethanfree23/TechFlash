@@ -1,10 +1,9 @@
 import React, { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MarketingHeader } from '../components/marketing/MarketingHeader';
+import MarketingPageLayout from '../components/layout/MarketingPageLayout';
 import { TechnicianBenefitCards } from '../components/marketing/technicians/TechnicianBenefitCards';
 import { TechnicianCTA } from '../components/marketing/technicians/TechnicianCTA';
 import { TechnicianProblemSolution } from '../components/marketing/technicians/TechnicianProblemSolution';
-import { TechnicianTrustFooter } from '../components/marketing/technicians/TechnicianTrustFooter';
 import { TechnicianValueStrip } from '../components/marketing/technicians/TechnicianValueStrip';
 import { TechnicianWorkflow } from '../components/marketing/technicians/TechnicianWorkflow';
 import { TechniciansHero } from '../components/marketing/technicians/TechniciansHero';
@@ -32,16 +31,14 @@ const ForTechniciansPage = () => {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen min-w-0 bg-white text-gray-800">
-      <MarketingHeader />
+    <MarketingPageLayout footerVariant="technicians">
       <TechniciansHero onFindWork={handleFindWork} onSeeHowItWorks={scrollToWorkflow} />
       <TechnicianValueStrip />
       <TechnicianBenefitCards />
       <TechnicianProblemSolution />
       <TechnicianWorkflow />
       <TechnicianCTA onFindWork={handleFindWork} onCreateProfile={handleCreateProfile} />
-      <TechnicianTrustFooter />
-    </div>
+    </MarketingPageLayout>
   );
 };
 

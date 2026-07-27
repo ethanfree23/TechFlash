@@ -551,11 +551,26 @@ export const adminAPI = {
 // Feedback: POST stores + emails admins; GET lists all (admin only)
 export const feedbackAPI = {
   list: () => apiRequest('/feedback'),
-  create: ({ kind, body, page_path: pagePath }) =>
-    apiRequest('/feedback', {
+  create: ({ kind, body, page_path: pagePath, attachments = [] }) => {
+    const files = Array.isArray(attachments) ? attachments.filter(Boolean) : [];
+    if (files.length > 0) {
+      const formData = new FormData();
+      formData.append('kind', kind);
+      formData.append('body', body);
+      if (pagePath) formData.append('page_path', pagePath);
+      files.forEach((file) => formData.append('attachments[]', file));
+      return apiRequest('/feedback', {
+        method: 'POST',
+        headers: {},
+        body: formData,
+      });
+    }
+
+    return apiRequest('/feedback', {
       method: 'POST',
       body: JSON.stringify({ kind, body, page_path: pagePath }),
-    }),
+    });
+  },
 };
 
 export const referralsAPI = {
@@ -870,11 +885,25 @@ export const conversationsAPI = {
 export const messagesAPI = {
   getByConversation: (conversationId) =>
     apiRequest(`/conversations/${conversationId}/messages`),
-  create: (conversationId, content, { internal = false } = {}) =>
-    apiRequest(`/conversations/${conversationId}/messages`, {
+  create: (conversationId, content, { internal = false, attachments = [] } = {}) => {
+    const files = Array.isArray(attachments) ? attachments.filter(Boolean) : [];
+    if (files.length > 0) {
+      const formData = new FormData();
+      formData.append('content', content ?? '');
+      formData.append('internal', String(Boolean(internal)));
+      files.forEach((file) => formData.append('attachments[]', file));
+      return apiRequest(`/conversations/${conversationId}/messages`, {
+        method: 'POST',
+        headers: {},
+        body: formData,
+      });
+    }
+
+    return apiRequest(`/conversations/${conversationId}/messages`, {
       method: 'POST',
       body: JSON.stringify({ content, internal }),
-    }),
+    });
+  },
 };
 
 // Ratings endpoints (reviews after job completion)

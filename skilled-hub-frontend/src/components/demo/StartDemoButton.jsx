@@ -10,7 +10,7 @@ export default function StartDemoButton({ onClick, className = '', floating = fa
         type="button"
         data-demo="walkthrough-start"
         onClick={onClick}
-        className={`fixed bottom-6 right-6 z-[90] ${base} ${className}`}
+        className={`fixed bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-6 z-[90] ${base} ${className}`}
       >
         <FaPlay className="text-xs" />
         Start Demo

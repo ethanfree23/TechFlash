@@ -13,9 +13,10 @@ module Api
 
       def create
         submission = @current_user.feedback_submissions.build(feedback_params)
+        uploaded_attachments = normalized_attachments
         if submission.save
           begin
-            FeedbackInboxThread.create_for!(submission)
+            FeedbackInboxThread.create_for!(submission, attachments: uploaded_attachments)
           rescue StandardError => e
             Rails.logger.error("Feedback inbox thread: #{e.class} #{e.message}")
           end
@@ -31,6 +32,10 @@ module Api
 
       def feedback_params
         params.permit(:kind, :body, :page_path)
+      end
+
+      def normalized_attachments
+        Array(params[:attachments]).compact
       end
     end
   end

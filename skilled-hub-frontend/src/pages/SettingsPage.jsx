@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import AppHeader from '../components/AppHeader';
+import AppFooter from '../components/layout/AppFooter';
 import {
   profilesAPI,
   settingsAPI,
@@ -2878,6 +2879,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           </div>
         </section>
       </SettingsPageShell>
+      <AppFooter />
 
       <NotificationAdvancedModal
         isOpen={!!modalNotificationItem}

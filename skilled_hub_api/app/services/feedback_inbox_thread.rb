@@ -1,6 +1,6 @@
 # Creates a Messages inbox thread for each feedback submission (admin-visible only).
 class FeedbackInboxThread
-  def self.create_for!(submission)
+  def self.create_for!(submission, attachments: nil)
     return submission.conversation if submission.conversation.present?
 
     user = submission.user
@@ -23,7 +23,16 @@ class FeedbackInboxThread
       Page: #{submission.page_path.presence || "(unknown)"}
     TXT
 
-    conversation.messages.create!(sender: sender, content: content)
+    message = conversation.messages.create!(sender: sender, content: content)
+    attach_uploaded_files(message, attachments)
     conversation
   end
+
+  def self.attach_uploaded_files(message, attachments)
+    files = Array(attachments).compact
+    return if files.empty?
+
+    message.attachments.attach(files)
+  end
+  private_class_method :attach_uploaded_files
 end

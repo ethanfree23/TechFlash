@@ -11,7 +11,7 @@ export default function MessagesToast({ toasts, onDismiss }) {
 
   return (
     <div
-      className="fixed bottom-24 lg:bottom-6 right-4 z-[90] flex flex-col gap-2 max-w-sm w-[min(100vw-2rem,24rem)]"
+      className="fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] lg:bottom-[calc(1.5rem+env(safe-area-inset-bottom))] right-4 z-[90] flex flex-col gap-2 max-w-sm w-[min(100vw-2rem,24rem)]"
       role="status"
       aria-live="polite"
       aria-atomic="false"

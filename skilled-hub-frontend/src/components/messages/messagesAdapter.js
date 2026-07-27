@@ -56,6 +56,7 @@ function buildThreadFromMessages(conv, msgs) {
           ? 'company'
           : 'admin',
     body: m.content || '',
+    attachments: Array.isArray(m.attachments) ? m.attachments : [],
     isInternalNote: Boolean(m.internal),
     createdAt: m.created_at,
   }));

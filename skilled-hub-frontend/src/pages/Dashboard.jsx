@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { jobsAPI, ratingsAPI, feedbackAPI, profilesAPI, techPresenceAPI, conversationsAPI } from '../api/api';
 import AlertModal from '../components/AlertModal';
 import AppHeader from '../components/AppHeader';
+import AppFooter from '../components/layout/AppFooter';
 import {
   filterJobsWithinRadius,
   formatDistanceMi,
@@ -230,6 +231,7 @@ const Dashboard = ({ user, onLogout }) => {
       <div className="min-h-screen bg-gray-50">
         <AppHeader user={user} onLogout={onLogout} activePage="dashboard" profileAvatar />
         <div className="p-8 text-center text-red-600">{error}</div>
+        <AppFooter />
       </div>
     );
   }
@@ -237,7 +239,7 @@ const Dashboard = ({ user, onLogout }) => {
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader user={user} onLogout={onLogout} activePage="dashboard" profileAvatar />
-      <main className="py-8">
+      <main className="py-8 pb-24 sm:pb-14">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           {error && (
             <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
@@ -289,6 +291,7 @@ const Dashboard = ({ user, onLogout }) => {
         message={alertModal.message}
         variant={alertModal.variant}
       />
+      <AppFooter />
     </div>
   );
 };

@@ -1,6 +1,6 @@
 import React, { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MarketingHeader } from '../components/marketing/MarketingHeader';
+import MarketingPageLayout from '../components/layout/MarketingPageLayout';
 import { CompanyBenefitsSection } from '../components/marketing/whyTechFlash/CompanyBenefitsSection';
 import { CoreValueStrip } from '../components/marketing/whyTechFlash/CoreValueStrip';
 import { DifferentiatorsSection } from '../components/marketing/whyTechFlash/DifferentiatorsSection';
@@ -12,7 +12,6 @@ import { WhyExistsSection } from '../components/marketing/whyTechFlash/WhyExists
 import { WhyTechFlashCTA } from '../components/marketing/whyTechFlash/WhyTechFlashCTA';
 import { WhyTechFlashFAQ } from '../components/marketing/whyTechFlash/WhyTechFlashFAQ';
 import { WhyTechFlashHero } from '../components/marketing/whyTechFlash/WhyTechFlashHero';
-import { WhyTechFlashTrustFooter } from '../components/marketing/whyTechFlash/WhyTechFlashTrustFooter';
 import { goCompanyPostJob } from '../utils/companyJobPostNavigate';
 import { goTechnicianFindWork } from '../utils/technicianMarketingNavigate';
 
@@ -29,8 +28,7 @@ const WhyTechFlashPage = () => {
   }, []);
 
   return (
-    <div className="min-h-screen min-w-0 bg-white text-gray-800">
-      <MarketingHeader />
+    <MarketingPageLayout footerVariant="default">
       <WhyTechFlashHero onSeeWhyItWorks={scrollToWhyExists} />
       <CoreValueStrip />
       <WhyExistsSection />
@@ -42,8 +40,7 @@ const WhyTechFlashPage = () => {
       <MarketplaceFlywheel />
       <WhyTechFlashFAQ />
       <WhyTechFlashCTA onPostJob={() => goCompanyPostJob(navigate)} onFindWork={() => goTechnicianFindWork(navigate)} />
-      <WhyTechFlashTrustFooter />
-    </div>
+    </MarketingPageLayout>
   );
 };
 

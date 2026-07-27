@@ -5,9 +5,8 @@ import { CompanyBenefitCards } from '../components/marketing/companies/CompanyBe
 import { CompanyCTA } from '../components/marketing/companies/CompanyCTA';
 import { CompanyProblemSolution } from '../components/marketing/companies/CompanyProblemSolution';
 import { CompanyStatsStrip } from '../components/marketing/companies/CompanyStatsStrip';
-import { CompanyTrustFooter } from '../components/marketing/companies/CompanyTrustFooter';
 import { CompanyWorkflow } from '../components/marketing/companies/CompanyWorkflow';
-import { MarketingHeader } from '../components/marketing/MarketingHeader';
+import MarketingPageLayout from '../components/layout/MarketingPageLayout';
 import { goCompanyPostJob } from '../utils/companyJobPostNavigate';
 
 const ForCompaniesPage = () => {
@@ -22,16 +21,14 @@ const ForCompaniesPage = () => {
   }, [navigate]);
 
   return (
-    <div className="min-h-screen min-w-0 bg-white text-gray-800">
-      <MarketingHeader />
+    <MarketingPageLayout footerVariant="companies">
       <CompaniesHero onPostJob={handlePostJob} onSeeHowItWorks={scrollToWorkflow} />
       <CompanyStatsStrip />
       <CompanyBenefitCards />
       <CompanyProblemSolution />
       <CompanyWorkflow />
       <CompanyCTA onPostJobNow={handlePostJob} />
-      <CompanyTrustFooter />
-    </div>
+    </MarketingPageLayout>
   );
 };
 

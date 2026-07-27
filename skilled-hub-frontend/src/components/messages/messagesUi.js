@@ -3,7 +3,7 @@
 export const CARD_CLASS =
   'bg-white rounded-2xl border border-gray-200 shadow-sm overflow-hidden';
 
-export const PANEL_HEIGHT = 'min-h-[420px] lg:min-h-[calc(100vh-17rem)] lg:max-h-[calc(100vh-17rem)]';
+export const PANEL_HEIGHT = 'min-h-[520px] lg:h-[calc(100vh-11rem)] lg:max-h-[calc(100vh-11rem)]';
 
 export const INPUT_CLASS =
   'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-500';

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import AppHeader from '../components/AppHeader';
+import AppFooter from '../components/layout/AppFooter';
 import { adminReviewsAPI } from '../api/api';
 
 const metricValue = (value, suffix = '') => (value == null ? '—' : `${value}${suffix}`);
@@ -68,7 +69,7 @@ export default function AdminReviewsPage({ user, onLogout }) {
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader user={user} onLogout={onLogout} activePage="reviews" emailVariant="crm" />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 sm:pb-14 space-y-6">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Review Moderation</h1>
           <p className="text-sm text-gray-600 mt-1">Double-blind reviews, fraud signals, and marketplace quality analytics.</p>
@@ -190,6 +191,7 @@ export default function AdminReviewsPage({ user, onLogout }) {
           </>
         )}
       </div>
+      <AppFooter />
     </div>
   );
 }

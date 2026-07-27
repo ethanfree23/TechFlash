@@ -7,7 +7,7 @@ module Api
       def index
         conversations = conversations_for_current_user
         render json: conversations, each_serializer: ConversationSerializer,
-          include: [:job, { technician_profile: :user }, { company_profile: :user }],
+          include: [:job, :messages, { technician_profile: :user }, { company_profile: :user }],
           status: :ok
       end
 

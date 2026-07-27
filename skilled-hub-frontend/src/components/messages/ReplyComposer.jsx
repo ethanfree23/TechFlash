@@ -1,24 +1,49 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { CANNED_RESPONSES } from './constants';
 import { BTN_PRIMARY, BTN_SECONDARY, INPUT_CLASS, SELECT_CLASS } from './messagesUi';
+import { humanFileSize, imageFilesFromPasteEvent, mergeUniqueFiles } from './attachmentUtils';
 
 export default function ReplyComposer({
   isAdmin,
   isFeedbackThread,
   composerText,
   onComposerChange,
+  composerAttachments,
+  onComposerAttachmentsChange,
   replyMode,
   onReplyModeChange,
   onSend,
   onMarkResolved,
   onArchive,
   onCannedSelect,
+  onNotify,
 }) {
+  const [showCaptureHelp, setShowCaptureHelp] = useState(false);
+  const fileInputRef = useRef(null);
+
   const placeholder = isAdmin
     ? 'Write a public reply or switch to an internal note…'
     : 'Write your reply…';
 
-  const sendDisabled = !composerText.trim();
+  const sendDisabled = !composerText.trim() && (composerAttachments || []).length === 0;
+
+  const appendAttachments = (files) => {
+    const incoming = Array.from(files || []).filter(Boolean);
+    if (!incoming.length) return;
+    onComposerAttachmentsChange((prev) => mergeUniqueFiles(prev, incoming));
+  };
+
+  const handlePasteCapture = (event) => {
+    const pastedImages = imageFilesFromPasteEvent(event);
+    if (!pastedImages.length) return;
+    event.preventDefault();
+    appendAttachments(pastedImages);
+    onNotify?.({ message: 'Screenshot attached from clipboard.', variant: 'success' });
+  };
+
+  const removeAttachment = (indexToRemove) => {
+    onComposerAttachmentsChange((prev) => prev.filter((_, index) => index !== indexToRemove));
+  };
 
   return (
     <div className="border-t border-gray-200 bg-white p-4 space-y-3 shrink-0">
@@ -91,6 +116,57 @@ export default function ReplyComposer({
         rows={3}
         className={`${INPUT_CLASS} resize-none`}
       />
+
+      <div className="space-y-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className={BTN_SECONDARY}
+          >
+            Add files
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowCaptureHelp((open) => !open)}
+            className={BTN_SECONDARY}
+          >
+            Attach screenshot
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,.pdf"
+            multiple
+            className="hidden"
+            onChange={(event) => {
+              appendAttachments(event.target.files);
+              event.target.value = '';
+            }}
+          />
+        </div>
+        {showCaptureHelp && (
+          <div
+            tabIndex={0}
+            onPaste={handlePasteCapture}
+            className="rounded-lg border border-dashed border-blue-300 bg-blue-50 px-3 py-2 text-xs text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+          >
+            Take a screenshot with your OS shortcut, click this box, and press Ctrl+V to attach it.
+          </div>
+        )}
+        {(composerAttachments || []).length > 0 && (
+          <ul className="space-y-1">
+            {(composerAttachments || []).map((file, index) => (
+              <li key={`${file.name}-${file.size}-${file.lastModified}`} className="flex items-center justify-between gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1.5 text-xs text-gray-700">
+                <span className="truncate">{file.name} ({humanFileSize(file.size)})</span>
+                <button type="button" onClick={() => removeAttachment(index)} className="text-gray-500 hover:text-gray-800">
+                  Remove
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
 
       <div className="flex flex-wrap gap-2">
         <button

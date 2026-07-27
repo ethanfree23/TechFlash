@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
+import AppFooter from '../components/layout/AppFooter';
 import AdminCollapsibleCard from '../components/AdminCollapsibleCard';
 import SettingsTabs from '../components/settings/SettingsTabs';
 import {
@@ -642,7 +643,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
     <div className="min-h-screen bg-gray-50">
       <AppHeader user={user} onLogout={onLogout} activePage="users" emailVariant="crm" />
 
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 sm:pb-14">
         <CollapsibleSectionsProvider>
           <div className="mb-6">
             <Link to="/admin/users" className="text-sm text-blue-600 hover:text-blue-800 font-medium">
@@ -1813,6 +1814,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
         variant={alertModal.variant}
         onClose={() => setAlertModal((m) => ({ ...m, isOpen: false }))}
       />
+      <AppFooter />
     </div>
   );
 }

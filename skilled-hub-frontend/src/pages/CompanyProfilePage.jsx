@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
+import AppFooter from '../components/layout/AppFooter';
 import AdminCreateUserModal from '../components/AdminCreateUserModal';
 import AlertModal from '../components/AlertModal';
 import { profilesAPI, crmAPI } from '../api/api';
@@ -365,7 +366,7 @@ const CompanyProfilePage = ({ user, onLogout }) => {
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader user={user} onLogout={onLogout} emailVariant="simple" />
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 pb-24 sm:pb-14">
         <div className="mb-6">
           <Link to="/dashboard" className="text-blue-600 hover:text-blue-800 text-sm">Dashboard</Link>
           <span className="text-gray-400 mx-2">|</span>
@@ -799,6 +800,7 @@ const CompanyProfilePage = ({ user, onLogout }) => {
         message={alertModal.message}
         variant={alertModal.variant}
       />
+      <AppFooter />
     </div>
   );
 };

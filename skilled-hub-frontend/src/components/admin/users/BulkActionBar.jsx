@@ -10,7 +10,7 @@ export default function BulkActionBar({ selectedCount, onClear, onExport, onSend
   const placeholder = (label) => () => onPlaceholderAction?.(label);
 
   return (
-    <div className="fixed bottom-3 left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1.5rem)] max-w-2xl">
+    <div className="fixed bottom-[calc(0.75rem+env(safe-area-inset-bottom))] left-1/2 -translate-x-1/2 z-50 w-[calc(100%-1.5rem)] max-w-2xl">
       <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200/90 bg-white/95 backdrop-blur-sm px-3 py-2 shadow-lg ring-1 ring-black/5">
         <span className="text-xs font-semibold text-slate-800 tabular-nums">{selectedCount} selected</span>
         <div className="flex flex-wrap items-center gap-1">

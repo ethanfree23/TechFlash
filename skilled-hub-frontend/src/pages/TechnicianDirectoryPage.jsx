@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
+import AppFooter from '../components/layout/AppFooter';
 import { profilesAPI } from '../api/api';
 
 export default function TechnicianDirectoryPage({ user, onLogout }) {
@@ -70,7 +71,7 @@ export default function TechnicianDirectoryPage({ user, onLogout }) {
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader user={user} onLogout={onLogout} activePage="technicians" emailVariant="welcome" />
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-5">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 sm:pb-14 space-y-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Technician Discovery</h1>
           <p className="text-sm text-gray-600 mt-1">Filter by trust verification, rating, trade, and certifications.</p>
@@ -136,6 +137,7 @@ export default function TechnicianDirectoryPage({ user, onLogout }) {
           </div>
         )}
       </main>
+      <AppFooter />
     </div>
   );
 }

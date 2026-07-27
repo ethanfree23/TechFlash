@@ -1,6 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import AppHeader from '../components/AppHeader';
 import ConfirmModal from '../components/ConfirmModal';
+import AppFooter from '../components/layout/AppFooter';
 import { auth } from '../auth';
 import { useMessagesInbox } from '../components/messages/useMessagesInbox';
 import { useToast } from '../components/messages/useToast';
@@ -38,7 +39,7 @@ const MessagesPage = ({ user, onLogout }) => {
     <div className="min-h-screen bg-gray-50">
       <AppHeader user={currentUser} onLogout={onLogout} activePage="messages" emailVariant="welcome" />
 
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-24 sm:pb-8" data-demo="messages-section">
+      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-28 sm:pb-14" data-demo="messages-section">
         <MessagesHeader
           role={inbox.role}
           isAdmin={inbox.isAdmin}
@@ -99,6 +100,8 @@ const MessagesPage = ({ user, onLogout }) => {
             onBack: inbox.backToList,
             composerText: inbox.composerText,
             onComposerChange: inbox.setComposerText,
+            composerAttachments: inbox.composerAttachments,
+            onComposerAttachmentsChange: inbox.setComposerAttachments,
             replyMode: inbox.replyMode,
             onReplyModeChange: inbox.setReplyMode,
             onSend: inbox.sendReply,
@@ -110,6 +113,7 @@ const MessagesPage = ({ user, onLogout }) => {
             onStatusChange: inbox.setStatus,
             onDeleteRequest: () => setDeleteConfirmOpen(true),
             onPlaceholderAction: (action) => push(`"${action}" will be available when connected to the backend.`, 'info'),
+            onNotify: handleNotify,
           }}
         />
       </main>
@@ -142,6 +146,7 @@ const MessagesPage = ({ user, onLogout }) => {
       />
 
       <MessagesToast toasts={toasts} onDismiss={dismiss} />
+      <AppFooter />
     </div>
   );
 };

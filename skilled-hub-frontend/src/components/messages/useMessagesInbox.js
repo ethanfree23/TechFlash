@@ -49,6 +49,7 @@ export function useMessagesInbox(currentUser, { onNotify } = {}) {
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [sortBy, setSortBy] = useState('newest');
   const [composerText, setComposerText] = useState('');
+  const [composerAttachments, setComposerAttachments] = useState([]);
   const [replyMode, setReplyMode] = useState('public');
   const [initialized, setInitialized] = useState(false);
 
@@ -78,13 +79,6 @@ export function useMessagesInbox(currentUser, { onNotify } = {}) {
     setViewMode('list');
     fetchInbox();
   }, [fetchInbox, currentUser?.id]);
-
-  useEffect(() => {
-    if (!loading && !initialized && messages.length > 0) {
-      setSelectedId(messages[0].id);
-      setInitialized(true);
-    }
-  }, [loading, initialized, messages]);
 
   const tabCounts = useMemo(() => getTabCounts(messages, tabs), [messages, tabs]);
 
@@ -187,11 +181,39 @@ export function useMessagesInbox(currentUser, { onNotify } = {}) {
     [role, notify],
   );
 
+  useEffect(() => {
+    if (loading || initialized || filteredMessages.length === 0) return;
+    const firstVisible = filteredMessages[0];
+    setSelectedId(firstVisible.id);
+    setInitialized(true);
+    if (firstVisible.sourceConversationId) {
+      refreshThreadFromApi(firstVisible);
+    }
+  }, [loading, initialized, filteredMessages, refreshThreadFromApi]);
+
+  useEffect(() => {
+    if (loading) return;
+    if (!selectedId) return;
+    if (filteredMessages.length === 0) {
+      setSelectedId(null);
+      return;
+    }
+    const isStillVisible = filteredMessages.some((msg) => msg.id === selectedId);
+    if (!isStillVisible) {
+      const firstVisible = filteredMessages[0];
+      setSelectedId(firstVisible.id);
+      if (firstVisible.sourceConversationId) {
+        refreshThreadFromApi(firstVisible);
+      }
+    }
+  }, [loading, selectedId, filteredMessages, refreshThreadFromApi]);
+
   const selectMessage = useCallback(
     (id) => {
       setSelectedId(id);
       setViewMode('detail');
       setComposerText('');
+      setComposerAttachments([]);
       const msg = messages.find((m) => m.id === id);
       if (msg?.isFeedbackThread && msg?.isUnread && msg?.sourceConversationId) {
         conversationsAPI
@@ -231,7 +253,9 @@ export function useMessagesInbox(currentUser, { onNotify } = {}) {
 
   const sendReply = useCallback(
     async (text, options = {}) => {
-      if (!selectedId || !text?.trim()) return false;
+      const trimmed = text?.trim() || '';
+      if (!selectedId) return false;
+      if (!trimmed && composerAttachments.length === 0) return false;
       const msg = messages.find((m) => m.id === selectedId);
       if (!msg) return false;
 
@@ -239,9 +263,13 @@ export function useMessagesInbox(currentUser, { onNotify } = {}) {
 
       if (msg.sourceConversationId && (msg.isFeedbackThread || !isInternal)) {
         try {
-          await sendConversationReply(msg.sourceConversationId, text.trim(), { internal: isInternal });
+          await sendConversationReply(msg.sourceConversationId, trimmed, {
+            internal: isInternal,
+            attachments: composerAttachments,
+          });
           await refreshThreadFromApi(msg);
           setComposerText('');
+          setComposerAttachments([]);
           notify(isInternal ? TOAST.noteAdded : TOAST.replySent, 'success');
           return true;
         } catch {
@@ -252,7 +280,9 @@ export function useMessagesInbox(currentUser, { onNotify } = {}) {
 
       if (!isInternal && msg.sourceConversationId && !msg.isFeedbackThread) {
         try {
-          await sendConversationReply(msg.sourceConversationId, text.trim());
+          await sendConversationReply(msg.sourceConversationId, trimmed, {
+            attachments: composerAttachments,
+          });
         } catch {
           notify(TOAST.replyFailed, 'error');
           return false;
@@ -264,17 +294,29 @@ export function useMessagesInbox(currentUser, { onNotify } = {}) {
         id: `local-${Date.now()}`,
         senderName,
         senderRole: role,
-        body: text.trim(),
+        body: trimmed,
+        attachments: composerAttachments.map((file, index) => ({
+          id: `local-attachment-${Date.now()}-${index}`,
+          filename: file.name,
+          content_type: file.type,
+          byte_size: file.size,
+          url: URL.createObjectURL(file),
+        })),
         isInternalNote: isInternal,
         createdAt: new Date().toISOString(),
       };
+      const previewText = threadItem.body?.trim()
+        ? threadItem.body.slice(0, 120)
+        : threadItem.attachments.length > 0
+          ? `[${threadItem.attachments.length} attachment${threadItem.attachments.length > 1 ? 's' : ''}]`
+          : 'No preview';
       setMessages((prev) =>
         prev.map((m) =>
           m.id === selectedId
             ? {
                 ...m,
                 thread: [...(m.thread || []), threadItem],
-                preview: threadItem.body.slice(0, 120),
+                preview: previewText,
                 updatedAt: threadItem.createdAt,
                 isUnread: false,
               }
@@ -282,10 +324,11 @@ export function useMessagesInbox(currentUser, { onNotify } = {}) {
         ),
       );
       setComposerText('');
+      setComposerAttachments([]);
       notify(isInternal ? TOAST.noteAdded : TOAST.replySent, 'success');
       return true;
     },
-    [selectedId, messages, replyMode, role, currentUser, refreshThreadFromApi, notify],
+    [selectedId, messages, replyMode, role, currentUser, composerAttachments, refreshThreadFromApi, notify],
   );
 
   const patchSelectedInbox = useCallback(
@@ -425,6 +468,8 @@ export function useMessagesInbox(currentUser, { onNotify } = {}) {
     clearFilters,
     composerText,
     setComposerText,
+    composerAttachments,
+    setComposerAttachments,
     replyMode,
     setReplyMode,
     sendReply,

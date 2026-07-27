@@ -5,12 +5,15 @@ import { feedbackAPI } from '../../api/api';
 import { FEEDBACK_TYPE_OPTIONS } from './constants';
 import { INPUT_CLASS, SELECT_CLASS, BTN_PRIMARY, BTN_SECONDARY } from './messagesUi';
 import AlertModal from '../AlertModal';
+import { humanFileSize, imageFilesFromPasteEvent, mergeUniqueFiles } from './attachmentUtils';
 
 export default function FeedbackModal({ isOpen, onClose, user, onLocalSubmit, isAdmin }) {
   const location = useLocation();
   const [messageType, setMessageType] = useState('problem');
   const [subject, setSubject] = useState('');
   const [body, setBody] = useState('');
+  const [attachments, setAttachments] = useState([]);
+  const [showCaptureHelp, setShowCaptureHelp] = useState(false);
   const [sending, setSending] = useState(false);
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'success' });
 
@@ -26,6 +29,7 @@ export default function FeedbackModal({ isOpen, onClose, user, onLocalSubmit, is
           kind: messageType,
           body: text,
           page_path: `${location.pathname}${location.search || ''}`,
+          attachments,
         });
       } else {
         // TODO: API support for general/feedback message types
@@ -42,11 +46,28 @@ export default function FeedbackModal({ isOpen, onClose, user, onLocalSubmit, is
           status: 'open',
           priority: 'normal',
           isUnread: true,
+          thread: [
+            {
+              id: `local-${Date.now()}`,
+              senderName: user?.email?.split('@')[0] || 'You',
+              senderRole: user?.role || 'company',
+              body: body.trim(),
+              attachments: attachments.map((file, index) => ({
+                id: `local-file-${Date.now()}-${index}`,
+                filename: file.name,
+                content_type: file.type,
+                byte_size: file.size,
+                url: URL.createObjectURL(file),
+              })),
+              createdAt: new Date().toISOString(),
+            },
+          ],
         });
       }
 
       setSubject('');
       setBody('');
+      setAttachments([]);
       onClose();
       setAlertModal({
         isOpen: true,
@@ -64,6 +85,24 @@ export default function FeedbackModal({ isOpen, onClose, user, onLocalSubmit, is
     } finally {
       setSending(false);
     }
+  };
+
+  const handleFileChange = (event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    setAttachments((prev) => mergeUniqueFiles(prev, files));
+    event.target.value = '';
+  };
+
+  const removeAttachment = (indexToRemove) => {
+    setAttachments((prev) => prev.filter((_, index) => index !== indexToRemove));
+  };
+
+  const handlePasteCapture = (event) => {
+    const files = imageFilesFromPasteEvent(event);
+    if (!files.length) return;
+    event.preventDefault();
+    setAttachments((prev) => mergeUniqueFiles(prev, files));
   };
 
   return (
@@ -125,14 +164,45 @@ export default function FeedbackModal({ isOpen, onClose, user, onLocalSubmit, is
               <label className="block text-xs font-medium text-slate-600 mb-1">
                 Screenshot / file (optional)
               </label>
+              <button
+                type="button"
+                onClick={() => setShowCaptureHelp((open) => !open)}
+                className="mb-2 text-xs font-medium text-blue-600 hover:text-blue-700"
+              >
+                {showCaptureHelp ? 'Hide screenshot capture helper' : 'Attach screenshot'}
+              </button>
+              {showCaptureHelp && (
+                <div
+                  tabIndex={0}
+                  onPaste={handlePasteCapture}
+                  className="mb-2 rounded-lg border border-dashed border-blue-300 bg-blue-50 px-3 py-2 text-xs text-blue-800 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                >
+                  Take a screenshot with your OS shortcut (Win+Shift+S), click this box, then press Ctrl+V to attach it.
+                </div>
+              )}
               <input
                 type="file"
                 accept="image/*,.pdf"
+                multiple
                 className="w-full text-xs text-slate-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:bg-slate-100 file:text-slate-700"
-                onChange={() => {
-                  // TODO: upload attachment when API supports it
-                }}
+                onChange={handleFileChange}
               />
+              {attachments.length > 0 && (
+                <ul className="mt-2 space-y-1 text-xs text-slate-600">
+                  {attachments.map((file, index) => (
+                    <li key={`${file.name}-${file.size}-${file.lastModified}`} className="flex items-center justify-between gap-2 rounded border border-slate-200 bg-slate-50 px-2 py-1.5">
+                      <span className="truncate">{file.name} ({humanFileSize(file.size)})</span>
+                      <button
+                        type="button"
+                        onClick={() => removeAttachment(index)}
+                        className="text-slate-500 hover:text-slate-800"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
             <div className="flex justify-end gap-2 pt-2">
               <button type="button" onClick={onClose} className={BTN_SECONDARY}>

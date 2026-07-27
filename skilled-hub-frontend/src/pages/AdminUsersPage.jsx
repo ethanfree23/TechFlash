@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
+import AppFooter from '../components/layout/AppFooter';
 import AlertModal from '../components/AlertModal';
 import ConfirmModal from '../components/ConfirmModal';
 import { adminUsersAPI, adminAPI } from '../api/api';
@@ -289,7 +290,7 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
     <div className="min-h-screen bg-[#f8f9fb]">
       <AppHeader user={user} onLogout={onLogout} activePage="users" emailVariant="crm" />
 
-      <main className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-5">
+      <main className="max-w-[1400px] mx-auto px-4 sm:px-6 lg:px-8 py-5 pb-24 sm:pb-14">
         <UsersHeader
           onCreateUser={() => setCreateModalOpen(true)}
           onInviteUser={() => setInviteModalOpen(true)}
@@ -431,6 +432,7 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
         variant={alertModal.variant}
         onClose={() => setAlertModal((m) => ({ ...m, isOpen: false }))}
       />
+      <AppFooter />
     </div>
   );
 }

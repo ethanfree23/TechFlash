@@ -1,10 +1,9 @@
 import React, { useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MarketingHeader } from '../components/marketing/MarketingHeader';
+import MarketingPageLayout from '../components/layout/MarketingPageLayout';
 import { HowItWorksCTA } from '../components/marketing/howItWorks/HowItWorksCTA';
 import { HowItWorksFAQ } from '../components/marketing/howItWorks/HowItWorksFAQ';
 import { HowItWorksHero } from '../components/marketing/howItWorks/HowItWorksHero';
-import { HowItWorksTrustFooter } from '../components/marketing/howItWorks/HowItWorksTrustFooter';
 import { MarketplaceTimeline } from '../components/marketing/howItWorks/MarketplaceTimeline';
 import { ProcessSummaryStrip } from '../components/marketing/howItWorks/ProcessSummaryStrip';
 import { ProductDetailSection } from '../components/marketing/howItWorks/ProductDetailSection';
@@ -25,8 +24,7 @@ const HowItWorksPage = () => {
   }, []);
 
   return (
-    <div className="min-h-screen min-w-0 bg-white text-gray-800">
-      <MarketingHeader />
+    <MarketingPageLayout footerVariant="default">
       <HowItWorksHero onSeeProcess={scrollToTimeline} />
       <ProcessSummaryStrip />
       <MarketplaceTimeline />
@@ -35,8 +33,7 @@ const HowItWorksPage = () => {
       <WhyProcessWorks />
       <HowItWorksFAQ />
       <HowItWorksCTA onPostJob={() => goCompanyPostJob(navigate)} onFindWork={() => goTechnicianFindWork(navigate)} />
-      <HowItWorksTrustFooter />
-    </div>
+    </MarketingPageLayout>
   );
 };
 

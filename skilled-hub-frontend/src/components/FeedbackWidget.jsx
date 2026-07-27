@@ -11,7 +11,7 @@ const FeedbackWidget = ({ user, onLocalSubmit }) => {
 
   return (
     <>
-      <div className="fixed bottom-5 right-5 z-[100]">
+      <div className="fixed bottom-[calc(1.25rem+env(safe-area-inset-bottom))] right-5 z-[100]">
         {!isLoggedIn ? (
           <Link
             to="/login"

@@ -25,7 +25,7 @@ export default function MessagesInboxLayout({
       <button
         type="button"
         onClick={onComposeMobile}
-        className="lg:hidden fixed bottom-20 right-4 z-40 w-14 h-14 rounded-full bg-tf-orange text-white shadow-lg hover:bg-tf-orange-hover active:scale-95 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-tf-orange transition-transform"
+        className="lg:hidden fixed bottom-[calc(5rem+env(safe-area-inset-bottom))] right-4 z-40 w-14 h-14 rounded-full bg-tf-orange text-white shadow-lg hover:bg-tf-orange-hover active:scale-95 flex items-center justify-center focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-tf-orange transition-transform"
         aria-label="Compose new message"
       >
         <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>

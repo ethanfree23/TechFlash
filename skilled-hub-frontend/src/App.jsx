@@ -34,6 +34,7 @@ import DownloadAppPage from './pages/DownloadAppPage';
 import FeedbackWidget from './components/FeedbackWidget';
 import MasqueradeBanner from './components/MasqueradeBanner';
 import DemoModeBanner from './components/DemoModeBanner';
+import AppPageLayout from './components/layout/AppPageLayout';
 import { auth } from './auth';
 import { metaAPI } from './api/api';
 import { setApiDemoMode, setDemoFlagshipJobId, setDemoReviewedJobId, getDemoBasePath, isDemoPath } from './utils/demoMode';
@@ -179,7 +180,9 @@ function App() {
             path="/jobs/create"
             element={
               <ProtectedRoute isAuthenticated={isAuthenticated && (user?.role === 'company' || user?.role === 'admin')}>
-                <CreateJob />
+                <AppPageLayout user={user} onLogout={handleLogout} activePage="jobs" emailVariant="welcome" maxWidthClass="max-w-5xl">
+                  <CreateJob />
+                </AppPageLayout>
               </ProtectedRoute>
             }
           />
@@ -188,7 +191,9 @@ function App() {
             path="/jobs/:id"
             element={
               <ProtectedRoute isAuthenticated={isAuthenticated}>
-                <JobDetail />
+                <AppPageLayout user={user} onLogout={handleLogout} activePage="jobs" emailVariant="welcome" maxWidthClass="max-w-6xl">
+                  <JobDetail />
+                </AppPageLayout>
               </ProtectedRoute>
             }
           />
@@ -197,7 +202,9 @@ function App() {
             path="/jobs/:id/edit"
             element={
               <ProtectedRoute isAuthenticated={isAuthenticated && (user?.role === 'company' || user?.role === 'admin')}>
-                <EditJob />
+                <AppPageLayout user={user} onLogout={handleLogout} activePage="jobs" emailVariant="welcome" maxWidthClass="max-w-5xl">
+                  <EditJob />
+                </AppPageLayout>
               </ProtectedRoute>
             }
           />
@@ -320,38 +327,5 @@ function App() {
     </Router>
   );
 }
-
-// Wrapper component for JobDetail to handle navigation
-const JobDetailWrapper = ({ user, onLogout }) => {
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <h1 className="text-2xl font-bold text-[#1e3a5f]">TechFlash</h1>
-            <div className="flex items-center space-x-4">
-              <div className="text-sm text-gray-600">
-                Welcome, <span className="font-medium">{user?.email}</span>
-                <span className="ml-2 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full">
-                  {user?.role}
-                </span>
-              </div>
-              <button 
-                onClick={onLogout} 
-                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
-              >
-                Logout
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-      
-      <main className="py-8">
-        <JobDetail />
-      </main>
-    </div>
-  );
-};
 
 export default App;
