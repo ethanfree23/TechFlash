@@ -36,8 +36,9 @@ module Api
         return render json: { error: 'Access denied' }, status: :forbidden unless technician.user_id == @current_user.id
 
         attrs = technician_params.to_h
-        attach_profile_avatar!(technician)
+        avatar_changed = attach_profile_avatar!(technician)
         technician.assign_attributes(attrs.except(:avatar))
+        technician.updated_at = Time.current if avatar_changed
         if technician.save
           render json: technician.reload, serializer: TechnicianProfileSerializer, status: :ok
         else
@@ -124,10 +125,11 @@ module Api
       end
 
       def attach_profile_avatar!(record)
-        return unless params[:avatar].present?
+        return false unless params[:avatar].present?
 
         record.avatar.purge if record.avatar.attached?
         record.avatar.attach(params[:avatar])
+        true
       end
 
       def filter_by_query(scope)

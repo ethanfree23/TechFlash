@@ -126,6 +126,7 @@ const referenceStatusLabel = (status) => {
 };
 
 const normalizeVerificationStatus = (status) => String(status || 'not_started').toLowerCase();
+const CHECKR_DEMO_BYPASS_STORAGE_KEY = 'checkrDemoBypassEnabled';
 
 const removeSettingsQueryParams = (paramKeys = []) => {
   if (typeof window === 'undefined') return;
@@ -257,6 +258,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [backgroundCheckOptions, setBackgroundCheckOptions] = useState(null);
   const [loadingBackgroundCheckOptions, setLoadingBackgroundCheckOptions] = useState(false);
   const [backgroundCheckOptionsError, setBackgroundCheckOptionsError] = useState('');
+  const [localCheckrDemoBypassEnabled, setLocalCheckrDemoBypassEnabled] = useState(false);
   const [selectedPackageName, setSelectedPackageName] = useState('');
   const [verificationReferences, setVerificationReferences] = useState([]);
   const [expandedReferenceRows, setExpandedReferenceRows] = useState({});
@@ -285,6 +287,8 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const needsMapSetup = isTechnician && needsTechnicianMapSetup(profile);
   const backgroundCheckReady = backgroundCheckOptions?.ready_for_start === true;
   const backgroundCheckDemoBypass = backgroundCheckOptions?.demo_bypass === true;
+  const localCheckrDemoBypass = localCheckrDemoBypassEnabled && !backgroundCheckReady;
+  const backgroundCheckStartEnabled = backgroundCheckReady || backgroundCheckDemoBypass || localCheckrDemoBypass;
   const backgroundConsentReady = backgroundDisclosureAccepted && backgroundAuthorizationAccepted;
   const displayBackgroundCheckPackageName = useMemo(
     () => verificationCenter?.background_check?.package_name
@@ -334,6 +338,10 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   useEffect(() => {
     setAvatarBroken(false);
   }, [profile?.avatar_url, profile?.updated_at]);
+
+  useEffect(() => () => {
+    if (avatarPreview) URL.revokeObjectURL(avatarPreview);
+  }, [avatarPreview]);
 
   const mainTabs = useMemo(() => {
     const base = [
@@ -706,10 +714,33 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   }, [isTechnician, isCompany]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const stored = window.localStorage.getItem(CHECKR_DEMO_BYPASS_STORAGE_KEY);
+    if (stored === '1') {
+      setLocalCheckrDemoBypassEnabled(true);
+    }
+  }, []);
+
+  useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const membershipParam = params.get('membership');
     const backgroundCheckParam = params.get('background_check');
     const checkrDemoParam = params.get('checkr_demo');
+    const forceCheckrDemoParam = params.get('force_checkr_demo');
+    if (forceCheckrDemoParam === '1') {
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(CHECKR_DEMO_BYPASS_STORAGE_KEY, '1');
+      }
+      setLocalCheckrDemoBypassEnabled(true);
+      removeSettingsQueryParams(['force_checkr_demo']);
+      setAlertModal({
+        isOpen: true,
+        title: 'Demo bypass enabled',
+        message: 'Checkr demo bypass is now enabled in this browser. You can complete the video flow without Checkr credentials.',
+        variant: 'success',
+      });
+      return;
+    }
     if (membershipParam === 'success' || membershipParam === 'cancel') {
       setSettingsTab('profile');
       removeSettingsQueryParams(['membership']);
@@ -1353,12 +1384,22 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     try {
       const fd = new FormData();
       fd.append('avatar', file);
+      let updatedProfile = null;
       if (isCompany) {
-        await profilesAPI.updateCompanyProfile(profile.id, fd);
+        updatedProfile = await profilesAPI.updateCompanyProfile(profile.id, fd);
       } else {
-        await profilesAPI.updateTechnicianProfile(profile.id, fd);
+        updatedProfile = await profilesAPI.updateTechnicianProfile(profile.id, fd);
       }
-      await fetchProfile();
+      if (updatedProfile && typeof updatedProfile === 'object') {
+        setProfile(updatedProfile);
+      }
+      const hasAvatar = Boolean(updatedProfile?.avatar_url);
+      if (!hasAvatar) {
+        const refreshedProfile = await fetchProfile({ quiet: true });
+        if (!refreshedProfile?.avatar_url) {
+          throw new Error('Photo upload completed, but the image is not available yet. Please refresh in a moment.');
+        }
+      }
       setAvatarPreview(null);
       URL.revokeObjectURL(previewUrl);
       setAlertModal({ isOpen: true, title: 'Photo updated!', message: 'Your profile photo has been updated.', variant: 'success' });
@@ -1463,8 +1504,21 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     setBackgroundAuthorizationAcceptedAt(checked ? new Date().toISOString() : '');
   };
 
+  const handleDisableLocalCheckrDemoBypass = () => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(CHECKR_DEMO_BYPASS_STORAGE_KEY);
+    }
+    setLocalCheckrDemoBypassEnabled(false);
+    setAlertModal({
+      isOpen: true,
+      title: 'Demo bypass disabled',
+      message: 'Local Checkr demo bypass was turned off for this browser session.',
+      variant: 'success',
+    });
+  };
+
   const handleStartBackgroundCheck = async () => {
-    if (!backgroundCheckReady) {
+    if (!backgroundCheckStartEnabled) {
       setAlertModal({
         isOpen: true,
         title: 'Background check unavailable',
@@ -1484,6 +1538,23 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
     setStartingBackgroundCheck(true);
     try {
+      if (localCheckrDemoBypass) {
+        const demoInvitationUrl = `${window.location.origin}/settings?tab=profile&checkr_demo=invitation`;
+        setVerificationCenter((prev) => ({
+          ...(prev || {}),
+          background_check: {
+            ...(prev?.background_check || {}),
+            normalized_status: 'invitation_sent',
+            status: 'invited',
+            provider_status: 'demo_invitation_sent',
+            invitation_url: demoInvitationUrl,
+            started_at: new Date().toISOString(),
+          },
+        }));
+        window.location.href = demoInvitationUrl;
+        return;
+      }
+
       const payload = {
         disclosure_accepted: backgroundDisclosureAccepted,
         authorization_accepted: backgroundAuthorizationAccepted,
@@ -1883,10 +1954,21 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                             Background check package is preset by TechFlash and managed by backend configuration.
                           </p>
                         )}
-                        {backgroundCheckDemoBypass && (
-                          <p className="text-xs text-amber-700">
-                            Demo bypass is active (`CHECKR_DEMO_BYPASS=true`). Start flow is simulated for walkthrough recording.
-                          </p>
+                        {(backgroundCheckDemoBypass || localCheckrDemoBypass) && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-xs text-amber-700">
+                              Demo bypass is active. Start flow is simulated for walkthrough recording.
+                            </p>
+                            {localCheckrDemoBypass && (
+                              <button
+                                type="button"
+                                onClick={handleDisableLocalCheckrDemoBypass}
+                                className="inline-flex rounded border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-50"
+                              >
+                                Disable demo bypass
+                              </button>
+                            )}
+                          </div>
                         )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
                           <p><span className="font-semibold text-gray-800">Associated job:</span> {verificationCenter?.background_check?.job_id ? `Job #${verificationCenter.background_check.job_id}` : 'Not linked'}</p>
@@ -1957,7 +2039,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                         <button
                           type="button"
                           onClick={handleStartBackgroundCheck}
-                          disabled={startingBackgroundCheck || loadingBackgroundCheckOptions || !backgroundCheckReady || !backgroundConsentReady}
+                          disabled={startingBackgroundCheck || loadingBackgroundCheckOptions || !backgroundCheckStartEnabled || !backgroundConsentReady}
                           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                         >
                           {startingBackgroundCheck ? 'Starting...' : 'Start background check'}
