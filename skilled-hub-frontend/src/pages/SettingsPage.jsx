@@ -1938,7 +1938,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                         </div>
                         {loadingBackgroundCheckOptions ? (
                           <p className="text-xs text-gray-500">Loading background check options...</p>
-                        ) : backgroundCheckOptionsError ? (
+                        ) : (backgroundCheckOptionsError && !localCheckrDemoBypass && !backgroundCheckDemoBypass) ? (
                           <div className="rounded-lg border border-rose-200 bg-rose-50 p-2">
                             <p className="text-xs text-rose-800">{backgroundCheckOptionsError}</p>
                             <button
