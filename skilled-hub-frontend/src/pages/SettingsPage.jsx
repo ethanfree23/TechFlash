@@ -284,6 +284,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const isAdmin = user?.role === 'admin';
   const needsMapSetup = isTechnician && needsTechnicianMapSetup(profile);
   const backgroundCheckReady = backgroundCheckOptions?.ready_for_start === true;
+  const backgroundCheckDemoBypass = backgroundCheckOptions?.demo_bypass === true;
   const backgroundConsentReady = backgroundDisclosureAccepted && backgroundAuthorizationAccepted;
   const displayBackgroundCheckPackageName = useMemo(
     () => verificationCenter?.background_check?.package_name
@@ -708,6 +709,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     const params = new URLSearchParams(window.location.search);
     const membershipParam = params.get('membership');
     const backgroundCheckParam = params.get('background_check');
+    const checkrDemoParam = params.get('checkr_demo');
     if (membershipParam === 'success' || membershipParam === 'cancel') {
       setSettingsTab('profile');
       removeSettingsQueryParams(['membership']);
@@ -767,6 +769,17 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           variant: 'error',
         });
       }
+      return;
+    }
+    if (checkrDemoParam === 'invitation') {
+      setSettingsTab('profile');
+      removeSettingsQueryParams(['checkr_demo']);
+      setAlertModal({
+        isOpen: true,
+        title: 'Demo invitation shown',
+        message: 'Demo bypass is active. This simulates the hosted invitation redirect while Checkr credentials are pending.',
+        variant: 'success',
+      });
       return;
     }
 
@@ -1868,6 +1881,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                         ) : (
                           <p className="text-xs text-gray-600">
                             Background check package is preset by TechFlash and managed by backend configuration.
+                          </p>
+                        )}
+                        {backgroundCheckDemoBypass && (
+                          <p className="text-xs text-amber-700">
+                            Demo bypass is active (`CHECKR_DEMO_BYPASS=true`). Start flow is simulated for walkthrough recording.
                           </p>
                         )}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">

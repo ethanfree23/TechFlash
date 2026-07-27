@@ -26,6 +26,7 @@ module Api
 
       def start_background_check
         profile = VerificationProfile.for_user!(@current_user)
+        demo_bypass = checkr_demo_bypass_enabled?
         client = CheckrClient.new
         selected_package = client.default_package.to_s.presence
         selected_node_custom_id = client.default_node_custom_id.to_s.presence
@@ -46,8 +47,15 @@ module Api
 
         membership_level = @current_user.technician_profile&.membership_level.to_s
         premium = membership_level == "premium"
-        payment_status = premium ? :waived : :pending
-        paid_by = premium ? "premium" : "technician"
+        payment_status = (premium || demo_bypass) ? :waived : :pending
+        paid_by =
+          if premium
+            "premium"
+          elsif demo_bypass
+            "admin"
+          else
+            "technician"
+          end
 
         background_check = BackgroundCheck.create!(
           user_id: @current_user.id,
@@ -68,6 +76,25 @@ module Api
           authorization_accepted_at: consent_attributes[:authorization_accepted_at],
           consent_ip: consent_attributes[:consent_ip]
         )
+
+        if demo_bypass
+          invitation_url = demo_checkr_invitation_url
+          background_check.update!(
+            status: :invited,
+            normalized_status: "invitation_sent",
+            provider_status: "demo_invitation_sent",
+            invitation_url: invitation_url,
+            started_at: Time.current
+          )
+          profile.update!(background_status: :pending)
+          return render json: {
+            background_check: background_check.reload,
+            payment_required: false,
+            invitation_url: invitation_url,
+            background_check_options: build_background_check_options,
+            demo_bypass: true
+          }, status: :ok
+        end
 
         unless premium
           VerificationEventNotifier.background_payment_required(@current_user, background_check)
@@ -136,6 +163,31 @@ module Api
       private
 
       def build_background_check_options
+        if checkr_demo_bypass_enabled?
+          configured_package_name = CheckrClient.new.default_package.to_s.presence || "essential"
+          return {
+            nodes_exist: false,
+            selected_node_custom_id: nil,
+            nodes: [],
+            packages: [
+              {
+                id: "demo_package",
+                slug: configured_package_name,
+                name: configured_package_name.titleize,
+                screenings: [],
+                tier: "demo"
+              }
+            ],
+            packages_available: true,
+            package_filter_fallback: false,
+            package_selection_reason: "demo_bypass",
+            configured_package_name: configured_package_name,
+            configured_node_custom_id: nil,
+            ready_for_start: true,
+            demo_bypass: true
+          }
+        end
+
         client = CheckrClient.new
         raise CheckrClient::Error, "Checkr is not configured." unless client.configured?
 
@@ -271,6 +323,14 @@ module Api
         Time.zone.parse(raw_value.to_s)
       rescue ArgumentError, TypeError
         nil
+      end
+
+      def checkr_demo_bypass_enabled?
+        ActiveModel::Type::Boolean.new.cast(ENV["CHECKR_DEMO_BYPASS"])
+      end
+
+      def demo_checkr_invitation_url
+        "#{ENV.fetch('FRONTEND_URL', 'http://localhost:5173').to_s.chomp('/')}/settings?tab=profile&checkr_demo=invitation"
       end
 
       def sections_payload(profile:, background_check:, badges:, approved_references_count:)

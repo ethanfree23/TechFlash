@@ -124,6 +124,28 @@ module Api
         assert_includes body["packages"].map { |pkg| pkg["slug"] }, "essential_plus"
       end
 
+      test "background check options support demo bypass without checkr credentials" do
+        user, = create_technician_with_membership("basic", "verification-options-demo@example.com")
+        old_staging = ENV["CHECKR_STAGING_API_KEY"]
+        old_api = ENV["CHECKR_API_KEY"]
+        ENV["CHECKR_STAGING_API_KEY"] = nil
+        ENV["CHECKR_API_KEY"] = nil
+
+        with_checkr_demo_bypass do
+          get "/api/v1/verification/background_check_options",
+              headers: auth_header_for(user),
+              as: :json
+        end
+
+        assert_response :ok
+        body = JSON.parse(response.body)
+        assert_equal true, body["ready_for_start"]
+        assert_equal true, body["demo_bypass"]
+      ensure
+        ENV["CHECKR_STAGING_API_KEY"] = old_staging
+        ENV["CHECKR_API_KEY"] = old_api
+      end
+
       test "premium start returns error when checkr api key is missing" do
         user, = create_technician_with_membership("premium", "verification-no-checkr-key@example.com")
         old_staging = ENV["CHECKR_STAGING_API_KEY"]
@@ -137,6 +159,35 @@ module Api
              as: :json
 
         assert_response :unprocessable_entity
+      ensure
+        ENV["CHECKR_STAGING_API_KEY"] = old_staging
+        ENV["CHECKR_API_KEY"] = old_api
+      end
+
+      test "start background check uses demo bypass when enabled" do
+        user, = create_technician_with_membership("basic", "verification-demo-bypass@example.com")
+        old_staging = ENV["CHECKR_STAGING_API_KEY"]
+        old_api = ENV["CHECKR_API_KEY"]
+        ENV["CHECKR_STAGING_API_KEY"] = nil
+        ENV["CHECKR_API_KEY"] = nil
+
+        with_checkr_demo_bypass do
+          post "/api/v1/verification/start_background_check",
+               params: background_check_consent_params,
+               headers: auth_header_for(user),
+               as: :json
+        end
+
+        assert_response :ok
+        body = JSON.parse(response.body)
+        assert_equal false, body["payment_required"]
+        assert_equal true, body["demo_bypass"]
+        assert_includes body["invitation_url"], "checkr_demo=invitation"
+
+        check = BackgroundCheck.order(:id).last
+        assert_equal "waived", check.payment_status
+        assert_equal "admin", check.paid_by
+        assert_equal "invitation_sent", check.normalized_status
       ensure
         ENV["CHECKR_STAGING_API_KEY"] = old_staging
         ENV["CHECKR_API_KEY"] = old_api
@@ -246,6 +297,14 @@ module Api
         yield
       ensure
         CheckrClient.singleton_class.send(:define_method, :new, original_new)
+      end
+
+      def with_checkr_demo_bypass
+        original = ENV["CHECKR_DEMO_BYPASS"]
+        ENV["CHECKR_DEMO_BYPASS"] = "true"
+        yield
+      ensure
+        ENV["CHECKR_DEMO_BYPASS"] = original
       end
     end
   end
