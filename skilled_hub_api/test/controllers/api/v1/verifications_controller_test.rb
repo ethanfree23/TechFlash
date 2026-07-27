@@ -28,6 +28,7 @@ module Api
         user, profile = create_technician_with_membership("basic", "verification-basic@example.com")
 
         post "/api/v1/verification/start_background_check",
+             params: background_check_consent_params,
              headers: auth_header_for(user),
              as: :json
 
@@ -38,6 +39,8 @@ module Api
         assert_equal user.id, check.user_id
         assert_equal "pending", check.payment_status
         assert_equal "technician", check.paid_by
+        assert check.disclosure_accepted_at.present?
+        assert check.authorization_accepted_at.present?
         assert AppNotification.where(user_id: user.id, category: "verification").exists?
       end
 
@@ -46,6 +49,7 @@ module Api
 
         with_stubbed_background_launch("http://example.com/invite") do
           post "/api/v1/verification/start_background_check",
+               params: background_check_consent_params,
                headers: auth_header_for(user),
                as: :json
         end
@@ -60,7 +64,7 @@ module Api
         user, = create_technician_with_membership("premium", "verification-selected-package@example.com")
         with_stubbed_background_launch("http://example.com/invite-2") do
           post "/api/v1/verification/start_background_check",
-               params: { package_name: "premium_criminal", node_custom_id: "houston_node" },
+               params: background_check_consent_params.merge(package_name: "premium_criminal", node_custom_id: "houston_node"),
                headers: auth_header_for(user),
                as: :json
         end
@@ -83,10 +87,24 @@ module Api
         )
 
         post "/api/v1/verification/start_background_check",
+             params: background_check_consent_params,
              headers: auth_header_for(user),
              as: :json
 
         assert_response :unprocessable_entity
+      end
+
+      test "start background check requires disclosure and authorization consent" do
+        user, = create_technician_with_membership("basic", "verification-consent-required@example.com")
+
+        post "/api/v1/verification/start_background_check",
+             params: { disclosure_accepted: true, authorization_accepted: false },
+             headers: auth_header_for(user),
+             as: :json
+
+        assert_response :unprocessable_entity
+        body = JSON.parse(response.body)
+        assert_includes body["error"], "accept the disclosure and authorization"
       end
 
       test "background check options endpoint returns data" do
@@ -114,6 +132,7 @@ module Api
         ENV["CHECKR_API_KEY"] = nil
 
         post "/api/v1/verification/start_background_check",
+             params: background_check_consent_params,
              headers: auth_header_for(user),
              as: :json
 
@@ -184,6 +203,15 @@ module Api
         yield
       ensure
         singleton.send(:define_method, :launch_checkr_invitation!, original)
+      end
+
+      def background_check_consent_params
+        {
+          disclosure_accepted: true,
+          authorization_accepted: true,
+          disclosure_accepted_at: Time.current.iso8601,
+          authorization_accepted_at: Time.current.iso8601
+        }
       end
 
       def with_stubbed_checkout_session(url)

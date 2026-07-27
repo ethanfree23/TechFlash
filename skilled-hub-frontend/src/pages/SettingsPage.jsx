@@ -127,6 +127,15 @@ const referenceStatusLabel = (status) => {
 
 const normalizeVerificationStatus = (status) => String(status || 'not_started').toLowerCase();
 
+const removeSettingsQueryParams = (paramKeys = []) => {
+  if (typeof window === 'undefined') return;
+  const nextUrl = new URL(window.location.href);
+  paramKeys.forEach((key) => nextUrl.searchParams.delete(key));
+  const nextQuery = nextUrl.searchParams.toString();
+  const suffix = `${nextQuery ? `?${nextQuery}` : ''}${nextUrl.hash || ''}`;
+  window.history.replaceState({}, '', `${nextUrl.pathname}${suffix}`);
+};
+
 const isVerificationCompleteStatus = (status) => {
   const key = normalizeVerificationStatus(status);
   return ['verified', 'completed', 'approved', 'clear'].includes(key);
@@ -241,6 +250,10 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [verificationCenter, setVerificationCenter] = useState(null);
   const [loadingVerificationCenter, setLoadingVerificationCenter] = useState(false);
   const [startingBackgroundCheck, setStartingBackgroundCheck] = useState(false);
+  const [backgroundDisclosureAccepted, setBackgroundDisclosureAccepted] = useState(false);
+  const [backgroundDisclosureAcceptedAt, setBackgroundDisclosureAcceptedAt] = useState('');
+  const [backgroundAuthorizationAccepted, setBackgroundAuthorizationAccepted] = useState(false);
+  const [backgroundAuthorizationAcceptedAt, setBackgroundAuthorizationAcceptedAt] = useState('');
   const [backgroundCheckOptions, setBackgroundCheckOptions] = useState(null);
   const [loadingBackgroundCheckOptions, setLoadingBackgroundCheckOptions] = useState(false);
   const [backgroundCheckOptionsError, setBackgroundCheckOptionsError] = useState('');
@@ -271,6 +284,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const isAdmin = user?.role === 'admin';
   const needsMapSetup = isTechnician && needsTechnicianMapSetup(profile);
   const backgroundCheckReady = backgroundCheckOptions?.ready_for_start === true;
+  const backgroundConsentReady = backgroundDisclosureAccepted && backgroundAuthorizationAccepted;
   const displayBackgroundCheckPackageName = useMemo(
     () => verificationCenter?.background_check?.package_name
       || backgroundCheckOptions?.configured_package_name
@@ -693,10 +707,10 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const membershipParam = params.get('membership');
+    const backgroundCheckParam = params.get('background_check');
     if (membershipParam === 'success' || membershipParam === 'cancel') {
       setSettingsTab('profile');
-      const path = window.location.pathname || '/settings';
-      window.history.replaceState({}, '', path);
+      removeSettingsQueryParams(['membership']);
       if (membershipParam === 'success') {
         fetchProfile({ quiet: true }).then((p) => {
           if (p && user && onUserUpdate) {
@@ -716,12 +730,51 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       }
       return;
     }
+    if (backgroundCheckParam === 'paid' || backgroundCheckParam === 'cancel') {
+      setSettingsTab('profile');
+      removeSettingsQueryParams(['background_check']);
+      if (backgroundCheckParam === 'paid') {
+        verificationAPI.getCenter()
+          .then((latest) => {
+            setVerificationCenter(latest);
+            if (latest?.background_check?.invitation_url) {
+              window.location.href = latest.background_check.invitation_url;
+              return;
+            }
+            setAlertModal({
+              isOpen: true,
+              title: 'Payment received',
+              message: 'Payment was completed. If your Checkr invitation is not ready yet, please wait a few seconds and click Start background check again.',
+              variant: 'success',
+            });
+          })
+          .catch(() => {
+            setAlertModal({
+              isOpen: true,
+              title: 'Payment received',
+              message: 'Payment was completed. We could not refresh status yet, so reload in a few seconds.',
+              variant: 'success',
+            });
+          })
+          .finally(() => {
+            loadBackgroundCheckOptions();
+          });
+      } else {
+        setAlertModal({
+          isOpen: true,
+          title: 'Checkout canceled',
+          message: 'Background check payment was not completed. You can retry when ready.',
+          variant: 'error',
+        });
+      }
+      return;
+    }
 
     const { tab, sub } = parseSettingsUrl();
     const allowed = new Set(mainTabs.map((t) => t.id));
     if (allowed.has(tab)) setSettingsTab(tab);
     if (isAdmin && tab === 'system_controls' && sub) setAdminSystemSubTab(sub);
-  }, [fetchProfile, user, onUserUpdate, isAdmin, mainTabs]);
+  }, [fetchProfile, user, onUserUpdate, isAdmin, mainTabs, loadBackgroundCheckOptions]);
 
   useEffect(() => {
     replaceSettingsUrl(settingsTab, isAdmin && settingsTab === 'system_controls' ? adminSystemSubTab : null);
@@ -1385,6 +1438,18 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
+  const handleDisclosureAcceptedChange = (e) => {
+    const checked = e.target.checked;
+    setBackgroundDisclosureAccepted(checked);
+    setBackgroundDisclosureAcceptedAt(checked ? new Date().toISOString() : '');
+  };
+
+  const handleAuthorizationAcceptedChange = (e) => {
+    const checked = e.target.checked;
+    setBackgroundAuthorizationAccepted(checked);
+    setBackgroundAuthorizationAcceptedAt(checked ? new Date().toISOString() : '');
+  };
+
   const handleStartBackgroundCheck = async () => {
     if (!backgroundCheckReady) {
       setAlertModal({
@@ -1395,9 +1460,24 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       });
       return;
     }
+    if (!backgroundConsentReady) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Authorization required',
+        message: 'Review and accept the disclosure and authorization statements before starting the background check.',
+        variant: 'error',
+      });
+      return;
+    }
     setStartingBackgroundCheck(true);
     try {
-      const res = await verificationAPI.startBackgroundCheckWithSelection({});
+      const payload = {
+        disclosure_accepted: backgroundDisclosureAccepted,
+        authorization_accepted: backgroundAuthorizationAccepted,
+        ...(backgroundDisclosureAcceptedAt ? { disclosure_accepted_at: backgroundDisclosureAcceptedAt } : {}),
+        ...(backgroundAuthorizationAcceptedAt ? { authorization_accepted_at: backgroundAuthorizationAcceptedAt } : {}),
+      };
+      const res = await verificationAPI.startBackgroundCheckWithSelection(payload);
       if (res?.invitation_url) {
         window.location.href = res.invitation_url;
         return;
@@ -1818,11 +1898,48 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                           </a>
                         )}
                       </div>
+                      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-xs font-semibold text-amber-900">Background check disclosure and authorization</p>
+                        <p className="mt-1 text-xs text-amber-800">
+                          TechFlash uses Checkr to process background reports. Before we submit your check request, review these notices and provide authorization.
+                        </p>
+                        <div className="mt-2 space-y-2 text-xs text-amber-900">
+                          <label className="flex items-start gap-2">
+                            <input
+                              type="checkbox"
+                              checked={backgroundDisclosureAccepted}
+                              onChange={handleDisclosureAcceptedChange}
+                              className="mt-0.5 h-3.5 w-3.5 rounded border-amber-300 text-amber-700 focus:ring-amber-500"
+                            />
+                            <span>
+                              I acknowledge I received the disclosure that a consumer report may be obtained for background screening.
+                            </span>
+                          </label>
+                          <label className="flex items-start gap-2">
+                            <input
+                              type="checkbox"
+                              checked={backgroundAuthorizationAccepted}
+                              onChange={handleAuthorizationAcceptedChange}
+                              className="mt-0.5 h-3.5 w-3.5 rounded border-amber-300 text-amber-700 focus:ring-amber-500"
+                            />
+                            <span>
+                              I authorize TechFlash and Checkr to obtain and process my background report for verification and job eligibility.
+                            </span>
+                          </label>
+                        </div>
+                        {(backgroundDisclosureAcceptedAt || backgroundAuthorizationAcceptedAt) && (
+                          <p className="mt-2 text-[11px] text-amber-800">
+                            Consent captured:
+                            {backgroundDisclosureAcceptedAt ? ` disclosure ${new Date(backgroundDisclosureAcceptedAt).toLocaleString()}` : ''}
+                            {backgroundAuthorizationAcceptedAt ? `, authorization ${new Date(backgroundAuthorizationAcceptedAt).toLocaleString()}` : ''}
+                          </p>
+                        )}
+                      </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <button
                           type="button"
                           onClick={handleStartBackgroundCheck}
-                          disabled={startingBackgroundCheck || loadingBackgroundCheckOptions || !backgroundCheckReady}
+                          disabled={startingBackgroundCheck || loadingBackgroundCheckOptions || !backgroundCheckReady || !backgroundConsentReady}
                           className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
                         >
                           {startingBackgroundCheck ? 'Starting...' : 'Start background check'}

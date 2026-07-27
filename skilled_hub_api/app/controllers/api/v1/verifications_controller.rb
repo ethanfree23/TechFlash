@@ -32,6 +32,10 @@ module Api
         if selected_package.blank?
           return render json: { error: "Background check package is not configured." }, status: :unprocessable_entity
         end
+        consent_attributes = build_background_check_consent_attributes
+        unless consent_attributes
+          return render json: { error: "You must review and accept the disclosure and authorization before starting a background check." }, status: :unprocessable_entity
+        end
         context = resolve_background_check_context
 
         existing = BackgroundCheck.where(user_id: @current_user.id)
@@ -59,7 +63,10 @@ module Api
           status: :not_started,
           normalized_status: "not_started",
           payment_status: payment_status,
-          paid_by: paid_by
+          paid_by: paid_by,
+          disclosure_accepted_at: consent_attributes[:disclosure_accepted_at],
+          authorization_accepted_at: consent_attributes[:authorization_accepted_at],
+          consent_ip: consent_attributes[:consent_ip]
         )
 
         unless premium
@@ -243,6 +250,27 @@ module Api
         }
 
         { job: job, job_application: job_application, work_location: work_location }
+      end
+
+      def build_background_check_consent_attributes
+        disclosure_accepted = ActiveModel::Type::Boolean.new.cast(params[:disclosure_accepted])
+        authorization_accepted = ActiveModel::Type::Boolean.new.cast(params[:authorization_accepted])
+        return nil unless disclosure_accepted && authorization_accepted
+
+        now = Time.current
+        {
+          disclosure_accepted_at: parse_consent_timestamp(params[:disclosure_accepted_at]) || now,
+          authorization_accepted_at: parse_consent_timestamp(params[:authorization_accepted_at]) || now,
+          consent_ip: request.remote_ip.to_s.presence
+        }
+      end
+
+      def parse_consent_timestamp(raw_value)
+        return nil if raw_value.blank?
+
+        Time.zone.parse(raw_value.to_s)
+      rescue ArgumentError, TypeError
+        nil
       end
 
       def sections_payload(profile:, background_check:, badges:, approved_references_count:)
