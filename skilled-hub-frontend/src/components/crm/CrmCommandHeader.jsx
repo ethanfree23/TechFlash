@@ -9,10 +9,10 @@ import {
 function StatChip({ label, value, muted }) {
   return (
     <div
-      className={`rounded-lg border px-2.5 py-1.5 min-w-[4.5rem] ${muted ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white shadow-sm'}`}
+      className={`rounded-md border px-2 py-1 min-w-[3.75rem] ${muted ? 'border-slate-200 bg-slate-50' : 'border-slate-200 bg-white shadow-sm'}`}
     >
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 leading-tight">{label}</div>
-      <div className="text-sm font-bold text-slate-900 tabular-nums">{value}</div>
+      <div className="text-[9px] font-semibold uppercase tracking-wide text-slate-500 leading-tight">{label}</div>
+      <div className="text-sm font-bold leading-tight text-slate-900 tabular-nums">{value}</div>
     </div>
   );
 }
@@ -51,11 +51,8 @@ export default function CrmCommandHeader({
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <h1 className="text-xl font-bold tracking-tight text-slate-900">Company CRM</h1>
-            <p className="mt-1 text-xs text-slate-600 max-w-xl">
-              Manage prospects, company accounts, outreach, jobs, spend, and activation.
-            </p>
             {lastUpdatedLabel ? (
-              <p className="mt-2 text-xs text-slate-400">Last data refresh: {lastUpdatedLabel}</p>
+              <p className="mt-1.5 text-xs text-slate-400">Last data refresh: {lastUpdatedLabel}</p>
             ) : null}
           </div>
           <div className="flex flex-wrap gap-2 shrink-0 items-center">
@@ -132,7 +129,7 @@ export default function CrmCommandHeader({
             ))}
           </select>
         </div>
-        <div className="flex flex-wrap gap-1.5">
+        <div className="flex flex-wrap gap-1">
           <StatChip label="Total" value={s.totalProspects ?? '—'} />
           <StatChip label="New leads" value={s.newLeads ?? '—'} />
           <StatChip label="Contacted" value={s.contacted ?? '—'} />

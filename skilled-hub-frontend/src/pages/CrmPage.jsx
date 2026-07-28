@@ -551,6 +551,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [timelineSort, setTimelineSort] = useState('newest');
   const [linkAccountModalOpen, setLinkAccountModalOpen] = useState(false);
   const [pipelineSidebarCollapsed, setPipelineSidebarCollapsed] = useState(false);
+  const [showProspectFilters, setShowProspectFilters] = useState(true);
   const [reminderModalOpen, setReminderModalOpen] = useState(false);
   const [reminderDraft, setReminderDraft] = useState({ remind_at: '', title: '', body: '' });
   const [reminderSaving, setReminderSaving] = useState(false);
@@ -2923,7 +2924,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
 
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           <div
-            className={`bg-white rounded-b-2xl rounded-t-none shadow-sm border border-slate-200/80 border-t-0 overflow-hidden ${sidebarSpanClass} ${crmPanelHeightClass} flex flex-col min-h-0`}
+            className={`-mt-px bg-white rounded-b-2xl rounded-t-none shadow-sm border border-slate-200/80 border-t-0 overflow-hidden ${sidebarSpanClass} ${crmPanelHeightClass} flex flex-col min-h-0`}
           >
             {pipelineSidebarCollapsed ? (
               <div className="hidden lg:flex flex-col items-center py-6 gap-3 border-b border-slate-100">
@@ -2964,6 +2965,16 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   <p className="text-[11px] text-slate-500 mt-0.5">{filteredLeads.length} in view - {leads.length} total</p>
                 </div>
                 <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => setShowProspectFilters((v) => !v)}
+                    className="inline-flex items-center gap-1.5 px-2 py-1 text-xs border border-slate-200 bg-white rounded-lg hover:bg-slate-50 text-slate-700"
+                    aria-label={showProspectFilters ? 'Hide prospect filters' : 'Show prospect filters'}
+                    title={showProspectFilters ? 'Hide filters' : 'Show filters'}
+                  >
+                    <FaChevronDown className={`w-3.5 h-3.5 transition-transform ${showProspectFilters ? '' : '-rotate-90'}`} aria-hidden />
+                    Filters
+                  </button>
                   <button
                     type="button"
                     onClick={() => setPipelineSidebarCollapsed((v) => !v)}
@@ -3017,96 +3028,100 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                 </div>
               </div>
               </div>
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {CRM_QUICK_PIPELINE_FILTERS.map((chip) => (
-                  <button
-                    key={chip.id}
-                    type="button"
-                    onClick={() => {
-                      setCrmQuickPipeline(chip.id);
-                      if (CRM_STATUSES.includes(chip.id)) setPipelineStatusFilter('');
-                    }}
-                    className={`rounded-full border px-2.5 py-0.5 text-[10px] font-semibold transition-colors ${
-                      crmQuickPipeline === chip.id
-                        ? 'border-blue-600 bg-blue-600 text-white'
-                        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                    }`}
-                  >
-                    {chip.label}
-                  </button>
-                ))}
-              </div>
-              <div className="mt-2 grid grid-cols-2 gap-2">
-                <label className="text-[10px] font-semibold text-slate-500 uppercase col-span-2">Sort</label>
-                <select
-                  value={crmSidebarSort}
-                  onChange={(e) => setCrmSidebarSort(e.target.value)}
-                  className="col-span-2 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white text-slate-800"
-                >
-                  {CRM_SORT_OPTIONS.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.label}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={crmLinkedFilter}
-                  onChange={(e) => setCrmLinkedFilter(e.target.value)}
-                  className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
-                >
-                  <option value="all">Linked: any</option>
-                  <option value="linked">Linked only</option>
-                  <option value="unlinked">Unlinked only</option>
-                </select>
-                <select
-                  value={crmHasNotesFilter}
-                  onChange={(e) => setCrmHasNotesFilter(e.target.value)}
-                  className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
-                >
-                  <option value="all">Notes: any</option>
-                  <option value="yes">Has notes</option>
-                  <option value="no">No notes</option>
-                </select>
-                <select
-                  value={crmHasContactFilter}
-                  onChange={(e) => setCrmHasContactFilter(e.target.value)}
-                  className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
-                >
-                  <option value="all">Contact: any</option>
-                  <option value="yes">Has contact</option>
-                  <option value="no">Missing contact</option>
-                </select>
-                <select
-                  value={crmHasPhoneFilter}
-                  onChange={(e) => setCrmHasPhoneFilter(e.target.value)}
-                  className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
-                >
-                  <option value="all">Phone: any</option>
-                  <option value="yes">Has phone</option>
-                  <option value="no">Missing phone</option>
-                </select>
-              </div>
-              <div className="mt-2 grid grid-cols-1 gap-2">
-                <input
-                  type="search"
-                  value={pipelineNameFilter}
-                  onChange={(e) => setPipelineNameFilter(e.target.value)}
-                  placeholder="Search name, email, phone, city, trade…"
-                  className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white"
-                />
-                <select
-                  value={pipelineStatusFilter}
-                  onChange={(e) => setPipelineStatusFilter(e.target.value)}
-                  className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white capitalize"
-                >
-                  <option value="">All statuses</option>
-                  {CRM_STATUSES.map((s) => (
-                    <option key={s} value={s} className="capitalize">
-                      {s}
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {showProspectFilters ? (
+                <>
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    {CRM_QUICK_PIPELINE_FILTERS.map((chip) => (
+                      <button
+                        key={chip.id}
+                        type="button"
+                        onClick={() => {
+                          setCrmQuickPipeline(chip.id);
+                          if (CRM_STATUSES.includes(chip.id)) setPipelineStatusFilter('');
+                        }}
+                        className={`rounded-full border px-2.5 py-0.5 text-[10px] font-semibold transition-colors ${
+                          crmQuickPipeline === chip.id
+                            ? 'border-blue-600 bg-blue-600 text-white'
+                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                        }`}
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <label className="text-[10px] font-semibold text-slate-500 uppercase col-span-2">Sort</label>
+                    <select
+                      value={crmSidebarSort}
+                      onChange={(e) => setCrmSidebarSort(e.target.value)}
+                      className="col-span-2 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white text-slate-800"
+                    >
+                      {CRM_SORT_OPTIONS.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </select>
+                    <select
+                      value={crmLinkedFilter}
+                      onChange={(e) => setCrmLinkedFilter(e.target.value)}
+                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
+                    >
+                      <option value="all">Linked: any</option>
+                      <option value="linked">Linked only</option>
+                      <option value="unlinked">Unlinked only</option>
+                    </select>
+                    <select
+                      value={crmHasNotesFilter}
+                      onChange={(e) => setCrmHasNotesFilter(e.target.value)}
+                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
+                    >
+                      <option value="all">Notes: any</option>
+                      <option value="yes">Has notes</option>
+                      <option value="no">No notes</option>
+                    </select>
+                    <select
+                      value={crmHasContactFilter}
+                      onChange={(e) => setCrmHasContactFilter(e.target.value)}
+                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
+                    >
+                      <option value="all">Contact: any</option>
+                      <option value="yes">Has contact</option>
+                      <option value="no">Missing contact</option>
+                    </select>
+                    <select
+                      value={crmHasPhoneFilter}
+                      onChange={(e) => setCrmHasPhoneFilter(e.target.value)}
+                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
+                    >
+                      <option value="all">Phone: any</option>
+                      <option value="yes">Has phone</option>
+                      <option value="no">Missing phone</option>
+                    </select>
+                  </div>
+                  <div className="mt-2 grid grid-cols-1 gap-2">
+                    <input
+                      type="search"
+                      value={pipelineNameFilter}
+                      onChange={(e) => setPipelineNameFilter(e.target.value)}
+                      placeholder="Search name, email, phone, city, trade…"
+                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white"
+                    />
+                    <select
+                      value={pipelineStatusFilter}
+                      onChange={(e) => setPipelineStatusFilter(e.target.value)}
+                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white capitalize"
+                    >
+                      <option value="">All statuses</option>
+                      {CRM_STATUSES.map((s) => (
+                        <option key={s} value={s} className="capitalize">
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </>
+              ) : null}
             </div>
             <div className="flex-1 min-h-0 overflow-y-auto">
               {loading ? (

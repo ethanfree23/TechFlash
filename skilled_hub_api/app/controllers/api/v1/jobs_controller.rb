@@ -196,14 +196,28 @@ module Api
         unless can_manage_job?(job)
           return render json: { error: 'Access denied' }, status: :forbidden
         end
+        previous_weekend_policy = job.weekend_work_policy
+        previous_sat_multiplier = job.saturday_multiplier
+        previous_sun_multiplier = job.sunday_multiplier
         job.assign_attributes(job_params)
         if blocking_open_while_claimed?(job)
           return render json: {
             error: 'Cannot set job to open while a technician claim is accepted. Use Deny Technician first, or ask an admin.'
           }, status: :unprocessable_entity
         end
+        if optional_to_required_change_after_claim?(job, previous_weekend_policy)
+          return render json: {
+            error: 'You cannot change optional weekend work to required after a technician has claimed the job without technician acceptance.'
+          }, status: :unprocessable_entity
+        end
+        if lowering_multiplier_with_locked_entries?(job, previous_sat_multiplier, previous_sun_multiplier)
+          return render json: {
+            error: 'Weekend multipliers cannot be reduced after approved or paid weekend hours exist.'
+          }, status: :unprocessable_entity
+        end
         set_go_live_at_for_post!(job)
         if job.save
+          Jobs::TermChangeAuditLogger.log!(job: job, actor_user: @current_user, reason: params[:change_reason])
           JobAlertDispatcher.dispatch_for_job(job) if job.open?
           render json: job, serializer: JobSerializer, status: :ok
         else
@@ -436,7 +450,16 @@ module Api
                       :skill_class, :minimum_years_experience, :notes, :go_live_at, :start_mode,
                       :require_background_check, :require_identity_verification, :minimum_verified_references, :require_insurance_verification,
                       :rolling_start_rule_type, :rolling_start_exact_start_at, :rolling_start_days_after_acceptance,
-                      :rolling_start_weekday, :rolling_start_weekday_time)
+                      :rolling_start_weekday, :rolling_start_weekday_time,
+                      :weekend_work_policy, :saturday_work_policy, :sunday_work_policy,
+                      :saturday_multiplier, :sunday_multiplier,
+                      :weekend_requires_company_approval, :weekend_requires_technician_acceptance,
+                      :premium_combination_rule,
+                      :overtime_enabled, :daily_overtime_threshold_hours, :weekly_overtime_threshold_hours, :overtime_multiplier,
+                      :hard_deadline_at, :job_timezone,
+                      standard_work_days: [],
+                      standard_day_shifts: {},
+                      weekend_day_shifts: {})
       end
 
       def jobs_overlap?(job_a, job_b)
@@ -537,6 +560,21 @@ module Api
         return false unless job.will_save_change_to_status?
 
         job.job_applications.where(status: :accepted).exists?
+      end
+
+      def optional_to_required_change_after_claim?(job, previous_weekend_policy)
+        return false if @current_user&.admin?
+        return false unless previous_weekend_policy.to_s == "optional" && job.weekend_work_policy.to_s == "required"
+
+        job.job_applications.where(status: :accepted).exists?
+      end
+
+      def lowering_multiplier_with_locked_entries?(job, previous_sat_multiplier, previous_sun_multiplier)
+        return false unless job.time_entries.where(status: [:approved, :paid]).exists?
+
+        sat_changed = previous_sat_multiplier.present? && job.saturday_multiplier.present? && job.saturday_multiplier.to_d < previous_sat_multiplier.to_d
+        sun_changed = previous_sun_multiplier.present? && job.sunday_multiplier.present? && job.sunday_multiplier.to_d < previous_sun_multiplier.to_d
+        sat_changed || sun_changed
       end
 
       def debug_log(hypothesis_id:, location:, message:, data:)

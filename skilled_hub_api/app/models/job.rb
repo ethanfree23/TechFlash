@@ -11,12 +11,34 @@ class Job < ApplicationRecord
     days_after_acceptance: 2,
     following_weekday: 3
   }, _scopes: false
+  enum weekend_work_policy: {
+    prohibited: 0,
+    optional: 1,
+    required: 2
+  }, _scopes: false
+  enum saturday_work_policy: {
+    unavailable: 0,
+    normal_rate: 1,
+    premium_rate: 2
+  }, _scopes: false, prefix: :saturday
+  enum sunday_work_policy: {
+    unavailable: 0,
+    normal_rate: 1,
+    premium_rate: 2
+  }, _scopes: false, prefix: :sunday
+  enum premium_combination_rule: {
+    highest_applicable: 0,
+    stacked: 1
+  }, _scopes: false
 
   belongs_to :company_profile
 
   has_many :job_applications, dependent: :destroy
   has_many :payments, dependent: :destroy
   has_many :job_counter_offers, dependent: :destroy
+  has_many :weekend_work_requests, dependent: :destroy
+  has_many :time_entries, dependent: :destroy
+  has_many :job_term_change_audits, dependent: :destroy
 
   # Total job amount (before platform fees): hourly_rate * hours_per_day * days
   # Falls back to price_cents for legacy jobs
@@ -41,6 +63,7 @@ class Job < ApplicationRecord
   end
 
   before_validation :normalize_job_display_fields
+  before_validation :normalize_schedule_fields
 
   before_save :sync_price_cents
   before_save :sync_location_from_address
@@ -48,10 +71,18 @@ class Job < ApplicationRecord
 
   validates :minimum_years_experience, numericality: { only_integer: true, greater_than_or_equal_to: 0, allow_nil: true }
   validates :minimum_verified_references, numericality: { only_integer: true, greater_than_or_equal_to: 0 }
+  validates :overtime_multiplier, numericality: { greater_than_or_equal_to: 1.0, less_than_or_equal_to: 3.0 }, allow_nil: true
+  validates :saturday_multiplier, numericality: { greater_than_or_equal_to: 1.0, less_than_or_equal_to: 3.0 }, allow_nil: true
+  validates :sunday_multiplier, numericality: { greater_than_or_equal_to: 1.0, less_than_or_equal_to: 3.0 }, allow_nil: true
   validates_safe_text :title, :description, :notes, :skill_class, max_length: 4_000
   has_many :conversations, dependent: :destroy
   has_many :ratings, dependent: :destroy
   has_many :job_issue_reports, dependent: :destroy
+  validate :validate_schedule_rules
+  validate :validate_weekend_policy_rules
+  validate :validate_deadline_warning_constraints
+  validate :validate_overtime_fields
+  validate :validate_shift_time_windows
 
   # Auto-complete jobs past their scheduled end time
   def self.auto_complete_expired!
@@ -82,6 +113,18 @@ class Job < ApplicationRecord
     end
   end
 
+  def normalize_schedule_fields
+    self.standard_work_days = normalize_weekday_list(standard_work_days.presence || [1, 2, 3, 4, 5])
+    self.standard_day_shifts = normalize_shift_map(standard_day_shifts)
+    self.weekend_day_shifts = normalize_shift_map(weekend_day_shifts)
+    self.job_timezone = job_timezone.to_s.strip.presence || "UTC"
+    self.daily_overtime_threshold_hours = daily_overtime_threshold_hours.presence&.to_d
+    self.weekly_overtime_threshold_hours = weekly_overtime_threshold_hours.presence&.to_d
+    self.overtime_multiplier = overtime_multiplier.presence&.to_d
+    self.saturday_multiplier = saturday_multiplier.presence&.to_d
+    self.sunday_multiplier = sunday_multiplier.presence&.to_d
+  end
+
   def sync_price_cents
     return unless hourly_rate_cents.present? && hours_per_day.present? && days.present?
     self.price_cents = (hourly_rate_cents * hours_per_day * days).to_i
@@ -107,5 +150,91 @@ class Job < ApplicationRecord
     self.longitude = coords[1] if coords
   rescue StandardError => e
     Rails.logger.warn("Job geocoding failed: #{e.message}")
+  end
+
+  def normalize_weekday_list(raw_days)
+    list = Array(raw_days).map { |d| d.to_i }.select { |d| d.between?(1, 7) }.uniq.sort
+    list.presence || [1, 2, 3, 4, 5]
+  end
+
+  def normalize_shift_map(raw_map)
+    (raw_map || {}).to_h.each_with_object({}) do |(day_key, shift), acc|
+      day = day_key.to_i
+      next unless day.between?(1, 7)
+      next unless shift.is_a?(Hash)
+
+      start_at = shift["start_time"].to_s
+      end_at = shift["end_time"].to_s
+      next unless start_at.match?(/\A\d{2}:\d{2}\z/) && end_at.match?(/\A\d{2}:\d{2}\z/)
+
+      acc[day.to_s] = { "start_time" => start_at, "end_time" => end_at }
+    end
+  end
+
+  def validate_schedule_rules
+    return if standard_work_days.blank?
+
+    invalid = standard_work_days.reject { |d| d.to_i.between?(1, 7) }
+    errors.add(:standard_work_days, "must use weekdays Monday through Sunday.") if invalid.any?
+  end
+
+  def validate_weekend_policy_rules
+    if prohibited?
+      if standard_work_days.include?(6) || standard_work_days.include?(7)
+        errors.add(:standard_work_days, "cannot include Saturday or Sunday when weekend work is not allowed.")
+      end
+      if !saturday_unavailable? || !sunday_unavailable?
+        errors.add(:base, "Saturday and Sunday must be unavailable when weekend work is prohibited.")
+      end
+    end
+
+    if required? && saturday_unavailable? && sunday_unavailable?
+      errors.add(:base, "Choose Saturday, Sunday, or both when weekend work is required.")
+    end
+
+    if optional? && saturday_unavailable? && sunday_unavailable?
+      errors.add(:base, "Choose at least one weekend day that may be offered.")
+    end
+
+    if saturday_premium_rate? && saturday_multiplier.blank?
+      errors.add(:saturday_multiplier, "is required when Saturday premium pay is selected.")
+    end
+    if sunday_premium_rate? && sunday_multiplier.blank?
+      errors.add(:sunday_multiplier, "is required when Sunday premium pay is selected.")
+    end
+  end
+
+  def validate_deadline_warning_constraints
+    return if hard_deadline_at.blank? || standard_work_days.blank?
+
+    return if start_mode == "rolling_start"
+    deadline_day = hard_deadline_at.in_time_zone(job_timezone).cwday
+    return if standard_work_days.include?(deadline_day)
+
+    errors.add(:hard_deadline_at, "falls on a non-working day for this schedule.")
+  end
+
+  def validate_overtime_fields
+    if overtime_enabled
+      if daily_overtime_threshold_hours.blank? && weekly_overtime_threshold_hours.blank?
+        errors.add(:base, "Set a daily or weekly overtime threshold when overtime is enabled.")
+      end
+      if overtime_multiplier.blank?
+        errors.add(:overtime_multiplier, "is required when overtime is enabled.")
+      end
+    end
+  end
+
+  def validate_shift_time_windows
+    merged = standard_day_shifts.merge(weekend_day_shifts)
+    merged.each_value do |shift|
+      start_at = shift["start_time"]
+      end_at = shift["end_time"]
+      next if start_at.blank? || end_at.blank?
+      next if end_at > start_at
+
+      errors.add(:base, "Shift end time must be after shift start time.")
+      break
+    end
   end
 end

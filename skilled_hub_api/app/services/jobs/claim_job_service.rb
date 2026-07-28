@@ -1,7 +1,5 @@
 module Jobs
   class ClaimJobService
-    LUNCH_HOURS = 1
-
     def self.call(job:, technician_user:, offer: nil, preferred_start_at: nil)
       new(job: job, technician_user: technician_user, offer: offer, preferred_start_at: preferred_start_at).call
     end
@@ -107,18 +105,13 @@ module Jobs
     end
 
     def derived_end_at(start_at)
-      days = [@job.days.to_i, 1].max
-      hours = [@job.hours_per_day.to_i, 1].max
-      end_date = add_business_days(start_at.to_date, days - 1)
-      end_day_start = Time.zone.local(
-        end_date.year,
-        end_date.month,
-        end_date.day,
-        start_at.hour,
-        start_at.min,
-        0
+      Schedule::ExpectedCompletionCalculator.call(
+        start_at: start_at,
+        work_days_count: @job.days,
+        hours_per_day: @job.hours_per_day,
+        scheduled_weekdays: @job.standard_work_days,
+        timezone: @job.job_timezone
       )
-      end_day_start + (hours + LUNCH_HOURS).hours
     end
 
     def schedule_invalid?
@@ -157,16 +150,6 @@ module Jobs
         return now if @offer.present?
         raise ArgumentError, "Pick a preferred start date/time before claiming this rolling-start job."
       end
-    end
-
-    def add_business_days(date, business_days)
-      result = date
-      remaining = [business_days.to_i, 0].max
-      while remaining.positive?
-        result += 1.day
-        remaining -= 1 unless result.saturday? || result.sunday?
-      end
-      result
     end
 
     def overlapping_claim?(technician_profile)
