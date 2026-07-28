@@ -31,6 +31,7 @@ export default function CrmCommandHeader({
   onCreatePlatform,
   onMerge,
   onExport,
+  linkedBottom = false,
 }) {
   const s = stats || {};
   const runTopAction = (actionId) => {
@@ -41,7 +42,11 @@ export default function CrmCommandHeader({
   };
 
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden h-full">
+    <div
+      className={`border border-slate-200/80 bg-white overflow-hidden h-full ${
+        linkedBottom ? 'rounded-t-2xl rounded-b-none border-b-0 shadow-none' : 'rounded-2xl shadow-sm'
+      }`}
+    >
       <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-3 sm:px-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">

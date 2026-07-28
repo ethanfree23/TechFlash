@@ -2820,6 +2820,19 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const detailSpanClass = pipelineSidebarCollapsed ? 'lg:col-span-8' : 'lg:col-span-5';
   const topDetailSpanClass = pipelineSidebarCollapsed ? 'lg:col-span-11' : 'lg:col-span-8';
   const crmPanelHeightClass = 'min-h-[540px] lg:h-[calc(100vh-15rem)] lg:max-h-[calc(100vh-15rem)]';
+  const missingPhoneCount = filteredLeads.filter((l) => {
+    const phoneValues = [l.phone, l.company_phone, ...(l.contacts || []).map((c2) => c2.phone)]
+      .map((x) => String(x || '').trim())
+      .filter(Boolean);
+    return phoneValues.length === 0;
+  }).length;
+  const missingEmailCount = filteredLeads.filter((l) => {
+    const emailValues = [l.email, l.company_email, ...(l.contacts || []).map((c2) => c2.email)]
+      .map((x) => String(x || '').trim())
+      .filter(Boolean);
+    return emailValues.length === 0;
+  }).length;
+  const unlinkedCount = filteredLeads.filter((l) => !l.linked_user_id && !l.linked_company_profile_id).length;
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -2831,7 +2844,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             <option key={t} value={t} />
           ))}
         </datalist>
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-4 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           <div className={sidebarSpanClass}>
             <CrmCommandHeader
               stats={statsForHeader}
@@ -2861,6 +2874,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
               }}
               onMerge={openMergeModal}
               onExport={exportVisibleCsv}
+              linkedBottom
             />
           </div>
           <div className={`${topDetailSpanClass} min-h-[220px]`}>
@@ -2907,35 +2921,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           </div>
         </div>
 
-        {(() => {
-          const missingPhone = filteredLeads.filter((l) => {
-            const p = [l.phone, l.company_phone, ...(l.contacts || []).map((c) => c.phone)].map((x) => String(x || '').trim()).filter(Boolean);
-            return p.length === 0;
-          }).length;
-          const missingEmail = filteredLeads.filter((l) => {
-            const e = [l.email, l.company_email, ...(l.contacts || []).map((c) => c.email)].map((x) => String(x || '').trim()).filter(Boolean);
-            return e.length === 0;
-          }).length;
-          const unlinked = filteredLeads.filter((l) => !l.linked_user_id && !l.linked_company_profile_id).length;
-          return (
-            <div className="mb-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-xs text-slate-600 flex flex-wrap gap-x-6 gap-y-2">
-              <span>
-                <strong className="text-slate-800">In view — missing phone:</strong> {missingPhone}
-              </span>
-              <span>
-                <strong className="text-slate-800">Missing email:</strong> {missingEmail}
-              </span>
-              <span>
-                <strong className="text-slate-800">Unlinked:</strong> {unlinked}
-              </span>
-              <span className="text-slate-400">Filters apply to this prospect list and export.</span>
-            </div>
-          );
-        })()}
-
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           <div
-            className={`bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden ${sidebarSpanClass} ${crmPanelHeightClass} flex flex-col min-h-0`}
+            className={`bg-white rounded-b-2xl rounded-t-none shadow-sm border border-slate-200/80 border-t-0 overflow-hidden ${sidebarSpanClass} ${crmPanelHeightClass} flex flex-col min-h-0`}
           >
             {pipelineSidebarCollapsed ? (
               <div className="hidden lg:flex flex-col items-center py-6 gap-3 border-b border-slate-100">
@@ -2957,6 +2945,18 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
               </div>
             ) : null}
             <div className={`${pipelineSidebarCollapsed ? 'max-lg:flex lg:hidden' : 'flex'} min-h-0 flex-1 flex-col`}>
+            <div className="px-4 py-3 border-b border-slate-200 bg-white text-xs text-slate-600 flex flex-wrap gap-x-6 gap-y-2 shrink-0">
+              <span>
+                <strong className="text-slate-800">In view — missing phone:</strong> {missingPhoneCount}
+              </span>
+              <span>
+                <strong className="text-slate-800">Missing email:</strong> {missingEmailCount}
+              </span>
+              <span>
+                <strong className="text-slate-800">Unlinked:</strong> {unlinkedCount}
+              </span>
+              <span className="text-slate-400">Filters apply to this prospect list and export.</span>
+            </div>
             <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white shrink-0">
               <div className="flex items-start justify-between gap-2">
                 <div>
