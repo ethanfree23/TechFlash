@@ -1,14 +1,13 @@
 module Jobs
   class ClaimJobService
-    def self.call(job:, technician_user:, offer: nil, preferred_start_at: nil)
-      new(job: job, technician_user: technician_user, offer: offer, preferred_start_at: preferred_start_at).call
+    def self.call(job:, technician_user:, offer: nil)
+      new(job: job, technician_user: technician_user, offer: offer).call
     end
 
-    def initialize(job:, technician_user:, offer: nil, preferred_start_at: nil)
+    def initialize(job:, technician_user:, offer: nil)
       @job = job
       @technician_user = technician_user
       @offer = offer
-      @preferred_start_at = preferred_start_at
     end
 
     def call
@@ -145,10 +144,7 @@ module Jobs
         target_day = now.to_date + delta_days.days
         return Time.zone.local(target_day.year, target_day.month, target_day.day, hh, mm, 0)
       else
-        parsed = Time.zone.parse(@preferred_start_at.to_s)
-        return parsed if parsed.present?
-        return now if @offer.present?
-        raise ArgumentError, "Pick a preferred start date/time before claiming this rolling-start job."
+        raise ArgumentError, "This rolling-start job is missing a company-defined start rule. Ask the company to update the job schedule."
       end
     end
 

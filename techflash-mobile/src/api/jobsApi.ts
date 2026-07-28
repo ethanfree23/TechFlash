@@ -88,12 +88,10 @@ export async function updateJob(id: number, payload: Partial<JobPayload>) {
   });
 }
 
-export async function claimJob(id: number, preferredStartAt?: string) {
+export async function claimJob(id: number) {
   return apiRequest<Record<string, unknown>>(`/jobs/${id}/claim`, {
     method: 'PATCH',
-    body: JSON.stringify({
-      ...(preferredStartAt ? { preferred_start_at: preferredStartAt } : {}),
-    }),
+    body: JSON.stringify({}),
   });
 }
 

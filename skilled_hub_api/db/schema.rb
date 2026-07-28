@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_07_28_100000) do
+ActiveRecord::Schema[7.1].define(version: 2026_07_28_113000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -132,6 +132,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_28_100000) do
     t.string "instagram_url"
     t.string "linkedin_url"
     t.json "service_cities", default: []
+    t.json "service_trades", default: [], null: false
     t.string "membership_level", default: "basic", null: false
     t.integer "membership_fee_override_cents"
     t.decimal "commission_override_percent", precision: 5, scale: 2
@@ -407,6 +408,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_28_100000) do
     t.decimal "longitude", precision: 10, scale: 7
     t.text "required_certifications"
     t.string "skill_class"
+    t.string "trade_type"
     t.integer "minimum_years_experience"
     t.text "notes"
     t.datetime "go_live_at"
@@ -442,6 +444,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_28_100000) do
     t.index ["rolling_start_rule_type"], name: "index_jobs_on_rolling_start_rule_type"
     t.index ["share_token"], name: "index_jobs_on_share_token", unique: true
     t.index ["start_mode"], name: "index_jobs_on_start_mode"
+    t.index ["trade_type"], name: "index_jobs_on_trade_type"
   end
 
   create_table "marketing_leads", force: :cascade do |t|

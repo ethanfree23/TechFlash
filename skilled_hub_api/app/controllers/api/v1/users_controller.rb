@@ -9,31 +9,7 @@ module Api
         admin_users_technician: %i[key visible],
         crm_pipeline: %i[key visible]
       }.freeze
-      TECHNICIAN_TRADE_OPTIONS = [
-        'Electrician',
-        'HVAC Technician',
-        'Plumber',
-        'Automobile Technician',
-        'Roofer',
-        'Carpenter',
-        'Machine Technician (Industrial Maintenance)',
-        'Welder',
-        'Refrigeration Technician',
-        'Pipefitter',
-        'Sheet Metal Worker',
-        'Mason / Concrete Worker',
-        'Drywall / Painter',
-        'Glazier',
-        'Insulation Installer',
-        'Boilermaker',
-        'Fire Protection / Sprinkler Tech',
-        'Solar Installer',
-        'Low-Voltage / Telecom Tech',
-        'Locksmith',
-        'Appliance Repair Tech',
-        'Equipment Operator',
-        'General Laborer / Helper'
-      ].freeze
+      TECHNICIAN_TRADE_OPTIONS = TradeCatalog::OPTIONS.freeze
 
       before_action :authenticate_user, only: [:show, :update_me, :destroy_me, :blocked_users, :block_user, :unblock_user, :login_history]
 
@@ -165,9 +141,11 @@ module Api
           if trade_type.blank?
             return render json: { error: "trade_type is required for technician signup" }, status: :unprocessable_entity
           end
-          unless TECHNICIAN_TRADE_OPTIONS.include?(trade_type)
+          normalized_trade = TradeCatalog.normalized_label(trade_type)
+          unless normalized_trade.present?
             return render json: { error: "trade_type must be selected from the role list" }, status: :unprocessable_entity
           end
+          trade_type = normalized_trade
         end
 
         if permitted_role == 'company'
@@ -179,9 +157,11 @@ module Api
           if industry.blank?
             return render json: { error: "industry is required for company signup" }, status: :unprocessable_entity
           end
-          unless TECHNICIAN_TRADE_OPTIONS.include?(industry)
+          normalized_industry = TradeCatalog.normalized_label(industry)
+          unless normalized_industry.present?
             return render json: { error: "industry must be selected from the trade list" }, status: :unprocessable_entity
           end
+          industry = normalized_industry
         end
 
         membership_level = MembershipPolicy.normalized_level(params[:membership_tier] || params[:membership_level], audience: permitted_role)
@@ -199,11 +179,12 @@ module Api
             profile = CompanyProfile.new(
               user: user,
               company_name: params[:company_name].to_s.strip,
-              industry: params[:industry].to_s.strip,
+              industry: industry,
               primary_hiring_need: params[:primary_hiring_need].to_s.strip.presence,
               membership_level: membership_level,
               phone: phone.presence,
               state: state.presence,
+              service_trades: industry.present? ? [industry] : [],
               service_cities: city.present? ? [city] : [],
               location: [
                 address.presence,

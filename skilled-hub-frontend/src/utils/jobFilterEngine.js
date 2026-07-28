@@ -40,7 +40,9 @@ export const applyClientFilters = (jobs, clientFilters, { technicianProfile } = 
 
   if (clientFilters.trade) {
     const trade = clientFilters.trade.toLowerCase();
-    result = result.filter((j) => (j.skill_class || '').toLowerCase().includes(trade));
+    result = result.filter((j) =>
+      (j.trade_type || j.skill_class || '').toLowerCase().includes(trade)
+    );
   }
 
   if (clientFilters.licenseClass) {

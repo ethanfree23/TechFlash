@@ -62,6 +62,7 @@ module Api
                     email: params[:email],
                     company_name: params[:company_name],
                     industry: params[:industry],
+                    service_trades: parse_service_trades_param,
                     bio: params[:bio],
                     state: params[:state],
                     electrical_license_number: params[:electrical_license_number],
@@ -114,7 +115,7 @@ module Api
                 company_profile: profile.as_json(
                   only: %i[
                     id company_name industry location bio phone website_url facebook_url instagram_url linkedin_url
-                    service_cities state electrical_license_number user_id created_at updated_at
+                    service_cities service_trades state electrical_license_number user_id created_at updated_at
                   ]
                 ).merge("avatar_url" => company_avatar_url(profile))
               }
@@ -362,7 +363,8 @@ module Api
             :company_name, :industry, :location, :bio, :phone,
             :website_url, :facebook_url, :instagram_url, :linkedin_url,
             :state, :electrical_license_number,
-            service_cities: []
+            service_cities: [],
+            service_trades: []
           )
         end
 
@@ -446,6 +448,33 @@ module Api
           end
 
           []
+        end
+
+        def parse_service_trades_param
+          raw = params[:service_trades]
+          values =
+            case raw
+            when Array
+              raw
+            when ActionController::Parameters
+              raw.to_unsafe_h.sort_by { |k, _| k.to_s.to_i }.map { |_, v| v }
+            when String
+              begin
+                parsed = JSON.parse(raw)
+                parsed.is_a?(Array) ? parsed : raw.split(",")
+              rescue JSON::ParserError
+                raw.split(",")
+              end
+            else
+              []
+            end
+
+          normalized = values.map { |value| TradeCatalog.normalized_label(value) }.compact.uniq
+          fallback = TradeCatalog.normalized_label(params[:industry])
+          if normalized.blank? && fallback.present?
+            normalized = [fallback]
+          end
+          normalized
         end
 
         def filter_by_role(scope)

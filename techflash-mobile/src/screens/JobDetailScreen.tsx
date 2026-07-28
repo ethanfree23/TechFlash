@@ -26,7 +26,6 @@ export default function JobDetailScreen() {
   const [notice, setNotice] = useState('');
   const [job, setJob] = useState<Record<string, unknown>>({});
   const [mapMarker, setMapMarker] = useState<{ latitude: number; longitude: number } | null>(null);
-  const [preferredStartAt, setPreferredStartAt] = useState('');
   const [extendEndAt, setExtendEndAt] = useState('');
   const [technicianProfileId, setTechnicianProfileId] = useState('');
   const [reportBody, setReportBody] = useState('');
@@ -59,7 +58,7 @@ export default function JobDetailScreen() {
     setSaving(true);
     setError('');
     try {
-      await claimJob(jobId, preferredStartAt || undefined);
+      await claimJob(jobId);
       setNotice('Job claimed.');
       await load();
     } catch (e) {
@@ -272,14 +271,6 @@ export default function JobDetailScreen() {
       {isTech ? (
         <Card style={styles.actionCard}>
           <Text style={styles.section}>Technician actions</Text>
-          <TextInput
-            value={preferredStartAt}
-            onChangeText={setPreferredStartAt}
-            placeholder="Preferred start (optional ISO datetime)"
-            placeholderTextColor={colors.muted}
-            style={styles.input}
-            autoCapitalize="none"
-          />
           <Pressable style={styles.btn} onPress={onClaim} disabled={saving}>
             <Text style={styles.btnText}>{saving ? 'Working...' : 'Claim job'}</Text>
           </Pressable>

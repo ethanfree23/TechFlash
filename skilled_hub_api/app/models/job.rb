@@ -64,6 +64,7 @@ class Job < ApplicationRecord
 
   before_validation :normalize_job_display_fields
   before_validation :normalize_schedule_fields
+  before_validation :normalize_trade_type
 
   before_save :sync_price_cents
   before_save :sync_location_from_address
@@ -79,6 +80,8 @@ class Job < ApplicationRecord
   has_many :ratings, dependent: :destroy
   has_many :job_issue_reports, dependent: :destroy
   validate :validate_schedule_rules
+  validate :validate_trade_type
+  validate :validate_rolling_start_rule
   validate :validate_weekend_policy_rules
   validate :validate_overtime_fields
   validate :validate_shift_time_windows
@@ -110,6 +113,11 @@ class Job < ApplicationRecord
     elsif minimum_years_experience.is_a?(String)
       self.minimum_years_experience = minimum_years_experience.to_i
     end
+  end
+
+  def normalize_trade_type
+    normalized = TradeCatalog.normalized_label(trade_type)
+    self.trade_type = normalized if normalized.present?
   end
 
   def normalize_schedule_fields
@@ -175,6 +183,20 @@ class Job < ApplicationRecord
 
     invalid = standard_work_days.reject { |d| d.to_i.between?(1, 7) }
     errors.add(:standard_work_days, "must use weekdays Monday through Sunday.") if invalid.any?
+  end
+
+  def validate_trade_type
+    return if trade_type.blank?
+    return if TradeCatalog.valid_label?(trade_type)
+
+    errors.add(:trade_type, "must be selected from the approved trade list.")
+  end
+
+  def validate_rolling_start_rule
+    return unless rolling_start?
+    return if rolling_start_rule_type.present? && rolling_start_rule_type != "none"
+
+    errors.add(:rolling_start_rule_type, "must be configured by the company for rolling start jobs.")
   end
 
   def validate_weekend_policy_rules

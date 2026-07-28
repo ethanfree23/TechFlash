@@ -7,6 +7,7 @@ import AlertModal from '../components/AlertModal';
 import ConfirmModal from '../components/ConfirmModal';
 import WorkScheduleCalendarPopup from '../components/WorkScheduleCalendarPopup';
 import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
+import { TRADE_OPTIONS } from '../constants/trades';
 import { companyChargeFromJobAmount, formatPlatformFeePercent } from '../utils/companyPlatformFee';
 import { auth } from '../auth';
 import { JOB_STATUS_KEYS, jobStatusLabel, normalizeJobStatusKey } from '../utils/jobStatus';
@@ -48,6 +49,16 @@ const hasCustomGoLiveAt = (job) => {
   return Math.abs(goLiveMs - createdMs) > 60 * 1000;
 };
 
+const normalizedCompanyTrades = (profile) => {
+  const raw = Array.isArray(profile?.service_trades) ? profile.service_trades : [];
+  const normalized = raw
+    .map((value) => TRADE_OPTIONS.find((opt) => opt.toLowerCase() === String(value || '').toLowerCase()))
+    .filter(Boolean);
+  if (normalized.length > 0) return [...new Set(normalized)];
+  const fallback = TRADE_OPTIONS.find((opt) => opt.toLowerCase() === String(profile?.industry || '').toLowerCase());
+  return fallback ? [fallback] : [];
+};
+
 const EditJob = () => {
   const isAdmin = auth.getUser()?.role === 'admin';
   const { id } = useParams();
@@ -56,7 +67,7 @@ const EditJob = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [form, setForm] = useState({
-    title: '', description: '', skill_class: '', minimum_years_experience: '', notes: '', required_certifications: [''], address: '', city: '', state: '', zip_code: '', country: '', status: 'open',
+    title: '', description: '', skill_class: '', trade_type: '', minimum_years_experience: '', notes: '', required_certifications: [''], address: '', city: '', state: '', zip_code: '', country: '', status: 'open',
     hourly_rate_cents: '', hours_per_day: '8', days: '', start_mode: 'hard_start',
     require_background_check: false, require_identity_verification: false, minimum_verified_references: '0', require_insurance_verification: false,
     weekend_work_policy: 'prohibited', standard_work_days: DEFAULT_STANDARD_WORK_DAYS, standard_day_shifts: {},
@@ -74,12 +85,13 @@ const EditJob = () => {
   const [platformFeePercent, setPlatformFeePercent] = useState(null);
   const [useCustomGoLiveAt, setUseCustomGoLiveAt] = useState(false);
   const [goLiveAt, setGoLiveAt] = useState('');
-  const [rollingStartRuleType, setRollingStartRuleType] = useState('none');
+  const [rollingStartRuleType, setRollingStartRuleType] = useState('days_after_acceptance');
   const [rollingStartExactStartAt, setRollingStartExactStartAt] = useState('');
   const [rollingStartDaysAfterAcceptance, setRollingStartDaysAfterAcceptance] = useState('1');
   const [rollingStartWeekday, setRollingStartWeekday] = useState('1');
   const [rollingStartWeekdayTime, setRollingStartWeekdayTime] = useState('08:00');
   const [calendarOpen, setCalendarOpen] = useState(false);
+  const [companyServiceTrades, setCompanyServiceTrades] = useState([]);
 
   useEffect(() => {
     const fetchJob = async () => {
@@ -92,6 +104,7 @@ const EditJob = () => {
           title: data.title || '',
           description: data.description || '',
           skill_class: data.skill_class || '',
+          trade_type: data.trade_type || '',
           minimum_years_experience: data.minimum_years_experience != null ? String(data.minimum_years_experience) : '',
           notes: data.notes || '',
           required_certifications: (() => {
@@ -137,7 +150,7 @@ const EditJob = () => {
         const customGoLive = hasCustomGoLiveAt(data);
         setUseCustomGoLiveAt(customGoLive);
         setGoLiveAt(toDatetimeLocal(data.go_live_at || new Date()));
-        setRollingStartRuleType(data.rolling_start_rule_type || 'none');
+        setRollingStartRuleType((data.rolling_start_rule_type && data.rolling_start_rule_type !== 'none') ? data.rolling_start_rule_type : 'days_after_acceptance');
         setRollingStartExactStartAt(toDatetimeLocal(data.rolling_start_exact_start_at));
         setRollingStartDaysAfterAcceptance(data.rolling_start_days_after_acceptance != null ? String(data.rolling_start_days_after_acceptance) : '1');
         setRollingStartWeekday(data.rolling_start_weekday != null ? String(data.rolling_start_weekday) : '1');
@@ -148,9 +161,13 @@ const EditJob = () => {
           try {
             const p = await profilesAPI.getCompanyById(data.company_profile_id);
             pct = p?.effective_commission_percent;
+            setCompanyServiceTrades(normalizedCompanyTrades(p));
           } catch {
             pct = null;
+            setCompanyServiceTrades([]);
           }
+        } else {
+          setCompanyServiceTrades(normalizedCompanyTrades(data.company_profile));
         }
         setPlatformFeePercent(pct != null ? Number(pct) : 10);
       } catch {
@@ -239,6 +256,15 @@ const EditJob = () => {
       });
       return;
     }
+    if (companyServiceTrades.length > 1 && !String(form.trade_type || '').trim()) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Trade required',
+        message: 'Select the trade for this job. This company has multiple service trades.',
+        variant: 'error',
+      });
+      return;
+    }
     setSaving(true);
     try {
       const years = (form.minimum_years_experience || '').toString().trim() === ''
@@ -247,6 +273,7 @@ const EditJob = () => {
       const payload = {
         title: form.title,
         description: form.description,
+        trade_type: (form.trade_type || '').trim() || null,
         skill_class: (form.skill_class || '').trim() || null,
         minimum_years_experience: years != null && !Number.isNaN(years) ? years : null,
         notes: (form.notes || '').trim() || null,
@@ -392,6 +419,40 @@ const EditJob = () => {
           />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className={labelClass}>Trade</label>
+            {companyServiceTrades.length > 1 ? (
+              <select
+                className={fieldClass}
+                name="trade_type"
+                value={form.trade_type}
+                onChange={handleChange}
+              >
+                <option value="">Select trade</option>
+                {companyServiceTrades.map((trade) => (
+                  <option key={trade} value={trade}>{trade}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                className={fieldClass}
+                name="trade_type"
+                value={form.trade_type || companyServiceTrades[0] || ''}
+                onChange={handleChange}
+                list="edit-job-trade-suggestions"
+                placeholder="Select trade"
+                disabled={companyServiceTrades.length === 1}
+              />
+            )}
+            <datalist id="edit-job-trade-suggestions">
+              {TRADE_OPTIONS.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+            {companyServiceTrades.length === 1 && (
+              <p className="text-xs text-slate-500 mt-1">Auto-selected from company service trades.</p>
+            )}
+          </div>
           <div>
             <label className={labelClass}>Class</label>
             <input
@@ -584,7 +645,6 @@ const EditJob = () => {
               value={rollingStartRuleType}
               onChange={(e) => setRollingStartRuleType(e.target.value)}
             >
-              <option value="none">Technician chooses when claiming</option>
               <option value="exact_datetime">Exact date/time required</option>
               <option value="days_after_acceptance">X days after acceptance</option>
               <option value="following_weekday">Following weekday at time</option>

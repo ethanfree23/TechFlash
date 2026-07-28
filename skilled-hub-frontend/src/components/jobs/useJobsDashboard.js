@@ -233,7 +233,7 @@ export default function useJobsDashboard() {
   }, []);
 
   const tradeOptions = useMemo(() => {
-    const fromJobs = [...new Set(jobs.map((j) => j.skill_class).filter(Boolean))];
+    const fromJobs = [...new Set(jobs.map((j) => j.trade_type || j.skill_class).filter(Boolean))];
     return fromJobs.sort((a, b) => a.localeCompare(b));
   }, [jobs]);
 

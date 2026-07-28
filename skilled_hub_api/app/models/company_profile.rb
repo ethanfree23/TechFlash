@@ -3,6 +3,7 @@ class CompanyProfile < ApplicationRecord
   has_one_attached :avatar
 
   before_validation :normalize_service_cities_list
+  before_validation :normalize_service_trades_list
   before_validation :normalize_membership_level
   before_validation :normalize_state_and_license
   before_save :sync_location_from_service_cities
@@ -19,6 +20,7 @@ class CompanyProfile < ApplicationRecord
   has_many :favorite_technician_profiles, through: :favorite_technician_entries, source: :technician_profile
 
   validate :membership_level_must_be_configured
+  validate :service_trades_must_be_valid
   validates :phone, presence: true, on: :update
 
   def average_rating
@@ -27,6 +29,14 @@ class CompanyProfile < ApplicationRecord
 
   def review_summary
     Rating.weighted_summary_for(self)
+  end
+
+  def effective_service_trades
+    list = Array(service_trades).map { |v| TradeCatalog.normalized_label(v) }.compact.uniq
+    return list if list.present?
+
+    fallback = TradeCatalog.normalized_label(industry)
+    fallback.present? ? [fallback] : []
   end
 
   private
@@ -46,6 +56,24 @@ class CompanyProfile < ApplicationRecord
         Array(raw)
       end
     self.service_cities = arr.map { |c| c.to_s.strip.presence }.compact.uniq
+  end
+
+  def normalize_service_trades_list
+    raw = service_trades
+    arr =
+      case raw
+      when String
+        begin
+          parsed = JSON.parse(raw)
+          parsed.is_a?(Array) ? parsed : []
+        rescue JSON::ParserError
+          []
+        end
+      else
+        Array(raw)
+      end
+    normalized = arr.map { |trade| TradeCatalog.normalized_label(trade) }.compact.uniq
+    self.service_trades = normalized
   end
 
   def sync_location_from_service_cities
@@ -70,5 +98,12 @@ class CompanyProfile < ApplicationRecord
     unless MembershipPolicy.level_valid?(membership_level, audience: :company)
       errors.add(:membership_level, "is not a valid tier")
     end
+  end
+
+  def service_trades_must_be_valid
+    invalid = Array(service_trades).reject { |label| TradeCatalog.valid_label?(label) }
+    return if invalid.empty?
+
+    errors.add(:service_trades, "must be selected from the approved trade list")
   end
 end

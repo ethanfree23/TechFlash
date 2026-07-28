@@ -342,7 +342,7 @@ module Api
         assert_response :forbidden
       end
 
-      test "rolling start job uses technician preferred_start_at when claimed" do
+      test "rolling start job without company rule cannot be claimed" do
         reset_technician_tier_rules!
 
         company_user = User.create!(
@@ -385,16 +385,73 @@ module Api
             scheduled_end_at: 1.week.from_now
           )
 
-          preferred_start = Time.zone.parse("2026-04-28 09:30:00")
           patch "/api/v1/jobs/#{job.id}/claim",
-                params: { preferred_start_at: preferred_start.iso8601 },
                 headers: auth_header_for(technician_user),
                 as: :json
-          assert_response :ok
+          assert_response :unprocessable_entity
           job.reload
-          assert_equal "filled", job.status
-          assert_in_delta preferred_start.to_f, job.scheduled_start_at.to_f, 1.0
+          assert_equal "open", job.status
+          assert_match(/missing a company-defined start rule/i, JSON.parse(response.body)["error"].to_s)
         end
+      end
+
+      test "create job auto-assigns trade from single company service trade" do
+        user = User.create!(
+          email: "company-single-trade@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "premium",
+          membership_fee_waived: true,
+          industry: "Electrician",
+          service_trades: ["Electrician"]
+        )
+        user.update_column(:company_profile_id, profile.id)
+
+        post "/api/v1/jobs",
+             params: {
+               title: "Single trade job",
+               description: "desc",
+               status: "open"
+             },
+             headers: auth_header_for(user),
+             as: :json
+
+        assert_response :created
+        created_job = Job.order(:id).last
+        assert_equal "Electrician", created_job.trade_type
+      end
+
+      test "create job requires trade when company has multiple service trades" do
+        user = User.create!(
+          email: "company-multi-trade@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "premium",
+          membership_fee_waived: true,
+          industry: "Electrician",
+          service_trades: ["Electrician", "Plumber"]
+        )
+        user.update_column(:company_profile_id, profile.id)
+
+        post "/api/v1/jobs",
+             params: {
+               title: "Missing trade selection",
+               description: "desc",
+               status: "open"
+             },
+             headers: auth_header_for(user),
+             as: :json
+
+        assert_response :unprocessable_entity
+        assert_match(/select a trade/i, JSON.parse(response.body)["error"].to_s)
       end
 
       test "rolling start with days-after-acceptance rule sets start from claim time" do
@@ -453,27 +510,28 @@ module Api
         TechnicianProfile.create!(user: technician_user, trade_type: "General", availability: "Full-time", membership_level: "basic")
 
         travel_to Time.zone.parse("2026-05-01 18:30:00") do
+          required_start = Time.zone.parse("2026-05-01 18:30:00")
           job = Job.create!(
             company_profile: company_profile,
             title: "Rolling late hour claim",
             description: "desc",
             status: :open,
             start_mode: :rolling_start,
+            rolling_start_rule_type: :exact_datetime,
+            rolling_start_exact_start_at: required_start,
             hourly_rate_cents: 3_000,
             hours_per_day: 12,
             days: 1,
             go_live_at: 1.day.ago
           )
 
-          preferred_start = Time.zone.parse("2026-05-01 18:30:00")
           patch "/api/v1/jobs/#{job.id}/claim",
-                params: { preferred_start_at: preferred_start.iso8601 },
                 headers: auth_header_for(technician_user),
                 as: :json
           assert_response :ok
           job.reload
           assert_equal "filled", job.status
-          assert_equal preferred_start, job.scheduled_start_at
+          assert_equal required_start, job.scheduled_start_at
           assert_equal Time.zone.parse("2026-05-02 07:30:00"), job.scheduled_end_at
         end
       end

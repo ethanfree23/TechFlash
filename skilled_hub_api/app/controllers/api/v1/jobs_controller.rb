@@ -116,8 +116,8 @@ module Api
         if params[:keyword].present?
           kw = "%#{params[:keyword]}%"
           jobs = jobs.where(
-            "title ILIKE ? OR description ILIKE ? OR skill_class ILIKE ? OR notes ILIKE ?",
-            kw, kw, kw, kw
+            "title ILIKE ? OR description ILIKE ? OR skill_class ILIKE ? OR trade_type ILIKE ? OR notes ILIKE ?",
+            kw, kw, kw, kw, kw
           )
         end
 
@@ -179,6 +179,10 @@ module Api
         job.company_profile_id = company_profile.id
         # Mobile payloads should create posted/open jobs even if status is omitted.
         job.status = :open if job.status.blank?
+        trade_validation_error = assign_and_validate_trade_type!(job: job, company_profile: company_profile)
+        if trade_validation_error.present?
+          return render json: { error: trade_validation_error }, status: :unprocessable_entity
+        end
         set_go_live_at_for_post!(job)
         if job.save
           CrmProspectPromotion.promote_after_job_created!(job.company_profile_id)
@@ -200,6 +204,10 @@ module Api
         previous_sat_multiplier = job.saturday_multiplier
         previous_sun_multiplier = job.sunday_multiplier
         job.assign_attributes(job_params)
+        trade_validation_error = assign_and_validate_trade_type!(job: job, company_profile: job.company_profile)
+        if trade_validation_error.present?
+          return render json: { error: trade_validation_error }, status: :unprocessable_entity
+        end
         if blocking_open_while_claimed?(job)
           return render json: {
             error: 'Cannot set job to open while a technician claim is accepted. Use Deny Technician first, or ask an admin.'
@@ -407,8 +415,7 @@ module Api
         job = Job.find(params[:id])
         result = Jobs::ClaimJobService.call(
           job: job,
-          technician_user: @current_user,
-          preferred_start_at: params[:preferred_start_at]
+          technician_user: @current_user
         )
         if result[:error]
           return render json: {
@@ -447,7 +454,7 @@ module Api
         params.permit(:title, :description, :required_documents, :required_certifications, :location, :status, :company_profile_id, :timeline, :skip_card_validation,
                       :scheduled_start_at, :scheduled_end_at, :price_cents, :hourly_rate_cents, :hours_per_day, :days,
                       :address, :city, :state, :zip_code, :country, :latitude, :longitude,
-                      :skill_class, :minimum_years_experience, :notes, :go_live_at, :start_mode,
+                      :skill_class, :trade_type, :minimum_years_experience, :notes, :go_live_at, :start_mode,
                       :require_background_check, :require_identity_verification, :minimum_verified_references, :require_insurance_verification,
                       :rolling_start_rule_type, :rolling_start_exact_start_at, :rolling_start_days_after_acceptance,
                       :rolling_start_weekday, :rolling_start_weekday_time,
@@ -590,6 +597,40 @@ module Api
           }.to_json)
         end
       rescue StandardError
+        nil
+      end
+
+      def assign_and_validate_trade_type!(job:, company_profile:)
+        company_trades = Array(company_profile&.effective_service_trades).compact.uniq
+        requested_trade = TradeCatalog.normalized_label(job.trade_type)
+
+        if company_trades.length == 1
+          required_trade = company_trades.first
+          if requested_trade.present? && requested_trade != required_trade
+            return "This company is configured for #{required_trade} jobs only."
+          end
+          job.trade_type = required_trade
+          return nil
+        end
+
+        if company_trades.length > 1
+          if requested_trade.blank?
+            return "Select a trade for this job. This company has multiple service trades configured."
+          end
+          unless company_trades.include?(requested_trade)
+            return "Selected trade is not part of this company's configured service trades."
+          end
+          job.trade_type = requested_trade
+          return nil
+        end
+
+        if requested_trade.blank?
+          inferred = TradeCatalog.normalized_label(job.skill_class)
+          job.trade_type = inferred if inferred.present?
+          return nil
+        end
+
+        job.trade_type = requested_trade
         nil
       end
     end

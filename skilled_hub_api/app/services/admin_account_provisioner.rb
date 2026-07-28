@@ -9,7 +9,7 @@ module AdminAccountProvisioner
 
   # rubocop:disable Metrics/ParameterLists
   def provision_company!(
-    email:, company_name: nil, industry: nil, bio: nil,
+    email:, company_name: nil, industry: nil, service_trades: nil, bio: nil,
     state: nil, electrical_license_number: nil,
     phone: nil, website_url: nil, facebook_url: nil, instagram_url: nil, linkedin_url: nil,
     service_cities: nil,
@@ -39,6 +39,9 @@ module AdminAccountProvisioner
     raise Error, "Last name is required" if last_name_clean.blank?
 
     cities = normalize_cities(service_cities)
+    trades = normalize_trades(service_trades)
+    industry_trade = TradeCatalog.normalized_label(industry)
+    trades = [industry_trade] if trades.blank? && industry_trade.present?
     pw, send_reset = resolve_initial_password!(
       email: email,
       password: password,
@@ -63,7 +66,8 @@ module AdminAccountProvisioner
         user: user,
         membership_level: "basic",
         company_name: company_name_clean,
-        industry: industry.to_s.strip.presence,
+        industry: industry_trade || industry.to_s.strip.presence,
+        service_trades: trades,
         state: state_clean,
         electrical_license_number: electrical_license_number.to_s.strip.presence,
         bio: bio_clean,
@@ -240,6 +244,24 @@ module AdminAccountProvisioner
     else
       []
     end
+  end
+
+  def normalize_trades(service_trades)
+    values =
+      case service_trades
+      when Array
+        service_trades
+      when String
+        begin
+          parsed = JSON.parse(service_trades)
+          parsed.is_a?(Array) ? parsed : service_trades.split(",")
+        rescue JSON::ParserError
+          service_trades.split(",")
+        end
+      else
+        []
+      end
+    values.map { |value| TradeCatalog.normalized_label(value) }.compact.uniq
   end
 
   def strip_or_nil(val)

@@ -6,6 +6,7 @@ import JobAddressFields from '../components/JobAddressFields';
 import AlertModal from '../components/AlertModal';
 import WorkScheduleCalendarPopup from '../components/WorkScheduleCalendarPopup';
 import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
+import { TRADE_OPTIONS } from '../constants/trades';
 import { auth } from '../auth';
 import { companyChargeFromJobAmount, formatPlatformFeePercent } from '../utils/companyPlatformFee';
 import {
@@ -73,6 +74,16 @@ const addBusinessDays = (date, businessDays) => {
   return result;
 };
 
+const normalizedCompanyTrades = (profile) => {
+  const raw = Array.isArray(profile?.service_trades) ? profile.service_trades : [];
+  const normalized = raw
+    .map((value) => TRADE_OPTIONS.find((opt) => opt.toLowerCase() === String(value || '').toLowerCase()))
+    .filter(Boolean);
+  if (normalized.length > 0) return [...new Set(normalized)];
+  const fallback = TRADE_OPTIONS.find((opt) => opt.toLowerCase() === String(profile?.industry || '').toLowerCase());
+  return fallback ? [fallback] : [];
+};
+
 /**
  * Compute end date/time from start + days + hours per day.
  * Each day: hours_per_day of work + 1 hour lunch.
@@ -99,6 +110,7 @@ const CreateJob = () => {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [skillClass, setSkillClass] = useState("");
+  const [tradeType, setTradeType] = useState("");
   const [minimumYearsExperience, setMinimumYearsExperience] = useState("");
   const [notes, setNotes] = useState("");
   const [requiredCertifications, setRequiredCertifications] = useState([""]);
@@ -116,7 +128,7 @@ const CreateJob = () => {
   const [days, setDays] = useState("");
   const [status, setStatus] = useState("open");
   const [startMode, setStartMode] = useState("hard_start");
-  const [rollingStartRuleType, setRollingStartRuleType] = useState('none');
+  const [rollingStartRuleType, setRollingStartRuleType] = useState('days_after_acceptance');
   const [rollingStartExactStartAt, setRollingStartExactStartAt] = useState('');
   const [rollingStartDaysAfterAcceptance, setRollingStartDaysAfterAcceptance] = useState('1');
   const [rollingStartWeekday, setRollingStartWeekday] = useState('1');
@@ -153,6 +165,7 @@ const CreateJob = () => {
   const [companySelectionLocked, setCompanySelectionLocked] = useState(false);
   const [enforceCardValidation, setEnforceCardValidation] = useState(true);
   const [platformFeePercent, setPlatformFeePercent] = useState(null);
+  const [companyServiceTrades, setCompanyServiceTrades] = useState([]);
   const [successModal, setSuccessModal] = useState(false);
   const [errorModal, setErrorModal] = useState(null);
   const navigate = useNavigate();
@@ -165,6 +178,7 @@ const CreateJob = () => {
     setTitle(job.title ? `Copy of ${job.title}` : '');
     setDescription(String(job.description || ''));
     setSkillClass(String(job.skill_class || ''));
+    setTradeType(String(job.trade_type || ''));
     setMinimumYearsExperience(
       job.minimum_years_experience != null ? String(job.minimum_years_experience) : ''
     );
@@ -235,6 +249,7 @@ const CreateJob = () => {
       setTitle(String(draft.title || ''));
       setDescription(String(draft.description || ''));
       setSkillClass(String(draft.skillClass || ''));
+      setTradeType(String(draft.tradeType || ''));
       setMinimumYearsExperience(String(draft.minimumYearsExperience || ''));
       setNotes(String(draft.notes || ''));
       setRequiredCertifications(
@@ -289,6 +304,7 @@ const CreateJob = () => {
           title,
           description,
           skillClass,
+          tradeType,
           minimumYearsExperience,
           notes,
           requiredCertifications,
@@ -335,6 +351,7 @@ const CreateJob = () => {
     title,
     description,
     skillClass,
+    tradeType,
     minimumYearsExperience,
     notes,
     requiredCertifications,
@@ -383,9 +400,13 @@ const CreateJob = () => {
         setCompanyProfileId(profile.id);
         const pct = profile.effective_commission_percent;
         setPlatformFeePercent(pct != null ? Number(pct) : 0);
+        const trades = normalizedCompanyTrades(profile);
+        setCompanyServiceTrades(trades);
+        if (trades.length === 1) setTradeType((prev) => prev || trades[0]);
       } catch {
         setCompanyProfileId(null);
         setPlatformFeePercent(null);
+        setCompanyServiceTrades([]);
       }
     };
     fetchProfile();
@@ -403,9 +424,15 @@ const CreateJob = () => {
         if (!cancelled) {
           const pct = profile?.effective_commission_percent;
           setPlatformFeePercent(pct != null ? Number(pct) : 0);
+          const trades = normalizedCompanyTrades(profile);
+          setCompanyServiceTrades(trades);
+          if (trades.length === 1) setTradeType((prev) => prev || trades[0]);
         }
       } catch {
-        if (!cancelled) setPlatformFeePercent(null);
+        if (!cancelled) {
+          setPlatformFeePercent(null);
+          setCompanyServiceTrades([]);
+        }
       }
     })();
     return () => {
@@ -502,6 +529,10 @@ const CreateJob = () => {
         return;
       }
     }
+    if (companyServiceTrades.length > 1 && !tradeType) {
+      setErrorModal('Select the trade for this job. This company has multiple service trades.');
+      return;
+    }
     if (weekendWorkPolicy === 'required' && saturdayWorkPolicy === 'unavailable' && sundayWorkPolicy === 'unavailable') {
       setErrorModal('Weekend-required jobs must include Saturday or Sunday availability.');
       return;
@@ -528,6 +559,7 @@ const CreateJob = () => {
       const payload = {
         title,
         description,
+        trade_type: tradeType || null,
         skill_class: skillClass.trim() || null,
         minimum_years_experience: years != null && !Number.isNaN(years) ? years : null,
         notes: notes.trim() || null,
@@ -716,6 +748,39 @@ const CreateJob = () => {
           />
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className={labelClass}>Trade</label>
+            {companyServiceTrades.length > 1 ? (
+              <select
+                className={fieldClass}
+                value={tradeType}
+                onChange={(e) => setTradeType(e.target.value)}
+                required
+              >
+                <option value="">Select trade</option>
+                {companyServiceTrades.map((trade) => (
+                  <option key={trade} value={trade}>{trade}</option>
+                ))}
+              </select>
+            ) : (
+              <input
+                className={fieldClass}
+                value={tradeType || companyServiceTrades[0] || ''}
+                onChange={(e) => setTradeType(e.target.value)}
+                list="job-trade-suggestions"
+                placeholder="Select trade"
+                disabled={companyServiceTrades.length === 1}
+              />
+            )}
+            <datalist id="job-trade-suggestions">
+              {TRADE_OPTIONS.map((value) => (
+                <option key={value} value={value} />
+              ))}
+            </datalist>
+            {companyServiceTrades.length === 1 && (
+              <p className="text-xs text-slate-500 mt-1">Auto-selected from company service trades.</p>
+            )}
+          </div>
           <div>
             <label className={labelClass}>Class</label>
             <input
@@ -952,7 +1017,6 @@ const CreateJob = () => {
                   value={rollingStartRuleType}
                   onChange={(e) => setRollingStartRuleType(e.target.value)}
                 >
-                  <option value="none">Technician chooses when claiming</option>
                   <option value="exact_datetime">Exact date/time required</option>
                   <option value="days_after_acceptance">X days after acceptance</option>
                   <option value="following_weekday">Following weekday at time</option>

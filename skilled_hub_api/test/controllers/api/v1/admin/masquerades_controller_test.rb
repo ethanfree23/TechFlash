@@ -88,6 +88,43 @@ module Api
 
           assert_response :forbidden
         end
+
+        test "masqueraded technician profile keeps tier commission when fee waived" do
+          admin = User.create!(
+            email: "admin+masq_commission@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+          tech = User.create!(
+            email: "tech+masq_commission@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :technician
+          )
+          TechnicianProfile.create!(
+            user: tech,
+            trade_type: "HVAC",
+            availability: "Full-time",
+            membership_level: "premium",
+            membership_fee_waived: true
+          )
+
+          post "/api/v1/admin/masquerade",
+               params: { target_user_id: tech.id }.to_json,
+               headers: auth_header_for(admin).merge("Content-Type" => "application/json")
+
+          assert_response :created
+          masquerade_token = JSON.parse(response.body)["token"]
+          get "/api/v1/technicians/profile",
+              headers: { "Authorization" => "Bearer #{masquerade_token}" },
+              as: :json
+
+          assert_response :ok
+          body = JSON.parse(response.body)
+          assert_equal "premium", body["membership_level"]
+          assert_in_delta 10.0, body["effective_commission_percent"].to_f, 0.001
+        end
       end
     end
   end

@@ -91,7 +91,7 @@ const rollingRuleSummary = (job) => {
     const timeLabel = job.rolling_start_weekday_time || 'configured time';
     return `Rolling start: begins the following ${weekday} at ${timeLabel} (never same-day).`;
   }
-  return 'Rolling start: technician picks preferred start time when claiming.';
+  return 'Rolling start: schedule rule is not configured correctly by the company.';
 };
 
 const buildMapEmbedUrl = (job) => {
@@ -183,8 +183,6 @@ const JobDetail = () => {
   const [showCounterModal, setShowCounterModal] = useState(false);
   const [counterFieldEditor, setCounterFieldEditor] = useState(null);
   const [counterFieldDraftValue, setCounterFieldDraftValue] = useState('');
-  const [showClaimModal, setShowClaimModal] = useState(false);
-  const [claimPreferredStartAt, setClaimPreferredStartAt] = useState('');
   const [weekendRequests, setWeekendRequests] = useState([]);
   const [loadingWeekendRequests, setLoadingWeekendRequests] = useState(false);
   const [weekendRequestDate, setWeekendRequestDate] = useState('');
@@ -366,36 +364,12 @@ const JobDetail = () => {
     }
   }, [job?.job_applications, job?.status]);
 
-  const handleClaimJob = async (preferredStartAt = null) => {
+  const handleClaimJob = async () => {
     if (!user || user.role !== 'technician') return;
-    const rollingRuleType = job?.rolling_start_rule_type || 'none';
-    const requiresPreferredStart =
-      job?.start_mode === 'rolling_start' &&
-      (rollingRuleType === 'none' || !rollingRuleType);
-    if (requiresPreferredStart && !preferredStartAt) {
-      setClaimPreferredStartAt(toDatetimeLocal(new Date(Date.now() + 60 * 60 * 1000)));
-      setShowClaimModal(true);
-      return;
-    }
     try {
       setClaiming(true);
-      let payload = {};
-      if (preferredStartAt) {
-        const parsedPreferredStart = new Date(preferredStartAt);
-        if (!Number.isFinite(parsedPreferredStart.getTime())) {
-          setAlertModal({
-            isOpen: true,
-            title: 'Unable to claim job',
-            message: 'Please choose a valid preferred start date and time before claiming.',
-            variant: 'error',
-          });
-          return;
-        }
-        payload = { preferred_start_at: parsedPreferredStart.toISOString() };
-      }
-      await jobsAPI.claim(id, payload);
+      await jobsAPI.claim(id);
       await fetchJobDetails();
-      setShowClaimModal(false);
     } catch (err) {
       const reasons = Array.isArray(err?.details?.verification_reasons) ? err.details.verification_reasons : [];
       const reasonText = reasons.map((r) => `- ${r.message || r.code}`).join('\n');
@@ -2048,42 +2022,6 @@ const JobDetail = () => {
             </button>
             <button type="button" onClick={saveCounterFieldEdit} className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700">
               Save
-            </button>
-          </div>
-        </div>
-      </Modal>
-      <Modal
-        isOpen={showClaimModal}
-        onRequestClose={() => setShowClaimModal(false)}
-        ariaHideApp={false}
-        className="fixed inset-0 flex items-center justify-center z-50 px-4"
-        overlayClassName="fixed inset-0 bg-black/40 z-40"
-      >
-        <div className="bg-white rounded-lg shadow-xl w-full max-w-md border border-gray-200 p-6">
-          <h3 className="text-lg font-semibold text-gray-900 mb-2">Choose your start time</h3>
-          <p className="text-sm text-gray-600 mb-4">
-            This rolling-start job lets you pick when you can begin.
-          </p>
-          <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-            By claiming this job, you acknowledge this schedule: {weekendPolicyText}. Optional weekend requests can be accepted or declined without losing weekday assignment.
-          </div>
-          <input
-            type="datetime-local"
-            value={claimPreferredStartAt}
-            onChange={(e) => setClaimPreferredStartAt(e.target.value)}
-            className="w-full border rounded p-2"
-          />
-          <div className="mt-4 flex justify-end gap-2">
-            <button type="button" onClick={() => setShowClaimModal(false)} className="px-4 py-2 rounded bg-gray-100 text-gray-800">
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={() => handleClaimJob(claimPreferredStartAt)}
-              disabled={claiming || !claimPreferredStartAt}
-              className="px-4 py-2 rounded bg-green-600 text-white hover:bg-green-700 disabled:opacity-50"
-            >
-              {claiming ? 'Claiming...' : 'Confirm Claim'}
             </button>
           </div>
         </div>
