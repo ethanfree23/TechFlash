@@ -3,33 +3,33 @@ class Job < ApplicationRecord
 
   has_secure_token :share_token
 
-  enum status: { open: 0, reserved: 1, accepted: 2, completed: 3, filled: 4, finished: 5 }
-  enum start_mode: { hard_start: 0, rolling_start: 1 }
-  enum rolling_start_rule_type: {
+  enum :status, { open: 0, reserved: 1, accepted: 2, completed: 3, filled: 4, finished: 5 }
+  enum :start_mode, { hard_start: 0, rolling_start: 1 }
+  enum :rolling_start_rule_type, {
     none: 0,
     exact_datetime: 1,
     days_after_acceptance: 2,
     following_weekday: 3
-  }, _scopes: false
-  enum weekend_work_policy: {
+  }, scopes: false
+  enum :weekend_work_policy, {
     prohibited: 0,
     optional: 1,
     required: 2
-  }, _scopes: false
-  enum saturday_work_policy: {
+  }, scopes: false
+  enum :saturday_work_policy, {
     unavailable: 0,
     normal_rate: 1,
     premium_rate: 2
-  }, _scopes: false, prefix: :saturday
-  enum sunday_work_policy: {
+  }, scopes: false, prefix: :saturday
+  enum :sunday_work_policy, {
     unavailable: 0,
     normal_rate: 1,
     premium_rate: 2
-  }, _scopes: false, prefix: :sunday
-  enum premium_combination_rule: {
+  }, scopes: false, prefix: :sunday
+  enum :premium_combination_rule, {
     highest_applicable: 0,
     stacked: 1
-  }, _scopes: false
+  }, scopes: false
 
   belongs_to :company_profile
 
@@ -80,7 +80,6 @@ class Job < ApplicationRecord
   has_many :job_issue_reports, dependent: :destroy
   validate :validate_schedule_rules
   validate :validate_weekend_policy_rules
-  validate :validate_deadline_warning_constraints
   validate :validate_overtime_fields
   validate :validate_shift_time_windows
 
@@ -202,16 +201,6 @@ class Job < ApplicationRecord
     if sunday_premium_rate? && sunday_multiplier.blank?
       errors.add(:sunday_multiplier, "is required when Sunday premium pay is selected.")
     end
-  end
-
-  def validate_deadline_warning_constraints
-    return if hard_deadline_at.blank? || standard_work_days.blank?
-
-    return if start_mode == "rolling_start"
-    deadline_day = hard_deadline_at.in_time_zone(job_timezone).cwday
-    return if standard_work_days.include?(deadline_day)
-
-    errors.add(:hard_deadline_at, "falls on a non-working day for this schedule.")
   end
 
   def validate_overtime_fields

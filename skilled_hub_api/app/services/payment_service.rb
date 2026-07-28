@@ -260,9 +260,14 @@ class PaymentService
     return { error: 'Stripe not configured' } if Stripe.api_key.blank?
 
     begin
+      payout_amount = payout_amount_cents_for_job(job, payment)
+      if payout_amount <= 0
+        return { error: 'No approved payable hours available for payout.' }
+      end
+
       # Transfer from platform balance to connected account
       transfer = Stripe::Transfer.create(
-        amount: payment.amount_cents,
+        amount: payout_amount,
         currency: 'usd',
         destination: technician_profile.stripe_account_id,
         metadata: { job_id: job.id.to_s, payment_id: payment.id.to_s }
@@ -271,12 +276,30 @@ class PaymentService
       payment.update!(
         status: 'released',
         stripe_transfer_id: transfer.id,
-        released_at: Time.current
+        released_at: Time.current,
+        amount_cents: payout_amount
       )
-      MailDelivery.safe_deliver { UserMailer.payment_received_email(job, payment.amount_cents).deliver_now }
+      mark_paid_time_entries!(job)
+      MailDelivery.safe_deliver { UserMailer.payment_received_email(job, payout_amount).deliver_now }
       { success: true, payment: payment }
     rescue Stripe::StripeError => e
       { error: e.message }
     end
+  end
+
+  def self.payout_amount_cents_for_job(job, payment)
+    approved_lines = TimeEntryPayLine.joins(:time_entry)
+      .where(job_id: job.id, time_entries: { status: TimeEntry.statuses[:approved] })
+    return payment.amount_cents if approved_lines.empty?
+
+    approved_lines.sum(:gross_pay_cents).to_i
+  end
+
+  def self.mark_paid_time_entries!(job)
+    TimeEntry.where(job_id: job.id, status: TimeEntry.statuses[:approved]).update_all(
+      status: TimeEntry.statuses[:paid],
+      paid_at: Time.current,
+      updated_at: Time.current
+    )
   end
 end

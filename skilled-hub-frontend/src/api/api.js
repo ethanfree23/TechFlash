@@ -672,6 +672,35 @@ export const jobsAPI = {
 
   getPublicPreviewByShareToken: (shareToken) =>
     publicApiRequest(`/public/jobs/${encodeURIComponent(shareToken)}`),
+
+  listWeekendRequests: (jobId) =>
+    apiRequest(`/jobs/${jobId}/weekend_work_requests`),
+  createWeekendRequest: (jobId, payload) =>
+    apiRequest(`/jobs/${jobId}/weekend_work_requests`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateWeekendRequest: (jobId, requestId, payload) =>
+    apiRequest(`/jobs/${jobId}/weekend_work_requests/${requestId}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  listTimeEntries: (jobId) =>
+    apiRequest(`/jobs/${jobId}/time_entries`),
+  createTimeEntry: (jobId, payload) =>
+    apiRequest(`/jobs/${jobId}/time_entries`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  approveTimeEntry: (jobId, timeEntryId) =>
+    apiRequest(`/jobs/${jobId}/time_entries/${timeEntryId}/approve`, {
+      method: 'PATCH',
+    }),
+  rejectTimeEntry: (jobId, timeEntryId) =>
+    apiRequest(`/jobs/${jobId}/time_entries/${timeEntryId}/reject`, {
+      method: 'PATCH',
+    }),
 };
 
 export const jobIssueReportsAPI = {

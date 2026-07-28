@@ -79,8 +79,6 @@ class AddWeekendSchedulingAndPayFlow < ActiveRecord::Migration[7.1]
       t.timestamps
     end
 
-    add_index :time_entry_pay_lines, :job_id
-
     create_table :job_term_change_audits do |t|
       t.references :job, null: false, foreign_key: true
       t.references :actor_user, null: false, foreign_key: { to_table: :users }

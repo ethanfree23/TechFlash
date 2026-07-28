@@ -8,6 +8,11 @@ class JobSerializer < ActiveModel::Serializer
              :require_background_check, :require_identity_verification, :minimum_verified_references, :require_insurance_verification,
              :rolling_start_rule_type, :rolling_start_exact_start_at, :rolling_start_days_after_acceptance,
              :rolling_start_weekday, :rolling_start_weekday_time,
+             :weekend_work_policy, :standard_work_days, :saturday_work_policy, :sunday_work_policy,
+             :saturday_multiplier, :sunday_multiplier, :weekend_requires_company_approval, :weekend_requires_technician_acceptance,
+             :premium_combination_rule, :overtime_enabled, :daily_overtime_threshold_hours, :weekly_overtime_threshold_hours,
+             :overtime_multiplier, :hard_deadline_at, :job_timezone, :standard_day_shifts, :weekend_day_shifts,
+             :schedule_and_pay_summary,
              :timeline_events, :pending_counter_offer
 
   belongs_to :company_profile
@@ -86,6 +91,28 @@ class JobSerializer < ActiveModel::Serializer
     JobCounterOfferSerializer.new(offer, scope: scope).as_json
   end
 
+  def schedule_and_pay_summary
+    standard_days = weekday_labels(object.standard_work_days)
+    weekend_line =
+      case object.weekend_work_policy
+      when "prohibited"
+        "No work will take place Saturday or Sunday. If unfinished on Friday, work resumes on the next scheduled workday."
+      when "optional"
+        "Weekend work may be offered if needed and requires acceptance before weekend hours can be submitted."
+      else
+        "Weekend work is required based on configured Saturday/Sunday availability."
+      end
+
+    overtime_line =
+      if object.overtime_enabled?
+        "Overtime is enabled at #{object.overtime_multiplier || 1.5}x. When overtime and weekend premium overlap, TechFlash applies the #{object.premium_combination_rule.humanize.downcase} rule."
+      else
+        "Overtime is not enabled for this job."
+      end
+
+    "Work is expected on #{standard_days}. #{weekend_line} #{overtime_line}"
+  end
+
   def address
     return object.address if participant_on_job?
     return object.address if scope&.admin?
@@ -118,5 +145,18 @@ class JobSerializer < ActiveModel::Serializer
       longitude: object.longitude,
       seed_key: "#{object.share_token}:#{object.id}"
     )
+  end
+
+  def weekday_labels(days)
+    labels = {
+      1 => "Monday",
+      2 => "Tuesday",
+      3 => "Wednesday",
+      4 => "Thursday",
+      5 => "Friday",
+      6 => "Saturday",
+      7 => "Sunday"
+    }
+    Array(days).map { |d| labels[d.to_i] }.compact.join(", ")
   end
 end

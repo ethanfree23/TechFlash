@@ -41,6 +41,13 @@ Rails.application.routes.draw do
           patch :extend
         end
         resources :counter_offers, only: [:index, :create], controller: :job_counter_offers
+        resources :weekend_work_requests, only: [:index, :create, :update]
+        resources :time_entries, only: [:index, :create] do
+          member do
+            patch :approve
+            patch :reject
+          end
+        end
       end
       resources :counter_offers, only: [] do
         member do

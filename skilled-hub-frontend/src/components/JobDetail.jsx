@@ -18,6 +18,7 @@ import JobAddressFields from './JobAddressFields';
 import { JOB_STATUS_KEYS, jobStatusLabel, normalizeJobStatusKey } from '../utils/jobStatus';
 import { FormattedJobDescription } from '../utils/formattedJobText';
 import JobStatusBadge from './jobs/JobStatusBadge';
+import { formatWorkingDays, formatWeekendPolicySummary, formatOvertimeSummary } from '../utils/jobDisplayUtils';
 
 const toDatetimeLocal = (d) => {
   if (!d) return '';
@@ -184,6 +185,12 @@ const JobDetail = () => {
   const [counterFieldDraftValue, setCounterFieldDraftValue] = useState('');
   const [showClaimModal, setShowClaimModal] = useState(false);
   const [claimPreferredStartAt, setClaimPreferredStartAt] = useState('');
+  const [weekendRequests, setWeekendRequests] = useState([]);
+  const [loadingWeekendRequests, setLoadingWeekendRequests] = useState(false);
+  const [weekendRequestDate, setWeekendRequestDate] = useState('');
+  const [weekendRequestStartTime, setWeekendRequestStartTime] = useState('08:00');
+  const [weekendRequestEndTime, setWeekendRequestEndTime] = useState('16:00');
+  const [weekendRequestNote, setWeekendRequestNote] = useState('');
   const [shareLinkCopied, setShareLinkCopied] = useState(false);
   const copyShareFeedbackTimerRef = useRef(null);
 
@@ -230,12 +237,25 @@ const JobDetail = () => {
     }
   }, [id]);
 
+  const fetchWeekendRequests = useCallback(async () => {
+    try {
+      setLoadingWeekendRequests(true);
+      const data = await jobsAPI.listWeekendRequests(id);
+      setWeekendRequests(Array.isArray(data) ? data : []);
+    } catch {
+      setWeekendRequests([]);
+    } finally {
+      setLoadingWeekendRequests(false);
+    }
+  }, [id]);
+
   useEffect(() => {
     if (id) {
       fetchJobDetails();
       fetchCounterOffers();
+      fetchWeekendRequests();
     }
-  }, [id, fetchJobDetails, fetchCounterOffers]);
+  }, [id, fetchJobDetails, fetchCounterOffers, fetchWeekendRequests]);
 
   useEffect(() => {
     if (user?.role === 'technician') {
@@ -385,6 +405,37 @@ const JobDetail = () => {
       setAlertModal({ isOpen: true, title: 'Unable to claim job', message, variant: 'error' });
     } finally {
       setClaiming(false);
+    }
+  };
+
+  const submitWeekendRequest = async () => {
+    if (!weekendRequestDate) return;
+    const startAt = `${weekendRequestDate}T${weekendRequestStartTime}`;
+    const endAt = `${weekendRequestDate}T${weekendRequestEndTime}`;
+    try {
+      await jobsAPI.createWeekendRequest(id, {
+        requested_date: weekendRequestDate,
+        requested_start_at: new Date(startAt).toISOString(),
+        requested_end_at: new Date(endAt).toISOString(),
+        estimated_hours: 8,
+        applicable_multiplier: 1.5,
+        company_note: weekendRequestNote || null,
+      });
+      setWeekendRequestDate('');
+      setWeekendRequestNote('');
+      await fetchWeekendRequests();
+      setAlertModal({ isOpen: true, title: 'Weekend request created', message: 'Weekend request was sent to the technician.', variant: 'success' });
+    } catch (err) {
+      setAlertModal({ isOpen: true, title: 'Unable to create weekend request', message: err.message || 'Failed to create weekend request', variant: 'error' });
+    }
+  };
+
+  const respondToWeekendRequest = async (requestId, status) => {
+    try {
+      await jobsAPI.updateWeekendRequest(id, requestId, { status });
+      await fetchWeekendRequests();
+    } catch (err) {
+      setAlertModal({ isOpen: true, title: 'Unable to update weekend request', message: err.message || 'Failed to update weekend request', variant: 'error' });
     }
   };
 
@@ -834,6 +885,9 @@ const JobDetail = () => {
   const showTopTechOpenActions = currentUser?.role === 'technician' && job?.status === 'open';
   const rollingSummaryText = rollingRuleSummary(job);
   const jobMapUrl = buildMapEmbedUrl(job);
+  const workingDaysText = formatWorkingDays(job) || 'Monday, Tuesday, Wednesday, Thursday, Friday';
+  const weekendPolicyText = formatWeekendPolicySummary(job) || 'No weekend policy specified';
+  const overtimePolicyText = formatOvertimeSummary(job);
 
   const canReportIssue =
     currentUser &&
@@ -955,6 +1009,63 @@ const JobDetail = () => {
                 Message
               </button>
             </div>
+          </div>
+        )}
+
+        <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-slate-800 mb-2">Schedule and compensation</h2>
+          <p className="text-sm text-slate-700"><span className="font-medium">Standard working days:</span> {workingDaysText}</p>
+          <p className="text-sm text-slate-700"><span className="font-medium">Weekend work:</span> {weekendPolicyText}</p>
+          <p className="text-sm text-slate-700"><span className="font-medium">Overtime:</span> {overtimePolicyText}</p>
+          {job?.schedule_and_pay_summary && (
+            <p className="text-xs text-slate-600 mt-2">{job.schedule_and_pay_summary}</p>
+          )}
+        </div>
+
+        {(job?.weekend_work_policy === 'optional' || (Array.isArray(weekendRequests) && weekendRequests.length > 0)) && (
+          <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <h2 className="text-sm font-semibold text-slate-800 mb-2">Optional weekend requests</h2>
+            {isCompanyOwner && job?.weekend_work_policy === 'optional' && (
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-2 mb-3">
+                <input type="date" className="rounded border border-slate-300 px-2 py-1 text-sm" value={weekendRequestDate} onChange={(e) => setWeekendRequestDate(e.target.value)} />
+                <input type="time" className="rounded border border-slate-300 px-2 py-1 text-sm" value={weekendRequestStartTime} onChange={(e) => setWeekendRequestStartTime(e.target.value)} />
+                <input type="time" className="rounded border border-slate-300 px-2 py-1 text-sm" value={weekendRequestEndTime} onChange={(e) => setWeekendRequestEndTime(e.target.value)} />
+                <button type="button" className="rounded bg-blue-600 text-white text-sm px-3 py-2" onClick={submitWeekendRequest}>
+                  Request weekend work
+                </button>
+              </div>
+            )}
+            {isCompanyOwner && job?.weekend_work_policy === 'optional' && (
+              <textarea
+                className="w-full rounded border border-slate-300 px-2 py-1 text-sm mb-3"
+                placeholder="Company note (optional)"
+                value={weekendRequestNote}
+                onChange={(e) => setWeekendRequestNote(e.target.value)}
+              />
+            )}
+            {loadingWeekendRequests ? (
+              <p className="text-sm text-slate-500">Loading weekend requests...</p>
+            ) : weekendRequests.length === 0 ? (
+              <p className="text-sm text-slate-500">No weekend requests yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {weekendRequests.map((request) => (
+                  <div key={request.id} className="rounded border border-slate-200 p-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span>{new Date(request.requested_start_at).toLocaleString()} - {new Date(request.requested_end_at).toLocaleTimeString()}</span>
+                      <span className="text-xs uppercase tracking-wide text-slate-600">{request.status?.replaceAll('_', ' ')}</span>
+                    </div>
+                    {request.company_note ? <p className="text-xs text-slate-600 mt-1">{request.company_note}</p> : null}
+                    {currentUser?.role === 'technician' && request.status === 'requested_by_company' && (
+                      <div className="mt-2 flex gap-2">
+                        <button type="button" onClick={() => respondToWeekendRequest(request.id, 'accepted_by_technician')} className="rounded bg-emerald-600 text-white text-xs px-2 py-1">Accept</button>
+                        <button type="button" onClick={() => respondToWeekendRequest(request.id, 'declined_by_technician')} className="rounded bg-red-600 text-white text-xs px-2 py-1">Decline</button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1953,6 +2064,9 @@ const JobDetail = () => {
           <p className="text-sm text-gray-600 mb-4">
             This rolling-start job lets you pick when you can begin.
           </p>
+          <div className="mb-4 rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
+            By claiming this job, you acknowledge this schedule: {weekendPolicyText}. Optional weekend requests can be accepted or declined without losing weekday assignment.
+          </div>
           <input
             type="datetime-local"
             value={claimPreferredStartAt}

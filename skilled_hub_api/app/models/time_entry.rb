@@ -19,6 +19,7 @@ class TimeEntry < ApplicationRecord
 
   validates :worked_start_at, :worked_end_at, :worked_on_date, :worked_hours, :job_timezone, presence: true
   validates :worked_hours, numericality: { greater_than: 0 }
+  validates :override_reason, presence: true, if: :override_applied?
   validate :end_after_start
 
   private

@@ -16,7 +16,7 @@ module TimeEntries
 
     def call
       worked_at = @time_entry.worked_start_at.in_time_zone(job_tz)
-      day = worked_at.cwday
+      day = worked_at.wday.zero? ? 7 : worked_at.wday
       weekend_day = day == 6 || day == 7
 
       if weekend_day

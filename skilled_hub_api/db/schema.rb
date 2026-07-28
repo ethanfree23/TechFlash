@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_07_27_140500) do
+ActiveRecord::Schema[7.1].define(version: 2026_07_28_100000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -364,6 +364,23 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_27_140500) do
     t.index ["user_id"], name: "index_job_issue_reports_on_user_id"
   end
 
+  create_table "job_term_change_audits", force: :cascade do |t|
+    t.integer "job_id", null: false
+    t.integer "actor_user_id", null: false
+    t.string "change_type", null: false
+    t.text "reason"
+    t.json "previous_values", default: {}, null: false
+    t.json "new_values", default: {}, null: false
+    t.boolean "requires_technician_acknowledgement", default: false, null: false
+    t.datetime "acknowledged_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["actor_user_id"], name: "index_job_term_change_audits_on_actor_user_id"
+    t.index ["change_type"], name: "index_job_term_change_audits_on_change_type"
+    t.index ["job_id", "created_at"], name: "index_job_term_change_audits_on_job_id_and_created_at"
+    t.index ["job_id"], name: "index_job_term_change_audits_on_job_id"
+  end
+
   create_table "jobs", force: :cascade do |t|
     t.integer "company_profile_id", null: false
     t.string "title"
@@ -404,6 +421,23 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_27_140500) do
     t.boolean "require_identity_verification", default: false, null: false
     t.integer "minimum_verified_references", default: 0, null: false
     t.boolean "require_insurance_verification", default: false, null: false
+    t.integer "weekend_work_policy", default: 0, null: false
+    t.json "standard_work_days", default: [1, 2, 3, 4, 5], null: false
+    t.integer "saturday_work_policy", default: 0, null: false
+    t.integer "sunday_work_policy", default: 0, null: false
+    t.decimal "saturday_multiplier", precision: 3, scale: 1
+    t.decimal "sunday_multiplier", precision: 3, scale: 1
+    t.boolean "weekend_requires_company_approval", default: true, null: false
+    t.boolean "weekend_requires_technician_acceptance", default: true, null: false
+    t.integer "premium_combination_rule", default: 0, null: false
+    t.boolean "overtime_enabled", default: false, null: false
+    t.decimal "daily_overtime_threshold_hours", precision: 5, scale: 2
+    t.decimal "weekly_overtime_threshold_hours", precision: 5, scale: 2
+    t.decimal "overtime_multiplier", precision: 3, scale: 1
+    t.datetime "hard_deadline_at"
+    t.string "job_timezone", default: "UTC", null: false
+    t.json "standard_day_shifts", default: {}, null: false
+    t.json "weekend_day_shifts", default: {}, null: false
     t.index ["company_profile_id"], name: "index_jobs_on_company_profile_id"
     t.index ["rolling_start_rule_type"], name: "index_jobs_on_rolling_start_rule_type"
     t.index ["share_token"], name: "index_jobs_on_share_token", unique: true
@@ -636,6 +670,53 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_27_140500) do
     t.index ["user_id"], name: "index_technician_profiles_on_user_id"
   end
 
+  create_table "time_entries", force: :cascade do |t|
+    t.integer "job_id", null: false
+    t.integer "technician_profile_id", null: false
+    t.integer "weekend_work_request_id"
+    t.integer "submitted_by_user_id", null: false
+    t.integer "approved_by_user_id"
+    t.integer "status", default: 0, null: false
+    t.datetime "worked_start_at", null: false
+    t.datetime "worked_end_at", null: false
+    t.date "worked_on_date", null: false
+    t.decimal "worked_hours", precision: 6, scale: 2, null: false
+    t.string "job_timezone", default: "UTC", null: false
+    t.boolean "override_applied", default: false, null: false
+    t.text "override_reason"
+    t.integer "override_by_user_id"
+    t.datetime "approved_at"
+    t.datetime "paid_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["approved_by_user_id"], name: "index_time_entries_on_approved_by_user_id"
+    t.index ["job_id", "status"], name: "index_time_entries_on_job_id_and_status"
+    t.index ["job_id", "worked_on_date"], name: "index_time_entries_on_job_id_and_worked_on_date"
+    t.index ["job_id"], name: "index_time_entries_on_job_id"
+    t.index ["override_by_user_id"], name: "index_time_entries_on_override_by_user_id"
+    t.index ["submitted_by_user_id"], name: "index_time_entries_on_submitted_by_user_id"
+    t.index ["technician_profile_id"], name: "index_time_entries_on_technician_profile_id"
+    t.index ["weekend_work_request_id"], name: "index_time_entries_on_weekend_work_request_id"
+  end
+
+  create_table "time_entry_pay_lines", force: :cascade do |t|
+    t.integer "time_entry_id", null: false
+    t.integer "job_id", null: false
+    t.integer "base_hourly_rate_cents", null: false
+    t.decimal "overtime_multiplier", precision: 3, scale: 1
+    t.decimal "weekend_multiplier", precision: 3, scale: 1
+    t.decimal "applied_multiplier", precision: 3, scale: 1, null: false
+    t.integer "effective_hourly_rate_cents", null: false
+    t.decimal "worked_hours", precision: 6, scale: 2, null: false
+    t.integer "gross_pay_cents", null: false
+    t.integer "premium_combination_rule", default: 0, null: false
+    t.json "calculation_details", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["job_id"], name: "index_time_entry_pay_lines_on_job_id"
+    t.index ["time_entry_id"], name: "index_time_entry_pay_lines_on_time_entry_id"
+  end
+
   create_table "user_login_events", force: :cascade do |t|
     t.integer "user_id", null: false
     t.datetime "created_at", null: false
@@ -745,6 +826,30 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_27_140500) do
     t.index ["technician_user_id"], name: "index_verification_references_on_technician_user_id"
   end
 
+  create_table "weekend_work_requests", force: :cascade do |t|
+    t.integer "job_id", null: false
+    t.integer "technician_profile_id", null: false
+    t.integer "requested_by_user_id", null: false
+    t.integer "status", default: 0, null: false
+    t.date "requested_date", null: false
+    t.datetime "requested_start_at", null: false
+    t.datetime "requested_end_at", null: false
+    t.decimal "estimated_hours", precision: 5, scale: 2, null: false
+    t.decimal "applicable_multiplier", precision: 3, scale: 1, default: "1.0", null: false
+    t.text "company_note"
+    t.text "technician_response_note"
+    t.datetime "responded_at"
+    t.datetime "cancelled_at"
+    t.datetime "completed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["job_id", "requested_date"], name: "index_weekend_work_requests_on_job_id_and_requested_date"
+    t.index ["job_id", "status"], name: "index_weekend_work_requests_on_job_id_and_status"
+    t.index ["job_id"], name: "index_weekend_work_requests_on_job_id"
+    t.index ["requested_by_user_id"], name: "index_weekend_work_requests_on_requested_by_user_id"
+    t.index ["technician_profile_id"], name: "index_weekend_work_requests_on_technician_profile_id"
+  end
+
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
   add_foreign_key "app_notifications", "users"
@@ -779,6 +884,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_27_140500) do
   add_foreign_key "job_counter_offers", "technician_profiles"
   add_foreign_key "job_issue_reports", "jobs"
   add_foreign_key "job_issue_reports", "users"
+  add_foreign_key "job_term_change_audits", "jobs"
+  add_foreign_key "job_term_change_audits", "users", column: "actor_user_id"
   add_foreign_key "jobs", "company_profiles"
   add_foreign_key "messages", "conversations"
   add_foreign_key "payments", "jobs"
@@ -792,6 +899,14 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_27_140500) do
   add_foreign_key "saved_job_searches", "technician_profiles"
   add_foreign_key "sms_delivery_logs", "users"
   add_foreign_key "technician_profiles", "users"
+  add_foreign_key "time_entries", "jobs"
+  add_foreign_key "time_entries", "technician_profiles"
+  add_foreign_key "time_entries", "users", column: "approved_by_user_id"
+  add_foreign_key "time_entries", "users", column: "override_by_user_id"
+  add_foreign_key "time_entries", "users", column: "submitted_by_user_id"
+  add_foreign_key "time_entries", "weekend_work_requests"
+  add_foreign_key "time_entry_pay_lines", "jobs"
+  add_foreign_key "time_entry_pay_lines", "time_entries"
   add_foreign_key "user_login_events", "users"
   add_foreign_key "users", "company_profiles"
   add_foreign_key "verification_audit_logs", "users"
@@ -800,4 +915,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_27_140500) do
   add_foreign_key "verification_profiles", "users"
   add_foreign_key "verification_references", "users", column: "reviewed_by_user_id"
   add_foreign_key "verification_references", "users", column: "technician_user_id"
+  add_foreign_key "weekend_work_requests", "jobs"
+  add_foreign_key "weekend_work_requests", "technician_profiles"
+  add_foreign_key "weekend_work_requests", "users", column: "requested_by_user_id"
 end

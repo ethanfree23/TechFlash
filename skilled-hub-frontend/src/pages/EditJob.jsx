@@ -5,12 +5,20 @@ import JobAddressFields from '../components/JobAddressFields';
 import DateTimeInput from '../components/DateTimeInput';
 import AlertModal from '../components/AlertModal';
 import ConfirmModal from '../components/ConfirmModal';
+import WorkScheduleCalendarPopup from '../components/WorkScheduleCalendarPopup';
 import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
 import { companyChargeFromJobAmount, formatPlatformFeePercent } from '../utils/companyPlatformFee';
 import { auth } from '../auth';
 import { JOB_STATUS_KEYS, jobStatusLabel, normalizeJobStatusKey } from '../utils/jobStatus';
+import {
+  WEEKDAY_OPTIONS,
+  WEEKEND_WORK_OPTIONS,
+  DAY_WORK_POLICY_OPTIONS,
+  DEFAULT_STANDARD_WORK_DAYS,
+  buildScheduleSummary,
+} from '../utils/workSchedule';
 
-const WEEKDAY_OPTIONS = [
+const ROLLING_WEEKDAY_OPTIONS = [
   { value: '0', label: 'Sunday' },
   { value: '1', label: 'Monday' },
   { value: '2', label: 'Tuesday' },
@@ -51,6 +59,11 @@ const EditJob = () => {
     title: '', description: '', skill_class: '', minimum_years_experience: '', notes: '', required_certifications: [''], address: '', city: '', state: '', zip_code: '', country: '', status: 'open',
     hourly_rate_cents: '', hours_per_day: '8', days: '', start_mode: 'hard_start',
     require_background_check: false, require_identity_verification: false, minimum_verified_references: '0', require_insurance_verification: false,
+    weekend_work_policy: 'prohibited', standard_work_days: DEFAULT_STANDARD_WORK_DAYS, standard_day_shifts: {},
+    saturday_work_policy: 'unavailable', sunday_work_policy: 'unavailable', saturday_multiplier: '1.5', sunday_multiplier: '1.5',
+    weekend_requires_company_approval: true, weekend_requires_technician_acceptance: true,
+    overtime_enabled: false, daily_overtime_threshold_hours: '', weekly_overtime_threshold_hours: '', overtime_multiplier: '1.5',
+    premium_combination_rule: 'highest_applicable', hard_deadline_at: '', job_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -66,6 +79,7 @@ const EditJob = () => {
   const [rollingStartDaysAfterAcceptance, setRollingStartDaysAfterAcceptance] = useState('1');
   const [rollingStartWeekday, setRollingStartWeekday] = useState('1');
   const [rollingStartWeekdayTime, setRollingStartWeekdayTime] = useState('08:00');
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   useEffect(() => {
     const fetchJob = async () => {
@@ -99,6 +113,22 @@ const EditJob = () => {
           hourly_rate_cents: hasHourlyRate ? (data.hourly_rate_cents / 100).toFixed(2) : '',
           hours_per_day: data.hours_per_day ?? 8,
           days: data.days ?? '',
+          weekend_work_policy: data.weekend_work_policy || 'prohibited',
+          standard_work_days: Array.isArray(data.standard_work_days) && data.standard_work_days.length ? data.standard_work_days : DEFAULT_STANDARD_WORK_DAYS,
+          standard_day_shifts: data.standard_day_shifts || {},
+          saturday_work_policy: data.saturday_work_policy || 'unavailable',
+          sunday_work_policy: data.sunday_work_policy || 'unavailable',
+          saturday_multiplier: data.saturday_multiplier != null ? String(data.saturday_multiplier) : '1.5',
+          sunday_multiplier: data.sunday_multiplier != null ? String(data.sunday_multiplier) : '1.5',
+          weekend_requires_company_approval: Boolean(data.weekend_requires_company_approval ?? true),
+          weekend_requires_technician_acceptance: Boolean(data.weekend_requires_technician_acceptance ?? true),
+          overtime_enabled: Boolean(data.overtime_enabled),
+          daily_overtime_threshold_hours: data.daily_overtime_threshold_hours != null ? String(data.daily_overtime_threshold_hours) : '',
+          weekly_overtime_threshold_hours: data.weekly_overtime_threshold_hours != null ? String(data.weekly_overtime_threshold_hours) : '',
+          overtime_multiplier: data.overtime_multiplier != null ? String(data.overtime_multiplier) : '1.5',
+          premium_combination_rule: data.premium_combination_rule || 'highest_applicable',
+          hard_deadline_at: toDatetimeLocal(data.hard_deadline_at),
+          job_timezone: data.job_timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
         });
         const currentEnd = data.scheduled_end_at;
         const defaultEnd = currentEnd ? new Date(currentEnd) : new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -166,6 +196,16 @@ const EditJob = () => {
   const feePct = platformFeePercent ?? 10;
   const feeLabel = formatPlatformFeePercent(feePct);
   const companyCharge = jobAmount > 0 ? companyChargeFromJobAmount(jobAmount, feePct) : 0;
+  const scheduleSummary = buildScheduleSummary({
+    standardWorkDays: form.standard_work_days,
+    weekendWorkPolicy: form.weekend_work_policy,
+    saturdayWorkPolicy: form.saturday_work_policy,
+    sundayWorkPolicy: form.sunday_work_policy,
+    saturdayMultiplier: form.saturday_multiplier,
+    sundayMultiplier: form.sunday_multiplier,
+    overtimeEnabled: form.overtime_enabled,
+    overtimeMultiplier: form.overtime_multiplier,
+  });
 
   const patchAddress = (patch) => {
     setForm((prev) => ({
@@ -187,6 +227,15 @@ const EditJob = () => {
         message: 'Please set at least city and state from address search or manual entry.',
         variant: 'error',
         onCloseAction: null,
+      });
+      return;
+    }
+    if (form.weekend_work_policy === 'required' && form.saturday_work_policy === 'unavailable' && form.sunday_work_policy === 'unavailable') {
+      setAlertModal({
+        isOpen: true,
+        title: 'Weekend days required',
+        message: 'Select Saturday or Sunday when weekend work is required.',
+        variant: 'error',
       });
       return;
     }
@@ -229,6 +278,26 @@ const EditJob = () => {
         rolling_start_weekday_time: form.start_mode === 'rolling_start' && rollingStartRuleType === 'following_weekday'
           ? rollingStartWeekdayTime
           : null,
+        weekend_work_policy: form.weekend_work_policy,
+        standard_work_days: form.standard_work_days,
+        standard_day_shifts: form.standard_day_shifts,
+        saturday_work_policy: form.saturday_work_policy,
+        sunday_work_policy: form.sunday_work_policy,
+        saturday_multiplier: form.saturday_work_policy === 'premium_rate' ? Number(form.saturday_multiplier) : null,
+        sunday_multiplier: form.sunday_work_policy === 'premium_rate' ? Number(form.sunday_multiplier) : null,
+        weekend_requires_company_approval: !!form.weekend_requires_company_approval,
+        weekend_requires_technician_acceptance: !!form.weekend_requires_technician_acceptance,
+        overtime_enabled: !!form.overtime_enabled,
+        daily_overtime_threshold_hours: form.overtime_enabled && form.daily_overtime_threshold_hours
+          ? Number(form.daily_overtime_threshold_hours)
+          : null,
+        weekly_overtime_threshold_hours: form.overtime_enabled && form.weekly_overtime_threshold_hours
+          ? Number(form.weekly_overtime_threshold_hours)
+          : null,
+        overtime_multiplier: form.overtime_enabled ? Number(form.overtime_multiplier || 1.5) : null,
+        premium_combination_rule: form.premium_combination_rule || 'highest_applicable',
+        hard_deadline_at: form.hard_deadline_at ? new Date(form.hard_deadline_at).toISOString() : null,
+        job_timezone: form.job_timezone || 'UTC',
       };
       if (jobAmount > 0) {
         payload.hourly_rate_cents = Math.round(hr * 100);
@@ -552,7 +621,7 @@ const EditJob = () => {
                     value={rollingStartWeekday}
                     onChange={(e) => setRollingStartWeekday(e.target.value)}
                   >
-                    {WEEKDAY_OPTIONS.map((opt) => (
+                    {ROLLING_WEEKDAY_OPTIONS.map((opt) => (
                       <option key={opt.value} value={opt.value}>{opt.label}</option>
                     ))}
                   </select>
@@ -589,6 +658,124 @@ const EditJob = () => {
               className="w-full"
             />
           )}
+        </div>
+        <div className={sectionCardClass}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-slate-900">Work schedule</h3>
+              <p className="text-xs text-slate-500">Set standard working days and shift windows.</p>
+            </div>
+            <button type="button" className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700" onClick={() => setCalendarOpen(true)}>
+              Open calendar
+            </button>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {WEEKDAY_OPTIONS.map((opt) => {
+              const selected = (form.standard_work_days || []).includes(opt.value);
+              return (
+                <label key={opt.value} className={`rounded border px-2 py-1 text-sm ${selected ? 'border-blue-400 bg-blue-50' : 'border-slate-200 bg-white'}`}>
+                  <input
+                    type="checkbox"
+                    className="mr-2"
+                    checked={selected}
+                    onChange={(e) => {
+                      setForm((prev) => ({
+                        ...prev,
+                        standard_work_days: e.target.checked
+                          ? [...(prev.standard_work_days || []), opt.value].sort((a, b) => a - b)
+                          : (prev.standard_work_days || []).filter((d) => d !== opt.value),
+                      }));
+                    }}
+                  />
+                  {opt.label}
+                </label>
+              );
+            })}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>Hard deadline</label>
+              <DateTimeInput id="edit-job-hard-deadline" value={form.hard_deadline_at} onChange={(e) => setForm((p) => ({ ...p, hard_deadline_at: e.target.value }))} className="w-full" />
+            </div>
+            <div>
+              <label className={labelClass}>Job timezone</label>
+              <input className={fieldClass} value={form.job_timezone} onChange={(e) => setForm((p) => ({ ...p, job_timezone: e.target.value }))} />
+            </div>
+          </div>
+        </div>
+        <div className={sectionCardClass}>
+          <h3 className="font-semibold text-slate-900">Weekend work</h3>
+          <select className={fieldClass} value={form.weekend_work_policy} onChange={(e) => setForm((p) => ({ ...p, weekend_work_policy: e.target.value }))}>
+            {WEEKEND_WORK_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+          </select>
+          {form.weekend_work_policy !== 'prohibited' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={labelClass}>Saturday availability</label>
+                <select className={fieldClass} value={form.saturday_work_policy} onChange={(e) => setForm((p) => ({ ...p, saturday_work_policy: e.target.value }))}>
+                  {DAY_WORK_POLICY_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+                {form.saturday_work_policy === 'premium_rate' && (
+                  <input type="number" min="1" max="3" step="0.1" className={`${fieldClass} mt-2`} value={form.saturday_multiplier} onChange={(e) => setForm((p) => ({ ...p, saturday_multiplier: e.target.value }))} />
+                )}
+              </div>
+              <div>
+                <label className={labelClass}>Sunday availability</label>
+                <select className={fieldClass} value={form.sunday_work_policy} onChange={(e) => setForm((p) => ({ ...p, sunday_work_policy: e.target.value }))}>
+                  {DAY_WORK_POLICY_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+                {form.sunday_work_policy === 'premium_rate' && (
+                  <input type="number" min="1" max="3" step="0.1" className={`${fieldClass} mt-2`} value={form.sunday_multiplier} onChange={(e) => setForm((p) => ({ ...p, sunday_multiplier: e.target.value }))} />
+                )}
+              </div>
+            </div>
+          )}
+          {form.weekend_work_policy === 'optional' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="flex items-center justify-between text-sm">
+                Technician acceptance required
+                <input type="checkbox" checked={!!form.weekend_requires_technician_acceptance} onChange={(e) => setForm((p) => ({ ...p, weekend_requires_technician_acceptance: e.target.checked }))} />
+              </label>
+              <label className="flex items-center justify-between text-sm">
+                Company approval required
+                <input type="checkbox" checked={!!form.weekend_requires_company_approval} onChange={(e) => setForm((p) => ({ ...p, weekend_requires_company_approval: e.target.checked }))} />
+              </label>
+            </div>
+          )}
+        </div>
+        <div className={sectionCardClass}>
+          <h3 className="font-semibold text-slate-900">Overtime</h3>
+          <label className="flex items-center justify-between text-sm">
+            Overtime eligibility
+            <input type="checkbox" checked={!!form.overtime_enabled} onChange={(e) => setForm((p) => ({ ...p, overtime_enabled: e.target.checked }))} />
+          </label>
+          {form.overtime_enabled && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className={labelClass}>Daily threshold (hours)</label>
+                <input type="number" min="1" step="0.5" className={fieldClass} value={form.daily_overtime_threshold_hours} onChange={(e) => setForm((p) => ({ ...p, daily_overtime_threshold_hours: e.target.value }))} />
+              </div>
+              <div>
+                <label className={labelClass}>Weekly threshold (hours)</label>
+                <input type="number" min="1" step="0.5" className={fieldClass} value={form.weekly_overtime_threshold_hours} onChange={(e) => setForm((p) => ({ ...p, weekly_overtime_threshold_hours: e.target.value }))} />
+              </div>
+              <div>
+                <label className={labelClass}>Overtime multiplier</label>
+                <input type="number" min="1" max="3" step="0.1" className={fieldClass} value={form.overtime_multiplier} onChange={(e) => setForm((p) => ({ ...p, overtime_multiplier: e.target.value }))} />
+              </div>
+            </div>
+          )}
+          <div>
+            <label className={labelClass}>Premium interaction</label>
+            <select className={fieldClass} value={form.premium_combination_rule} onChange={(e) => setForm((p) => ({ ...p, premium_combination_rule: e.target.value }))}>
+              <option value="highest_applicable">Pay highest applicable rate</option>
+              <option value="stacked">Stack multipliers</option>
+            </select>
+          </div>
+        </div>
+        <div className={sectionCardClass}>
+          <h3 className="font-semibold text-slate-900">Schedule and pay summary</h3>
+          <p className="text-sm text-slate-700">{scheduleSummary}</p>
         </div>
         <div>
           <label className={labelClass}>Status</label>
@@ -662,6 +849,17 @@ const EditJob = () => {
           </form>
         </div>
       )}
+
+      <WorkScheduleCalendarPopup
+        isOpen={calendarOpen}
+        onClose={() => setCalendarOpen(false)}
+        selectedDays={form.standard_work_days}
+        shiftsByDay={form.standard_day_shifts}
+        onApply={({ selectedDays, shiftsByDay }) => {
+          setForm((prev) => ({ ...prev, standard_work_days: selectedDays, standard_day_shifts: shiftsByDay }));
+          setCalendarOpen(false);
+        }}
+      />
 
       <AlertModal
         isOpen={alertModal.isOpen}

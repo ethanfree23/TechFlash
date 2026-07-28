@@ -4,9 +4,18 @@ import { jobsAPI, profilesAPI, crmAPI } from '../api/api';
 import DateTimeInput from '../components/DateTimeInput';
 import JobAddressFields from '../components/JobAddressFields';
 import AlertModal from '../components/AlertModal';
+import WorkScheduleCalendarPopup from '../components/WorkScheduleCalendarPopup';
 import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
 import { auth } from '../auth';
 import { companyChargeFromJobAmount, formatPlatformFeePercent } from '../utils/companyPlatformFee';
+import {
+  WEEKDAY_OPTIONS,
+  WEEKEND_WORK_OPTIONS,
+  DAY_WORK_POLICY_OPTIONS,
+  DEFAULT_STANDARD_WORK_DAYS,
+  buildScheduleSummary,
+  computeExpectedCompletion,
+} from '../utils/workSchedule';
 
 const toDatetimeLocal = (d) => {
   if (!d) return '';
@@ -27,7 +36,7 @@ const CLASS_SUGGESTIONS = [
   'Plumbing',
   'General Labor',
 ];
-const WEEKDAY_OPTIONS = [
+const ROLLING_WEEKDAY_OPTIONS = [
   { value: '0', label: 'Sunday' },
   { value: '1', label: 'Monday' },
   { value: '2', label: 'Tuesday' },
@@ -116,6 +125,23 @@ const CreateJob = () => {
   const [scheduledEndAt, setScheduledEndAt] = useState(
     computeEndFromPricing(toDatetimeLocal(defaultStart), 1, 8)
   );
+  const [hardDeadlineAt, setHardDeadlineAt] = useState('');
+  const [jobTimezone, setJobTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+  const [standardWorkDays, setStandardWorkDays] = useState(DEFAULT_STANDARD_WORK_DAYS);
+  const [standardDayShifts, setStandardDayShifts] = useState({});
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [weekendWorkPolicy, setWeekendWorkPolicy] = useState('prohibited');
+  const [saturdayWorkPolicy, setSaturdayWorkPolicy] = useState('unavailable');
+  const [sundayWorkPolicy, setSundayWorkPolicy] = useState('unavailable');
+  const [saturdayMultiplier, setSaturdayMultiplier] = useState('1.5');
+  const [sundayMultiplier, setSundayMultiplier] = useState('1.5');
+  const [weekendRequiresCompanyApproval, setWeekendRequiresCompanyApproval] = useState(true);
+  const [weekendRequiresTechnicianAcceptance, setWeekendRequiresTechnicianAcceptance] = useState(true);
+  const [overtimeEnabled, setOvertimeEnabled] = useState(false);
+  const [dailyOvertimeThresholdHours, setDailyOvertimeThresholdHours] = useState('');
+  const [weeklyOvertimeThresholdHours, setWeeklyOvertimeThresholdHours] = useState('');
+  const [overtimeMultiplier, setOvertimeMultiplier] = useState('1.5');
+  const [premiumCombinationRule, setPremiumCombinationRule] = useState('highest_applicable');
   const [useCustomGoLiveAt, setUseCustomGoLiveAt] = useState(false);
   const [goLiveAt, setGoLiveAt] = useState(toDatetimeLocal(new Date()));
   const [saving, setSaving] = useState(false);
@@ -167,6 +193,22 @@ const CreateJob = () => {
     setMinimumVerifiedReferences(String(job.minimum_verified_references ?? 0));
     setRequireInsuranceVerification(Boolean(job.require_insurance_verification));
     setStartMode(String(job.start_mode || 'hard_start'));
+    setWeekendWorkPolicy(String(job.weekend_work_policy || 'prohibited'));
+    setStandardWorkDays(Array.isArray(job.standard_work_days) && job.standard_work_days.length ? job.standard_work_days : DEFAULT_STANDARD_WORK_DAYS);
+    setStandardDayShifts(job.standard_day_shifts || {});
+    setSaturdayWorkPolicy(String(job.saturday_work_policy || 'unavailable'));
+    setSundayWorkPolicy(String(job.sunday_work_policy || 'unavailable'));
+    setSaturdayMultiplier(job.saturday_multiplier != null ? String(job.saturday_multiplier) : '1.5');
+    setSundayMultiplier(job.sunday_multiplier != null ? String(job.sunday_multiplier) : '1.5');
+    setWeekendRequiresCompanyApproval(Boolean(job.weekend_requires_company_approval ?? true));
+    setWeekendRequiresTechnicianAcceptance(Boolean(job.weekend_requires_technician_acceptance ?? true));
+    setOvertimeEnabled(Boolean(job.overtime_enabled));
+    setDailyOvertimeThresholdHours(job.daily_overtime_threshold_hours != null ? String(job.daily_overtime_threshold_hours) : '');
+    setWeeklyOvertimeThresholdHours(job.weekly_overtime_threshold_hours != null ? String(job.weekly_overtime_threshold_hours) : '');
+    setOvertimeMultiplier(job.overtime_multiplier != null ? String(job.overtime_multiplier) : '1.5');
+    setPremiumCombinationRule(String(job.premium_combination_rule || 'highest_applicable'));
+    setHardDeadlineAt(job.hard_deadline_at ? toDatetimeLocal(job.hard_deadline_at) : '');
+    setJobTimezone(String(job.job_timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'));
     if (job.scheduled_start_at) {
       setScheduledStartAt(toDatetimeLocal(job.scheduled_start_at));
     }
@@ -214,6 +256,22 @@ const CreateJob = () => {
       setMinimumVerifiedReferences(String(draft.minimumVerifiedReferences ?? '0'));
       setRequireInsuranceVerification(Boolean(draft.requireInsuranceVerification));
       setStartMode(String(draft.startMode || 'hard_start'));
+      setWeekendWorkPolicy(String(draft.weekendWorkPolicy || 'prohibited'));
+      setStandardWorkDays(Array.isArray(draft.standardWorkDays) && draft.standardWorkDays.length ? draft.standardWorkDays : DEFAULT_STANDARD_WORK_DAYS);
+      setStandardDayShifts(draft.standardDayShifts || {});
+      setSaturdayWorkPolicy(String(draft.saturdayWorkPolicy || 'unavailable'));
+      setSundayWorkPolicy(String(draft.sundayWorkPolicy || 'unavailable'));
+      setSaturdayMultiplier(String(draft.saturdayMultiplier || '1.5'));
+      setSundayMultiplier(String(draft.sundayMultiplier || '1.5'));
+      setWeekendRequiresCompanyApproval(Boolean(draft.weekendRequiresCompanyApproval ?? true));
+      setWeekendRequiresTechnicianAcceptance(Boolean(draft.weekendRequiresTechnicianAcceptance ?? true));
+      setOvertimeEnabled(Boolean(draft.overtimeEnabled));
+      setDailyOvertimeThresholdHours(String(draft.dailyOvertimeThresholdHours || ''));
+      setWeeklyOvertimeThresholdHours(String(draft.weeklyOvertimeThresholdHours || ''));
+      setOvertimeMultiplier(String(draft.overtimeMultiplier || '1.5'));
+      setPremiumCombinationRule(String(draft.premiumCombinationRule || 'highest_applicable'));
+      setHardDeadlineAt(String(draft.hardDeadlineAt || ''));
+      setJobTimezone(String(draft.jobTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'));
       setScheduledStartAt(String(draft.scheduledStartAt || toDatetimeLocal(defaultStart)));
       setScheduledEndAt(String(draft.scheduledEndAt || computeEndFromPricing(toDatetimeLocal(defaultStart), 1, 8)));
       setUseCustomGoLiveAt(Boolean(draft.useCustomGoLiveAt));
@@ -248,6 +306,22 @@ const CreateJob = () => {
           minimumVerifiedReferences,
           requireInsuranceVerification,
           startMode,
+          weekendWorkPolicy,
+          standardWorkDays,
+          standardDayShifts,
+          saturdayWorkPolicy,
+          sundayWorkPolicy,
+          saturdayMultiplier,
+          sundayMultiplier,
+          weekendRequiresCompanyApproval,
+          weekendRequiresTechnicianAcceptance,
+          overtimeEnabled,
+          dailyOvertimeThresholdHours,
+          weeklyOvertimeThresholdHours,
+          overtimeMultiplier,
+          premiumCombinationRule,
+          hardDeadlineAt,
+          jobTimezone,
           scheduledStartAt,
           scheduledEndAt,
           useCustomGoLiveAt,
@@ -278,6 +352,22 @@ const CreateJob = () => {
     minimumVerifiedReferences,
     requireInsuranceVerification,
     startMode,
+    weekendWorkPolicy,
+    standardWorkDays,
+    standardDayShifts,
+    saturdayWorkPolicy,
+    sundayWorkPolicy,
+    saturdayMultiplier,
+    sundayMultiplier,
+    weekendRequiresCompanyApproval,
+    weekendRequiresTechnicianAcceptance,
+    overtimeEnabled,
+    dailyOvertimeThresholdHours,
+    weeklyOvertimeThresholdHours,
+    overtimeMultiplier,
+    premiumCombinationRule,
+    hardDeadlineAt,
+    jobTimezone,
     scheduledStartAt,
     scheduledEndAt,
     useCustomGoLiveAt,
@@ -356,9 +446,16 @@ const CreateJob = () => {
   // Auto-compute end date/time from start + days + hours per day (+ 1 hr lunch)
   useEffect(() => {
     if (startMode === 'rolling_start') return;
-    const computed = computeEndFromPricing(scheduledStartAt, days, hoursPerDay);
-    if (computed) setScheduledEndAt(computed);
-  }, [scheduledStartAt, days, hoursPerDay, startMode]);
+    const computedIso = computeExpectedCompletion({
+      startAt: scheduledStartAt,
+      workDaysCount: days,
+      hoursPerDay,
+      standardWorkDays,
+    });
+    if (computedIso) {
+      setScheduledEndAt(toDatetimeLocal(computedIso));
+    }
+  }, [scheduledStartAt, days, hoursPerDay, startMode, standardWorkDays]);
 
   const hr = parseFloat(hourlyRate) || 0;
   const hpd = parseInt(hoursPerDay, 10) || 8;
@@ -369,6 +466,16 @@ const CreateJob = () => {
     ? companyChargeFromJobAmount(jobAmount, platformFeePercent)
     : null;
   const feeLabel = feeReady ? formatPlatformFeePercent(platformFeePercent) : null;
+  const scheduleSummary = buildScheduleSummary({
+    standardWorkDays,
+    weekendWorkPolicy,
+    saturdayWorkPolicy,
+    sundayWorkPolicy,
+    saturdayMultiplier,
+    sundayMultiplier,
+    overtimeEnabled,
+    overtimeMultiplier,
+  });
 
   const patchAddress = (patch) => {
     if (patch.address !== undefined) setAddress(patch.address);
@@ -394,6 +501,26 @@ const CreateJob = () => {
         setErrorModal('End date/time cannot be before start date/time.');
         return;
       }
+    }
+    if (weekendWorkPolicy === 'required' && saturdayWorkPolicy === 'unavailable' && sundayWorkPolicy === 'unavailable') {
+      setErrorModal('Weekend-required jobs must include Saturday or Sunday availability.');
+      return;
+    }
+    if (weekendWorkPolicy === 'optional' && saturdayWorkPolicy === 'unavailable' && sundayWorkPolicy === 'unavailable') {
+      setErrorModal('Select at least one weekend day that may be offered.');
+      return;
+    }
+    if (weekendWorkPolicy === 'prohibited' && standardWorkDays.some((d) => Number(d) === 6 || Number(d) === 7)) {
+      setErrorModal('Remove Saturday and Sunday from standard working days when weekend work is prohibited.');
+      return;
+    }
+    if (saturdayWorkPolicy === 'premium_rate' && !saturdayMultiplier) {
+      setErrorModal('Saturday multiplier is required when Saturday premium pay is selected.');
+      return;
+    }
+    if (sundayWorkPolicy === 'premium_rate' && !sundayMultiplier) {
+      setErrorModal('Sunday multiplier is required when Sunday premium pay is selected.');
+      return;
     }
     setSaving(true);
     try {
@@ -435,6 +562,22 @@ const CreateJob = () => {
         rolling_start_weekday_time: startMode === 'rolling_start' && rollingStartRuleType === 'following_weekday'
           ? rollingStartWeekdayTime
           : null,
+        weekend_work_policy: weekendWorkPolicy,
+        standard_work_days: standardWorkDays,
+        standard_day_shifts: standardDayShifts,
+        saturday_work_policy: saturdayWorkPolicy,
+        sunday_work_policy: sundayWorkPolicy,
+        saturday_multiplier: saturdayWorkPolicy === 'premium_rate' ? Number(saturdayMultiplier) : null,
+        sunday_multiplier: sundayWorkPolicy === 'premium_rate' ? Number(sundayMultiplier) : null,
+        weekend_requires_company_approval: weekendRequiresCompanyApproval,
+        weekend_requires_technician_acceptance: weekendRequiresTechnicianAcceptance,
+        overtime_enabled: overtimeEnabled,
+        daily_overtime_threshold_hours: overtimeEnabled && dailyOvertimeThresholdHours ? Number(dailyOvertimeThresholdHours) : null,
+        weekly_overtime_threshold_hours: overtimeEnabled && weeklyOvertimeThresholdHours ? Number(weeklyOvertimeThresholdHours) : null,
+        overtime_multiplier: overtimeEnabled ? Number(overtimeMultiplier || 1.5) : null,
+        premium_combination_rule: premiumCombinationRule,
+        hard_deadline_at: hardDeadlineAt ? new Date(hardDeadlineAt).toISOString() : null,
+        job_timezone: jobTimezone || 'UTC',
       };
       if (isAdmin) {
         payload.skip_card_validation = !enforceCardValidation;
@@ -847,7 +990,7 @@ const CreateJob = () => {
                       value={rollingStartWeekday}
                       onChange={(e) => setRollingStartWeekday(e.target.value)}
                     >
-                      {WEEKDAY_OPTIONS.map((opt) => (
+                    {ROLLING_WEEKDAY_OPTIONS.map((opt) => (
                         <option key={opt.value} value={opt.value}>{opt.label}</option>
                       ))}
                     </select>
@@ -888,6 +1031,139 @@ const CreateJob = () => {
             <p className="text-xs text-slate-500 mt-0.5">Auto-calculated from days and hours (incl. 1 hr lunch/day). Adjust if needed.</p>
           </div>
         </div>
+        <div className={sectionCardClass}>
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h3 className="font-semibold text-slate-900">Work schedule</h3>
+              <p className="text-xs text-slate-500">Set standard days and optional per-day start/end times.</p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setCalendarOpen(true)}
+              className="rounded border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50"
+            >
+              Open calendar
+            </button>
+          </div>
+          <div>
+            <label className={labelClass}>Standard working days</label>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+              {WEEKDAY_OPTIONS.map((opt) => {
+                const selected = standardWorkDays.includes(opt.value);
+                return (
+                  <label key={opt.value} className={`rounded border px-2 py-1 text-sm ${selected ? 'border-blue-400 bg-blue-50' : 'border-slate-200 bg-white'}`}>
+                    <input
+                      type="checkbox"
+                      className="mr-2"
+                      checked={selected}
+                      onChange={(e) => {
+                        setStandardWorkDays((prev) => e.target.checked
+                          ? [...prev, opt.value].sort((a, b) => a - b)
+                          : prev.filter((d) => d !== opt.value));
+                      }}
+                    />
+                    {opt.label}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className={labelClass}>Hard deadline</label>
+              <DateTimeInput
+                id="create-job-hard-deadline"
+                value={hardDeadlineAt}
+                onChange={(e) => setHardDeadlineAt(e.target.value)}
+                className="w-full"
+              />
+            </div>
+            <div>
+              <label className={labelClass}>Job timezone</label>
+              <input className={fieldClass} value={jobTimezone} onChange={(e) => setJobTimezone(e.target.value)} placeholder="America/Chicago" />
+            </div>
+          </div>
+        </div>
+        <div className={sectionCardClass}>
+          <h3 className="font-semibold text-slate-900">Weekend work</h3>
+          <select className={fieldClass} value={weekendWorkPolicy} onChange={(e) => setWeekendWorkPolicy(e.target.value)}>
+            {WEEKEND_WORK_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+          {weekendWorkPolicy !== 'prohibited' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className={labelClass}>Saturday availability</label>
+                <select className={fieldClass} value={saturdayWorkPolicy} onChange={(e) => setSaturdayWorkPolicy(e.target.value)}>
+                  {DAY_WORK_POLICY_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+                {saturdayWorkPolicy === 'premium_rate' && (
+                  <input type="number" min="1" max="3" step="0.1" className={`${fieldClass} mt-2`} value={saturdayMultiplier} onChange={(e) => setSaturdayMultiplier(e.target.value)} />
+                )}
+              </div>
+              <div>
+                <label className={labelClass}>Sunday availability</label>
+                <select className={fieldClass} value={sundayWorkPolicy} onChange={(e) => setSundayWorkPolicy(e.target.value)}>
+                  {DAY_WORK_POLICY_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+                </select>
+                {sundayWorkPolicy === 'premium_rate' && (
+                  <input type="number" min="1" max="3" step="0.1" className={`${fieldClass} mt-2`} value={sundayMultiplier} onChange={(e) => setSundayMultiplier(e.target.value)} />
+                )}
+              </div>
+            </div>
+          )}
+          {weekendWorkPolicy === 'optional' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <label className="flex items-center justify-between text-sm">
+                Technician acceptance required
+                <input type="checkbox" checked={weekendRequiresTechnicianAcceptance} onChange={(e) => setWeekendRequiresTechnicianAcceptance(e.target.checked)} />
+              </label>
+              <label className="flex items-center justify-between text-sm">
+                Company approval required
+                <input type="checkbox" checked={weekendRequiresCompanyApproval} onChange={(e) => setWeekendRequiresCompanyApproval(e.target.checked)} />
+              </label>
+            </div>
+          )}
+          {weekendWorkPolicy === 'prohibited' && (
+            <p className="text-xs text-slate-600">If the job is unfinished at the end of Friday, it will resume on the next scheduled workday.</p>
+          )}
+        </div>
+        <div className={sectionCardClass}>
+          <h3 className="font-semibold text-slate-900">Overtime</h3>
+          <label className="flex items-center justify-between text-sm">
+            Overtime eligibility
+            <input type="checkbox" checked={overtimeEnabled} onChange={(e) => setOvertimeEnabled(e.target.checked)} />
+          </label>
+          {overtimeEnabled && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div>
+                <label className={labelClass}>Daily threshold (hours)</label>
+                <input type="number" min="1" step="0.5" className={fieldClass} value={dailyOvertimeThresholdHours} onChange={(e) => setDailyOvertimeThresholdHours(e.target.value)} />
+              </div>
+              <div>
+                <label className={labelClass}>Weekly threshold (hours)</label>
+                <input type="number" min="1" step="0.5" className={fieldClass} value={weeklyOvertimeThresholdHours} onChange={(e) => setWeeklyOvertimeThresholdHours(e.target.value)} />
+              </div>
+              <div>
+                <label className={labelClass}>Overtime multiplier</label>
+                <input type="number" min="1" max="3" step="0.1" className={fieldClass} value={overtimeMultiplier} onChange={(e) => setOvertimeMultiplier(e.target.value)} />
+              </div>
+            </div>
+          )}
+          <div>
+            <label className={labelClass}>Overtime and weekend premium interaction</label>
+            <select className={fieldClass} value={premiumCombinationRule} onChange={(e) => setPremiumCombinationRule(e.target.value)}>
+              <option value="highest_applicable">Pay highest applicable rate</option>
+              <option value="stacked">Stack multipliers</option>
+            </select>
+            <p className="text-xs text-slate-600 mt-1">Weekend premium pay applies because of day worked. Overtime applies after hour thresholds.</p>
+          </div>
+        </div>
+        <div className={sectionCardClass}>
+          <h3 className="font-semibold text-slate-900">Schedule and pay summary</h3>
+          <p className="text-sm text-slate-700">{scheduleSummary}</p>
+        </div>
         <div>
           <label className={labelClass}>Status</label>
           <select
@@ -920,6 +1196,18 @@ const CreateJob = () => {
           </p>
         )}
       </form>
+
+      <WorkScheduleCalendarPopup
+        isOpen={calendarOpen}
+        onClose={() => setCalendarOpen(false)}
+        selectedDays={standardWorkDays}
+        shiftsByDay={standardDayShifts}
+        onApply={({ selectedDays, shiftsByDay }) => {
+          setStandardWorkDays(selectedDays);
+          setStandardDayShifts(shiftsByDay);
+          setCalendarOpen(false);
+        }}
+      />
 
       <AlertModal
         isOpen={successModal}

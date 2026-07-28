@@ -1,4 +1,5 @@
 import { normalizeJobStatusKey } from './jobStatus';
+import { formatWeekdayList, toMultiplierLabel } from './workSchedule';
 
 export const haversineMiles = (lat1, lon1, lat2, lon2) => {
   if (lat1 == null || lon1 == null || lat2 == null || lon2 == null) return Infinity;
@@ -47,6 +48,33 @@ export const formatJobDuration = (job) => {
     }
   }
   return null;
+};
+
+export const formatWorkingDays = (job) => formatWeekdayList(job?.standard_work_days || []);
+
+export const formatWeekendPolicySummary = (job) => {
+  if (!job) return null;
+  if (job.weekend_work_policy === 'prohibited') return 'No weekend work';
+  if (job.weekend_work_policy === 'optional') return 'Weekend work may be offered if needed';
+
+  const parts = [];
+  if (job.saturday_work_policy && job.saturday_work_policy !== 'unavailable') {
+    parts.push(job.saturday_work_policy === 'premium_rate'
+      ? `Saturday ${toMultiplierLabel(job.saturday_multiplier || 1.5)}`
+      : 'Saturday normal rate');
+  }
+  if (job.sunday_work_policy && job.sunday_work_policy !== 'unavailable') {
+    parts.push(job.sunday_work_policy === 'premium_rate'
+      ? `Sunday ${toMultiplierLabel(job.sunday_multiplier || 1.5)}`
+      : 'Sunday normal rate');
+  }
+  return parts.length ? `Weekend required: ${parts.join(', ')}` : 'Weekend required';
+};
+
+export const formatOvertimeSummary = (job) => {
+  if (!job?.overtime_enabled) return 'No overtime policy';
+  const mult = Number(job.overtime_multiplier || 1.5).toFixed(1);
+  return `Overtime ${mult}× (${job.premium_combination_rule === 'stacked' ? 'stacked' : 'highest applicable'} with weekend premium)`;
 };
 
 export const formatJobStart = (job) => {
