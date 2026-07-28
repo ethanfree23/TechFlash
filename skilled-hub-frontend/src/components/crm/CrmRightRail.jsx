@@ -24,8 +24,8 @@ export default function CrmRightRail({
   const rel = getRelationshipTemperature(form?.status);
 
   return (
-    <aside className="space-y-4 lg:sticky lg:top-4 lg:self-start">
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <aside className="h-full min-h-0 overflow-y-auto space-y-4 pr-1">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2 mb-2">
           <h3 className="text-xs font-bold uppercase tracking-wide text-slate-500">Status</h3>
           {!statusEditing ? (

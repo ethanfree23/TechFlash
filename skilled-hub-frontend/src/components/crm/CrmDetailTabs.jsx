@@ -13,8 +13,8 @@ export default function CrmDetailTabs({ tabs, activeTab, onTabChange, renderPane
   const active = safeTabs.some((t) => t.id === activeTab) ? activeTab : safeTabs[0]?.id;
 
   return (
-    <div>
-      <div className="border-b border-slate-100 px-4 pt-3 pb-0 bg-gradient-to-r from-slate-50/80 to-white">
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="border-b border-slate-100 px-4 pt-3 pb-0 bg-gradient-to-r from-slate-50/80 to-white shrink-0">
         <div
           className="-mx-1 px-1 overflow-x-auto scrollbar-thin"
           role="tablist"
@@ -65,7 +65,7 @@ export default function CrmDetailTabs({ tabs, activeTab, onTabChange, renderPane
             role="tabpanel"
             aria-labelledby={`crm-detail-tab-${tab.id}`}
             hidden={!isActive}
-            className={isActive ? 'block p-6' : 'hidden'}
+            className={isActive ? 'block flex-1 min-h-0 overflow-y-auto p-6' : 'hidden'}
           >
             {isActive && typeof renderPanel === 'function' ? renderPanel(tab.id) : null}
           </div>

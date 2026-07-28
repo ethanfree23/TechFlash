@@ -1,11 +1,5 @@
 import React from 'react';
-import {
-  FaPlus,
-  FaFileUpload,
-  FaUserPlus,
-  FaDownload,
-  FaObjectGroup,
-} from 'react-icons/fa';
+import { FaPlus } from 'react-icons/fa';
 import {
   CRM_DATE_RANGE_OPTIONS,
   CRM_MARKET_FILTERS,
@@ -39,84 +33,74 @@ export default function CrmCommandHeader({
   onExport,
 }) {
   const s = stats || {};
+  const runTopAction = (actionId) => {
+    if (actionId === 'import') onImport?.();
+    if (actionId === 'create-platform') onCreatePlatform?.();
+    if (actionId === 'export') onExport?.();
+    if (actionId === 'merge') onMerge?.();
+  };
+
   return (
-    <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden mb-6">
-      <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-4 sm:px-6">
+    <div className="rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden h-full">
+      <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-3 sm:px-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <h1 className="text-2xl font-bold tracking-tight text-slate-900">Company CRM</h1>
-            <p className="mt-1 text-sm text-slate-600 max-w-2xl">
+            <h1 className="text-xl font-bold tracking-tight text-slate-900">Company CRM</h1>
+            <p className="mt-1 text-xs text-slate-600 max-w-xl">
               Manage prospects, company accounts, outreach, jobs, spend, and activation.
             </p>
             {lastUpdatedLabel ? (
               <p className="mt-2 text-xs text-slate-400">Last data refresh: {lastUpdatedLabel}</p>
             ) : null}
           </div>
-          <div className="flex flex-wrap gap-2 shrink-0">
+          <div className="flex flex-wrap gap-2 shrink-0 items-center">
             <button
               type="button"
               onClick={onAddCompany}
-              className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700"
+              className="inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-blue-700"
             >
-              <FaPlus className="h-4 w-4" aria-hidden />
+              <FaPlus className="h-3.5 w-3.5" aria-hidden />
               Add company
             </button>
-            <button
-              type="button"
-              onClick={onImport}
-              className="inline-flex items-center gap-2 rounded-xl bg-violet-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-violet-700"
+            <select
+              defaultValue=""
+              onChange={(e) => {
+                const action = e.target.value;
+                if (!action) return;
+                runTopAction(action);
+                e.target.value = '';
+              }}
+              className="rounded-lg border border-slate-200 bg-white px-2.5 py-2 text-xs font-semibold text-slate-700 min-w-[9.5rem]"
+              aria-label="More CRM actions"
             >
-              <FaFileUpload className="h-4 w-4" aria-hidden />
-              Import prospects
-            </button>
-            <button
-              type="button"
-              onClick={onCreatePlatform}
-              className="inline-flex items-center gap-2 rounded-xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
-            >
-              <FaUserPlus className="h-4 w-4" aria-hidden />
-              Create platform account
-            </button>
-            <button
-              type="button"
-              onClick={onExport}
-              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50"
-            >
-              <FaDownload className="h-4 w-4 text-slate-500" aria-hidden />
-              Export CRM
-            </button>
-            <button
-              type="button"
-              onClick={onMerge}
-              className="inline-flex items-center gap-2 rounded-xl border border-amber-200 bg-amber-50/80 px-4 py-2.5 text-sm font-semibold text-amber-900 hover:bg-amber-50"
-            >
-              <FaObjectGroup className="h-4 w-4" aria-hidden />
-              Dedupe / Merge
-            </button>
+              <option value="">More actions…</option>
+              <option value="import">Import prospects</option>
+              <option value="create-platform">Create platform account</option>
+              <option value="export">Export CRM</option>
+              <option value="merge">Dedupe / Merge</option>
+            </select>
           </div>
         </div>
       </div>
 
-      <div className="px-4 py-3 sm:px-6 bg-slate-50/50">
+      <div className="px-4 py-2.5 sm:px-5 bg-slate-50/50 border-b border-slate-100">
         <div className="flex flex-wrap gap-2 items-center">
-          {CRM_DATE_RANGE_OPTIONS.map((opt) => (
-            <button
-              key={opt.id}
-              type="button"
-              onClick={() => onDateRange(opt.id)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-semibold border transition-colors ${
-                dateRange === opt.id
-                  ? 'bg-blue-600 text-white border-blue-600'
-                  : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+          <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide shrink-0">Date range</span>
+          <select
+            value={dateRange}
+            onChange={(e) => onDateRange(e.target.value)}
+            className="rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-xs font-medium text-slate-800 min-w-[8rem]"
+          >
+            {CRM_DATE_RANGE_OPTIONS.map((opt) => (
+              <option key={opt.id} value={opt.id}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
-      <div className="px-4 py-3 sm:px-6 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between border-b border-slate-100">
+      <div className="px-4 py-2.5 sm:px-5 flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
         <div className="flex flex-wrap gap-2 items-center">
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wide shrink-0">Market</span>
           <select
@@ -143,7 +127,7 @@ export default function CrmCommandHeader({
             ))}
           </select>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-1.5">
           <StatChip label="Total" value={s.totalProspects ?? '—'} />
           <StatChip label="New leads" value={s.newLeads ?? '—'} />
           <StatChip label="Contacted" value={s.contacted ?? '—'} />

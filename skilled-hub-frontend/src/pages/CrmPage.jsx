@@ -2816,6 +2816,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     if (crmDetailTab === 'account' && !showAccountTab) setCrmDetailTab('record');
   }, [crmDetailTab, showAccountTab]);
 
+  const sidebarSpanClass = pipelineSidebarCollapsed ? 'lg:col-span-1' : 'lg:col-span-4';
+  const detailSpanClass = pipelineSidebarCollapsed ? 'lg:col-span-8' : 'lg:col-span-5';
+  const topDetailSpanClass = pipelineSidebarCollapsed ? 'lg:col-span-11' : 'lg:col-span-8';
+  const crmPanelHeightClass = 'min-h-[540px] lg:h-[calc(100vh-15rem)] lg:max-h-[calc(100vh-15rem)]';
+
   return (
     <div className="min-h-screen bg-slate-50">
       <AppHeader user={user} onLogout={onLogout} activePage="crm" emailVariant="crm" />
@@ -2826,35 +2831,81 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             <option key={t} value={t} />
           ))}
         </datalist>
-        <CrmCommandHeader
-          stats={statsForHeader}
-          dateRange={crmDateRange}
-          onDateRange={setCrmDateRange}
-          market={crmMarketFilter}
-          onMarket={setCrmMarketFilter}
-          trade={crmTradeFilter}
-          onTrade={setCrmTradeFilter}
-          lastUpdatedLabel={lastListRefreshLabel}
-          onImport={() => {
-            setImportSummary(null);
-            setPasteImportText('');
-            setImportDraftRows([]);
-            setImportRowFilter('all');
-            setImportModalOpen(true);
-          }}
-          onAddCompany={openCreate}
-          onCreatePlatform={() => {
-            setNewCompanyModalOpen(false);
-            setIsCreating(false);
-            if (selectedId && form.linked_company_profile_id) {
-              openAddCompanyLoginForLinkedLead();
-            } else {
-              openProvisionFromCrmRecord();
-            }
-          }}
-          onMerge={openMergeModal}
-          onExport={exportVisibleCsv}
-        />
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 mb-4 items-stretch">
+          <div className={sidebarSpanClass}>
+            <CrmCommandHeader
+              stats={statsForHeader}
+              dateRange={crmDateRange}
+              onDateRange={setCrmDateRange}
+              market={crmMarketFilter}
+              onMarket={setCrmMarketFilter}
+              trade={crmTradeFilter}
+              onTrade={setCrmTradeFilter}
+              lastUpdatedLabel={lastListRefreshLabel}
+              onImport={() => {
+                setImportSummary(null);
+                setPasteImportText('');
+                setImportDraftRows([]);
+                setImportRowFilter('all');
+                setImportModalOpen(true);
+              }}
+              onAddCompany={openCreate}
+              onCreatePlatform={() => {
+                setNewCompanyModalOpen(false);
+                setIsCreating(false);
+                if (selectedId && form.linked_company_profile_id) {
+                  openAddCompanyLoginForLinkedLead();
+                } else {
+                  openProvisionFromCrmRecord();
+                }
+              }}
+              onMerge={openMergeModal}
+              onExport={exportVisibleCsv}
+            />
+          </div>
+          <div className={`${topDetailSpanClass} min-h-[220px]`}>
+            {selectedId && !isCreating ? (
+              <CompanyRecordHeader
+                form={form}
+                detailLead={c}
+                onCall={() => {
+                  const tel = String(form.phone || form.company_phone || '').replace(/\D/g, '');
+                  if (tel) window.location.href = `tel:${tel}`;
+                }}
+                onOpenGmail={() => {
+                  const e = String(form.email || form.company_email || '').trim();
+                  if (e) {
+                    window.open(
+                      `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(e)}`,
+                      '_blank',
+                      'noopener,noreferrer',
+                    );
+                  }
+                }}
+                onAddNote={startAddNote}
+                onReminder={openReminder}
+                onEdit={() => {
+                  setCompanyInfoEditing(true);
+                  setCrmDetailTab('record');
+                }}
+                onMerge={openMergeModal}
+                onDelete={removeRecord}
+                onCreateJob={() => navigate('/create-job')}
+                onCreatePlatformAccount={openProvisionFromCrmRecord}
+                onAddCompanyLogin={openAddCompanyLoginForLinkedLead}
+                onLinkAccount={() => setLinkAccountModalOpen(true)}
+                onSendEmail={(templateKey) => {
+                  setEmailComposerTemplateKey(templateKey || 'sales_call_follow_up');
+                  setEmailComposerOpen(true);
+                }}
+              />
+            ) : (
+              <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-10 text-center text-gray-500 h-full flex items-center justify-center">
+                Select a company on the left or use Add company to start a CRM record.
+              </div>
+            )}
+          </div>
+        </div>
 
         {(() => {
           const missingPhone = filteredLeads.filter((l) => {
@@ -2882,11 +2933,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           );
         })()}
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
           <div
-            className={`bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden ${
-              pipelineSidebarCollapsed ? 'lg:col-span-1' : 'lg:col-span-4'
-            }`}
+            className={`bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden ${sidebarSpanClass} ${crmPanelHeightClass} flex flex-col min-h-0`}
           >
             {pipelineSidebarCollapsed ? (
               <div className="hidden lg:flex flex-col items-center py-6 gap-3 border-b border-slate-100">
@@ -2907,8 +2956,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                 </span>
               </div>
             ) : null}
-            <div className={pipelineSidebarCollapsed ? 'max-lg:block lg:hidden' : ''}>
-            <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white">
+            <div className={`${pipelineSidebarCollapsed ? 'max-lg:flex lg:hidden' : 'flex'} min-h-0 flex-1 flex-col`}>
+            <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white shrink-0">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <h2 className="text-sm font-bold text-slate-800 tracking-tight">Prospect command list</h2>
@@ -3059,7 +3108,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                 </select>
               </div>
             </div>
-            <div className="max-h-[70vh] overflow-y-auto">
+            <div className="flex-1 min-h-0 overflow-y-auto">
               {loading ? (
                 <div className="p-4 space-y-3 animate-pulse" aria-busy="true">
                   {[1, 2, 3, 4, 5].map((k) => (
@@ -3142,52 +3191,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             </div>
           </div>
 
-          <div className={`space-y-6 ${pipelineSidebarCollapsed ? 'lg:col-span-8' : 'lg:col-span-5'}`}>
-            {!selectedId && (
-              <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-10 text-center text-gray-500">
-                Select a company on the left or use the buttons above to add a CRM record or create a platform account.
-              </div>
-            )}
-
+          <div className={`${detailSpanClass} ${crmPanelHeightClass} min-h-0`}>
             {selectedId && !isCreating && (
-              <CompanyRecordHeader
-                form={form}
-                detailLead={c}
-                onCall={() => {
-                  const tel = String(form.phone || form.company_phone || '').replace(/\D/g, '');
-                  if (tel) window.location.href = `tel:${tel}`;
-                }}
-                onOpenGmail={() => {
-                  const e = String(form.email || form.company_email || '').trim();
-                  if (e) {
-                    window.open(
-                      `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(e)}`,
-                      '_blank',
-                      'noopener,noreferrer',
-                    );
-                  }
-                }}
-                onAddNote={startAddNote}
-                onReminder={openReminder}
-                onEdit={() => {
-                  setCompanyInfoEditing(true);
-                  setCrmDetailTab('record');
-                }}
-                onMerge={openMergeModal}
-                onDelete={removeRecord}
-                onCreateJob={() => navigate('/create-job')}
-                onCreatePlatformAccount={openProvisionFromCrmRecord}
-                onAddCompanyLogin={openAddCompanyLoginForLinkedLead}
-                onLinkAccount={() => setLinkAccountModalOpen(true)}
-                onSendEmail={(templateKey) => {
-                  setEmailComposerTemplateKey(templateKey || 'sales_call_follow_up');
-                  setEmailComposerOpen(true);
-                }}
-              />
-            )}
-
-            {selectedId && !isCreating && (
-              <div id="crm-detail-panel" className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden">
+              <div id="crm-detail-panel" className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden h-full min-h-0 flex flex-col">
                 <CrmDetailTabs
                   tabs={crmDetailTabList}
                   activeTab={crmDetailTab}
@@ -4420,7 +4426,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           </div>
 
           {selectedId && !isCreating ? (
-            <div className="hidden lg:block lg:col-span-3">
+            <div className={`hidden lg:block lg:col-span-3 ${crmPanelHeightClass} min-h-0`}>
               <CrmRightRail
                 form={form}
                 metrics={metrics}
