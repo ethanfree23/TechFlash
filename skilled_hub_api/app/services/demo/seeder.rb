@@ -23,8 +23,8 @@ module Demo
     DEMO_TECHNICIAN_JOBS_TARGET = Integer(ENV.fetch("DEMO_TECHNICIAN_JOBS", "25"))
     DEMO_TECHNICIAN_JOBS_FROM_DEMO_COMPANY = Integer(ENV.fetch("DEMO_TECHNICIAN_COMPANY_JOBS", "10"))
     DEMO_TECHNICIAN_JOB_INDEX_OFFSET = 200_000
-    DEMO_FINANCIAL_MULTIPLIER = BigDecimal(ENV.fetch("DEMO_FINANCIAL_MULTIPLIER", "2.4"))
-    DEMO_FINANCIAL_BASE_BOOST_CENTS = Integer(ENV.fetch("DEMO_FINANCIAL_BASE_BOOST_CENTS", "4800"))
+    DEMO_FINANCIAL_MULTIPLIER = BigDecimal(ENV.fetch("DEMO_FINANCIAL_MULTIPLIER", "1.0"))
+    DEMO_FINANCIAL_BASE_BOOST_CENTS = Integer(ENV.fetch("DEMO_FINANCIAL_BASE_BOOST_CENTS", "0"))
 
     # Technician demo jobs: claimed/reserved, active, pending review, completed (no unclaimed open).
     DEMO_TECHNICIAN_JOB_BUCKETS = [
@@ -518,9 +518,9 @@ module Demo
       return [hourly, days, hours] if profile.blank?
 
       boosted_hourly = (BigDecimal(hourly.to_s) * DEMO_FINANCIAL_MULTIPLIER).to_i + DEMO_FINANCIAL_BASE_BOOST_CENTS
-      boosted_hourly += ((index % 6) * 350)
-      boosted_days = [days + 1 + (index % 2), 5].min
-      boosted_hours = [hours + 2, 12].min
+      boosted_hourly += ((index % 4) * 125)
+      boosted_days = [days + (index % 2), 4].min
+      boosted_hours = [hours + 1, 10].min
       [boosted_hourly, boosted_days, boosted_hours]
     end
 

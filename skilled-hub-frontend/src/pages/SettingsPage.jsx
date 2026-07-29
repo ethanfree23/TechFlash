@@ -27,7 +27,7 @@ import { requiresElectricalLicenseForState, setLocalOnlyLicenseStates } from '..
 import { formatPhoneInput } from '../utils/phone';
 import { TRADE_OPTIONS, TRADE_OTHER_SENTINEL } from '../constants/trades';
 import { getNotificationCategories } from '../config/notificationPreferenceCatalog';
-import { isDemoMode, demoSimulatedMessage } from '../utils/demoMode';
+import { isDemoMode, demoSimulatedMessage, withDemoPath } from '../utils/demoMode';
 import { mediaUrlWithCacheBust, resolveMediaUrl } from '../utils/mediaUrl';
 import AccountRolePanel from '../components/settings/AccountRolePanel';
 import { parseSettingsUrl, replaceSettingsUrl } from '../utils/settingsUrl';
@@ -1432,10 +1432,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     setSavingMembership(true);
     try {
       const origin = typeof window !== 'undefined' ? window.location.origin : '';
+      const membershipSuccessPath = withDemoPath('/settings?tab=profile&membership=success');
+      const membershipCancelPath = withDemoPath('/settings?tab=profile&membership=cancel');
       const res = await membershipsAPI.update({
         membership_level: level,
-        success_url: `${origin}/settings?tab=profile&membership=success`,
-        cancel_url: `${origin}/settings?tab=profile&membership=cancel`,
+        success_url: `${origin}${membershipSuccessPath}`,
+        cancel_url: `${origin}${membershipCancelPath}`,
       });
       const checkoutUrl = res?.checkout?.url;
       if (checkoutUrl) {
@@ -1541,7 +1543,8 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     setStartingBackgroundCheck(true);
     try {
       if (effectiveCheckrDemoBypass) {
-        const demoInvitationUrl = `${window.location.origin}/settings?tab=profile&checkr_demo=invitation`;
+        const demoInvitationPath = withDemoPath('/settings?tab=profile&checkr_demo=invitation');
+        const demoInvitationUrl = `${window.location.origin}${demoInvitationPath}`;
         setVerificationCenter((prev) => ({
           ...(prev || {}),
           background_check: {

@@ -6,20 +6,16 @@ require "cgi"
 class CheckrClient
   class Error < StandardError; end
 
-  BASE_URL = "https://api.checkr.com/v1".freeze
-
   def initialize
-    @api_key =
-      ENV["CHECKR_STAGING_API_KEY"].presence ||
-      ENV["CHECKR_API_KEY"].presence ||
-      Rails.application.credentials.dig(:checkr, :staging_api_key).presence ||
-      Rails.application.credentials.dig(:checkr, :api_key).presence
-    @default_package = ENV["CHECKR_DEFAULT_PACKAGE"].presence || "essential"
-    @default_node_custom_id = ENV["CHECKR_DEFAULT_NODE_CUSTOM_ID"]
+    @configuration = CheckrConfiguration.new
+    @api_key = @configuration.api_key
+    @default_package = @configuration.default_package
+    @default_node_custom_id = @configuration.default_node_custom_id
+    @base_url = "#{@configuration.api_base_url}/v1"
   end
 
   def configured?
-    @api_key.present?
+    @configuration.requests_allowed? && @api_key.present?
   end
 
   def default_package
@@ -102,9 +98,12 @@ class CheckrClient
   end
 
   def request_json(request, path:)
-    raise Error, "CHECKR_API_KEY is not configured" unless configured?
+    unless @configuration.requests_allowed?
+      raise Error, (@configuration.requests_block_reason || "Checkr integration is disabled.")
+    end
+    raise Error, "CHECKR secret key is not configured" if @api_key.blank?
 
-    uri = URI.parse("#{BASE_URL}#{path}")
+    uri = URI.parse("#{@base_url}#{path}")
     request = request.class.new(uri.request_uri) unless request.path == uri.request_uri
     request.basic_auth(@api_key, "")
 

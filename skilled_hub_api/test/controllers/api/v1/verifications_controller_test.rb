@@ -146,6 +146,26 @@ module Api
         ENV["CHECKR_API_KEY"] = old_api
       end
 
+      test "background check options reflect disabled checkr integration" do
+        user, = create_technician_with_membership("basic", "verification-options-disabled@example.com")
+        old_enabled = ENV["CHECKR_ENABLED"]
+        old_background_checks_enabled = ENV["CHECKR_BACKGROUND_CHECKS_ENABLED"]
+        ENV["CHECKR_ENABLED"] = "false"
+        ENV["CHECKR_BACKGROUND_CHECKS_ENABLED"] = "false"
+
+        get "/api/v1/verification/background_check_options",
+            headers: auth_header_for(user),
+            as: :json
+
+        assert_response :ok
+        body = JSON.parse(response.body)
+        assert_equal false, body["ready_for_start"]
+        assert_equal "checkr_disabled", body["package_selection_reason"]
+      ensure
+        ENV["CHECKR_ENABLED"] = old_enabled
+        ENV["CHECKR_BACKGROUND_CHECKS_ENABLED"] = old_background_checks_enabled
+      end
+
       test "premium start returns error when checkr api key is missing" do
         user, = create_technician_with_membership("premium", "verification-no-checkr-key@example.com")
         old_staging = ENV["CHECKR_STAGING_API_KEY"]
@@ -191,6 +211,29 @@ module Api
       ensure
         ENV["CHECKR_STAGING_API_KEY"] = old_staging
         ENV["CHECKR_API_KEY"] = old_api
+      end
+
+      test "start background check returns error when checkr is disabled and demo bypass is off" do
+        user, = create_technician_with_membership("premium", "verification-disabled-start@example.com")
+        old_enabled = ENV["CHECKR_ENABLED"]
+        old_background_checks_enabled = ENV["CHECKR_BACKGROUND_CHECKS_ENABLED"]
+        old_demo_bypass = ENV["CHECKR_DEMO_BYPASS"]
+        ENV["CHECKR_ENABLED"] = "false"
+        ENV["CHECKR_BACKGROUND_CHECKS_ENABLED"] = "false"
+        ENV["CHECKR_DEMO_BYPASS"] = "false"
+
+        post "/api/v1/verification/start_background_check",
+             params: background_check_consent_params,
+             headers: auth_header_for(user),
+             as: :json
+
+        assert_response :unprocessable_entity
+        body = JSON.parse(response.body)
+        assert_includes body["error"], "disabled"
+      ensure
+        ENV["CHECKR_ENABLED"] = old_enabled
+        ENV["CHECKR_BACKGROUND_CHECKS_ENABLED"] = old_background_checks_enabled
+        ENV["CHECKR_DEMO_BYPASS"] = old_demo_bypass
       end
 
       test "create background checkout returns checkout url for pending payment" do

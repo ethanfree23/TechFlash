@@ -1,9 +1,6 @@
 class BackgroundCheckStartService
   class Error < StandardError; end
 
-  CHECKOUT_SUCCESS_PATH = "/settings?tab=profile&background_check=paid".freeze
-  CHECKOUT_CANCEL_PATH = "/settings?tab=profile&background_check=cancel".freeze
-
   def self.launch_checkr_invitation!(background_check)
     new(background_check: background_check).launch_checkr_invitation!
   end
@@ -35,7 +32,7 @@ class BackgroundCheckStartService
     invitation = client.create_invitation(
       candidate_id: candidate_id,
       package_name: @background_check.package_name,
-      redirect_url: ENV["CHECKR_REDIRECT_URL"].presence || "#{frontend_base_url}/settings",
+      redirect_url: ENV["CHECKR_REDIRECT_URL"].presence || "#{frontend_base_url}#{settings_base_path}",
       work_location: work_location_payload,
       node_custom_id: @background_check.node_custom_id
     )
@@ -66,8 +63,8 @@ class BackgroundCheckStartService
     session = Stripe::Checkout::Session.create(
       mode: "payment",
       customer: customer_id,
-      success_url: "#{frontend_base_url}#{CHECKOUT_SUCCESS_PATH}",
-      cancel_url: "#{frontend_base_url}#{CHECKOUT_CANCEL_PATH}",
+      success_url: "#{frontend_base_url}#{checkout_success_path}",
+      cancel_url: "#{frontend_base_url}#{checkout_cancel_path}",
       line_items: [
         {
           quantity: 1,
@@ -105,6 +102,24 @@ class BackgroundCheckStartService
 
   def background_check_fee_cents
     ENV.fetch("BACKGROUND_CHECK_FEE_CENTS", "4900").to_i
+  end
+
+  def checkout_success_path
+    "#{settings_base_path}?tab=profile&background_check=paid"
+  end
+
+  def checkout_cancel_path
+    "#{settings_base_path}?tab=profile&background_check=cancel"
+  end
+
+  def settings_base_path
+    "#{demo_frontend_prefix}/settings"
+  end
+
+  def demo_frontend_prefix
+    return "/demo" if Rails.env.to_s == "demo" || ActiveModel::Type::Boolean.new.cast(ENV["DEMO_MODE"])
+
+    ""
   end
 
   def work_location_payload

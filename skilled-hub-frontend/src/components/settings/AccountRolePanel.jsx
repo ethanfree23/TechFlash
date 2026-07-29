@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { FaExternalLinkAlt, FaCopy } from 'react-icons/fa';
+import { FaCopy } from 'react-icons/fa';
 import { auth } from '../../auth';
 import { isDemoMode, getDemoAppUrl } from '../../utils/demoMode';
 import { DEMO_ACCOUNTS } from '../../constants/demoAccounts';
@@ -7,7 +7,7 @@ import useDemoMasquerade from '../../hooks/useDemoMasquerade';
 import DemoResetButton from '../demo/DemoResetButton';
 import AlertModal from '../AlertModal';
 
-function CredentialRow({ account }) {
+function CredentialRow({ account, roleKey, onOpenDemo }) {
   const [copied, setCopied] = useState(null);
 
   const copy = useCallback(async (text, field) => {
@@ -21,13 +21,27 @@ function CredentialRow({ account }) {
   }, []);
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-2.5">
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={() => onOpenDemo(roleKey)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpenDemo(roleKey);
+        }
+      }}
+      className="cursor-pointer rounded-lg border border-gray-200 bg-gray-50/80 px-3 py-2.5 transition-colors hover:border-indigo-300 hover:bg-indigo-50/50 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2"
+    >
       <p className="text-xs font-semibold text-gray-800">{account.label}</p>
       <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-gray-600">
         <span className="font-mono">{account.email}</span>
         <button
           type="button"
-          onClick={() => copy(account.email, `${account.label}-email`)}
+          onClick={(event) => {
+            event.stopPropagation();
+            copy(account.email, `${account.label}-email`);
+          }}
           className="inline-flex items-center gap-1 rounded border border-gray-200 bg-white px-2 py-0.5 text-[10px] font-medium hover:bg-gray-50"
         >
           <FaCopy className="text-[9px]" />
@@ -78,8 +92,8 @@ export default function AccountRolePanel({ roleLabel }) {
     return null;
   }
 
-  const openDemo = () => {
-    window.open(demoEntryUrl('/login'), '_blank', 'noopener,noreferrer');
+  const openDemo = (role = 'admin') => {
+    window.open(demoEntryUrl(`/login?demo=${role}&auto=1`), '_blank', 'noopener,noreferrer');
   };
 
   return (
@@ -135,18 +149,10 @@ export default function AccountRolePanel({ roleLabel }) {
             <p className="text-sm text-gray-600 leading-relaxed">
               Open the isolated demo workspace with marketplace data across Houston, Austin, and Dallas.
             </p>
-            <button
-              type="button"
-              onClick={openDemo}
-              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700"
-            >
-              Open demo environment
-              <FaExternalLinkAlt className="text-xs" />
-            </button>
             <div className="grid gap-2 sm:grid-cols-3">
-              <CredentialRow account={DEMO_ACCOUNTS.admin} />
-              <CredentialRow account={DEMO_ACCOUNTS.company} />
-              <CredentialRow account={DEMO_ACCOUNTS.technician} />
+              <CredentialRow account={DEMO_ACCOUNTS.admin} roleKey="admin" onOpenDemo={openDemo} />
+              <CredentialRow account={DEMO_ACCOUNTS.company} roleKey="company" onOpenDemo={openDemo} />
+              <CredentialRow account={DEMO_ACCOUNTS.technician} roleKey="technician" onOpenDemo={openDemo} />
             </div>
             <div className="flex flex-wrap gap-2">
               <a

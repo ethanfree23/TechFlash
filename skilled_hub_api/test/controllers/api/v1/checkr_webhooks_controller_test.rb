@@ -4,15 +4,42 @@ require "openssl"
 module Api
   module V1
     class CheckrWebhooksControllerTest < ActionDispatch::IntegrationTest
-      test "webhook returns service unavailable when secret missing" do
+      test "webhook returns ok when secret missing" do
         old_secret = ENV["CHECKR_WEBHOOK_SECRET"]
         ENV["CHECKR_WEBHOOK_SECRET"] = nil
         post "/api/v1/checkr/webhook",
              params: { id: "evt_missing_secret", type: "report.completed", data: {} }.to_json,
              headers: { "CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json" }
-        assert_response :service_unavailable
+        assert_response :ok
       ensure
         ENV["CHECKR_WEBHOOK_SECRET"] = old_secret
+      end
+
+      test "webhook alias route is available" do
+        old_secret = ENV["CHECKR_WEBHOOK_SECRET"]
+        ENV["CHECKR_WEBHOOK_SECRET"] = nil
+        post "/api/v1/webhooks/checkr",
+             params: { id: "evt_alias", type: "report.completed", data: {} }.to_json,
+             headers: { "CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json" }
+        assert_response :ok
+      ensure
+        ENV["CHECKR_WEBHOOK_SECRET"] = old_secret
+      end
+
+      test "webhook returns ok when checkr integration is disabled" do
+        old_enabled = ENV["CHECKR_ENABLED"]
+        old_background_checks_enabled = ENV["CHECKR_BACKGROUND_CHECKS_ENABLED"]
+        ENV["CHECKR_ENABLED"] = "false"
+        ENV["CHECKR_BACKGROUND_CHECKS_ENABLED"] = "false"
+
+        post "/api/v1/checkr/webhook",
+             params: { id: "evt_disabled", type: "report.completed", data: {} }.to_json,
+             headers: { "CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json" }
+
+        assert_response :ok
+      ensure
+        ENV["CHECKR_ENABLED"] = old_enabled
+        ENV["CHECKR_BACKGROUND_CHECKS_ENABLED"] = old_background_checks_enabled
       end
 
       test "duplicate checkr webhook event is idempotent" do

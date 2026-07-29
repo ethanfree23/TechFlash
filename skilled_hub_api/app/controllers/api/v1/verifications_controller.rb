@@ -26,12 +26,18 @@ module Api
 
       def start_background_check
         profile = VerificationProfile.for_user!(@current_user)
+        checkr_configuration = CheckrConfiguration.new
         demo_bypass = checkr_demo_bypass_enabled?
         client = CheckrClient.new
-        selected_package = client.default_package.to_s.presence
+        selected_package = checkr_configuration.default_package.to_s.presence
         selected_node_custom_id = client.default_node_custom_id.to_s.presence
         if selected_package.blank?
           return render json: { error: "Background check package is not configured." }, status: :unprocessable_entity
+        end
+        unless demo_bypass || checkr_configuration.requests_allowed?
+          return render json: {
+            error: checkr_configuration.requests_block_reason || "Checkr integration is disabled."
+          }, status: :unprocessable_entity
         end
         consent_attributes = build_background_check_consent_attributes
         unless consent_attributes
@@ -188,6 +194,23 @@ module Api
           }
         end
 
+        checkr_configuration = CheckrConfiguration.new
+        unless checkr_configuration.requests_allowed?
+          return {
+            nodes_exist: false,
+            selected_node_custom_id: nil,
+            nodes: [],
+            packages: [],
+            packages_available: false,
+            package_filter_fallback: false,
+            package_selection_reason: "checkr_disabled",
+            configured_package_name: checkr_configuration.default_package.to_s.presence,
+            configured_node_custom_id: checkr_configuration.default_node_custom_id.to_s.presence,
+            ready_for_start: false,
+            options_error: checkr_configuration.requests_block_reason
+          }
+        end
+
         client = CheckrClient.new
         raise CheckrClient::Error, "Checkr is not configured." unless client.configured?
 
@@ -326,11 +349,21 @@ module Api
       end
 
       def checkr_demo_bypass_enabled?
-        ActiveModel::Type::Boolean.new.cast(ENV["CHECKR_DEMO_BYPASS"])
+        CheckrConfiguration.new.demo_bypass_enabled?
       end
 
       def demo_checkr_invitation_url
-        "#{ENV.fetch('FRONTEND_URL', 'http://localhost:5173').to_s.chomp('/')}/settings?tab=profile&checkr_demo=invitation"
+        "#{ENV.fetch('FRONTEND_URL', 'http://localhost:5173').to_s.chomp('/')}#{settings_profile_path(query: 'tab=profile&checkr_demo=invitation')}"
+      end
+
+      def settings_profile_path(query:)
+        "#{demo_frontend_prefix}/settings?#{query}"
+      end
+
+      def demo_frontend_prefix
+        return "/demo" if Rails.env.to_s == "demo" || ActiveModel::Type::Boolean.new.cast(ENV["DEMO_MODE"])
+
+        ""
       end
 
       def sections_payload(profile:, background_check:, badges:, approved_references_count:)

@@ -106,6 +106,7 @@ Rails.application.routes.draw do
       delete 'favorite_technicians/:id', to: 'favorite_technicians#destroy'
       post 'stripe/webhook', to: 'stripe_webhooks#create'
       post 'checkr/webhook', to: 'checkr_webhooks#create'
+      post 'webhooks/checkr', to: 'checkr_webhooks#create'
       resource :verification, only: [:show], controller: :verifications do
         post :start_background_check
         post :create_background_check_checkout

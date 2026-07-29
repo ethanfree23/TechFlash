@@ -3,6 +3,10 @@
 module Api
   module V1
     class AnalyticsController < ApplicationController
+      DEMO_TECHNICIAN_ANNUAL_EARNINGS_CENTS = Integer(
+        ENV.fetch('DEMO_TECHNICIAN_ANNUAL_EARNINGS_CENTS', '7500000')
+      )
+
       before_action :authenticate_user
 
       def show
@@ -59,6 +63,17 @@ module Api
           earned_this_week_cents = [total_earned_cents.to_i / 3, 0].max
         end
 
+        if demo_mode?
+          normalized = normalize_demo_technician_earnings(
+            total_earned_cents: total_earned_cents,
+            pending_earned_cents: pending_earned_cents,
+            earned_this_week_cents: earned_this_week_cents
+          )
+          total_earned_cents = normalized[:total_earned_cents]
+          pending_earned_cents = normalized[:pending_earned_cents]
+          earned_this_week_cents = normalized[:earned_this_week_cents]
+        end
+
         average_rating = Rating.average_for(technician_profile)
         reviews_count = Rating.where(reviewee: technician_profile).count
 
@@ -83,6 +98,18 @@ module Api
 
       def demo_mode?
         defined?(DemoMode) && DemoMode.enabled?
+      end
+
+      def normalize_demo_technician_earnings(total_earned_cents:, pending_earned_cents:, earned_this_week_cents:)
+        annual_cap = [DEMO_TECHNICIAN_ANNUAL_EARNINGS_CENTS.to_i, 0].max
+        weekly_cap = (annual_cap / 52.0).round
+        pending_cap = (annual_cap * 0.04).round
+
+        {
+          total_earned_cents: [[total_earned_cents.to_i, 0].max, annual_cap].min,
+          pending_earned_cents: [[pending_earned_cents.to_i, 0].max, pending_cap].min,
+          earned_this_week_cents: [[earned_this_week_cents.to_i, 0].max, weekly_cap].min
+        }
       end
 
       def default_technician_analytics

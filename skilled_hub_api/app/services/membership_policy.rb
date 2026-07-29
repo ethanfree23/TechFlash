@@ -64,7 +64,12 @@ class MembershipPolicy
 
     rule = rule_for(:technician, technician_profile.membership_level)
     experience_eligible = technician_experience_eligible?(job: job, technician_profile: technician_profile, rule: rule)
-    additional_eligible = technician_additional_access_eligible?(technician_profile: technician_profile, rule: rule)
+    additional_eligible =
+      if demo_mode?
+        true
+      else
+        technician_additional_access_eligible?(technician_profile: technician_profile, rule: rule)
+      end
     unless experience_eligible && additional_eligible
       # #region agent log
       debug_log(
@@ -131,7 +136,9 @@ class MembershipPolicy
     return jobs if technician_profile.blank?
 
     rule = rule_for(:technician, technician_profile.membership_level)
-    return jobs.none unless technician_additional_access_eligible?(technician_profile: technician_profile, rule: rule)
+    unless demo_mode?
+      return jobs.none unless technician_additional_access_eligible?(technician_profile: technician_profile, rule: rule)
+    end
 
     tier_min = rule[:job_access_min_experience_years].to_i
     tech_years = technician_profile.experience_years.to_i
@@ -289,5 +296,9 @@ class MembershipPolicy
     end
   rescue StandardError
     nil
+  end
+
+  def self.demo_mode?
+    defined?(DemoMode) && DemoMode.enabled?
   end
 end

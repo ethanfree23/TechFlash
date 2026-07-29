@@ -2,9 +2,12 @@ module Api
   module V1
     class CheckrWebhooksController < ActionController::API
       def create
+        checkr_configuration = CheckrConfiguration.new
+        return head :ok unless checkr_configuration.requests_allowed?
+
         payload = request.body.read
         signature = request.env["HTTP_CHECKR_SIGNATURE"].to_s
-        secret = ENV["CHECKR_WEBHOOK_SECRET"].presence || Rails.application.credentials.dig(:checkr, :webhook_secret).presence
+        secret = checkr_configuration.webhook_secret
 
         if secret.blank?
           Rails.logger.warn("[checkr_webhook] missing webhook secret")
