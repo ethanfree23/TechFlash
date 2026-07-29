@@ -314,11 +314,15 @@ const normalizeContactDraftEntry = (entry) => {
 const hasContactValue = (entry) => Boolean(entry?.name || entry?.email || entry?.phone);
 
 /** Drop blank extra contact rows unless the user just clicked "+ Add contact". */
-const pruneEmptyAdditionalContacts = (contacts, pendingFocusIndex = null) => {
+const pruneEmptyAdditionalContacts = (contacts, pendingFocusIndex = null, forcedVisibleIndexes = []) => {
   if (!Array.isArray(contacts) || contacts.length <= 1) return contacts;
+  const forcedVisibleSet = new Set(forcedVisibleIndexes);
   const primary = contacts[0];
   const rest = contacts.slice(1).filter(
-    (contact, idx) => hasContactValue(contact) || pendingFocusIndex === idx + 1,
+    (contact, idx) =>
+      hasContactValue(contact) ||
+      pendingFocusIndex === idx + 1 ||
+      forcedVisibleSet.has(idx + 1),
   );
   return [primary, ...rest];
 };
@@ -342,12 +346,22 @@ const editableContacts = (contacts, fallback = null) => {
 };
 
 /** Additional contacts to show in the editor (saved rows + one in-progress draft from "+ Add"). */
-const listAdditionalContactsForEditor = (contacts, fallback, pendingFocusIndex = null) => {
+const listAdditionalContactsForEditor = (
+  contacts,
+  fallback,
+  pendingFocusIndex = null,
+  forcedVisibleIndexes = [],
+) => {
   const all = editableContacts(contacts, fallback);
+  const forcedVisibleSet = new Set(forcedVisibleIndexes);
   const rows = [];
   all.slice(1).forEach((contact, idx) => {
     const contactIndex = idx + 1;
-    if (hasContactValue(contact) || pendingFocusIndex === contactIndex) {
+    if (
+      hasContactValue(contact) ||
+      pendingFocusIndex === contactIndex ||
+      forcedVisibleSet.has(contactIndex)
+    ) {
       rows.push({ contact, contactIndex });
     }
   });
@@ -518,6 +532,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [noteComposerOpen, setNoteComposerOpen] = useState(false);
   const [companyInfoEditing, setCompanyInfoEditing] = useState(false);
   const [contactsEditing, setContactsEditing] = useState(false);
+  const [readModeAddContactIndex, setReadModeAddContactIndex] = useState(null);
+  const [readModeAddingContact, setReadModeAddingContact] = useState(false);
+  const [forcedVisibleAdditionalContactIndexes, setForcedVisibleAdditionalContactIndexes] = useState([]);
   const [statusRailEditing, setStatusRailEditing] = useState(false);
   const [newCompanyUsersOpen, setNewCompanyUsersOpen] = useState(false);
   const [websiteEnrichBusy, setWebsiteEnrichBusy] = useState(false);
@@ -572,6 +589,12 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [crmAddUserPrefill, setCrmAddUserPrefill] = useState(null);
   const crmLeadUiHydratedKeyRef = useRef(null);
   const crmLeadUiPersistTimerRef = useRef(null);
+
+  useEffect(() => {
+    if (readModeAddContactIndex == null && readModeAddingContact) {
+      setReadModeAddingContact(false);
+    }
+  }, [readModeAddContactIndex, readModeAddingContact]);
 
   useLayoutEffect(() => {
     if (crmLeadUiPersistTimerRef.current) {
@@ -652,6 +675,10 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const snap = contactsFieldsSnapshotFromLead(c);
       setForm((f) => ({ ...f, ...snap }));
     }
+    pendingAdditionalContactFocusIdx.current = null;
+    setForcedVisibleAdditionalContactIndexes([]);
+    setReadModeAddContactIndex(null);
+    setReadModeAddingContact(false);
     setContactsEditing(false);
   }, [detail?.crm_lead]);
 
@@ -757,6 +784,10 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     if (!isCreating) {
       setCompanyInfoEditing(false);
       setContactsEditing(false);
+      pendingAdditionalContactFocusIdx.current = null;
+      setForcedVisibleAdditionalContactIndexes([]);
+      setReadModeAddContactIndex(null);
+      setReadModeAddingContact(false);
     }
   }, [selectedId, isCreating]);
 
@@ -1123,6 +1154,10 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         setCompanyInfoEditing(false);
         setContactsEditing(false);
       }
+      pendingAdditionalContactFocusIdx.current = null;
+      setForcedVisibleAdditionalContactIndexes([]);
+      setReadModeAddContactIndex(null);
+      setReadModeAddingContact(false);
     } catch (e) {
       setAlertModal({
         isOpen: true,
@@ -1595,12 +1630,20 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const socialKeys = ['instagram_url', 'facebook_url', 'linkedin_url'];
       if (socialKeys.includes(field)) {
         const merged = [{ ...first, is_primary: true, [field]: value }, ...contacts.slice(1)];
-        const nextContacts = pruneEmptyAdditionalContacts(merged, pendingAdditionalContactFocusIdx.current);
+        const nextContacts = pruneEmptyAdditionalContacts(
+          merged,
+          pendingAdditionalContactFocusIdx.current,
+          forcedVisibleAdditionalContactIndexes,
+        );
         return { ...f, contacts: nextContacts };
       }
       const formattedValue = field === 'phone' ? formatPhoneInput(value) : value;
       const merged = [{ ...first, is_primary: true, [field]: formattedValue }, ...contacts.slice(1)];
-      const nextContacts = pruneEmptyAdditionalContacts(merged, pendingAdditionalContactFocusIdx.current);
+      const nextContacts = pruneEmptyAdditionalContacts(
+        merged,
+        pendingAdditionalContactFocusIdx.current,
+        forcedVisibleAdditionalContactIndexes,
+      );
       return {
         ...f,
         contacts: nextContacts,
@@ -1629,7 +1672,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       const next = { ...current, [part]: value };
       const combinedName = [next.firstName, next.lastName].filter(Boolean).join(' ').trim();
       const merged = [{ ...first, is_primary: true, name: combinedName }, ...contacts.slice(1)];
-      const nextContacts = pruneEmptyAdditionalContacts(merged, pendingAdditionalContactFocusIdx.current);
+      const nextContacts = pruneEmptyAdditionalContacts(
+        merged,
+        pendingAdditionalContactFocusIdx.current,
+        forcedVisibleAdditionalContactIndexes,
+      );
       return {
         ...f,
         contacts: nextContacts,
@@ -1639,6 +1686,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   };
 
   const addAdditionalContact = () => {
+    let nextContactIndex = null;
     setForm((f) => {
       const contacts = editableContacts(f.contacts, {
         name: f.contact_name || '',
@@ -1648,7 +1696,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         extension: '',
       });
       const baseContacts = contacts.length > 0 ? contacts : [normalizeContactDraftEntry({})];
-      pendingAdditionalContactFocusIdx.current = baseContacts.length;
+      nextContactIndex = baseContacts.length;
+      pendingAdditionalContactFocusIdx.current = nextContactIndex;
       const withNew = [...baseContacts, normalizeContactDraftEntry({})];
       const nextContacts = withNew.map((row, i) => ({ ...row, is_primary: i === 0 }));
       return {
@@ -1656,6 +1705,11 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         contacts: nextContacts,
       };
     });
+    if (nextContactIndex != null) {
+      setForcedVisibleAdditionalContactIndexes((prev) =>
+        prev.includes(nextContactIndex) ? prev : [...prev, nextContactIndex],
+      );
+    }
   };
 
   const focusAdditionalContactNameInput = (contactIdx) => (node) => {
@@ -1707,6 +1761,18 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         email: primary.email || '',
         phone: primary.phone || '',
       };
+    });
+    pendingAdditionalContactFocusIdx.current = null;
+    setForcedVisibleAdditionalContactIndexes((prev) =>
+      prev
+        .filter((idx) => idx !== contactIndex)
+        .map((idx) => (idx > contactIndex ? idx - 1 : idx))
+        .filter((idx) => idx > 0),
+    );
+    setReadModeAddContactIndex((prev) => {
+      if (prev == null) return prev;
+      if (prev === contactIndex) return null;
+      return prev > contactIndex ? prev - 1 : prev;
     });
   };
 
@@ -2391,8 +2457,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         form.contacts,
         primaryContactFallback,
         pendingAdditionalContactFocusIdx.current,
+        forcedVisibleAdditionalContactIndexes,
       ),
-    [form.contacts, primaryContactFallback],
+    [form.contacts, primaryContactFallback, forcedVisibleAdditionalContactIndexes],
   );
   const platformCompanyUsers = useMemo(() => {
     const list = c?.platform_company_users;
@@ -2444,17 +2511,45 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   }, [displayContacts]);
 
   const startAddCrmContactFromReadMode = useCallback(() => {
+    let nextContactIndex = null;
     setForm((f) => {
       const fb = { name: f.contact_name, email: f.email, phone: f.phone || '', job_title: '', extension: '' };
       const contacts = editableContacts(f.contacts, fb);
       const baseContacts = contacts.length > 0 ? contacts : [normalizeContactDraftEntry({})];
-      pendingAdditionalContactFocusIdx.current = baseContacts.length;
+      nextContactIndex = baseContacts.length;
+      pendingAdditionalContactFocusIdx.current = nextContactIndex;
       const next = [...baseContacts, normalizeContactDraftEntry({})];
       return { ...f, contacts: ensurePrimaryContactFlagsOnArray(next) };
     });
-    setContactsEditing(true);
+    if (nextContactIndex != null) {
+      setReadModeAddContactIndex(nextContactIndex);
+      setForcedVisibleAdditionalContactIndexes((prev) =>
+        prev.includes(nextContactIndex) ? prev : [...prev, nextContactIndex],
+      );
+      setReadModeAddingContact(true);
+    }
+    setContactsEditing(false);
     setCrmDetailTab('contacts');
   }, []);
+
+  const readModePendingContact = useMemo(() => {
+    if (!readModeAddingContact || readModeAddContactIndex == null) return null;
+    const pending = displayContacts[readModeAddContactIndex];
+    if (!pending) return null;
+    return { contact: pending, contactIndex: readModeAddContactIndex };
+  }, [displayContacts, readModeAddContactIndex, readModeAddingContact]);
+
+  const cancelReadModeContactAdd = useCallback(() => {
+    const c = detail?.crm_lead;
+    if (c) {
+      const snap = contactsFieldsSnapshotFromLead(c);
+      setForm((f) => ({ ...f, ...snap }));
+    }
+    pendingAdditionalContactFocusIdx.current = null;
+    setForcedVisibleAdditionalContactIndexes([]);
+    setReadModeAddContactIndex(null);
+    setReadModeAddingContact(false);
+  }, [detail?.crm_lead]);
 
   const openCreateCompanyLoginForContact = useCallback((idx, contact, resolved) => {
     if (!form.linked_company_profile_id) return;
@@ -2584,6 +2679,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       return;
     }
     if (id === 'add_contact' || id === 'contact') {
+      setReadModeAddContactIndex(null);
+      setReadModeAddingContact(false);
       setContactsEditing(true);
       setCrmDetailTab('contacts');
       return;
@@ -2845,7 +2942,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             <option key={t} value={t} />
           ))}
         </datalist>
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           <div className={sidebarSpanClass}>
             <CrmCommandHeader
               stats={statsForHeader}
@@ -3520,7 +3617,18 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                         <button type="button" disabled={saving} onClick={saveRecord} className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">{saving ? 'Saving…' : 'Save'}</button>
                       </>
                     ) : (
-                      <button type="button" onClick={() => { setContactsEditing(true); setCrmDetailTab('contacts'); }} className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700">Edit</button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReadModeAddContactIndex(null);
+                          setReadModeAddingContact(false);
+                          setContactsEditing(true);
+                          setCrmDetailTab('contacts');
+                        }}
+                        className="px-3 py-1.5 rounded-lg text-sm font-semibold bg-blue-600 text-white hover:bg-blue-700"
+                      >
+                        Edit
+                      </button>
                     )}
                 </div>
                 <div className="rounded-xl border border-gray-200 bg-white overflow-hidden shadow-sm">
@@ -3675,12 +3783,13 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                               const sac = normalizeSameAsCompany(contact.same_as_company);
                               const splitName = splitContactName(contact.name);
                               const openDraft =
-                                pendingAdditionalContactFocusIdx.current === contactIndex;
+                                pendingAdditionalContactFocusIdx.current === contactIndex ||
+                                forcedVisibleAdditionalContactIndexes.includes(contactIndex);
                               return (
                                 <details
                                   key={`extra-contact-${contactIndex}`}
                                   className="mt-3 rounded-lg border border-gray-200 bg-white overflow-hidden group"
-                                  open={openDraft || undefined}
+                                  defaultOpen={openDraft}
                                 >
                                   <summary className="list-none flex flex-wrap items-center justify-between gap-2 px-3 py-2 cursor-pointer text-xs font-semibold text-gray-600 uppercase bg-gray-50 border-b border-gray-100 hover:bg-gray-100 [&::-webkit-details-marker]:hidden">
                                     <span className="select-none inline-flex items-center gap-2 normal-case">
@@ -3842,12 +3951,95 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                           <button
                             type="button"
                             onClick={startAddCrmContactFromReadMode}
+                            disabled={readModeAddingContact && Boolean(readModePendingContact)}
                             className="inline-flex items-center gap-1.5 shrink-0 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-semibold text-gray-800 hover:bg-gray-50"
                           >
                             <FaPlus className="h-3 w-3" aria-hidden />
                             Add contact
                           </button>
                         </div>
+                        {readModePendingContact ? (
+                          <div className="mb-4 rounded-lg border border-gray-200 bg-slate-50 p-3 space-y-3">
+                            <div className="flex items-center justify-between gap-2">
+                              <div className="text-xs font-semibold text-gray-600 uppercase">New contact</div>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={cancelReadModeContactAdd}
+                                  className="px-2.5 py-1.5 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 text-xs font-medium"
+                                >
+                                  Cancel
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={saving}
+                                  onClick={saveRecord}
+                                  className="px-2.5 py-1.5 rounded-md text-xs font-semibold bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                  {saving ? 'Saving…' : 'Save contact'}
+                                </button>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <input
+                                className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                                placeholder="First name"
+                                value={splitContactName(readModePendingContact.contact.name).firstName}
+                                ref={focusAdditionalContactNameInput(readModePendingContact.contactIndex)}
+                                onChange={(e) => updateAdditionalContactNamePart(readModePendingContact.contactIndex, 'firstName', e.target.value)}
+                              />
+                              <input
+                                className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                                placeholder="Last name"
+                                value={splitContactName(readModePendingContact.contact.name).lastName}
+                                onChange={(e) => updateAdditionalContactNamePart(readModePendingContact.contactIndex, 'lastName', e.target.value)}
+                              />
+                              <input
+                                className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                                placeholder="Email"
+                                type="email"
+                                value={readModePendingContact.contact.email || ''}
+                                onChange={(e) => updateAdditionalContactField(readModePendingContact.contactIndex, 'email', e.target.value)}
+                              />
+                              <input
+                                className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                                placeholder="Phone"
+                                value={readModePendingContact.contact.phone || ''}
+                                onChange={(e) => updateAdditionalContactField(readModePendingContact.contactIndex, 'phone', e.target.value)}
+                              />
+                              <input
+                                className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                                placeholder="Extension"
+                                value={readModePendingContact.contact.extension || ''}
+                                onChange={(e) => updateAdditionalContactField(readModePendingContact.contactIndex, 'extension', e.target.value)}
+                              />
+                              <input
+                                className="border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                                placeholder="Job title"
+                                value={readModePendingContact.contact.job_title || ''}
+                                onChange={(e) => updateAdditionalContactField(readModePendingContact.contactIndex, 'job_title', e.target.value)}
+                              />
+                              <input
+                                className="sm:col-span-2 border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                                placeholder="Instagram URL"
+                                value={readModePendingContact.contact.instagram_url || ''}
+                                onChange={(e) => updateAdditionalContactField(readModePendingContact.contactIndex, 'instagram_url', e.target.value)}
+                              />
+                              <input
+                                className="sm:col-span-2 border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                                placeholder="Facebook URL"
+                                value={readModePendingContact.contact.facebook_url || ''}
+                                onChange={(e) => updateAdditionalContactField(readModePendingContact.contactIndex, 'facebook_url', e.target.value)}
+                              />
+                              <input
+                                className="sm:col-span-2 border border-gray-300 rounded-lg px-2 py-1.5 text-sm"
+                                placeholder="LinkedIn URL"
+                                value={readModePendingContact.contact.linkedin_url || ''}
+                                onChange={(e) => updateAdditionalContactField(readModePendingContact.contactIndex, 'linkedin_url', e.target.value)}
+                              />
+                            </div>
+                          </div>
+                        ) : null}
                         {crmContactsWithPlatformMatch.rows.length === 0 &&
                         crmContactsWithPlatformMatch.orphanPlatform.length === 0 ? (
                           <div className="text-sm text-gray-500">No contacts yet.</div>

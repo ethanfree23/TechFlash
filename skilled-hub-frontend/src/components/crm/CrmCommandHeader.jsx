@@ -43,7 +43,7 @@ export default function CrmCommandHeader({
 
   return (
     <div
-      className={`border border-slate-200/80 bg-white overflow-hidden h-full ${
+      className={`border border-slate-200/80 bg-white overflow-hidden ${
         linkedBottom ? 'rounded-t-2xl rounded-b-none border-b-0 shadow-none' : 'rounded-2xl shadow-sm'
       }`}
     >
