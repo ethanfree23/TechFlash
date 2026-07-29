@@ -469,6 +469,10 @@ export const verificationAPI = {
       method: 'POST',
       body: JSON.stringify(payload || {}),
     }),
+  resetDemoBackgroundCheck: () =>
+    apiRequest('/verification/reset_demo_background_check', {
+      method: 'POST',
+    }),
   createBackgroundCheckCheckout: () =>
     apiRequest('/verification/create_background_check_checkout', {
       method: 'POST',

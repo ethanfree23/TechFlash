@@ -166,6 +166,38 @@ module Api
         render json: { error: e.message }, status: :unprocessable_entity
       end
 
+      def reset_demo_background_check
+        unless DemoMode.enabled?
+          return render json: { error: "Demo reset is only available in the demo environment." }, status: :forbidden
+        end
+
+        profile = VerificationProfile.for_user!(@current_user)
+        checks_to_reset = BackgroundCheck.where(user_id: @current_user.id)
+          .where(
+            "status IN (?) OR payment_status = ?",
+            BackgroundCheck.statuses.values_at("invited", "pending", "processing"),
+            BackgroundCheck.payment_statuses["pending"]
+          )
+
+        checks_to_reset.each do |check|
+          check.update!(
+            status: :failed,
+            normalized_status: "canceled",
+            provider_status: "demo_reset",
+            payment_status: :failed,
+            admin_notes: "Reset by demo user via settings undo."
+          )
+        end
+
+        profile.update!(background_status: :not_started)
+
+        render json: {
+          success: true,
+          message: checks_to_reset.any? ? "Demo background check attempt reset." : "No in-progress background check to reset.",
+          reset_count: checks_to_reset.size
+        }, status: :ok
+      end
+
       private
 
       def build_background_check_options

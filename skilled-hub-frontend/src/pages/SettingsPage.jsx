@@ -127,6 +127,19 @@ const referenceStatusLabel = (status) => {
 
 const normalizeVerificationStatus = (status) => String(status || 'not_started').toLowerCase();
 const CHECKR_DEMO_BYPASS_STORAGE_KEY = 'checkrDemoBypassEnabled';
+const DEMO_BACKGROUND_IN_PROGRESS_STATUSES = new Set(['invited', 'pending', 'processing', 'invitation_sent', 'report_pending']);
+
+const hasInProgressBackgroundCheck = (backgroundCheck) => {
+  if (!backgroundCheck) return false;
+  const status = String(backgroundCheck?.status || '').toLowerCase();
+  const normalizedStatus = String(backgroundCheck?.normalized_status || '').toLowerCase();
+  const paymentStatus = String(backgroundCheck?.payment_status || '').toLowerCase();
+  return (
+    DEMO_BACKGROUND_IN_PROGRESS_STATUSES.has(status)
+    || DEMO_BACKGROUND_IN_PROGRESS_STATUSES.has(normalizedStatus)
+    || paymentStatus === 'pending'
+  );
+};
 
 const removeSettingsQueryParams = (paramKeys = []) => {
   if (typeof window === 'undefined') return;
@@ -258,6 +271,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [backgroundCheckOptions, setBackgroundCheckOptions] = useState(null);
   const [loadingBackgroundCheckOptions, setLoadingBackgroundCheckOptions] = useState(false);
   const [backgroundCheckOptionsError, setBackgroundCheckOptionsError] = useState('');
+  const [resettingDemoBackgroundCheck, setResettingDemoBackgroundCheck] = useState(false);
   const [localCheckrDemoBypassEnabled, setLocalCheckrDemoBypassEnabled] = useState(false);
   const [selectedPackageName, setSelectedPackageName] = useState('');
   const [verificationReferences, setVerificationReferences] = useState([]);
@@ -293,6 +307,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const effectiveCheckrDemoBypass = backgroundCheckDemoBypass || localCheckrDemoBypass || autoCheckrDemoBypass;
   const backgroundCheckStartEnabled = backgroundCheckReady || effectiveCheckrDemoBypass;
   const backgroundConsentReady = backgroundDisclosureAccepted && backgroundAuthorizationAccepted;
+  const canUndoDemoBackgroundCheck = isDemoMode() && isTechnician && hasInProgressBackgroundCheck(verificationCenter?.background_check);
   const displayBackgroundCheckPackageName = useMemo(
     () => verificationCenter?.background_check?.package_name
       || backgroundCheckOptions?.configured_package_name
@@ -1600,6 +1615,35 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
+  const handleUndoDemoBackgroundCheck = async () => {
+    setResettingDemoBackgroundCheck(true);
+    try {
+      await verificationAPI.resetDemoBackgroundCheck();
+      const latest = await verificationAPI.getCenter();
+      setVerificationCenter(latest);
+      await loadBackgroundCheckOptions();
+      setBackgroundDisclosureAccepted(false);
+      setBackgroundAuthorizationAccepted(false);
+      setBackgroundDisclosureAcceptedAt('');
+      setBackgroundAuthorizationAcceptedAt('');
+      setAlertModal({
+        isOpen: true,
+        title: 'Demo background check reset',
+        message: 'Your in-progress demo attempt was cleared. You can start the flow again now.',
+        variant: 'success',
+      });
+    } catch (err) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Unable to reset demo attempt',
+        message: err.message || 'Try again in a few moments.',
+        variant: 'error',
+      });
+    } finally {
+      setResettingDemoBackgroundCheck(false);
+    }
+  };
+
   const handleReferenceFieldChange = (e) => {
     const { name, value } = e.target;
     setNewReference((prev) => ({ ...prev, [name]: value }));
@@ -1838,6 +1882,16 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           >
             {startingBackgroundCheck ? 'Starting...' : 'Start background check'}
           </button>
+          {isDemoMode() && isTechnician && (
+            <button
+              type="button"
+              onClick={handleUndoDemoBackgroundCheck}
+              disabled={!canUndoDemoBackgroundCheck || resettingDemoBackgroundCheck}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-300 bg-white text-amber-900 hover:bg-amber-50 disabled:opacity-50"
+            >
+              {resettingDemoBackgroundCheck ? 'Undoing...' : 'Undo demo attempt'}
+            </button>
+          )}
         </div>
         <div className="mt-4 border-t border-gray-200 pt-3">
           <h5 className="text-sm font-semibold text-gray-900 mb-2">
@@ -1956,6 +2010,24 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     );
   };
 
+  const renderProfileCompletionCard = () => (
+    <SettingsCard title="Profile completion" description="Based on fields on this page only.">
+      <div className="flex items-end gap-3">
+        <p className="text-3xl font-bold text-gray-900">{profileCompletion.pct}%</p>
+        <p className="text-sm text-gray-600 pb-1">complete</p>
+      </div>
+      {profileCompletion.missing.length > 0 ? (
+        <ul className="mt-3 list-disc pl-5 text-sm text-gray-700 space-y-1">
+          {profileCompletion.missing.map((m) => (
+            <li key={m}>{m}</li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mt-2 text-sm text-emerald-800">Great — no obvious gaps from this checklist.</p>
+      )}
+    </SettingsCard>
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -1989,7 +2061,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
           <div className="p-4 sm:p-6">
             {settingsTab === 'account' && (
-              <div id="settings-panel-account" role="tabpanel" aria-labelledby="settings-tab-account">
+              <div
+                id="settings-panel-account"
+                role="tabpanel"
+                aria-labelledby="settings-tab-account"
+                className="space-y-5 sm:space-y-6"
+              >
                 <SettingsSection
                   title="Sign-in and email"
                   description="Your email is your username. Security-critical messages always stay on."
@@ -2009,101 +2086,123 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   <SettingsRow
                     title="Role"
                     description="Determines marketplace permissions and available settings tabs."
-                    control={<span className="text-sm font-medium text-gray-800">{roleBadgeLabel}</span>}
+                    control={<span className="text-sm font-semibold text-gray-800">{roleBadgeLabel}</span>}
                   />
                   <AccountRolePanel roleLabel={roleBadgeLabel} />
                 </SettingsCard>
-                {accountError && (
-                  <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{accountError}</div>
-                )}
-                <form onSubmit={handleAccountSubmit} className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Email (username)</label>
-                    <SettingsInput
-                      type="email"
-                      value={accountEmail}
-                      onChange={(e) => setAccountEmail(e.target.value)}
-                      placeholder="you@example.com"
-                      required
-                    />
-                  </div>
-                  {!showPasswordFields ? (
-                    <button
-                      type="button"
-                      className="inline-flex items-center rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                      onClick={() => setShowPasswordFields(true)}
-                    >
-                      Change password
-                    </button>
-                  ) : (
-                    <>
-                      <div>
-                        <div className="mb-1 flex items-center justify-between gap-2">
-                          <label className="block text-sm font-medium text-gray-700">New password</label>
-                          <button
-                            type="button"
-                            className="text-xs font-medium text-blue-700 hover:underline"
-                            onClick={() => setShowPassword((s) => !s)}
-                          >
-                            {showPassword ? 'Hide' : 'Show'}
-                          </button>
-                        </div>
-                        <SettingsInput
-                          type={showPassword ? 'text' : 'password'}
-                          value={accountPassword}
-                          onChange={(e) => setAccountPassword(e.target.value)}
-                          autoComplete="new-password"
-                          placeholder="Enter new password"
-                        />
-                      </div>
-                      <div>
-                        <div className="mb-1 flex items-center justify-between gap-2">
-                          <label className="block text-sm font-medium text-gray-700">Confirm new password</label>
-                          <button
-                            type="button"
-                            className="text-xs font-medium text-blue-700 hover:underline"
-                            onClick={() => setShowPasswordConfirm((s) => !s)}
-                          >
-                            {showPasswordConfirm ? 'Hide' : 'Show'}
-                          </button>
-                        </div>
-                        <SettingsInput
-                          type={showPasswordConfirm ? 'text' : 'password'}
-                          value={accountPasswordConfirm}
-                          onChange={(e) => setAccountPasswordConfirm(e.target.value)}
-                          autoComplete="new-password"
-                          placeholder="Confirm new password"
-                        />
-                      </div>
+
+                <SettingsCard
+                  title="Account credentials"
+                  description="Manage your sign-in email and password for this account."
+                >
+                  {accountError && (
+                    <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm font-medium text-red-800">
+                      {accountError}
+                    </div>
+                  )}
+                  <form onSubmit={handleAccountSubmit} className="space-y-5">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                        Email (username)
+                      </label>
+                      <SettingsInput
+                        type="email"
+                        value={accountEmail}
+                        onChange={(e) => setAccountEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        required
+                      />
+                    </div>
+
+                    {!showPasswordFields ? (
                       <button
                         type="button"
-                        className="text-xs font-medium text-gray-600 hover:underline"
-                        onClick={() => {
-                          setShowPasswordFields(false);
-                          setShowPassword(false);
-                          setShowPasswordConfirm(false);
-                          setAccountPassword('');
-                          setAccountPasswordConfirm('');
-                        }}
+                        className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                        onClick={() => setShowPasswordFields(true)}
                       >
-                        Cancel password change
+                        Change password
                       </button>
-                    </>
-                  )}
-                  <button type="submit" disabled={savingAccount} className="px-6 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 text-sm font-medium">
-                    {savingAccount ? 'Saving...' : 'Update account'}
-                  </button>
-                </form>
+                    ) : (
+                      <div className="space-y-4 rounded-xl border border-gray-200 bg-gray-50/60 p-4 sm:p-5">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                              New password
+                            </label>
+                            <button
+                              type="button"
+                              className="text-xs font-semibold text-blue-700 transition-colors hover:text-blue-800 hover:underline"
+                              onClick={() => setShowPassword((s) => !s)}
+                            >
+                              {showPassword ? 'Hide' : 'Show'}
+                            </button>
+                          </div>
+                          <SettingsInput
+                            type={showPassword ? 'text' : 'password'}
+                            value={accountPassword}
+                            onChange={(e) => setAccountPassword(e.target.value)}
+                            autoComplete="new-password"
+                            placeholder="Enter new password"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                              Confirm new password
+                            </label>
+                            <button
+                              type="button"
+                              className="text-xs font-semibold text-blue-700 transition-colors hover:text-blue-800 hover:underline"
+                              onClick={() => setShowPasswordConfirm((s) => !s)}
+                            >
+                              {showPasswordConfirm ? 'Hide' : 'Show'}
+                            </button>
+                          </div>
+                          <SettingsInput
+                            type={showPasswordConfirm ? 'text' : 'password'}
+                            value={accountPasswordConfirm}
+                            onChange={(e) => setAccountPasswordConfirm(e.target.value)}
+                            autoComplete="new-password"
+                            placeholder="Confirm new password"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-gray-600 transition-colors hover:text-gray-800 hover:underline"
+                          onClick={() => {
+                            setShowPasswordFields(false);
+                            setShowPassword(false);
+                            setShowPasswordConfirm(false);
+                            setAccountPassword('');
+                            setAccountPasswordConfirm('');
+                          }}
+                        >
+                          Cancel password change
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end border-t border-gray-100 pt-4">
+                      <button
+                        type="submit"
+                        disabled={savingAccount}
+                        className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {savingAccount ? 'Saving...' : 'Update account'}
+                      </button>
+                    </div>
+                  </form>
+                </SettingsCard>
 
                 <SettingsCard title="Login history" collapsible defaultOpen={false}>
-                  <div className="space-y-3">
+                  <div className="space-y-3.5">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm text-gray-600">Recent successful sign-ins for this account.</p>
                       <button
                         type="button"
                         onClick={loadLoginHistory}
                         disabled={loadingLoginHistory}
-                        className="text-xs font-medium text-blue-700 hover:underline disabled:opacity-50"
+                        className="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                       >
                         {loadingLoginHistory ? 'Refreshing...' : 'Refresh'}
                       </button>
@@ -2111,14 +2210,20 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                     {loadingLoginHistory ? (
                       <p className="text-sm text-gray-500">Loading login history...</p>
                     ) : loginHistoryError ? (
-                      <p className="text-sm text-red-700">{loginHistoryError}</p>
+                      <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        {loginHistoryError}
+                      </p>
                     ) : loginHistory.length === 0 ? (
                       <p className="text-sm text-gray-500">No recent login activity yet.</p>
                     ) : (
-                      <ul className="space-y-1">
+                      <ul className="space-y-2">
                         {loginHistory.map((event) => (
-                          <li key={event.id} className="text-sm text-gray-700">
-                            Signed in on {new Date(event.logged_in_at).toLocaleString()}
+                          <li
+                            key={event.id}
+                            className="rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2 text-sm text-gray-700"
+                          >
+                            <span className="font-medium text-gray-900">Signed in</span>{' '}
+                            <span>on {new Date(event.logged_in_at).toLocaleString()}</span>
                           </li>
                         ))}
                       </ul>
@@ -2132,7 +2237,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 >
                   <button
                     type="button"
-                    className="px-4 py-2 bg-red-600 text-white text-sm font-medium rounded-xl hover:bg-red-700"
+                    className="inline-flex items-center rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
                     onClick={() => setConfirmDeleteAccount(true)}
                   >
                     Delete account permanently
@@ -2151,30 +2256,17 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               </p>
             </div>
           )}
-          {(isTechnician || isCompany) && (
-            <div className="grid gap-4 mb-6 items-start md:grid-cols-2 xl:grid-cols-1">
-              <SettingsCard title="Profile completion" description="Based on fields on this page only.">
-                <div className="flex items-end gap-3">
-                  <p className="text-3xl font-bold text-gray-900">{profileCompletion.pct}%</p>
-                  <p className="text-sm text-gray-600 pb-1">complete</p>
-                </div>
-                {profileCompletion.missing.length > 0 ? (
-                  <ul className="mt-3 list-disc pl-5 text-sm text-gray-700 space-y-1">
-                    {profileCompletion.missing.map((m) => (
-                      <li key={m}>{m}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="mt-2 text-sm text-emerald-800">Great — no obvious gaps from this checklist.</p>
-                )}
+          {isCompany && (
+            <div className="mb-6">
+              {renderProfileCompletionCard()}
+            </div>
+          )}
+          {isTechnician && (
+            <div className="mb-6 space-y-4 xl:hidden">
+              {renderProfileCompletionCard()}
+              <SettingsCard title="Trust and verification">
+                {renderTrustAndVerificationContent()}
               </SettingsCard>
-              {isTechnician && (
-                <div className="xl:hidden">
-                  <SettingsCard title="Trust and verification">
-                    {renderTrustAndVerificationContent()}
-                  </SettingsCard>
-                </div>
-              )}
             </div>
           )}
           {isAdmin ? (
@@ -2220,7 +2312,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               </button>
             </form>
           ) : (
-          <div className={isTechnician ? 'xl:grid xl:grid-cols-[minmax(0,2fr)_auto] xl:items-start xl:gap-5' : ''}>
+          <div className={isTechnician ? 'xl:grid xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] xl:items-start xl:gap-5' : ''}>
           <form onSubmit={handleProfileSubmit} className={`space-y-4 ${isTechnician ? 'min-w-0' : ''}`} noValidate>
             <div className="flex items-center gap-6">
               <div className="relative">
@@ -2567,14 +2659,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
             </button>
           </form>
           {isTechnician && (
-            <div className="hidden xl:flex xl:justify-end">
-              <div className="sticky top-24 flex items-start max-h-[calc(100vh-7rem)]">
+            <div className="hidden xl:block">
+              <div className="flex items-start justify-end">
                 {!verificationRailCollapsed && (
-                  <div className="w-[360px] max-w-[38vw] min-w-[320px] pr-0.5">
-                    <SettingsCard
-                      title="Trust and verification"
-                      className="max-h-[calc(100vh-7rem)] overflow-y-auto"
-                    >
+                  <div className="w-full space-y-4">
+                    {renderProfileCompletionCard()}
+                    <SettingsCard title="Trust and verification">
                       {renderTrustAndVerificationContent()}
                     </SettingsCard>
                   </div>

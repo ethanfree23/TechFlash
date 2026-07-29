@@ -94,6 +94,42 @@ module Api
         assert_response :unprocessable_entity
       end
 
+      test "demo undo clears in-progress background check so technician can retry" do
+        user, = create_technician_with_membership("basic", "verification-demo-reset@example.com")
+        check = BackgroundCheck.create!(
+          user: user,
+          provider: "checkr",
+          package_name: "essential_plus",
+          status: :invited,
+          normalized_status: "invitation_sent",
+          payment_status: :pending,
+          paid_by: "technician"
+        )
+
+        with_demo_mode_enabled do
+          post "/api/v1/verification/reset_demo_background_check",
+               headers: auth_header_for(user),
+               as: :json
+        end
+
+        assert_response :ok
+        check.reload
+        assert_equal "failed", check.status
+        assert_equal "failed", check.payment_status
+        assert_equal "canceled", check.normalized_status
+        assert_equal "demo_reset", check.provider_status
+      end
+
+      test "demo undo is forbidden when demo mode is off" do
+        user, = create_technician_with_membership("basic", "verification-demo-reset-forbidden@example.com")
+
+        post "/api/v1/verification/reset_demo_background_check",
+             headers: auth_header_for(user),
+             as: :json
+
+        assert_response :forbidden
+      end
+
       test "start background check requires disclosure and authorization consent" do
         user, = create_technician_with_membership("basic", "verification-consent-required@example.com")
 
@@ -348,6 +384,14 @@ module Api
         yield
       ensure
         ENV["CHECKR_DEMO_BYPASS"] = original
+      end
+
+      def with_demo_mode_enabled
+        original = ENV["DEMO_MODE"]
+        ENV["DEMO_MODE"] = "true"
+        yield
+      ensure
+        ENV["DEMO_MODE"] = original
       end
     end
   end
