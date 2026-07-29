@@ -69,6 +69,20 @@ module Api
             bio: "Existing company profile for tests"
           )
           owner.update_column(:company_profile_id, profile.id)
+          lead = CrmLead.create!(
+            name: "Existing Co CRM",
+            status: "lead",
+            linked_company_profile_id: profile.id,
+            linked_user_id: owner.id,
+            contacts: [
+              {
+                "name" => "Owner Person",
+                "email" => owner.email,
+                "phone" => owner.phone,
+                "linked_user_id" => owner.id
+              }
+            ]
+          )
 
           post "/api/v1/admin/company_accounts",
                params: {
@@ -92,6 +106,12 @@ module Api
           assert_equal "Pat", created.first_name
           assert_equal "Manager", created.last_name
           assert_equal "555-222-3333", created.phone
+
+          lead.reload
+          crm_contact = lead.contacts.find { |row| row["linked_user_id"].to_i == created.id }
+          assert_not_nil crm_contact
+          assert_equal "new.login+company_accounts_test@example.com", crm_contact["email"]
+          assert_equal "Pat Manager", crm_contact["name"]
         end
 
         test "create new company links CRM lead when crm_lead_id is provided" do
@@ -125,6 +145,38 @@ module Api
           linked_user = User.find(lead.linked_user_id)
           assert linked_user.company?
           assert_equal lead.linked_company_profile_id, linked_user.company_profile_id
+        end
+
+        test "create new company auto-creates crm lead contact for provisioned user" do
+          admin = User.create!(
+            email: "admin+auto_contact_company_accounts@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+
+          post "/api/v1/admin/company_accounts",
+               params: {
+                 email: "owner+auto_contact_company_accounts@example.com",
+                 first_name: "Primary",
+                 last_name: "Owner",
+                 phone: "555-888-1001",
+                 company_name: "Auto Contact Co LLC",
+                 state: "Texas",
+                 bio: "Company profile for auto contact sync test"
+               },
+               headers: auth_header_for(admin),
+               as: :json
+
+          assert_response :created
+          created = User.find_by!(email: "owner+auto_contact_company_accounts@example.com")
+          lead = CrmLead.find_by!(linked_user_id: created.id)
+          assert_equal created.company_profile_id, lead.linked_company_profile_id
+          contact = lead.contacts.find { |row| row["linked_user_id"].to_i == created.id }
+          assert_not_nil contact
+          assert_equal "owner+auto_contact_company_accounts@example.com", contact["email"]
+          assert_equal "Primary Owner", contact["name"]
+          assert_equal "555-888-1001", contact["phone"]
         end
 
         test "bulk_crm provisions multiple logins and sets linked_user_id on CRM contacts" do

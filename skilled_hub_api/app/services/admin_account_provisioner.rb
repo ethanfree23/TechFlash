@@ -88,6 +88,7 @@ module AdminAccountProvisioner
       end
     end
 
+    CrmCompanyContactSync.sync_user_safely!(user: user, company_profile: profile)
     send_reset_email(user) if send_reset
     { user: user, profile: profile.reload }
   end
@@ -207,6 +208,7 @@ module AdminAccountProvisioner
       user.generate_password_reset_token! if send_reset
     end
 
+    CrmCompanyContactSync.sync_user_safely!(user: user, company_profile: profile)
     send_reset_email(user) if send_reset
     { user: user, profile: profile }
   end
@@ -297,6 +299,15 @@ module AdminAccountProvisioner
       status: "prospect",
       linked_user_id: user.id,
       linked_company_profile_id: profile.id,
+      contacts: [
+        {
+          "name" => contact_name.to_s.strip.presence || [user.first_name, user.last_name].join(" ").strip.presence,
+          "email" => user.email,
+          "phone" => user.phone,
+          "linked_user_id" => user.id,
+          "is_primary" => true
+        }.compact
+      ],
       notes: notes_lines.join("\n")
     )
   end

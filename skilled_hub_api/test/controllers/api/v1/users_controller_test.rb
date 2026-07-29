@@ -346,6 +346,56 @@ module Api
         assert_equal older.id, history[1]["id"]
         assert_not_nil history[0]["logged_in_at"]
       end
+
+      test "update me for company user syncs crm contact fields" do
+        user = User.create!(
+          email: "company-update-me-sync@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company,
+          first_name: "Before",
+          last_name: "Name",
+          phone: "713-555-0777"
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          company_name: "Update Me Sync Co",
+          phone: "713-555-0777",
+          bio: "Profile for update me sync"
+        )
+        user.update_column(:company_profile_id, profile.id)
+        lead = CrmLead.create!(
+          name: "Update Me Sync CRM",
+          status: "lead",
+          linked_company_profile_id: profile.id,
+          linked_user_id: user.id,
+          contacts: [
+            {
+              "name" => "Legacy Name",
+              "email" => "company-update-me-sync@example.com",
+              "phone" => "000-000-0000",
+              "linked_user_id" => user.id
+            }
+          ]
+        )
+
+        patch "/api/v1/users/me",
+              params: {
+                first_name: "After",
+                last_name: "Person",
+                phone: "713-555-0888"
+              },
+              headers: auth_header_for(user),
+              as: :json
+
+        assert_response :ok
+        lead.reload
+        contact = lead.contacts.find { |row| row["linked_user_id"].to_i == user.id }
+        assert_not_nil contact
+        assert_equal "After Person", contact["name"]
+        assert_equal "713-555-0888", contact["phone"]
+        assert_equal "company-update-me-sync@example.com", contact["email"]
+      end
     end
   end
 end

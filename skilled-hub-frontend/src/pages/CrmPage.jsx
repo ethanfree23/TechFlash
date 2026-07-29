@@ -2946,6 +2946,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           <div className={sidebarSpanClass}>
             <CrmCommandHeader
               stats={statsForHeader}
+              pipelineHealth={{ missingPhoneCount, missingEmailCount, unlinkedCount }}
               dateRange={crmDateRange}
               onDateRange={setCrmDateRange}
               market={crmMarketFilter}
@@ -3043,18 +3044,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
               </div>
             ) : null}
             <div className={`${pipelineSidebarCollapsed ? 'max-lg:flex lg:hidden' : 'flex'} min-h-0 flex-1 flex-col`}>
-            <div className="px-4 py-3 border-b border-slate-200 bg-white text-xs text-slate-600 flex flex-wrap gap-x-6 gap-y-2 shrink-0">
-              <span>
-                <strong className="text-slate-800">In view — missing phone:</strong> {missingPhoneCount}
-              </span>
-              <span>
-                <strong className="text-slate-800">Missing email:</strong> {missingEmailCount}
-              </span>
-              <span>
-                <strong className="text-slate-800">Unlinked:</strong> {unlinkedCount}
-              </span>
-              <span className="text-slate-400">Filters apply to this prospect list and export.</span>
-            </div>
             <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white shrink-0">
               <div className="flex items-start justify-between gap-2">
                 <div>

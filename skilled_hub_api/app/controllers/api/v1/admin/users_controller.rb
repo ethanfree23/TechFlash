@@ -189,6 +189,7 @@ module Api
           return render json: { errors: ["Company profile not found"] }, status: :not_found unless profile
 
           user.update!(company_profile_id: profile.id)
+          sync_company_user_to_crm_contacts(user, company_profile: profile)
           render json: {
             message: "Company membership updated",
             user: list_item(user.reload),
@@ -246,6 +247,7 @@ module Api
             pref.update!(trade_label: label.presence)
           end
 
+          sync_company_user_to_crm_contacts(user) if user.company?
           render json: { message: "Profile updated" }, status: :ok
         rescue ActiveRecord::RecordInvalid => e
           render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
@@ -582,6 +584,10 @@ module Api
           else
             user.role
           end
+        end
+
+        def sync_company_user_to_crm_contacts(user, company_profile: nil)
+          CrmCompanyContactSync.sync_user_safely!(user: user, company_profile: company_profile)
         end
       end
     end

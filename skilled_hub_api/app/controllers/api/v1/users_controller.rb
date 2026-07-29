@@ -34,6 +34,7 @@ module Api
             pref = @current_user.job_alert_preference || @current_user.build_job_alert_preference
             pref.update!(job_alert_preference_params)
           end
+          sync_company_user_to_crm_contacts(@current_user)
           render json: { user: UserSerializer.new(@current_user).as_json }, status: :ok
         else
           render json: { errors: @current_user.errors.full_messages }, status: :unprocessable_entity
@@ -198,6 +199,7 @@ module Api
               return render json: { errors: profile.errors.full_messages }, status: :unprocessable_entity
             end
             user.update_column(:company_profile_id, profile.id)
+            sync_company_user_to_crm_contacts(user, company_profile: profile)
           elsif user.technician?
             specialties =
               case params[:specialties]
@@ -327,6 +329,10 @@ module Api
       rescue Stripe::StripeError
         false
       end
+
+      def sync_company_user_to_crm_contacts(user, company_profile: nil)
+        CrmCompanyContactSync.sync_user_safely!(user: user, company_profile: company_profile)
+      end
     end
   end
-end 
+end

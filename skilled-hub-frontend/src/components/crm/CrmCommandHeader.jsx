@@ -31,9 +31,11 @@ export default function CrmCommandHeader({
   onCreatePlatform,
   onMerge,
   onExport,
+  pipelineHealth,
   linkedBottom = false,
 }) {
   const s = stats || {};
+  const h = pipelineHealth || {};
   const runTopAction = (actionId) => {
     if (actionId === 'import') onImport?.();
     if (actionId === 'create-platform') onCreatePlatform?.();
@@ -138,6 +140,18 @@ export default function CrmCommandHeader({
           <StatChip label="Stale" value={s.staleLeads ?? '—'} />
           <StatChip label="Unlinked" value={s.unlinkedRecords ?? '—'} />
         </div>
+      </div>
+      <div className="px-4 py-3 sm:px-5 border-t border-slate-100 bg-white text-xs text-slate-600 flex flex-wrap gap-x-6 gap-y-2">
+        <span>
+          <strong className="text-slate-800">In view — missing phone:</strong> {h.missingPhoneCount ?? 0}
+        </span>
+        <span>
+          <strong className="text-slate-800">Missing email:</strong> {h.missingEmailCount ?? 0}
+        </span>
+        <span>
+          <strong className="text-slate-800">Unlinked:</strong> {h.unlinkedCount ?? 0}
+        </span>
+        <span className="text-slate-400">Filters apply to this prospect list and export.</span>
       </div>
     </div>
   );

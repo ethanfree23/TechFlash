@@ -255,6 +255,7 @@ module Api
             linked_user_id: user.id,
             linked_company_profile_id: profile.id
           )
+          CrmCompanyContactSync.sync_user_safely!(user: user, company_profile: profile)
         end
 
         def rank_company_matches(scope, query)
