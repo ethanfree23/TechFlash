@@ -70,7 +70,9 @@ class CheckrConfiguration
   end
 
   def default_package
-    @env["CHECKR_DEFAULT_PACKAGE"].to_s.strip.presence || "essential"
+    @env["CHECKR_DEFAULT_PACKAGE_SLUG"].to_s.strip.presence ||
+      @env["CHECKR_DEFAULT_PACKAGE"].to_s.strip.presence ||
+      "essential"
   end
 
   def default_node_custom_id

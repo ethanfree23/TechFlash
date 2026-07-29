@@ -11,7 +11,7 @@ class CheckrClient
     @api_key = @configuration.api_key
     @default_package = @configuration.default_package
     @default_node_custom_id = @configuration.default_node_custom_id
-    @base_url = "#{@configuration.api_base_url}/v1"
+    @base_url = normalize_base_url(@configuration.api_base_url)
   end
 
   def configured?
@@ -85,6 +85,13 @@ class CheckrClient
   end
 
   private
+
+  def normalize_base_url(raw_base_url)
+    base = raw_base_url.to_s.chomp("/")
+    return base if base.end_with?("/v1")
+
+    "#{base}/v1"
+  end
 
   def get_json(path)
     request_json(Net::HTTP::Get.new(path), path: path)

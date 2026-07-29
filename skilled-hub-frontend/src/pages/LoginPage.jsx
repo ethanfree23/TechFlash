@@ -229,33 +229,9 @@ const LoginPage = ({ onLoginSuccess }) => {
 
           {isDemoMode() && (
             <div className="mb-4 space-y-3">
-              <button
-                type="button"
-                disabled={loading || (!resolveDemoApiBaseUrl() && isDemoPath())}
-                onClick={() => handleDemoLogin('admin')}
-                className="w-full rounded-lg bg-[#FE6711] px-4 py-3 text-sm font-semibold text-white hover:opacity-95 disabled:opacity-50"
-              >
-                {loading ? 'Signing in…' : 'Enter demo as Admin'}
-              </button>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  disabled={loading || (!resolveDemoApiBaseUrl() && isDemoPath())}
-                  onClick={() => handleDemoLogin('company')}
-                  className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
-                >
-                  Demo Company
-                </button>
-                <button
-                  type="button"
-                  disabled={loading || (!resolveDemoApiBaseUrl() && isDemoPath())}
-                  onClick={() => handleDemoLogin('technician')}
-                  className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-900 hover:bg-indigo-100 disabled:opacity-50"
-                >
-                  Demo Technician
-                </button>
-              </div>
-              <p className="text-center text-[11px] text-slate-500">Or sign in manually below</p>
+              <p className="text-center text-[11px] text-slate-500">
+                Use the demo cards above to load credentials, or sign in manually below.
+              </p>
             </div>
           )}
 

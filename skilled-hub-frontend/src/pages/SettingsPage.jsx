@@ -266,6 +266,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [submittingReference, setSubmittingReference] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [avatarBroken, setAvatarBroken] = useState(false);
+  const [verificationRailCollapsed, setVerificationRailCollapsed] = useState(false);
   const [newReference, setNewReference] = useState({
     full_name: '',
     email: '',
@@ -1662,6 +1663,299 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
+  const renderTrustAndVerificationContent = () => {
+    if (loadingVerificationCenter) {
+      return <p className="text-sm text-gray-500">Loading verification center...</p>;
+    }
+    return (
+      <>
+        <ul className="text-sm text-gray-700 space-y-2">
+          {(verificationCenter?.sections || []).map((section) => {
+            const status = section?.status || 'not_started';
+            const shouldOverrideLicenseStatus = isLicenseVerificationSection(section) && certificates.length > 0;
+            const displayStatus = shouldOverrideLicenseStatus ? 'verified' : status;
+            const tone = verificationStatusTone(displayStatus);
+            const identitySection = isIdentityVerificationSection(section);
+            const canUploadIdentityDoc = identitySection && !isVerificationCompleteStatus(displayStatus);
+            return (
+              <li
+                key={section.key}
+                className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 ${tone.row}`}
+              >
+                <span>{section.title}</span>
+                {canUploadIdentityDoc ? (
+                  <button
+                    type="button"
+                    onClick={handleOpenIdentityUploadModal}
+                    className={`text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 transition-colors ${tone.chip} hover:brightness-95`}
+                  >
+                    {String(displayStatus).replaceAll('_', ' ')}
+                  </button>
+                ) : (
+                  <span className={`text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${tone.chip}`}>
+                    {String(displayStatus).replaceAll('_', ' ')}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+          <li>Certificates on file: {certificates.length}</li>
+          <li
+            className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 ${
+              needsMapSetup ? 'bg-red-50' : 'bg-emerald-50'
+            }`}
+          >
+            <span>Map address</span>
+            <span
+              className={`text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 border ${
+                needsMapSetup
+                  ? 'bg-red-100 text-red-800 border-red-200'
+                  : 'bg-emerald-100 text-emerald-800 border-emerald-200'
+              }`}
+            >
+              {needsMapSetup ? 'Incomplete' : 'Looks good'}
+            </span>
+          </li>
+        </ul>
+        <div className="mt-3 space-y-3">
+          <div className="grid grid-cols-1 gap-2">
+            <div className="text-xs text-gray-600">
+              <span className="font-semibold text-gray-800">Technician:</span>{' '}
+              {user?.first_name || ''} {user?.last_name || ''} ({user?.email || 'No email'})
+            </div>
+            <div className="text-xs text-gray-600">
+              <span className="font-semibold text-gray-800">Work location:</span>{' '}
+              {verificationCenter?.background_check?.work_location_city || profile?.city || 'Houston'},{' '}
+              {verificationCenter?.background_check?.work_location_state || profile?.state || 'TX'},{' '}
+              {verificationCenter?.background_check?.work_location_country || profile?.country || 'US'}
+            </div>
+          </div>
+          {loadingBackgroundCheckOptions ? (
+            <p className="text-xs text-gray-500">Loading background check options...</p>
+          ) : (backgroundCheckOptionsError && !effectiveCheckrDemoBypass) ? (
+            <div className="rounded-lg border border-rose-200 bg-rose-50 p-2">
+              <p className="text-xs text-rose-800">{backgroundCheckOptionsError}</p>
+              <button
+                type="button"
+                onClick={loadBackgroundCheckOptions}
+                className="mt-1 inline-flex rounded border border-rose-300 bg-white px-2 py-0.5 text-xs font-medium text-rose-800 hover:bg-rose-100"
+              >
+                Retry
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-gray-600">
+              Background check package is preset by TechFlash and managed by backend configuration.
+            </p>
+          )}
+          {effectiveCheckrDemoBypass && (
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs text-amber-700">
+                Demo bypass is active. Start flow is simulated for walkthrough recording.
+              </p>
+              {localCheckrDemoBypass && (
+                <button
+                  type="button"
+                  onClick={handleDisableLocalCheckrDemoBypass}
+                  className="inline-flex rounded border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-50"
+                >
+                  Disable demo bypass
+                </button>
+              )}
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
+            <p><span className="font-semibold text-gray-800">Associated job:</span> {verificationCenter?.background_check?.job_id ? `Job #${verificationCenter.background_check.job_id}` : 'Not linked'}</p>
+            <p><span className="font-semibold text-gray-800">Invitation status:</span> {verificationCenter?.background_check?.normalized_status || verificationCenter?.background_check?.status || 'not_started'}</p>
+            <p><span className="font-semibold text-gray-800">Report status:</span> {verificationCenter?.background_check?.provider_status || 'pending'}</p>
+            <p><span className="font-semibold text-gray-800">ETA:</span> {verificationCenter?.background_check?.report_eta_at ? new Date(verificationCenter.background_check.report_eta_at).toLocaleString() : 'Not provided'}</p>
+            <p><span className="font-semibold text-gray-800">Package:</span> {displayBackgroundCheckPackageName || 'Not configured'}</p>
+          </div>
+          {(verificationCenter?.background_check?.dashboard_url || verificationCenter?.background_check?.report_url) && (
+            <a
+              href={verificationCenter?.background_check?.dashboard_url || verificationCenter?.background_check?.report_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex text-xs font-medium text-blue-700 hover:text-blue-800"
+            >
+              Open Checkr dashboard/report
+            </a>
+          )}
+          {verificationCenter?.background_check?.invitation_url && (
+            <a
+              href={verificationCenter.background_check.invitation_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex text-xs font-medium text-blue-700 hover:text-blue-800"
+            >
+              Resume hosted invitation flow
+            </a>
+          )}
+        </div>
+        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+          <p className="text-xs font-semibold text-amber-900">Background check disclosure and authorization</p>
+          <p className="mt-1 text-xs text-amber-800">
+            TechFlash uses Checkr to process background reports. Before we submit your check request, review these notices and provide authorization.
+          </p>
+          <div className="mt-2 space-y-2 text-xs text-amber-900">
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={backgroundDisclosureAccepted}
+                onChange={handleDisclosureAcceptedChange}
+                className="mt-0.5 h-3.5 w-3.5 rounded border-amber-300 text-amber-700 focus:ring-amber-500"
+              />
+              <span>
+                I acknowledge I received the disclosure that a consumer report may be obtained for background screening.
+              </span>
+            </label>
+            <label className="flex items-start gap-2">
+              <input
+                type="checkbox"
+                checked={backgroundAuthorizationAccepted}
+                onChange={handleAuthorizationAcceptedChange}
+                className="mt-0.5 h-3.5 w-3.5 rounded border-amber-300 text-amber-700 focus:ring-amber-500"
+              />
+              <span>
+                I authorize TechFlash and Checkr to obtain and process my background report for verification and job eligibility.
+              </span>
+            </label>
+          </div>
+          {(backgroundDisclosureAcceptedAt || backgroundAuthorizationAcceptedAt) && (
+            <p className="mt-2 text-[11px] text-amber-800">
+              Consent captured:
+              {backgroundDisclosureAcceptedAt ? ` disclosure ${new Date(backgroundDisclosureAcceptedAt).toLocaleString()}` : ''}
+              {backgroundAuthorizationAcceptedAt ? `, authorization ${new Date(backgroundAuthorizationAcceptedAt).toLocaleString()}` : ''}
+            </p>
+          )}
+        </div>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={handleStartBackgroundCheck}
+            disabled={startingBackgroundCheck || loadingBackgroundCheckOptions || !backgroundCheckStartEnabled || !backgroundConsentReady}
+            className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
+          >
+            {startingBackgroundCheck ? 'Starting...' : 'Start background check'}
+          </button>
+        </div>
+        <div className="mt-4 border-t border-gray-200 pt-3">
+          <h5 className="text-sm font-semibold text-gray-900 mb-2">
+            Professional References ({completedReferenceCount}/3)
+          </h5>
+          {loadingReferences ? (
+            <p className="text-xs text-gray-500 mb-2">Loading references...</p>
+          ) : (
+            <>
+              <div className="space-y-1 mb-3">
+                {verificationReferences.length === 0 ? (
+                  <p className="text-xs text-gray-500">No references added yet.</p>
+                ) : (
+                  verificationReferences.slice(0, 5).map((ref) => {
+                    const isExpanded = Boolean(expandedReferenceRows[ref.id]);
+                    return (
+                      <div key={ref.id} className="rounded-lg border border-gray-200 bg-white px-2 py-1.5">
+                        <div className="text-xs text-gray-700 flex items-center justify-between gap-3">
+                          <span>{ref.full_name} ({ref.relationship})</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-semibold text-gray-500">
+                              {referenceStatusLabel(ref.status)}
+                              {ref.responded_at ? ` (${new Date(ref.responded_at).toLocaleDateString()})` : ''}
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => toggleReferenceDetails(ref.id)}
+                              className="px-2 py-0.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+                            >
+                              More info
+                            </button>
+                          </div>
+                        </div>
+                        {isExpanded && (
+                          <div className="mt-2 border-t border-gray-200 pt-2 text-xs text-gray-600 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                            <p><span className="font-semibold text-gray-800">Email:</span> {ref.email || 'Not provided'}</p>
+                            <p><span className="font-semibold text-gray-800">Phone:</span> {ref.phone || 'Not provided'}</p>
+                            <p><span className="font-semibold text-gray-800">Company:</span> {ref.company_name || 'Not provided'}</p>
+                            <p><span className="font-semibold text-gray-800">Relationship:</span> {ref.relationship || 'Not provided'}</p>
+                            <p>
+                              <span className="font-semibold text-gray-800">Requested date:</span>{' '}
+                              {ref.requested_at
+                                ? new Date(ref.requested_at).toLocaleDateString()
+                                : ref.created_at
+                                  ? new Date(ref.created_at).toLocaleDateString()
+                                  : 'Not available'}
+                            </p>
+                            <p>
+                              <span className="font-semibold text-gray-800">Responded date:</span>{' '}
+                              {ref.responded_at ? new Date(ref.responded_at).toLocaleDateString() : 'Not yet'}
+                            </p>
+                            <p className="sm:col-span-2">
+                              <span className="font-semibold text-gray-800">Current status:</span> {referenceStatusLabel(ref.status)}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+              <form onSubmit={handleAddReference} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <input
+                  className="border rounded px-2 py-1 text-xs"
+                  name="full_name"
+                  placeholder="Full name"
+                  value={newReference.full_name}
+                  onChange={handleReferenceFieldChange}
+                  required
+                />
+                <input
+                  className="border rounded px-2 py-1 text-xs"
+                  name="relationship"
+                  placeholder="Relationship"
+                  value={newReference.relationship}
+                  onChange={handleReferenceFieldChange}
+                  required
+                />
+                <input
+                  className="border rounded px-2 py-1 text-xs"
+                  name="email"
+                  type="email"
+                  placeholder="Email"
+                  value={newReference.email}
+                  onChange={handleReferenceFieldChange}
+                  required
+                />
+                <input
+                  className="border rounded px-2 py-1 text-xs"
+                  name="phone"
+                  placeholder="Phone"
+                  value={newReference.phone}
+                  onChange={handleReferenceFieldChange}
+                />
+                <input
+                  className="border rounded px-2 py-1 text-xs sm:col-span-2"
+                  name="company_name"
+                  placeholder="Company (optional)"
+                  value={newReference.company_name}
+                  onChange={handleReferenceFieldChange}
+                />
+                <div className="sm:col-span-2">
+                  <button
+                    type="submit"
+                    disabled={submittingReference}
+                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50"
+                  >
+                    {submittingReference ? 'Saving...' : 'Add reference'}
+                  </button>
+                </div>
+              </form>
+            </>
+          )}
+        </div>
+      </>
+    );
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -1858,7 +2152,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
             </div>
           )}
           {(isTechnician || isCompany) && (
-            <div className="grid gap-4 mb-6 md:grid-cols-2">
+            <div className="grid gap-4 mb-6 items-start md:grid-cols-2 xl:grid-cols-1">
               <SettingsCard title="Profile completion" description="Based on fields on this page only.">
                 <div className="flex items-end gap-3">
                   <p className="text-3xl font-bold text-gray-900">{profileCompletion.pct}%</p>
@@ -1875,297 +2169,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 )}
               </SettingsCard>
               {isTechnician && (
-                <SettingsCard title="Trust and verification" collapsible defaultOpen>
-                  {loadingVerificationCenter ? (
-                    <p className="text-sm text-gray-500">Loading verification center...</p>
-                  ) : (
-                    <>
-                      <ul className="text-sm text-gray-700 space-y-2">
-                        {(verificationCenter?.sections || []).map((section) => {
-                          const status = section?.status || 'not_started';
-                          const shouldOverrideLicenseStatus = isLicenseVerificationSection(section) && certificates.length > 0;
-                          const displayStatus = shouldOverrideLicenseStatus ? 'verified' : status;
-                          const tone = verificationStatusTone(displayStatus);
-                          const identitySection = isIdentityVerificationSection(section);
-                          const canUploadIdentityDoc = identitySection && !isVerificationCompleteStatus(displayStatus);
-                          return (
-                            <li
-                              key={section.key}
-                              className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 ${tone.row}`}
-                            >
-                              <span>{section.title}</span>
-                              {canUploadIdentityDoc ? (
-                                <button
-                                  type="button"
-                                  onClick={handleOpenIdentityUploadModal}
-                                  className={`text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 transition-colors ${tone.chip} hover:brightness-95`}
-                                >
-                                  {String(displayStatus).replaceAll('_', ' ')}
-                                </button>
-                              ) : (
-                                <span className={`text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${tone.chip}`}>
-                                  {String(displayStatus).replaceAll('_', ' ')}
-                                </span>
-                              )}
-                            </li>
-                          );
-                        })}
-                        <li>Certificates on file: {certificates.length}</li>
-                        <li
-                          className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 ${
-                            needsMapSetup ? 'bg-red-50' : 'bg-emerald-50'
-                          }`}
-                        >
-                          <span>Map address</span>
-                          <span
-                            className={`text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 border ${
-                              needsMapSetup
-                                ? 'bg-red-100 text-red-800 border-red-200'
-                                : 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                            }`}
-                          >
-                            {needsMapSetup ? 'Incomplete' : 'Looks good'}
-                          </span>
-                        </li>
-                      </ul>
-                      <div className="mt-3 space-y-3">
-                        <div className="grid grid-cols-1 gap-2">
-                          <div className="text-xs text-gray-600">
-                            <span className="font-semibold text-gray-800">Technician:</span>{' '}
-                            {user?.first_name || ''} {user?.last_name || ''} ({user?.email || 'No email'})
-                          </div>
-                          <div className="text-xs text-gray-600">
-                            <span className="font-semibold text-gray-800">Work location:</span>{' '}
-                            {verificationCenter?.background_check?.work_location_city || profile?.city || 'Houston'},{' '}
-                            {verificationCenter?.background_check?.work_location_state || profile?.state || 'TX'},{' '}
-                            {verificationCenter?.background_check?.work_location_country || profile?.country || 'US'}
-                          </div>
-                        </div>
-                        {loadingBackgroundCheckOptions ? (
-                          <p className="text-xs text-gray-500">Loading background check options...</p>
-                        ) : (backgroundCheckOptionsError && !effectiveCheckrDemoBypass) ? (
-                          <div className="rounded-lg border border-rose-200 bg-rose-50 p-2">
-                            <p className="text-xs text-rose-800">{backgroundCheckOptionsError}</p>
-                            <button
-                              type="button"
-                              onClick={loadBackgroundCheckOptions}
-                              className="mt-1 inline-flex rounded border border-rose-300 bg-white px-2 py-0.5 text-xs font-medium text-rose-800 hover:bg-rose-100"
-                            >
-                              Retry
-                            </button>
-                          </div>
-                        ) : (
-                          <p className="text-xs text-gray-600">
-                            Background check package is preset by TechFlash and managed by backend configuration.
-                          </p>
-                        )}
-                        {effectiveCheckrDemoBypass && (
-                          <div className="flex flex-wrap items-center gap-2">
-                            <p className="text-xs text-amber-700">
-                              Demo bypass is active. Start flow is simulated for walkthrough recording.
-                            </p>
-                            {localCheckrDemoBypass && (
-                              <button
-                                type="button"
-                                onClick={handleDisableLocalCheckrDemoBypass}
-                                className="inline-flex rounded border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-50"
-                              >
-                                Disable demo bypass
-                              </button>
-                            )}
-                          </div>
-                        )}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
-                          <p><span className="font-semibold text-gray-800">Associated job:</span> {verificationCenter?.background_check?.job_id ? `Job #${verificationCenter.background_check.job_id}` : 'Not linked'}</p>
-                          <p><span className="font-semibold text-gray-800">Invitation status:</span> {verificationCenter?.background_check?.normalized_status || verificationCenter?.background_check?.status || 'not_started'}</p>
-                          <p><span className="font-semibold text-gray-800">Report status:</span> {verificationCenter?.background_check?.provider_status || 'pending'}</p>
-                          <p><span className="font-semibold text-gray-800">ETA:</span> {verificationCenter?.background_check?.report_eta_at ? new Date(verificationCenter.background_check.report_eta_at).toLocaleString() : 'Not provided'}</p>
-                          <p><span className="font-semibold text-gray-800">Package:</span> {displayBackgroundCheckPackageName || 'Not configured'}</p>
-                        </div>
-                        {(verificationCenter?.background_check?.dashboard_url || verificationCenter?.background_check?.report_url) && (
-                          <a
-                            href={verificationCenter?.background_check?.dashboard_url || verificationCenter?.background_check?.report_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex text-xs font-medium text-blue-700 hover:text-blue-800"
-                          >
-                            Open Checkr dashboard/report
-                          </a>
-                        )}
-                        {verificationCenter?.background_check?.invitation_url && (
-                          <a
-                            href={verificationCenter.background_check.invitation_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="inline-flex text-xs font-medium text-blue-700 hover:text-blue-800"
-                          >
-                            Resume hosted invitation flow
-                          </a>
-                        )}
-                      </div>
-                      <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-                        <p className="text-xs font-semibold text-amber-900">Background check disclosure and authorization</p>
-                        <p className="mt-1 text-xs text-amber-800">
-                          TechFlash uses Checkr to process background reports. Before we submit your check request, review these notices and provide authorization.
-                        </p>
-                        <div className="mt-2 space-y-2 text-xs text-amber-900">
-                          <label className="flex items-start gap-2">
-                            <input
-                              type="checkbox"
-                              checked={backgroundDisclosureAccepted}
-                              onChange={handleDisclosureAcceptedChange}
-                              className="mt-0.5 h-3.5 w-3.5 rounded border-amber-300 text-amber-700 focus:ring-amber-500"
-                            />
-                            <span>
-                              I acknowledge I received the disclosure that a consumer report may be obtained for background screening.
-                            </span>
-                          </label>
-                          <label className="flex items-start gap-2">
-                            <input
-                              type="checkbox"
-                              checked={backgroundAuthorizationAccepted}
-                              onChange={handleAuthorizationAcceptedChange}
-                              className="mt-0.5 h-3.5 w-3.5 rounded border-amber-300 text-amber-700 focus:ring-amber-500"
-                            />
-                            <span>
-                              I authorize TechFlash and Checkr to obtain and process my background report for verification and job eligibility.
-                            </span>
-                          </label>
-                        </div>
-                        {(backgroundDisclosureAcceptedAt || backgroundAuthorizationAcceptedAt) && (
-                          <p className="mt-2 text-[11px] text-amber-800">
-                            Consent captured:
-                            {backgroundDisclosureAcceptedAt ? ` disclosure ${new Date(backgroundDisclosureAcceptedAt).toLocaleString()}` : ''}
-                            {backgroundAuthorizationAcceptedAt ? `, authorization ${new Date(backgroundAuthorizationAcceptedAt).toLocaleString()}` : ''}
-                          </p>
-                        )}
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        <button
-                          type="button"
-                          onClick={handleStartBackgroundCheck}
-                          disabled={startingBackgroundCheck || loadingBackgroundCheckOptions || !backgroundCheckStartEnabled || !backgroundConsentReady}
-                          className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
-                        >
-                          {startingBackgroundCheck ? 'Starting...' : 'Start background check'}
-                        </button>
-                      </div>
-                      <div className="mt-4 border-t border-gray-200 pt-3">
-                        <h5 className="text-sm font-semibold text-gray-900 mb-2">
-                          Professional References ({completedReferenceCount}/3)
-                        </h5>
-                        {loadingReferences ? (
-                          <p className="text-xs text-gray-500 mb-2">Loading references...</p>
-                        ) : (
-                          <>
-                            <div className="space-y-1 mb-3">
-                              {verificationReferences.length === 0 ? (
-                                <p className="text-xs text-gray-500">No references added yet.</p>
-                              ) : (
-                                verificationReferences.slice(0, 5).map((ref) => {
-                                  const isExpanded = Boolean(expandedReferenceRows[ref.id]);
-                                  return (
-                                    <div key={ref.id} className="rounded-lg border border-gray-200 bg-white px-2 py-1.5">
-                                      <div className="text-xs text-gray-700 flex items-center justify-between gap-3">
-                                        <span>{ref.full_name} ({ref.relationship})</span>
-                                        <div className="flex items-center gap-2">
-                                          <span className="font-semibold text-gray-500">
-                                            {referenceStatusLabel(ref.status)}
-                                            {ref.responded_at ? ` (${new Date(ref.responded_at).toLocaleDateString()})` : ''}
-                                          </span>
-                                          <button
-                                            type="button"
-                                            onClick={() => toggleReferenceDetails(ref.id)}
-                                            className="px-2 py-0.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
-                                          >
-                                            More info
-                                          </button>
-                                        </div>
-                                      </div>
-                                      {isExpanded && (
-                                        <div className="mt-2 border-t border-gray-200 pt-2 text-xs text-gray-600 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                                          <p><span className="font-semibold text-gray-800">Email:</span> {ref.email || 'Not provided'}</p>
-                                          <p><span className="font-semibold text-gray-800">Phone:</span> {ref.phone || 'Not provided'}</p>
-                                          <p><span className="font-semibold text-gray-800">Company:</span> {ref.company_name || 'Not provided'}</p>
-                                          <p><span className="font-semibold text-gray-800">Relationship:</span> {ref.relationship || 'Not provided'}</p>
-                                          <p>
-                                            <span className="font-semibold text-gray-800">Requested date:</span>{' '}
-                                            {ref.requested_at
-                                              ? new Date(ref.requested_at).toLocaleDateString()
-                                              : ref.created_at
-                                                ? new Date(ref.created_at).toLocaleDateString()
-                                                : 'Not available'}
-                                          </p>
-                                          <p>
-                                            <span className="font-semibold text-gray-800">Responded date:</span>{' '}
-                                            {ref.responded_at ? new Date(ref.responded_at).toLocaleDateString() : 'Not yet'}
-                                          </p>
-                                          <p className="sm:col-span-2">
-                                            <span className="font-semibold text-gray-800">Current status:</span> {referenceStatusLabel(ref.status)}
-                                          </p>
-                                        </div>
-                                      )}
-                                    </div>
-                                  );
-                                })
-                              )}
-                            </div>
-                            <form onSubmit={handleAddReference} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                              <input
-                                className="border rounded px-2 py-1 text-xs"
-                                name="full_name"
-                                placeholder="Full name"
-                                value={newReference.full_name}
-                                onChange={handleReferenceFieldChange}
-                                required
-                              />
-                              <input
-                                className="border rounded px-2 py-1 text-xs"
-                                name="relationship"
-                                placeholder="Relationship"
-                                value={newReference.relationship}
-                                onChange={handleReferenceFieldChange}
-                                required
-                              />
-                              <input
-                                className="border rounded px-2 py-1 text-xs"
-                                name="email"
-                                type="email"
-                                placeholder="Email"
-                                value={newReference.email}
-                                onChange={handleReferenceFieldChange}
-                                required
-                              />
-                              <input
-                                className="border rounded px-2 py-1 text-xs"
-                                name="phone"
-                                placeholder="Phone"
-                                value={newReference.phone}
-                                onChange={handleReferenceFieldChange}
-                              />
-                              <input
-                                className="border rounded px-2 py-1 text-xs sm:col-span-2"
-                                name="company_name"
-                                placeholder="Company (optional)"
-                                value={newReference.company_name}
-                                onChange={handleReferenceFieldChange}
-                              />
-                              <div className="sm:col-span-2">
-                                <button
-                                  type="submit"
-                                  disabled={submittingReference}
-                                  className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50"
-                                >
-                                  {submittingReference ? 'Saving...' : 'Add reference'}
-                                </button>
-                              </div>
-                            </form>
-                          </>
-                        )}
-                      </div>
-                    </>
-                  )}
-                </SettingsCard>
+                <div className="xl:hidden">
+                  <SettingsCard title="Trust and verification">
+                    {renderTrustAndVerificationContent()}
+                  </SettingsCard>
+                </div>
               )}
             </div>
           )}
@@ -2212,7 +2220,8 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               </button>
             </form>
           ) : (
-          <form onSubmit={handleProfileSubmit} className="space-y-4" noValidate>
+          <div className={isTechnician ? 'xl:grid xl:grid-cols-[minmax(0,2fr)_auto] xl:items-start xl:gap-5' : ''}>
+          <form onSubmit={handleProfileSubmit} className={`space-y-4 ${isTechnician ? 'min-w-0' : ''}`} noValidate>
             <div className="flex items-center gap-6">
               <div className="relative">
                 {profileAvatarUrl ? (
@@ -2557,6 +2566,40 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
           </form>
+          {isTechnician && (
+            <div className="hidden xl:flex xl:justify-end">
+              <div className="sticky top-24 flex items-start max-h-[calc(100vh-7rem)]">
+                {!verificationRailCollapsed && (
+                  <div className="w-[360px] max-w-[38vw] min-w-[320px] pr-0.5">
+                    <SettingsCard
+                      title="Trust and verification"
+                      className="max-h-[calc(100vh-7rem)] overflow-y-auto"
+                    >
+                      {renderTrustAndVerificationContent()}
+                    </SettingsCard>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setVerificationRailCollapsed((collapsed) => !collapsed)}
+                  aria-label={verificationRailCollapsed ? 'Expand trust and verification panel' : 'Collapse trust and verification panel'}
+                  aria-expanded={!verificationRailCollapsed}
+                  className={`mt-2 inline-flex h-10 w-8 items-center justify-center border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 ${
+                    verificationRailCollapsed ? 'rounded-xl' : 'rounded-r-xl rounded-l-none border-l-0'
+                  }`}
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    {verificationRailCollapsed ? (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5l-7 7 7 7" />
+                    ) : (
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    )}
+                  </svg>
+                </button>
+              </div>
+            </div>
+          )}
+          </div>
           )}
               </div>
             )}
