@@ -154,29 +154,6 @@ export default function AccountRolePanel({ roleLabel }) {
               <CredentialRow account={DEMO_ACCOUNTS.company} roleKey="company" onOpenDemo={openDemo} />
               <CredentialRow account={DEMO_ACCOUNTS.technician} roleKey="technician" onOpenDemo={openDemo} />
             </div>
-            <div className="flex flex-wrap gap-2">
-              <a
-                href={demoEntryUrl('/login?demo=admin&auto=1')}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700"
-              >
-                Enter demo as Admin
-              </a>
-              {Object.entries(DEMO_ACCOUNTS)
-                .filter(([key]) => key !== 'admin')
-                .map(([key, acc]) => (
-                  <a
-                    key={acc.email}
-                    href={demoEntryUrl(`/login?demo=${key}&auto=1`)}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-50"
-                  >
-                    {acc.label}
-                  </a>
-                ))}
-            </div>
           </>
         )}
       </div>

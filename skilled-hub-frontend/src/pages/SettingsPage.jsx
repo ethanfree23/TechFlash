@@ -890,6 +890,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     console.info('[Settings] Profile save started');
     const firstName = (form.first_name || '').trim();
     const lastName = (form.last_name || '').trim();
+    const emailTrim = String(accountEmail || '').trim();
     const phoneDigits = String(form.phone || '').replace(/\D/g, '');
     const failProfileSave = (message) => {
       setError(message);
@@ -902,6 +903,10 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     };
     if (!firstName || !lastName) {
       failProfileSave('First name and last name are required.');
+      return;
+    }
+    if (!emailTrim) {
+      failProfileSave('Email is required.');
       return;
     }
     if (!phoneDigits || phoneDigits.length < 10) {
@@ -920,10 +925,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       const accountRes = await authAPI.updateMe({
         first_name: firstName,
         last_name: lastName,
+        email: emailTrim,
         phone: phoneTrim,
       });
       auth.setUser(accountRes.user);
       onUserUpdate?.(accountRes.user);
+      setAccountEmail(accountRes.user?.email || emailTrim);
 
       if (isCompany) {
         const companyState = (form.state || '').trim();
@@ -2362,19 +2369,34 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               </div>
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phone number</label>
-              <input
-                type="tel"
-                name="phone"
-                autoComplete="tel"
-                value={form.phone || ''}
-                onChange={(e) => setForm((prev) => ({ ...prev, phone: formatPhoneInput(e.target.value) }))}
-                className="w-full border rounded-lg px-3 py-2"
-                placeholder="+1 (555) 555-0100"
-                required
-              />
-              <p className="mt-1 text-xs text-gray-500">Required. Used for job-related contact and your public profile.</p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Phone number</label>
+                <input
+                  type="tel"
+                  name="phone"
+                  autoComplete="tel"
+                  value={form.phone || ''}
+                  onChange={(e) => setForm((prev) => ({ ...prev, phone: formatPhoneInput(e.target.value) }))}
+                  className="w-full border rounded-lg px-3 py-2"
+                  placeholder="+1 (555) 555-0100"
+                  required
+                />
+                <p className="mt-1 text-xs text-gray-500">Required. Used for job-related contact and your public profile.</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                <input
+                  type="email"
+                  name="profile_email"
+                  autoComplete="email"
+                  value={accountEmail}
+                  onChange={(e) => setAccountEmail(e.target.value)}
+                  className="w-full border rounded-lg px-3 py-2"
+                  placeholder="you@example.com"
+                  required
+                />
+              </div>
             </div>
 
             {isCompany && (
