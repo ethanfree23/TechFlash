@@ -1,9 +1,13 @@
 class ApplicationMailer < ActionMailer::Base
   include ApplicationHelper
-  default from: "from@example.com"
+  default(
+    from: -> { ENV.fetch("MAILER_FROM", "TechFlash <noreply@techflash.app>") },
+    reply_to: -> { ENV.fetch("MAILER_REPLY_TO", "support@techflash.app") }
+  )
   layout "mailer"
   helper ApplicationHelper
   before_action :assign_email_branding
+  before_action :apply_transactional_headers
   after_deliver :record_outbound_email_log
 
   private
@@ -45,6 +49,16 @@ class ApplicationMailer < ActionMailer::Base
     @email_logo_url = ENV.fetch("EMAIL_LOGO_URL", "#{@email_asset_base_url}/techflash-logo.png")
     @email_brand_font_family = ENV.fetch("EMAIL_BRAND_FONT_FAMILY", "inherit")
     @email_brand_font_url = ENV["EMAIL_BRAND_FONT_URL"].to_s.presence
+    @frontend_base_url = ENV.fetch("FRONTEND_URL", "http://localhost:5173").to_s.chomp("/")
+    @notification_settings_url = "#{@frontend_base_url}/settings?tab=notifications"
+    @support_email = ENV.fetch("MAILER_REPLY_TO", "support@techflash.app")
+    @support_mailto_url = "mailto:#{@support_email}"
+  end
+
+  def apply_transactional_headers
+    headers["X-Auto-Response-Suppress"] = "All"
+    headers["Precedence"] = "list"
+    headers["List-Unsubscribe"] = "<#{@notification_settings_url}>, <#{@support_mailto_url}?subject=Unsubscribe>"
   end
 
   def email_asset_base_url

@@ -131,7 +131,11 @@ const LoginPage = ({ onLoginSuccess }) => {
       await passwordResetsAPI.request(email);
       setResetNotice('If an account exists for that email, we sent a password reset link.');
     } catch (err) {
-      setError(err.message || 'Could not start password reset');
+      if (err?.status === 503) {
+        setError('We could not send the reset email right now. Please try again in a few minutes.');
+      } else {
+        setError(err.message || 'Could not start password reset');
+      }
     } finally {
       setResetLoading(false);
     }

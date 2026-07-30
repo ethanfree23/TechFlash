@@ -1,11 +1,10 @@
 # frozen_string_literal: true
 
 class UserMailer < ApplicationMailer
-  default from: ENV.fetch('MAILER_FROM', 'noreply@techflash.example.com')
-
   def welcome_email(user)
     @user = user
     @email = user.email
+    @dashboard_url = frontend_url('/dashboard')
     @membership_context = membership_context_for(user)
     return unless notifications_enabled_for?(@user, :membership_updates)
     mail(to: @email, subject: 'Welcome to TechFlash!')
@@ -30,6 +29,7 @@ class UserMailer < ApplicationMailer
     @job = job
     @user = job.company_profile.user
     @company_name = job.company_profile.company_name || 'Your company'
+    @dashboard_url = frontend_url('/dashboard')
     return unless notifications_enabled_for?(@user, :job_lifecycle)
     mail(to: @user.email, subject: "Job posted: #{job.title}")
   end
@@ -41,6 +41,8 @@ class UserMailer < ApplicationMailer
     @job_alert_estimated_total = format_estimated_total(@job)
     @job_alert_duration = format_business_day_duration(@job)
     @job_alert_distance = format_distance_from_technician(@job, technician_profile)
+    @dashboard_url = frontend_url('/dashboard')
+    @job_url = frontend_url("/jobs/#{job.id}")
     return unless notifications_enabled_for?(user, :job_lifecycle)
 
     mail(to: user.email, subject: "New matching job: #{job.title}")
@@ -67,6 +69,7 @@ class UserMailer < ApplicationMailer
     @message = message
     @conversation = message.conversation
     @job = @conversation.job
+    @messages_url = frontend_url('/messages')
     @sender = case message.sender
               when TechnicianProfile then message.sender.user
               when CompanyProfile then message.sender.user
@@ -132,6 +135,7 @@ class UserMailer < ApplicationMailer
     @user = user
     @role = role # :technician or :company
     @other_party = role == :technician ? (job.company_profile.company_name || 'the company') : 'the technician'
+    @reviews_url = frontend_url('/dashboard')
     return unless notifications_enabled_for?(user, :reviews)
     mail(to: user.email, subject: "Reminder: Leave a review for #{job.title}")
   end

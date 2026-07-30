@@ -99,6 +99,20 @@ If you use Mailtrap for real delivery, configure **Email Sending** (transactiona
 
 If production still had `SMTP_ADDRESS=sandbox.smtp.mailtrap.io`, switch to HTTP mode or live SMTP and matching Sending credentials; sandbox SMTP is for dev/testing capture only.
 
+### Required production env vars
+
+Set these on the API host before rollout:
+
+```
+MAILER_FROM=TechFlash <noreply@techflash.app>
+MAILER_REPLY_TO=support@techflash.app
+FRONTEND_URL=https://techflash.app
+MAILTRAP_USE_HTTP=true
+MAILTRAP_API_TOKEN=your_mailtrap_sending_api_token
+```
+
+If you use SMTP instead of HTTP mode, also set `SMTP_ADDRESS`, `SMTP_PORT`, `SMTP_USERNAME`, and `SMTP_PASSWORD` to your **Mailtrap Sending** credentials.
+
 ### Other providers
 
 Use a transactional email service (SendGrid, Mailgun, Amazon SES, etc.) and set:
@@ -124,7 +138,9 @@ Set:
 ```
 MAILTRAP_USE_HTTP=true
 MAILTRAP_API_TOKEN=your_mailtrap_token
-MAILER_FROM=noreply@yourdomain.com
+MAILER_FROM=TechFlash <noreply@yourdomain.com>
+MAILER_REPLY_TO=support@yourdomain.com
+FRONTEND_URL=https://yourdomain.com
 ```
 
 If `MAILTRAP_USE_HTTP=true`, the app requires either `MAILTRAP_API_TOKEN` or `SMTP_PASSWORD` (used as a token fallback).
@@ -134,7 +150,7 @@ If `MAILTRAP_USE_HTTP=true`, the app requires either `MAILTRAP_API_TOKEN` or `SM
 ## Background Jobs
 
 Transactional emails are sent inline through `MailDelivery.safe_deliver` using `deliver_now`.
-If delivery fails, the app logs an error and continues request handling.
+Password reset requests now return a `503` response when delivery fails so the UI can show a clear retry message.
 
 ---
 
@@ -185,3 +201,15 @@ Use this sequence to verify setup and delivery:
    - Check API logs for `[mail]` lines from `MailDelivery.safe_deliver`.
    - Verify `MAILER_FROM`, provider mode vars, and provider credentials.
    - Re-run connection tests before re-testing triggers.
+
+---
+
+## Deliverability DNS Checklist (outside app code)
+
+These are configured in DNS/provider dashboards, not in Rails:
+
+1. Verify the sending domain/subdomain in Mailtrap Sending.
+2. Publish SPF TXT records for your sender domain (include Mailtrap).
+3. Publish DKIM records provided by Mailtrap.
+4. Publish DMARC (`p=none` first, then tighten to `quarantine` or `reject` after monitoring).
+5. Keep the visible `From` domain aligned with SPF/DKIM domains (`MAILER_FROM` should match your verified domain).

@@ -2,7 +2,7 @@
 
 require_relative "../../config/mail_env"
 
-# Wraps mail sends so SMTP/template failures do not fail HTTP requests.
+# Wraps mail sends with consistent success/failure results.
 # Uses deliver_now (not deliver_later) so sends run inline and never depend on Active Job.
 module MailDelivery
   def self.audit_status
@@ -29,12 +29,12 @@ module MailDelivery
     }
   end
 
-  # Returns { success: true, value: ... } or { success: false, error: "..." }.
+  # Returns { success: true, value: ... } or { success: false, error: "...", code: "..." }.
   # Use this in admin/diagnostics UIs (e.g. Email QA).
   def self.safe_deliver_result
     if defined?(DemoMode) && DemoMode.enabled?
       Rails.logger.info("[mail] demo: simulated delivery (not sent)")
-      return { success: true, value: nil, simulated: true }
+      return { success: true, value: nil, simulated: true, code: "simulated_delivery" }
     end
 
     st = audit_status
@@ -44,16 +44,16 @@ module MailDelivery
       if ENV['MAILTRAP_API_TOKEN'].blank? && ENV['SMTP_PASSWORD'].blank?
         msg = "Mailtrap HTTP: set MAILTRAP_API_TOKEN or SMTP_PASSWORD (use your Sending API token) on the API host."
         Rails.logger.error("[mail] #{msg}")
-        return { success: false, error: msg }
+        return { success: false, error: msg, code: "mailtrap_token_missing" }
       end
     elsif ENV['SMTP_ADDRESS'].blank?
       msg = "SMTP_ADDRESS is unset — cannot send mail. Set it on the Railway API service."
       Rails.logger.error("[mail] #{msg}")
-      return { success: false, error: msg }
+      return { success: false, error: msg, code: "smtp_address_missing" }
     elsif ENV['SMTP_PASSWORD'].blank?
       msg = "SMTP_PASSWORD is unset. For Mailtrap live SMTP, use your API token as the password (user is often 'api')."
       Rails.logger.error("[mail] #{msg}")
-      return { success: false, error: msg }
+      return { success: false, error: msg, code: "smtp_password_missing" }
     end
 
     Rails.logger.warn("[mail] sending via=#{mailtrap_http ? 'mailtrap_http' : 'smtp'}")
@@ -61,14 +61,14 @@ module MailDelivery
     begin
       value = yield
       Rails.logger.warn("[mail] sent OK")
-      { success: true, value: value }
+      { success: true, value: value, code: "ok" }
     rescue StandardError => e
       Rails.logger.error("[mail] #{e.class}: #{e.message}\n#{e.backtrace.first(12).join("\n")}")
       msg = "#{e.class}: #{e.message}"
       if !mailtrap_http && e.class.name == "Net::OpenTimeout"
         msg += " Outbound SMTP is blocked on many cloud hosts (Railway, etc.). Switch to Mailtrap’s HTTP API (HTTPS)—do not change SMTP_PORT. Set MAILTRAP_USE_HTTP=true and put your Sending API token in MAILTRAP_API_TOKEN or SMTP_PASSWORD; leave SMTP_PORT at 587 or unset."
       end
-      { success: false, error: msg }
+      { success: false, error: msg, code: "delivery_exception" }
     end
   end
 

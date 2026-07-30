@@ -7,11 +7,20 @@ module Api
       def create
         email = params[:email].to_s.strip.downcase
         user = User.find_by('LOWER(email) = ?', email) if email.present?
+        Rails.logger.info("[password_reset_requested] email_present=#{email.present?} user_found=#{user.present?}")
         if user.present?
           user.generate_password_reset_token!
-          MailDelivery.safe_deliver do
+          delivery_result = MailDelivery.safe_deliver_result do
             UserMailer.password_reset_instructions(user).deliver_now
           end
+          unless delivery_result[:success]
+            Rails.logger.error("[password_reset_mail_failed] user_id=#{user.id} code=#{delivery_result[:code]} message=#{delivery_result[:error]}")
+            return render json: {
+              error: "Password reset email could not be sent right now. Please try again shortly."
+            }, status: :service_unavailable
+          end
+
+          Rails.logger.info("[password_reset_mail_sent] user_id=#{user.id} simulated=#{delivery_result[:simulated] == true}")
         end
         head :no_content
       end
