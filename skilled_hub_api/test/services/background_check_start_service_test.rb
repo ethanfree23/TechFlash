@@ -87,6 +87,62 @@ class BackgroundCheckStartServiceTest < ActiveSupport::TestCase
     assert_equal "invitation_sent", check.normalized_status
   end
 
+  test "retries with a fresh candidate when reused candidate has missing email" do
+    user = User.create!(
+      email: "bg-service-retry@example.com",
+      password: "password123",
+      password_confirmation: "password123",
+      role: :technician,
+      first_name: "Retry",
+      last_name: "Case"
+    )
+    TechnicianProfile.create!(
+      user: user,
+      trade_type: "HVAC",
+      availability: "Full-time",
+      membership_level: "basic",
+      city: "Houston",
+      state: "TX",
+      country: "US",
+      zip_code: "77004"
+    )
+    check = BackgroundCheck.create!(
+      user: user,
+      provider: "checkr",
+      provider_candidate_id: "cand_stale_1",
+      package_name: "essential_plus",
+      payment_status: :paid,
+      paid_by: "technician",
+      status: :not_started
+    )
+
+    invitation_attempts = 0
+    fake_client = Object.new
+    fake_client.define_singleton_method(:configured?) { true }
+    fake_client.define_singleton_method(:get_candidate) { |candidate_id:| { "id" => "cand_stale_1" } }
+    fake_client.define_singleton_method(:create_candidate) do |user:, work_location:, custom_id:, zipcode:|
+      { "id" => "cand_fresh_1" }
+    end
+    fake_client.define_singleton_method(:create_invitation) do |candidate_id:, package_name:, redirect_url:, work_location:, node_custom_id:|
+      invitation_attempts += 1
+      if invitation_attempts == 1
+        raise CheckrClient::Error, "email is missing (400)"
+      end
+      { "id" => "inv_retry_1", "invitation_url" => "http://example.test/inv/retry" }
+    end
+
+    with_stubbed_checkr_client(fake_client) do
+      BackgroundCheckStartService.launch_checkr_invitation!(check)
+    end
+
+    check.reload
+    assert_equal 2, invitation_attempts
+    assert_equal "cand_fresh_1", check.provider_candidate_id
+    assert_equal "inv_retry_1", check.provider_invitation_id
+    assert_equal "http://example.test/inv/retry", check.invitation_url
+    assert_equal "invited", check.status
+  end
+
   private
 
   def build_client_double(create_candidate: nil, create_invitation:, get_candidate: nil)

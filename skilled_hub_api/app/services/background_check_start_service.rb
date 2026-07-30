@@ -19,39 +19,31 @@ class BackgroundCheckStartService
     raise Error, "Checkr is not configured." unless client.configured?
 
     candidate_id = reusable_candidate_id(client)
-    unless candidate_id.present?
-      candidate = client.create_candidate(
-        user: @user,
-        work_location: work_location_payload,
-        custom_id: "techflash_user_#{@user.id}",
-        zipcode: candidate_zipcode
-      )
-      candidate_id = candidate["id"]
-    end
+    reused_candidate = candidate_id.present?
+    candidate_id ||= create_candidate_for_checkr(client)
 
-    invitation = client.create_invitation(
-      candidate_id: candidate_id,
-      package_name: @background_check.package_name,
-      redirect_url: ENV["CHECKR_REDIRECT_URL"].presence || "#{frontend_base_url}#{settings_base_path}",
-      work_location: work_location_payload,
-      node_custom_id: @background_check.node_custom_id
-    )
-    @background_check.update!(
-      provider_candidate_id: candidate_id,
-      provider_invitation_id: invitation["id"],
-      invitation_url: invitation["invitation_url"] || invitation["url"],
-      provider_status: invitation["status"] || "invitation_sent",
-      normalized_status: "invitation_sent",
-      status: :invited,
-      started_at: Time.current
-    )
-
-    VerificationProfile.for_user!(@user).update!(background_status: :pending)
-    VerificationEventNotifier.background_check_started(@user, @background_check)
-    invitation
+    invitation = create_invitation_for_checkr(client, candidate_id: candidate_id)
   rescue CheckrClient::Error => e
-    @background_check.update!(status: :failed, admin_notes: e.message)
-    raise Error, e.message
+    # Some legacy/stale Checkr candidates can fail invitation creation with missing email.
+    # When that happens for a reused candidate, rebuild candidate once and retry.
+    if reused_candidate && invitation_retryable_for_email?(e.message)
+      begin
+        candidate_id = create_candidate_for_checkr(client)
+        invitation = create_invitation_for_checkr(client, candidate_id: candidate_id)
+      rescue CheckrClient::Error => retry_error
+        @background_check.update!(status: :failed, admin_notes: retry_error.message)
+        raise Error, retry_error.message
+      end
+    else
+      @background_check.update!(status: :failed, admin_notes: e.message)
+      raise Error, e.message
+    end
+  ensure
+    if invitation.present?
+      persist_invitation_state!(invitation: invitation, candidate_id: candidate_id)
+      VerificationProfile.for_user!(@user).update!(background_status: :pending)
+      VerificationEventNotifier.background_check_started(@user, @background_check)
+    end
   end
 
   def create_checkout_session!
@@ -132,6 +124,42 @@ class BackgroundCheckStartService
 
   def candidate_zipcode
     @user.technician_profile&.zip_code.presence
+  end
+
+  def create_candidate_for_checkr(client)
+    candidate = client.create_candidate(
+      user: @user,
+      work_location: work_location_payload,
+      custom_id: "techflash_user_#{@user.id}",
+      zipcode: candidate_zipcode
+    )
+    candidate["id"]
+  end
+
+  def create_invitation_for_checkr(client, candidate_id:)
+    client.create_invitation(
+      candidate_id: candidate_id,
+      package_name: @background_check.package_name,
+      redirect_url: ENV["CHECKR_REDIRECT_URL"].presence || "#{frontend_base_url}#{settings_base_path}",
+      work_location: work_location_payload,
+      node_custom_id: @background_check.node_custom_id
+    )
+  end
+
+  def persist_invitation_state!(invitation:, candidate_id:)
+    @background_check.update!(
+      provider_candidate_id: candidate_id,
+      provider_invitation_id: invitation["id"],
+      invitation_url: invitation["invitation_url"] || invitation["url"],
+      provider_status: invitation["status"] || "invitation_sent",
+      normalized_status: "invitation_sent",
+      status: :invited,
+      started_at: Time.current
+    )
+  end
+
+  def invitation_retryable_for_email?(message)
+    message.to_s.match?(/email is missing/i)
   end
 
   def reusable_candidate_id(client)

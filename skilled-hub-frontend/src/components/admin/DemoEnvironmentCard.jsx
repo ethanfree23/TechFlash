@@ -79,29 +79,9 @@ export default function DemoEnvironmentCard() {
         </div>
 
         <p className="mt-3 text-[11px] text-slate-500">
-          One-click buttons open the demo and sign you in automatically.           Role switching is in Settings → Account → Account role on the demo site.
+          Use the cards above to copy credentials. Role switching is in Settings → Account → Account role on the
+          demo site.
         </p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          <a
-            href={`${demoUrl}/login?demo=admin&auto=1`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-indigo-700"
-          >
-            Enter demo as Admin
-          </a>
-          {Object.entries(DEMO_ACCOUNTS).filter(([key]) => key !== 'admin').map(([key, acc]) => (
-            <a
-              key={acc.email}
-              href={demoEntry(`/login?demo=${key}&auto=1`)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center rounded-lg border border-indigo-200 bg-white px-3 py-1.5 text-xs font-semibold text-indigo-800 hover:bg-indigo-50"
-            >
-              {acc.label}
-            </a>
-          ))}
-        </div>
       </section>
 
       {alert && (
