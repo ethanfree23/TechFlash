@@ -1,4 +1,5 @@
 require "test_helper"
+require "minitest/mock"
 
 module Api
   module V1
