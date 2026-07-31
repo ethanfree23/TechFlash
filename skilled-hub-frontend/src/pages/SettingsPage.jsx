@@ -735,7 +735,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const stored = window.localStorage.getItem(CHECKR_DEMO_BYPASS_STORAGE_KEY);
-    if (stored === '1') {
+    if (stored === '0') {
+      setLocalCheckrDemoBypassEnabled(false);
+      return;
+    }
+    if (stored === '1' || isDemoMode()) {
       setLocalCheckrDemoBypassEnabled(true);
     }
   }, []);
@@ -1534,13 +1538,26 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
   const handleDisableLocalCheckrDemoBypass = () => {
     if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(CHECKR_DEMO_BYPASS_STORAGE_KEY);
+      window.localStorage.setItem(CHECKR_DEMO_BYPASS_STORAGE_KEY, '0');
     }
     setLocalCheckrDemoBypassEnabled(false);
     setAlertModal({
       isOpen: true,
       title: 'Demo bypass disabled',
       message: 'Local Checkr demo bypass was turned off for this browser session.',
+      variant: 'success',
+    });
+  };
+
+  const handleEnableLocalCheckrDemoBypass = () => {
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(CHECKR_DEMO_BYPASS_STORAGE_KEY, '1');
+    }
+    setLocalCheckrDemoBypassEnabled(true);
+    setAlertModal({
+      isOpen: true,
+      title: 'Demo bypass enabled',
+      message: 'Background check start is now simulated in this browser session.',
       variant: 'success',
     });
   };
@@ -1814,6 +1831,20 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   Disable demo bypass
                 </button>
               )}
+            </div>
+          )}
+          {isDemoMode() && !effectiveCheckrDemoBypass && (
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-xs text-amber-700">
+                Demo bypass is currently off for this browser.
+              </p>
+              <button
+                type="button"
+                onClick={handleEnableLocalCheckrDemoBypass}
+                className="inline-flex rounded border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-50"
+              >
+                Enable demo bypass
+              </button>
             </div>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
