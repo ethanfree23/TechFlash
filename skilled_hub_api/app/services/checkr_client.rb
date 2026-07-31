@@ -43,10 +43,13 @@ class CheckrClient
   end
 
   def create_candidate(user:, work_location:, custom_id:, zipcode: nil)
+    email = user.email.to_s.strip
+    raise Error, "Candidate email is missing on the user profile." if email.blank?
+
     payload = {
       first_name: user.first_name.to_s.presence || "Technician",
       last_name: user.last_name.to_s.presence || "User",
-      email: user.email.to_s.strip,
+      email: email,
       custom_id: custom_id,
       work_locations: [
         {

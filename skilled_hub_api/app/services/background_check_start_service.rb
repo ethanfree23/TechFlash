@@ -19,14 +19,13 @@ class BackgroundCheckStartService
     raise Error, "Checkr is not configured." unless client.configured?
 
     candidate_id = reusable_candidate_id(client)
-    reused_candidate = candidate_id.present?
     candidate_id ||= create_candidate_for_checkr(client)
 
     invitation = create_invitation_for_checkr(client, candidate_id: candidate_id)
   rescue CheckrClient::Error => e
-    # Some legacy/stale Checkr candidates can fail invitation creation with missing email.
-    # When that happens for a reused candidate, rebuild candidate once and retry.
-    if reused_candidate && invitation_retryable_for_email?(e.message)
+    # Some Checkr candidates can fail invitation creation with "email is missing".
+    # Rebuild candidate once and retry, even if we did not reuse a legacy candidate.
+    if invitation_retryable_for_email?(e.message)
       begin
         candidate_id = create_candidate_for_checkr(client)
         invitation = create_invitation_for_checkr(client, candidate_id: candidate_id)
@@ -93,7 +92,7 @@ class BackgroundCheckStartService
   end
 
   def background_check_fee_cents
-    ENV.fetch("BACKGROUND_CHECK_FEE_CENTS", "4900").to_i
+    ENV.fetch("BACKGROUND_CHECK_FEE_CENTS", "8000").to_i
   end
 
   def checkout_success_path

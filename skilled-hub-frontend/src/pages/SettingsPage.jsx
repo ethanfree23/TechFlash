@@ -302,7 +302,8 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const needsMapSetup = isTechnician && needsTechnicianMapSetup(profile);
   const backgroundCheckReady = backgroundCheckOptions?.ready_for_start === true;
   const backgroundCheckDemoBypass = backgroundCheckOptions?.demo_bypass === true;
-  const localCheckrDemoBypass = localCheckrDemoBypassEnabled && !backgroundCheckReady;
+  // Keep local demo bypass deterministic for demo walkthroughs, even when Checkr options are configured.
+  const localCheckrDemoBypass = isDemoMode() && localCheckrDemoBypassEnabled;
   const autoCheckrDemoBypass = isTechnician && !backgroundCheckReady && Boolean(backgroundCheckOptionsError);
   const effectiveCheckrDemoBypass = backgroundCheckDemoBypass || localCheckrDemoBypass || autoCheckrDemoBypass;
   const backgroundCheckStartEnabled = backgroundCheckReady || effectiveCheckrDemoBypass;
