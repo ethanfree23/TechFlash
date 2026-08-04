@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Linking, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { colors, space, typography } from '../theme';
 import { Card } from '../components/ui/Card';
@@ -20,6 +20,7 @@ import {
 import { geocodeAddress } from '../utils/geocode';
 import { formatUsPhone, phoneDigits } from '../utils/phone';
 import * as Location from 'expo-location';
+import { canInitiateMembershipPurchase } from '../release/iosMembershipPurchaseGuard';
 
 type MeApply = (res: { user?: User } | null | undefined) => Promise<void>;
 
@@ -128,13 +129,20 @@ export function SettingsAccountPanel({
       })}
 
       <Text style={[typography.heading, { marginTop: space.lg }]}>Account deletion</Text>
-      <Text style={styles.help}>Delete your account and profile data from the mobile app.</Text>
+      <Text style={styles.help}>
+        Delete your account and profile data from the app. This is permanent and starts immediately after confirmation.
+        Some legally required records (for completed jobs, tax/payment, disputes, fraud prevention, and screening
+        compliance) may be retained for the required retention period.
+      </Text>
       <PrimaryButton
         label={deleteBusy ? 'Deleting account...' : 'Delete account permanently'}
         loading={deleteBusy}
         disabled={deleteBusy}
         onPress={() =>
-          Alert.alert('Delete account?', 'This action cannot be undone.', [
+          Alert.alert(
+            'Delete account permanently?',
+            'This action cannot be undone. You will be signed out immediately. Personal/profile data deletion begins now; legally required records may be retained for compliance processing (up to 30 days where required).',
+            [
             { text: 'Cancel', style: 'cancel' },
             {
               text: 'Delete',
@@ -151,7 +159,8 @@ export function SettingsAccountPanel({
                 }
               },
             },
-          ])
+          ]
+          )
         }
       />
     </Card>
@@ -623,6 +632,7 @@ export function SettingsPaymentPanel({
   tierOptions: { id: string; name: string }[];
   onRefresh: () => Promise<void>;
 }) {
+  const membershipPurchaseEnabled = canInitiateMembershipPurchase(Platform.OS);
   const openWebPayment = () => {
     Linking.openURL('https://techflash.app/settings?tab=payment');
   };
@@ -634,39 +644,47 @@ export function SettingsPaymentPanel({
       <Text style={styles.meta}>
         Monthly fee: ${(((membership.monthly_fee_cents as number) || 0) / 100).toFixed(2)}
       </Text>
-      <Text style={styles.help}>
-        TechFlash memberships support a real-world labor marketplace. Hosted checkout is used for non-IAP billing flows.
-      </Text>
-      <Text style={styles.help}>
-        TODO(AppReview): legal/product must confirm whether any tier unlocks digital-only iOS functionality requiring Apple IAP.
-      </Text>
-      <View style={styles.tierRow}>
-        {tierOptions.map((o) => (
-          <Pressable
-            key={o.id}
-            onPress={() => setMembershipLevel(o.id)}
-            style={[styles.tierChip, membershipLevel === o.id && styles.tierChipOn]}
-          >
-            <Text style={[styles.tierChipText, membershipLevel === o.id && styles.tierChipTextOn]}>{o.name}</Text>
-          </Pressable>
-        ))}
-      </View>
-      <PrimaryButton
-        label="Update membership"
-        onPress={async () => {
-          await settingsApi.openMembershipCheckout(
-            membershipLevel,
-            'https://techflash.app/settings?membership=success',
-            'https://techflash.app/settings?membership=cancel'
-          );
-          await onRefresh();
-        }}
-      />
-      {user.role === 'company' ? (
+      {membershipPurchaseEnabled ? (
         <>
-          <Text style={[styles.help, { marginTop: space.lg }]}>Card on file is managed securely on the website.</Text>
-          <GhostButton label="Open billing on techflash.app" onPress={openWebPayment} />
+          <Text style={styles.help}>
+            TechFlash memberships support a real-world labor marketplace. Hosted checkout is used for non-IAP billing
+            flows.
+          </Text>
+          <View style={styles.tierRow}>
+            {tierOptions.map((o) => (
+              <Pressable
+                key={o.id}
+                onPress={() => setMembershipLevel(o.id)}
+                style={[styles.tierChip, membershipLevel === o.id && styles.tierChipOn]}
+              >
+                <Text style={[styles.tierChipText, membershipLevel === o.id && styles.tierChipTextOn]}>{o.name}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <PrimaryButton
+            label="Update membership"
+            onPress={async () => {
+              await settingsApi.openMembershipCheckout(
+                membershipLevel,
+                'https://techflash.app/settings?membership=success',
+                'https://techflash.app/settings?membership=cancel'
+              );
+              await onRefresh();
+            }}
+          />
+          {user.role === 'company' ? (
+            <>
+              <Text style={[styles.help, { marginTop: space.lg }]}>Card on file is managed securely on the website.</Text>
+              <GhostButton label="Open billing on techflash.app" onPress={openWebPayment} />
+            </>
+          ) : null}
         </>
+      ) : null}
+      {!membershipPurchaseEnabled ? (
+        <Text style={styles.help}>
+          Membership purchases and upgrades are currently unavailable in this iOS release. Your current tier and
+          existing account benefits remain active.
+        </Text>
       ) : null}
       {user.role === 'technician' ? (
         <GhostButton

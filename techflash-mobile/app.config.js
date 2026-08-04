@@ -6,7 +6,7 @@ module.exports = ({ config }) => {
   const mapsKey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY || '';
   return {
     ...config,
-    plugins: [...(config.plugins || []), ['expo-notifications', { color: '#FE6711' }]],
+    plugins: [...(config.plugins || []), 'expo-font', ['expo-notifications', { color: '#FE6711' }]],
     android: {
       ...config.android,
       config: {
@@ -21,6 +21,7 @@ module.exports = ({ config }) => {
       config: {
         ...(config.ios?.config || {}),
         googleMapsApiKey: mapsKey,
+        usesNonExemptEncryption: false,
       },
     },
   };
