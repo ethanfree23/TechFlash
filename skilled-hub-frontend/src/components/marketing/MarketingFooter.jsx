@@ -107,16 +107,31 @@ export default function MarketingFooter({ variant = 'default' }) {
         </div>
 
         <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1 text-xs text-gray-500">
-          <Link to="/terms-of-service" className="hover:text-[#3A7CA5]">
-            Terms
-          </Link>
-          <Link to="/privacy-policy" className="hover:text-[#3A7CA5]">
-            Privacy
-          </Link>
+          <a href="/terms-of-service/" className="hover:text-[#3A7CA5]">
+            Terms of Service
+          </a>
+          <a href="/privacy-policy/" className="hover:text-[#3A7CA5]">
+            Privacy Policy
+          </a>
           <Link to="/cookie-policy" className="hover:text-[#3A7CA5]">
             Cookies
           </Link>
           <span>{`© ${year} TechFlash`}</span>
+        </div>
+
+        <div className="mt-3 text-center text-xs text-gray-600 space-y-1">
+          <p className="font-medium">TechFlash is operated by TECHFLASH INC.</p>
+          <p>TECHFLASH INC. d/b/a TechFlash</p>
+          <p>8012 Ravenswood Rd, Granbury, TX 76049 USA</p>
+          <p>
+            <a href="mailto:admin@techflash.app" className="hover:text-[#3A7CA5]">
+              admin@techflash.app
+            </a>{' '}
+            |{' '}
+            <a href="tel:+18326213956" className="hover:text-[#3A7CA5]">
+              832-621-3956
+            </a>
+          </p>
         </div>
       </div>
     </footer>
