@@ -120,6 +120,54 @@ li + li {
   border-radius: 8px;
 }
 
+.image-frame {
+  position: relative;
+  width: 100%;
+  max-width: 780px;
+}
+
+.pii-mask {
+  position: absolute;
+  background: rgba(249, 250, 251, 0.98);
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  color: #374151;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0.25rem 0.5rem;
+}
+
+.mask-review {
+  top: 25%;
+  left: 9%;
+  width: 82%;
+  height: 19%;
+}
+
+.mask-name {
+  top: 55.5%;
+  left: 30%;
+  width: 26%;
+  height: 3.9%;
+}
+
+.mask-email {
+  top: 66.6%;
+  left: 30%;
+  width: 29%;
+  height: 3.9%;
+}
+
+.mask-phone {
+  top: 79.7%;
+  left: 33%;
+  width: 23%;
+  height: 3.9%;
+}
+
 .warning {
   margin-top: 0.75rem;
   padding: 0.75rem;

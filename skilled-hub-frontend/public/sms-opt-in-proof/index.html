@@ -34,27 +34,7 @@
           This page documents the SMS opt-in process used in the TechFlash Facebook and Instagram Technician
           Questionnaire.
         </p>
-        <p>
-          It is provided so carriers, messaging providers, The Campaign Registry, LeadConnector, HighLevel,
-          and other authorized compliance reviewers can verify:
-        </p>
-        <ul>
-          <li>Where users enter their telephone number</li>
-          <li>The identity of the business requesting consent</li>
-          <li>The types of SMS messages offered</li>
-          <li>That SMS consent is optional</li>
-          <li>That consent checkboxes are not selected by default</li>
-          <li>Message-frequency disclosure</li>
-          <li>Message-and-data-rate disclosure</li>
-          <li>HELP instructions</li>
-          <li>STOP instructions</li>
-          <li>Access to the TechFlash Privacy Policy</li>
-          <li>Access to the TechFlash Terms of Service</li>
-        </ul>
-        <p>
-          This page does not independently collect consent. Consent is collected through the published
-          TechFlash Meta Instant Form shown in the evidence below.
-        </p>
+        <p>This page does not independently collect consent. It documents the opt-in flow used in the published TechFlash Meta Instant Form.</p>
 
         <h2>OPT-IN PROCESS</h2>
         <ol>
@@ -84,10 +64,13 @@
 
         <h2>EVIDENCE 1: TECHFLASH FORM IDENTITY</h2>
         <section class="evidence">
-          <img
-            src="/compliance/sms-opt-in/01-techflash-form-branding.png"
-            alt="TechFlash Facebook lead form displaying the TechFlash brand and technician questionnaire."
-          />
+          <div class="image-frame">
+            <img
+              src="/compliance/sms-opt-in/01-techflash-form-branding.png"
+              alt="TechFlash Facebook lead form displaying the TechFlash brand and technician questionnaire."
+            />
+            <div class="pii-mask mask-review">Sample test lead information (PII removed)</div>
+          </div>
           <p class="muted">
             The form identifies the program and business as TechFlash, operated by TECHFLASH INC.
           </p>
@@ -95,10 +78,15 @@
 
         <h2>EVIDENCE 2: TELEPHONE-NUMBER FIELD</h2>
         <section class="evidence">
-          <img
-            src="/compliance/sms-opt-in/02-contact-information-phone-field.png"
-            alt="TechFlash Facebook lead form contact-information screen showing the telephone-number field."
-          />
+          <div class="image-frame">
+            <img
+              src="/compliance/sms-opt-in/02-contact-information-phone-field.png"
+              alt="TechFlash Facebook lead form contact-information screen showing the telephone-number field."
+            />
+            <div class="pii-mask mask-name">Alex Carter</div>
+            <div class="pii-mask mask-email">alex@example.com</div>
+            <div class="pii-mask mask-phone">+1 719-555-0123</div>
+          </div>
           <p class="muted">
             Prospective technicians enter or confirm their telephone number in the contact-information
             section. Providing a telephone number does not by itself constitute marketing SMS consent.
@@ -107,61 +95,47 @@
 
         <h2>EVIDENCE 3: OPTIONAL SMS CONSENT</h2>
         <section class="evidence">
-          <img
-            src="/compliance/sms-opt-in/03-sms-consent-checkboxes.png"
-            alt="TechFlash lead form showing separate optional unchecked marketing and informational SMS consent choices."
-          />
+          <div class="image-frame">
+            <img
+              src="/compliance/sms-opt-in/03-sms-consent-checkboxes.png"
+              alt="TechFlash lead form showing separate optional unchecked marketing and informational SMS consent choices."
+            />
+            <div class="pii-mask mask-review">Sample test lead information (PII removed)</div>
+          </div>
           <p class="muted">
-            The marketing and informational SMS choices are separate, optional, and unchecked by default.
+            The marketing and informational SMS choices are separate, optional, and visibly unchecked by default.
           </p>
         </section>
 
-        <h2>CONSENT-LANGUAGE TRANSCRIPTION</h2>
-        <p><strong>Important implementation instruction:</strong></p>
-        <p>
-          Transcribe the checkbox language exactly as it appears in the published Meta form and screenshots.
-          Do not silently rewrite it.
-        </p>
-        <p>The expected language is:</p>
+        <h2>EVIDENCE 4: PRIVACY, TERMS, AND SUBMISSION</h2>
+        <section class="evidence">
+          <div class="image-frame">
+            <img
+              src="/compliance/sms-opt-in/04-privacy-terms-and-submit.png"
+              alt="TechFlash lead form showing privacy and terms disclosures and the form submission control."
+            />
+            <div class="pii-mask mask-review">Sample test lead information (PII removed)</div>
+          </div>
+          <p class="muted">
+            The final step provides Privacy Policy and Terms links with a visible Submit button.
+          </p>
+        </section>
 
+        <h2>CONSENT LANGUAGE TRANSCRIPTION</h2>
         <h3>Marketing SMS Consent</h3>
         <p>
-          "I consent to receive marketing text messages about technician job opportunities, onboarding, and
-          TechFlash service updates from TECHFLASH INC. d/b/a TechFlash at the phone number provided.
-          Message frequency may vary. Message and data rates may apply. Text HELP for assistance; reply STOP
-          to opt out."
+          "I consent to receive marketing text messages about technician job opportunities, onboarding, and service updates from TECHFLASH INC at the phone number provided. Message frequency may vary. Message &amp; data rates may apply. Text HELP for assistance, reply STOP to opt out. (Optional)"
         </p>
 
         <h3>Informational SMS Consent</h3>
         <p>
-          "I consent to receive non-marketing text messages from TECHFLASH INC. d/b/a TechFlash regarding
-          my account, profile, applications, jobs, scheduling, support, verification, and status updates at
-          the phone number provided. Message frequency may vary. Message and data rates may apply. Text HELP
-          for assistance; reply STOP to opt out."
+          "I consent to receive non-marketing text messages from TECHFLASH INC about my account, profile, applications, jobs, scheduling, support, and status updates. Message frequency may vary. Message &amp; data rates may apply. Text HELP for assistance, reply STOP to opt out. (Optional)"
         </p>
 
         <h3>Consent Notice</h3>
         <p>
-          "SMS consent is optional and is not required to submit this form, create an account, apply for
-          work opportunities, purchase anything, or use TechFlash."
+          "Text-message consent is optional and is not required to submit this form."
         </p>
-
-        <p>
-          If the currently published Meta form wording differs from this text, the proof page must use the
-          exact published wording. The page and screenshots must match.
-        </p>
-
-        <h2>EVIDENCE 4: PRIVACY, TERMS, AND SUBMISSION</h2>
-        <section class="evidence">
-          <img
-            src="/compliance/sms-opt-in/04-privacy-terms-and-submit.png"
-            alt="TechFlash lead form showing privacy and terms disclosures and the form submission control."
-          />
-          <p class="muted">
-            The opt-in flow provides access to the TechFlash Privacy Policy and Terms of Service before
-            submission.
-          </p>
-        </section>
 
         <h2>PUBLIC POLICIES</h2>
         <p>
@@ -203,6 +177,13 @@
           <li>Scheduling information</li>
           <li>Customer-support communications</li>
         </ul>
+
+        <h2>SMS DISCLOSURES</h2>
+        <p>Consent is optional and not required to submit the form.</p>
+        <p>Message frequency varies.</p>
+        <p>Message and data rates may apply.</p>
+        <p>Reply HELP for assistance.</p>
+        <p>Reply STOP to opt out.</p>
 
         <h2>OPT-OUT AND SUPPORT</h2>
         <p>Recipients may reply STOP to opt out.</p>
