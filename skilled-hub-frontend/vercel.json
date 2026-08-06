@@ -1,11 +1,9 @@
 {
-  "rewrites": [
-    { "source": "/privacy-policy", "destination": "/privacy-policy/index.html" },
-    { "source": "/privacy-policy/", "destination": "/privacy-policy/index.html" },
-    { "source": "/terms-of-service", "destination": "/terms-of-service/index.html" },
-    { "source": "/terms-of-service/", "destination": "/terms-of-service/index.html" },
-    { "source": "/sms-opt-in-proof", "destination": "/sms-opt-in-proof/index.html" },
-    { "source": "/sms-opt-in-proof/", "destination": "/sms-opt-in-proof/index.html" },
-    { "source": "/(.*)", "destination": "/index.html" }
+  "routes": [
+    { "src": "^/privacy-policy/?$", "dest": "/privacy-policy/index.html" },
+    { "src": "^/terms-of-service/?$", "dest": "/terms-of-service/index.html" },
+    { "src": "^/sms-opt-in-proof/?$", "dest": "/sms-opt-in-proof/index.html" },
+    { "handle": "filesystem" },
+    { "src": "/(.*)", "dest": "/index.html" }
   ]
 }
