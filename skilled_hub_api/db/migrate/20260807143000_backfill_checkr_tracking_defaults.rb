@@ -1,8 +1,10 @@
 class BackfillCheckrTrackingDefaults < ActiveRecord::Migration[7.1]
   def up
+    false_literal = connection.quoted_false
+
     execute <<~SQL
       UPDATE background_checks
-      SET provider_includes_canceled = 0
+      SET provider_includes_canceled = #{false_literal}
       WHERE provider_includes_canceled IS NULL
     SQL
     execute <<~SQL
@@ -12,12 +14,12 @@ class BackfillCheckrTrackingDefaults < ActiveRecord::Migration[7.1]
     SQL
     execute <<~SQL
       UPDATE checkr_webhook_events
-      SET hydrated = 0
+      SET hydrated = #{false_literal}
       WHERE hydrated IS NULL
     SQL
     execute <<~SQL
       UPDATE checkr_webhook_events
-      SET duplicate = 0
+      SET duplicate = #{false_literal}
       WHERE duplicate IS NULL
     SQL
 
