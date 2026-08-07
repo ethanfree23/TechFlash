@@ -118,7 +118,14 @@ class CheckrClient
     raise Error, "CHECKR secret key is not configured" if @api_key.blank?
 
     uri = URI.parse("#{@base_url}#{path}")
-    request = request.class.new(uri.request_uri) unless request.path == uri.request_uri
+    if request.path != uri.request_uri
+      original_request = request
+      request = original_request.class.new(uri.request_uri)
+      original_request.each_header do |header_name, header_value|
+        request[header_name] = header_value
+      end
+      request.body = original_request.body if original_request.request_body_permitted?
+    end
     request.basic_auth(@api_key, "")
 
     res = Net::HTTP.start(uri.host, uri.port, use_ssl: true, read_timeout: 15, open_timeout: 10) do |http|
