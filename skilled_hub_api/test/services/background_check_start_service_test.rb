@@ -32,7 +32,7 @@ class BackgroundCheckStartServiceTest < ActiveSupport::TestCase
     )
 
     fake_client = build_client_double(
-      get_candidate: { "id" => "cand_reuse_1" },
+      get_candidate: { "id" => "cand_reuse_1", "email" => "bg-service-reuse@example.com" },
       create_invitation: { "id" => "inv_reuse_1", "invitation_url" => "http://example.test/inv/reuse" }
     )
     with_stubbed_checkr_client(fake_client) do
@@ -117,10 +117,12 @@ class BackgroundCheckStartServiceTest < ActiveSupport::TestCase
     )
 
     invitation_attempts = 0
+    custom_ids = []
     fake_client = Object.new
     fake_client.define_singleton_method(:configured?) { true }
-    fake_client.define_singleton_method(:get_candidate) { |candidate_id:| { "id" => "cand_stale_1" } }
+    fake_client.define_singleton_method(:get_candidate) { |candidate_id:| { "id" => "cand_stale_1", "email" => "bg-service-retry@example.com" } }
     fake_client.define_singleton_method(:create_candidate) do |user:, work_location:, custom_id:, zipcode:|
+      custom_ids << custom_id
       { "id" => "cand_fresh_1" }
     end
     fake_client.define_singleton_method(:create_invitation) do |candidate_id:, package_name:, redirect_url:, work_location:, node_custom_id:|
@@ -141,6 +143,8 @@ class BackgroundCheckStartServiceTest < ActiveSupport::TestCase
     assert_equal "inv_retry_1", check.provider_invitation_id
     assert_equal "http://example.test/inv/retry", check.invitation_url
     assert_equal "invited", check.status
+    assert_equal 1, custom_ids.size
+    assert_match(/\Atechflash_user_#{user.id}_retry_[a-f0-9]{12}\z/, custom_ids.first)
   end
 
   test "retries with a fresh candidate when new candidate invitation fails with missing email" do
@@ -173,11 +177,13 @@ class BackgroundCheckStartServiceTest < ActiveSupport::TestCase
 
     invitation_attempts = 0
     create_candidate_calls = 0
+    custom_ids = []
     fake_client = Object.new
     fake_client.define_singleton_method(:configured?) { true }
     fake_client.define_singleton_method(:get_candidate) { |candidate_id:| raise CheckrClient::Error, "missing" }
     fake_client.define_singleton_method(:create_candidate) do |user:, work_location:, custom_id:, zipcode:|
       create_candidate_calls += 1
+      custom_ids << custom_id
       { "id" => "cand_new_retry_#{create_candidate_calls}" }
     end
     fake_client.define_singleton_method(:create_invitation) do |candidate_id:, package_name:, redirect_url:, work_location:, node_custom_id:|
@@ -199,6 +205,59 @@ class BackgroundCheckStartServiceTest < ActiveSupport::TestCase
     assert_equal "inv_retry_new_1", check.provider_invitation_id
     assert_equal "http://example.test/inv/retry-new", check.invitation_url
     assert_equal "invited", check.status
+    assert_equal "techflash_user_#{user.id}", custom_ids.first
+    assert_match(/\Atechflash_user_#{user.id}_retry_[a-f0-9]{12}\z/, custom_ids.second)
+  end
+
+  test "does not reuse stale candidate when candidate email is blank" do
+    user = User.create!(
+      email: "bg-service-stale-candidate@example.com",
+      password: "password123",
+      password_confirmation: "password123",
+      role: :technician,
+      first_name: "Stale",
+      last_name: "Candidate"
+    )
+    TechnicianProfile.create!(
+      user: user,
+      trade_type: "HVAC",
+      availability: "Full-time",
+      membership_level: "basic",
+      city: "Houston",
+      state: "TX",
+      country: "US",
+      zip_code: "77006"
+    )
+    check = BackgroundCheck.create!(
+      user: user,
+      provider: "checkr",
+      provider_candidate_id: "cand_blank_email",
+      package_name: "essential_plus",
+      payment_status: :paid,
+      paid_by: "technician",
+      status: :not_started
+    )
+
+    create_candidate_calls = 0
+    fake_client = Object.new
+    fake_client.define_singleton_method(:configured?) { true }
+    fake_client.define_singleton_method(:get_candidate) { |candidate_id:| { "id" => "cand_blank_email", "email" => "" } }
+    fake_client.define_singleton_method(:create_candidate) do |user:, work_location:, custom_id:, zipcode:|
+      create_candidate_calls += 1
+      { "id" => "cand_recreated_1" }
+    end
+    fake_client.define_singleton_method(:create_invitation) do |candidate_id:, package_name:, redirect_url:, work_location:, node_custom_id:|
+      { "id" => "inv_recreated_1", "invitation_url" => "http://example.test/inv/recreated" }
+    end
+
+    with_stubbed_checkr_client(fake_client) do
+      BackgroundCheckStartService.launch_checkr_invitation!(check)
+    end
+
+    check.reload
+    assert_equal 1, create_candidate_calls
+    assert_equal "cand_recreated_1", check.provider_candidate_id
+    assert_equal "inv_recreated_1", check.provider_invitation_id
   end
 
   private

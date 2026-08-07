@@ -27,7 +27,7 @@ class BackgroundCheckStartService
     # Rebuild candidate once and retry, even if we did not reuse a legacy candidate.
     if invitation_retryable_for_email?(e.message)
       begin
-        candidate_id = create_candidate_for_checkr(client)
+        candidate_id = create_candidate_for_checkr(client, force_unique_custom_id: true)
         invitation = create_invitation_for_checkr(client, candidate_id: candidate_id)
       rescue CheckrClient::Error => retry_error
         @background_check.update!(status: :failed, admin_notes: retry_error.message)
@@ -125,11 +125,12 @@ class BackgroundCheckStartService
     @user.technician_profile&.zip_code.presence
   end
 
-  def create_candidate_for_checkr(client)
+  def create_candidate_for_checkr(client, force_unique_custom_id: false)
+    custom_id = candidate_custom_id(force_unique: force_unique_custom_id)
     candidate = client.create_candidate(
       user: @user,
       work_location: work_location_payload,
-      custom_id: "techflash_user_#{@user.id}",
+      custom_id: custom_id,
       zipcode: candidate_zipcode
     )
     candidate["id"]
@@ -166,9 +167,27 @@ class BackgroundCheckStartService
       @user.background_checks.where.not(provider_candidate_id: nil).order(created_at: :desc).pick(:provider_candidate_id)
     return nil if candidate_id.blank?
 
-    client.get_candidate(candidate_id: candidate_id)
+    candidate = client.get_candidate(candidate_id: candidate_id)
+    return nil unless candidate_reusable_for_user?(candidate)
+
     candidate_id
   rescue CheckrClient::Error
     nil
+  end
+
+  def candidate_custom_id(force_unique:)
+    base = "techflash_user_#{@user.id}"
+    return base unless force_unique
+
+    "#{base}_retry_#{SecureRandom.hex(6)}"
+  end
+
+  def candidate_reusable_for_user?(candidate)
+    candidate_email = candidate["email"].to_s.strip.downcase
+    user_email = @user.email.to_s.strip.downcase
+    return false if candidate_email.blank?
+    return true if user_email.blank?
+
+    candidate_email == user_email
   end
 end
