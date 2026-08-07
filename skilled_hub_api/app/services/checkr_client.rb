@@ -42,6 +42,10 @@ class CheckrClient
     get_json("/candidates/#{CGI.escape(candidate_id.to_s)}")
   end
 
+  def get_invitation(invitation_id:)
+    get_json("/invitations/#{CGI.escape(invitation_id.to_s)}")
+  end
+
   def create_candidate(user:, work_location:, custom_id:, zipcode: nil)
     email = user.email.to_s.strip
     raise Error, "Candidate email is missing on the user profile." if email.blank?
