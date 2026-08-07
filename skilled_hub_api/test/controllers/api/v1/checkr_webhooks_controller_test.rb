@@ -242,6 +242,66 @@ module Api
         assert_equal "consider", check.result
       end
 
+      test "report completed with nil result maps to report_complete" do
+        _user, check = create_checkr_background_check(
+          email: "checkr-webhook-nil-result@example.com",
+          candidate_id: "cand_nil_result"
+        )
+
+        post_signed_event!(
+          "checkr_secret_nil_result",
+          {
+            id: "chk_evt_nil_result",
+            type: "report.completed",
+            data: {
+              object: {
+                id: "rep_nil_result",
+                object: "report",
+                candidate_id: "cand_nil_result",
+                status: "complete",
+                result: nil
+              }
+            }
+          }
+        )
+
+        assert_response :ok
+        check.reload
+        assert_equal "report_complete", check.normalized_status
+      end
+
+      test "report completed clear with includes_canceled maps to complete_with_canceled_screenings" do
+        user, check = create_checkr_background_check(
+          email: "checkr-webhook-canceled-screenings@example.com",
+          candidate_id: "cand_canceled_screenings"
+        )
+
+        post_signed_event!(
+          "checkr_secret_canceled_screenings",
+          {
+            id: "chk_evt_canceled_screenings",
+            type: "report.completed",
+            data: {
+              object: {
+                id: "rep_canceled_screenings",
+                object: "report",
+                candidate_id: "cand_canceled_screenings",
+                status: "complete",
+                result: "clear",
+                includes_canceled: true
+              }
+            }
+          }
+        )
+
+        assert_response :ok
+        check.reload
+        assert_equal "complete_with_canceled_screenings", check.normalized_status
+        assert_equal true, check.provider_includes_canceled
+        assert_equal false, check.eligible_for_background_gate?
+        assert_equal false, user.technician_profile.reload.background_verified
+      end
+
       test "invitation event updates invitation status from data object payload" do
         _user, check = create_checkr_background_check(
           email: "checkr-webhook-invitation@example.com",
@@ -282,6 +342,168 @@ module Api
         assert_equal "https://apply.checkr.com/invite/demo", check.invitation_url
       end
 
+      test "invitation completed, expired and deleted lifecycle events map correctly" do
+        _user, check = create_checkr_background_check(
+          email: "checkr-webhook-invitation-lifecycle@example.com",
+          candidate_id: "cand_invitation_lifecycle",
+          invitation_id: "inv_lifecycle_1"
+        )
+
+        post_signed_event!(
+          "checkr_secret_invitation_lifecycle",
+          {
+            id: "chk_evt_invite_completed",
+            type: "invitation.completed",
+            data: { object: { id: "inv_lifecycle_1", object: "invitation", candidate_id: "cand_invitation_lifecycle", status: "completed" } }
+          }
+        )
+        assert_response :ok
+        assert_equal "invitation_completed", check.reload.normalized_status
+
+        post_signed_event!(
+          "checkr_secret_invitation_lifecycle",
+          {
+            id: "chk_evt_invite_expired",
+            type: "invitation.expired",
+            data: { object: { id: "inv_lifecycle_1", object: "invitation", candidate_id: "cand_invitation_lifecycle", status: "expired" } }
+          }
+        )
+        assert_response :ok
+        assert_equal "invitation_expired", check.reload.normalized_status
+
+        post_signed_event!(
+          "checkr_secret_invitation_lifecycle",
+          {
+            id: "chk_evt_invite_deleted",
+            type: "invitation.deleted",
+            data: { object: { id: "inv_lifecycle_1", object: "invitation", candidate_id: "cand_invitation_lifecycle", status: "deleted" } }
+          }
+        )
+        assert_response :ok
+        assert_equal "invitation_deleted", check.reload.normalized_status
+      end
+
+      test "report suspended resumed disputed and canceled lifecycle events map correctly" do
+        _user, check = create_checkr_background_check(
+          email: "checkr-webhook-report-lifecycle@example.com",
+          candidate_id: "cand_report_lifecycle"
+        )
+
+        post_signed_event!(
+          "checkr_secret_report_lifecycle",
+          {
+            id: "chk_evt_report_suspended",
+            type: "report.suspended",
+            data: { object: { id: "rep_report_lifecycle", object: "report", candidate_id: "cand_report_lifecycle", status: "suspended" } }
+          }
+        )
+        assert_response :ok
+        assert_equal "report_suspended", check.reload.normalized_status
+
+        post_signed_event!(
+          "checkr_secret_report_lifecycle",
+          {
+            id: "chk_evt_report_resumed",
+            type: "report.resumed",
+            data: { object: { id: "rep_report_lifecycle", object: "report", candidate_id: "cand_report_lifecycle", status: "resumed" } }
+          }
+        )
+        assert_response :ok
+        assert_equal "report_resumed", check.reload.normalized_status
+
+        post_signed_event!(
+          "checkr_secret_report_lifecycle",
+          {
+            id: "chk_evt_report_disputed",
+            type: "report.disputed",
+            data: { object: { id: "rep_report_lifecycle", object: "report", candidate_id: "cand_report_lifecycle", status: "disputed" } }
+          }
+        )
+        assert_response :ok
+        assert_equal "report_disputed", check.reload.normalized_status
+
+        post_signed_event!(
+          "checkr_secret_report_lifecycle",
+          {
+            id: "chk_evt_report_canceled",
+            type: "report.canceled",
+            data: { object: { id: "rep_report_lifecycle", object: "report", candidate_id: "cand_report_lifecycle", status: "canceled" } }
+          }
+        )
+        assert_response :ok
+        assert_equal "report_canceled", check.reload.normalized_status
+      end
+
+      test "adverse action and engaged lifecycle events are accepted and mapped" do
+        _user, check = create_checkr_background_check(
+          email: "checkr-webhook-adverse-lifecycle@example.com",
+          candidate_id: "cand_adverse_lifecycle"
+        )
+
+        post_signed_event!(
+          "checkr_secret_adverse_lifecycle",
+          {
+            id: "chk_evt_report_pre_adverse",
+            type: "report.pre_adverse_action",
+            data: { object: { id: "rep_adverse", object: "report", candidate_id: "cand_adverse_lifecycle", status: "complete", result: "consider" } }
+          }
+        )
+        assert_response :ok
+        assert_equal "report_pre_adverse_action", check.reload.normalized_status
+
+        post_signed_event!(
+          "checkr_secret_adverse_lifecycle",
+          {
+            id: "chk_evt_report_engaged",
+            type: "report.engaged",
+            data: { object: { id: "rep_adverse", object: "report", candidate_id: "cand_adverse_lifecycle", status: "complete", result: "consider" } }
+          }
+        )
+        assert_response :ok
+        assert_equal "report_engaged", check.reload.normalized_status
+
+        post_signed_event!(
+          "checkr_secret_adverse_lifecycle",
+          {
+            id: "chk_evt_adverse_notice_missing",
+            type: "adverse_action.notice_not_delivered",
+            data: { object: { id: "adverse_1", object: "adverse_action", report_id: "rep_adverse", candidate_id: "cand_adverse_lifecycle", status: "pending" } }
+          }
+        )
+        assert_response :ok
+        assert_equal "adverse_action_notice_not_delivered", check.reload.normalized_status
+      end
+
+      test "report updated with assess review sets review_required and stores assessment" do
+        _user, check = create_checkr_background_check(
+          email: "checkr-webhook-assess-review@example.com",
+          candidate_id: "cand_assess_review"
+        )
+
+        post_signed_event!(
+          "checkr_secret_assess_review",
+          {
+            id: "chk_evt_assess_review",
+            type: "report.updated",
+            data: {
+              object: {
+                id: "rep_assess_review",
+                object: "report",
+                candidate_id: "cand_assess_review",
+                status: "complete",
+                result: "clear",
+                assessment: "review"
+              }
+            }
+          }
+        )
+
+        assert_response :ok
+        check.reload
+        assert_equal "review_required", check.normalized_status
+        assert_equal "review", check.provider_assess_status
+      end
+
       test "unknown event types are safely accepted and recorded" do
         _user, _check = create_checkr_background_check(
           email: "checkr-webhook-unknown@example.com",
@@ -317,6 +539,22 @@ module Api
         event = CheckrWebhookEvent.find_by(checkr_event_id: "chk_evt_unknown")
         assert event.present?
         assert_equal "invitation.custom_update", event.event_type
+      end
+
+      test "valid unmatched event is recorded and returns ok" do
+        post_signed_event!(
+          "checkr_secret_unmatched",
+          {
+            id: "chk_evt_unmatched",
+            type: "report.completed",
+            data: { object: { id: "rep_unmatched", object: "report", candidate_id: "cand_unmatched", status: "complete", result: "clear" } }
+          }
+        )
+
+        assert_response :ok
+        row = CheckrWebhookEvent.find_by(checkr_event_id: "chk_evt_unmatched")
+        assert row.present?
+        assert_equal "unmatched_background_check", row.processing_error
       end
 
       test "out of order report events do not regress completed status" do
@@ -427,7 +665,128 @@ module Api
         assert_equal "rep_hydrate", check.provider_report_id
       end
 
+      test "malicious uri does not bypass id validation for hydration" do
+        _user, check = create_checkr_background_check(
+          email: "checkr-webhook-ssrf@example.com",
+          candidate_id: "cand_ssrf"
+        )
+
+        payload = {
+          id: "chk_evt_ssrf",
+          type: "report.completed",
+          data: {
+            object: {
+              id: "rep_ssrf",
+              object: "report",
+              candidate_id: "cand_ssrf",
+              uri: "https://evil.example.com/v1/reports/../../../etc/passwd",
+              status: "complete",
+              result: "clear"
+            }
+          }
+        }.to_json
+
+        with_checkr_secret("checkr_secret_ssrf") do |secret|
+          signature = OpenSSL::HMAC.hexdigest("SHA256", secret, payload)
+          post "/api/v1/checkr/webhook",
+               params: payload,
+               headers: {
+                 "CONTENT_TYPE" => "application/json",
+                 "ACCEPT" => "application/json",
+                 "X-Checkr-Signature" => signature
+               }
+        end
+
+        assert_response :ok
+        assert_equal "clear", check.reload.normalized_status
+      end
+
+      test "failed processing remains retryable and second delivery can succeed" do
+        _user, check = create_checkr_background_check(
+          email: "checkr-webhook-retryable@example.com",
+          candidate_id: "cand_retryable"
+        )
+        payload_hash = {
+          id: "chk_evt_retryable",
+          type: "report.completed",
+          data: {
+            object: {
+              id: "rep_retryable",
+              object: "report",
+              candidate_id: "cand_retryable",
+              status: "complete",
+              result: "clear"
+            }
+          }
+        }
+        payload = payload_hash.to_json
+
+        klass = Api::V1::CheckrWebhooksController
+        called = false
+        klass.class_eval do
+          alias_method :__original_process_event_retryable, :process_event
+        end
+        klass.define_method(:process_event) do |event, rec:|
+          unless called
+            called = true
+            raise "forced failure"
+          end
+          __original_process_event_retryable(event, rec: rec)
+        end
+
+        with_checkr_secret("checkr_secret_retryable") do |secret|
+          signature = OpenSSL::HMAC.hexdigest("SHA256", secret, payload)
+          post "/api/v1/checkr/webhook",
+               params: payload,
+               headers: {
+                 "CONTENT_TYPE" => "application/json",
+                 "ACCEPT" => "application/json",
+                 "X-Checkr-Signature" => signature
+               }
+          assert_response :internal_server_error
+
+          row = CheckrWebhookEvent.find_by(checkr_event_id: "chk_evt_retryable")
+          assert row.present?
+          assert_nil row.processed_at
+          assert row.processing_error.present?
+          assert_equal 1, row.attempt_count
+
+          post "/api/v1/checkr/webhook",
+               params: payload,
+               headers: {
+                 "CONTENT_TYPE" => "application/json",
+                 "ACCEPT" => "application/json",
+                 "X-Checkr-Signature" => signature
+               }
+          assert_response :ok
+        end
+
+        row = CheckrWebhookEvent.find_by(checkr_event_id: "chk_evt_retryable")
+        assert row.processed_at.present?
+        assert row.attempt_count >= 2
+        assert_equal "clear", check.reload.normalized_status
+      ensure
+        klass.class_eval do
+          alias_method :process_event, :__original_process_event_retryable
+          remove_method :__original_process_event_retryable
+        end
+      end
+
       private
+
+      def post_signed_event!(secret, payload_hash)
+        payload = payload_hash.to_json
+        with_checkr_secret(secret) do |s|
+          signature = OpenSSL::HMAC.hexdigest("SHA256", s, payload)
+          post "/api/v1/checkr/webhook",
+               params: payload,
+               headers: {
+                 "CONTENT_TYPE" => "application/json",
+                 "ACCEPT" => "application/json",
+                 "X-Checkr-Signature" => signature
+               }
+        end
+      end
 
       def with_checkr_secret(secret)
         old_secret = ENV["CHECKR_SECRET_KEY"]
@@ -474,9 +833,9 @@ module Api
           define_method :valid_signature? do |_payload, _signature, _secret|
             true
           end
-          define_method :process_event do |_event|
+          define_method :process_event do |_event, rec:|
             process_counter&.call
-            true
+            { outcome: "processed", hydrated: false, background_check_id: nil, processing_error: nil }
           end
         end
         yield

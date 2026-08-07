@@ -8,9 +8,20 @@ class BackgroundCheck < ApplicationRecord
     pending
     invitation_sent
     invitation_completed
+    invitation_expired
+    invitation_deleted
     report_pending
     report_suspended
+    report_resumed
     report_complete
+    complete_with_canceled_screenings
+    report_disputed
+    report_canceled
+    report_engaged
+    report_pre_adverse_action
+    report_post_adverse_action
+    adverse_action_notice_not_delivered
+    review_required
     clear
     consider
     canceled
@@ -53,6 +64,9 @@ class BackgroundCheck < ApplicationRecord
   scope :eligible_clear, -> { where(status: %i[clear manually_approved]) }
 
   def eligible_for_background_gate?
+    return false if provider_includes_canceled?
+    return false if provider_assess_status.to_s.downcase.in?(%w[review escalated consider])
+
     clear? || manually_approved?
   end
 
@@ -65,9 +79,57 @@ class BackgroundCheck < ApplicationRecord
       normalized_status: normalized_status_value,
       provider_status: provider_status,
       provider_assess_status: provider_assess_status,
+      provider_adjudication: provider_adjudication,
+      provider_includes_canceled: provider_includes_canceled,
+      provider_updated_at: provider_updated_at,
       result: result,
       report_eta_at: report_eta_at
     }
+  end
+
+  def terminal_normalized_status?
+    normalized_status_value.in?(%w[
+      clear
+      complete_with_canceled_screenings
+      consider
+      report_complete
+      report_canceled
+      canceled
+      report_post_adverse_action
+      adverse_action_notice_not_delivered
+    ])
+  end
+
+  def technician_visible_status_label
+    case normalized_status_value
+    when "clear" then "Verified"
+    when "complete_with_canceled_screenings" then "Completed with canceled screenings"
+    when "consider", "review_required", "report_disputed" then "Review required"
+    when "report_pre_adverse_action" then "Pre-adverse action in progress"
+    when "report_post_adverse_action" then "Post-adverse action sent"
+    when "report_canceled", "canceled", "invitation_expired", "invitation_deleted" then "Canceled"
+    when "report_suspended" then "Action required"
+    when "report_resumed" then "Resumed"
+    when "invitation_sent" then "Invitation sent"
+    when "invitation_completed" then "Invitation completed"
+    else
+      "In progress"
+    end
+  end
+
+  def admin_visible_status_label
+    case normalized_status_value
+    when "clear" then "Clear"
+    when "complete_with_canceled_screenings" then "Complete with canceled screenings"
+    when "consider", "review_required" then "Consider / review required"
+    when "report_disputed" then "Disputed"
+    when "report_pre_adverse_action" then "Pre-adverse action"
+    when "report_post_adverse_action" then "Post-adverse action"
+    when "adverse_action_notice_not_delivered" then "Adverse notice not delivered"
+    when "report_canceled", "canceled", "invitation_expired", "invitation_deleted" then "Canceled"
+    else
+      normalized_status_value.to_s.humanize
+    end
   end
 
   private

@@ -27,6 +27,7 @@ module Api
             },
             pending_background_checks: serialize_checks(BackgroundCheck.where(status: %i[pending processing consider invited]).order(created_at: :desc).limit(100)),
             expiring_background_checks: serialize_checks(BackgroundCheck.where("expires_at IS NOT NULL AND expires_at <= ?", 30.days.from_now).order(:expires_at).limit(100)),
+            checkr_webhook_anomalies: serialize_webhook_anomalies(CheckrWebhookEvent.where.not(processing_error: [nil, ""]).order(updated_at: :desc).limit(100)),
             pending_references: VerificationReference.pending_review.limit(100),
             pending_documents: Document.pending_review_queue.where(doc_type: %w[license certificate cert insurance identity drivers_license passport]).limit(100),
             audit_timeline: VerificationAuditLog.order(created_at: :desc).limit(200)
@@ -208,6 +209,9 @@ module Api
               normalized_status: check.normalized_status_value,
               provider_status: check.provider_status,
               provider_assess_status: check.provider_assess_status,
+              provider_adjudication: check.provider_adjudication,
+              provider_includes_canceled: check.provider_includes_canceled,
+              provider_updated_at: check.provider_updated_at,
               package_name: check.package_name,
               node_custom_id: check.node_custom_id,
               work_location_country: check.work_location_country,
@@ -220,6 +224,24 @@ module Api
               last_webhook_event_id: check.last_webhook_event_id,
               created_at: check.created_at,
               updated_at: check.updated_at
+            }
+          end
+        end
+
+        def serialize_webhook_anomalies(scope)
+          scope.map do |row|
+            {
+              id: row.id,
+              checkr_event_id: row.checkr_event_id,
+              event_type: row.event_type,
+              object_type: row.object_type,
+              object_id: row.object_id,
+              background_check_id: row.background_check_id,
+              processing_error: row.processing_error,
+              attempt_count: row.attempt_count,
+              processed_at: row.processed_at,
+              received_at: row.received_at,
+              updated_at: row.updated_at
             }
           end
         end

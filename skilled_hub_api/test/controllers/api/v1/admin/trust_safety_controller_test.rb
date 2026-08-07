@@ -53,6 +53,8 @@ module Api
               headers: auth_header_for(admin),
               as: :json
           assert_response :ok
+          body = JSON.parse(response.body)
+          assert body.key?("checkr_webhook_anomalies")
 
           patch "/api/v1/admin/trust_safety/references/#{ref.id}/review",
                 params: { status: "invalid_status" },

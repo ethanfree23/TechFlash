@@ -424,8 +424,8 @@ module Api
               state: background_check&.work_location_state,
               city: background_check&.work_location_city
             },
-            report_url: background_check&.report_url,
-            dashboard_url: background_check&.dashboard_url,
+            report_url: nil,
+            dashboard_url: nil,
             cta: background_check.present? ? "View status" : "Start background check",
             why_it_matters: "Some companies only allow background-checked technicians to claim jobs.",
             badge_preview: "Background Checked",

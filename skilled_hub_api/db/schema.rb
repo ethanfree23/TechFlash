@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_07_28_113000) do
+ActiveRecord::Schema[7.1].define(version: 2026_08_07_143000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -91,6 +91,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_28_113000) do
     t.datetime "disclosure_accepted_at"
     t.datetime "authorization_accepted_at"
     t.string "consent_ip"
+    t.boolean "provider_includes_canceled", default: false, null: false
+    t.string "provider_adjudication"
+    t.datetime "provider_updated_at"
+    t.string "provider_object_type"
     t.index ["company_profile_id"], name: "index_background_checks_on_company_profile_id"
     t.index ["expires_at"], name: "index_background_checks_on_expires_at"
     t.index ["job_application_id"], name: "index_background_checks_on_job_application_id"
@@ -99,8 +103,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_28_113000) do
     t.index ["node_custom_id"], name: "index_background_checks_on_node_custom_id"
     t.index ["normalized_status"], name: "index_background_checks_on_normalized_status"
     t.index ["provider_candidate_id"], name: "index_background_checks_on_provider_candidate_id"
+    t.index ["provider_includes_canceled"], name: "index_background_checks_on_provider_includes_canceled"
     t.index ["provider_invitation_id"], name: "index_background_checks_on_provider_invitation_id"
     t.index ["provider_report_id"], name: "index_background_checks_on_provider_report_id"
+    t.index ["provider_updated_at"], name: "index_background_checks_on_provider_updated_at"
     t.index ["status"], name: "index_background_checks_on_status"
     t.index ["stripe_checkout_session_id"], name: "index_background_checks_on_stripe_checkout_session_id"
     t.index ["stripe_payment_intent_id"], name: "index_background_checks_on_stripe_payment_intent_id"
@@ -114,8 +120,22 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_28_113000) do
     t.datetime "processed_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.datetime "received_at"
+    t.datetime "processing_started_at"
+    t.text "processing_error"
+    t.integer "attempt_count", default: 0, null: false
+    t.string "object_type"
+    t.string "object_id"
+    t.integer "background_check_id"
+    t.boolean "hydrated", default: false, null: false
+    t.boolean "duplicate", default: false, null: false
+    t.index ["attempt_count"], name: "index_checkr_webhook_events_on_attempt_count"
+    t.index ["background_check_id"], name: "index_checkr_webhook_events_on_background_check_id"
     t.index ["checkr_event_id"], name: "index_checkr_webhook_events_on_checkr_event_id", unique: true
+    t.index ["object_type", "object_id"], name: "index_checkr_webhook_events_on_object_type_and_object_id"
     t.index ["processed_at"], name: "index_checkr_webhook_events_on_processed_at"
+    t.index ["processing_started_at"], name: "index_checkr_webhook_events_on_processing_started_at"
+    t.index ["received_at"], name: "index_checkr_webhook_events_on_received_at"
   end
 
   create_table "company_profiles", force: :cascade do |t|
@@ -132,7 +152,6 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_28_113000) do
     t.string "instagram_url"
     t.string "linkedin_url"
     t.json "service_cities", default: []
-    t.json "service_trades", default: [], null: false
     t.string "membership_level", default: "basic", null: false
     t.integer "membership_fee_override_cents"
     t.decimal "commission_override_percent", precision: 5, scale: 2
@@ -143,6 +162,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_28_113000) do
     t.string "state"
     t.string "electrical_license_number"
     t.string "primary_hiring_need"
+    t.json "service_trades", default: [], null: false
     t.index ["membership_level"], name: "index_company_profiles_on_membership_level"
     t.index ["state"], name: "index_company_profiles_on_state"
     t.index ["stripe_membership_subscription_id"], name: "index_company_profiles_on_stripe_membership_subscription_id", unique: true
@@ -408,7 +428,6 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_28_113000) do
     t.decimal "longitude", precision: 10, scale: 7
     t.text "required_certifications"
     t.string "skill_class"
-    t.string "trade_type"
     t.integer "minimum_years_experience"
     t.text "notes"
     t.datetime "go_live_at"
@@ -440,6 +459,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_07_28_113000) do
     t.string "job_timezone", default: "UTC", null: false
     t.json "standard_day_shifts", default: {}, null: false
     t.json "weekend_day_shifts", default: {}, null: false
+    t.string "trade_type"
     t.index ["company_profile_id"], name: "index_jobs_on_company_profile_id"
     t.index ["rolling_start_rule_type"], name: "index_jobs_on_rolling_start_rule_type"
     t.index ["share_token"], name: "index_jobs_on_share_token", unique: true

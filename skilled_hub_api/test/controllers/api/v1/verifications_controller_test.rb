@@ -306,6 +306,32 @@ module Api
         assert_response :unprocessable_entity
       end
 
+      test "technician verification response does not expose checkr report or dashboard links" do
+        user, = create_technician_with_membership("basic", "verification-link-redaction@example.com")
+        BackgroundCheck.create!(
+          user: user,
+          provider: "checkr",
+          package_name: "essential_plus",
+          status: :pending,
+          normalized_status: "report_pending",
+          report_url: "https://api.checkr.com/v1/reports/rep_123",
+          dashboard_url: "https://dashboard.checkr.com/reports/rep_123",
+          payment_status: :paid,
+          paid_by: "technician"
+        )
+
+        get "/api/v1/verification",
+            headers: auth_header_for(user),
+            as: :json
+
+        assert_response :ok
+        body = JSON.parse(response.body)
+        section = body.fetch("sections").find { |s| s["key"] == "background_check" }
+        assert section.present?
+        assert_nil section["report_url"]
+        assert_nil section["dashboard_url"]
+      end
+
       private
 
       def create_technician_with_membership(level, email)
