@@ -299,16 +299,17 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const isCompany = user?.role === 'company';
   const isTechnician = user?.role === 'technician';
   const isAdmin = user?.role === 'admin';
+  const demoMode = isDemoMode();
   const needsMapSetup = isTechnician && needsTechnicianMapSetup(profile);
   const backgroundCheckReady = backgroundCheckOptions?.ready_for_start === true;
   const backgroundCheckDemoBypass = backgroundCheckOptions?.demo_bypass === true;
   // Keep local demo bypass deterministic for demo walkthroughs, even when Checkr options are configured.
-  const localCheckrDemoBypass = isDemoMode() && localCheckrDemoBypassEnabled;
+  const localCheckrDemoBypass = demoMode && localCheckrDemoBypassEnabled;
   const autoCheckrDemoBypass = isTechnician && !backgroundCheckReady && Boolean(backgroundCheckOptionsError);
   const effectiveCheckrDemoBypass = backgroundCheckDemoBypass || localCheckrDemoBypass || autoCheckrDemoBypass;
   const backgroundCheckStartEnabled = backgroundCheckReady || effectiveCheckrDemoBypass;
   const backgroundConsentReady = backgroundDisclosureAccepted && backgroundAuthorizationAccepted;
-  const canUndoDemoBackgroundCheck = isDemoMode() && isTechnician && hasInProgressBackgroundCheck(verificationCenter?.background_check);
+  const canUndoDemoBackgroundCheck = demoMode && isTechnician && hasInProgressBackgroundCheck(verificationCenter?.background_check);
   const displayBackgroundCheckPackageName = useMemo(
     () => verificationCenter?.background_check?.package_name
       || backgroundCheckOptions?.configured_package_name
@@ -1822,28 +1823,21 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               <p className="text-xs text-amber-700">
                 Demo bypass is active. Start flow is simulated for walkthrough recording.
               </p>
-              {localCheckrDemoBypass && (
-                <button
-                  type="button"
-                  onClick={handleDisableLocalCheckrDemoBypass}
-                  className="inline-flex rounded border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-50"
-                >
-                  Disable demo bypass
-                </button>
-              )}
             </div>
           )}
-          {isDemoMode() && !effectiveCheckrDemoBypass && (
+          {demoMode && (
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-xs text-amber-700">
-                Demo bypass is currently off for this browser.
+                {localCheckrDemoBypass
+                  ? 'Local demo bypass is currently on for this browser.'
+                  : 'Local demo bypass is currently off for this browser.'}
               </p>
               <button
                 type="button"
-                onClick={handleEnableLocalCheckrDemoBypass}
+                onClick={localCheckrDemoBypass ? handleDisableLocalCheckrDemoBypass : handleEnableLocalCheckrDemoBypass}
                 className="inline-flex rounded border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-50"
               >
-                Enable demo bypass
+                {localCheckrDemoBypass ? 'Disable demo bypass' : 'Enable demo bypass'}
               </button>
             </div>
           )}
