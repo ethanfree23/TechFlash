@@ -45,6 +45,86 @@ module Api
           assert_equal admin.id, payload["impersonator_id"]
         end
 
+        test "admin can fetch canonical demo accounts" do
+          admin = User.create!(
+            email: "admin+masq_demo_accounts@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+          demo_admin = User.create!(
+            email: Demo::MarketData::DEMO_EMAILS[:admin],
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+          demo_company = User.create!(
+            email: Demo::MarketData::DEMO_EMAILS[:company],
+            password: "password123",
+            password_confirmation: "password123",
+            role: :company
+          )
+          demo_technician = User.create!(
+            email: Demo::MarketData::DEMO_EMAILS[:technician],
+            password: "password123",
+            password_confirmation: "password123",
+            role: :technician
+          )
+
+          get "/api/v1/admin/masquerade/demo_accounts",
+              headers: auth_header_for(admin)
+
+          assert_response :ok
+          body = JSON.parse(response.body)
+          assert_equal [], body["missing_roles"]
+          assert_equal demo_admin.id, body.dig("accounts", "admin", "id")
+          assert_equal Demo::MarketData::DEMO_EMAILS[:admin], body.dig("accounts", "admin", "email")
+          assert_equal demo_company.id, body.dig("accounts", "company", "id")
+          assert_equal Demo::MarketData::DEMO_EMAILS[:company], body.dig("accounts", "company", "email")
+          assert_equal demo_technician.id, body.dig("accounts", "technician", "id")
+          assert_equal Demo::MarketData::DEMO_EMAILS[:technician], body.dig("accounts", "technician", "email")
+        end
+
+        test "non-admin cannot fetch canonical demo accounts" do
+          tech = User.create!(
+            email: "tech+masq_demo_accounts@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :technician
+          )
+
+          get "/api/v1/admin/masquerade/demo_accounts",
+              headers: auth_header_for(tech)
+
+          assert_response :forbidden
+        end
+
+        test "demo account lookup reports missing roles" do
+          admin = User.create!(
+            email: "admin+masq_missing_demo_accounts@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+          User.create!(
+            email: Demo::MarketData::DEMO_EMAILS[:company],
+            password: "password123",
+            password_confirmation: "password123",
+            role: :company
+          )
+
+          get "/api/v1/admin/masquerade/demo_accounts",
+              headers: auth_header_for(admin)
+
+          assert_response :ok
+          body = JSON.parse(response.body)
+          assert_includes body["missing_roles"], "admin"
+          assert_includes body["missing_roles"], "technician"
+          assert_nil body.dig("accounts", "admin")
+          assert_nil body.dig("accounts", "technician")
+          assert body.dig("accounts", "company", "id").present?
+        end
+
         test "rejects masquerade as admin target" do
           admin = User.create!(
             email: "admin+masq2@example.com",

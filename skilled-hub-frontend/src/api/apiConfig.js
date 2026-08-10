@@ -1,5 +1,5 @@
 import { Capacitor } from '@capacitor/core';
-import { isDemoPath } from '../utils/demoMode';
+import { isDemoPath } from '../utils/demoMode.js';
 
 const PRODUCTION_API = 'https://skilledhub-production.up.railway.app/api/v1';
 const LOCAL_API = 'http://localhost:3000/api/v1';

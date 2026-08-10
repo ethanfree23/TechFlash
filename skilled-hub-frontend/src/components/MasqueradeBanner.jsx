@@ -14,10 +14,12 @@ export default function MasqueradeBanner() {
   const user = auth.getUser();
 
   const exit = () => {
-    auth.exitMasquerade();
-    window.location.assign(
-      isDemoMode() ? withDemoPath('/settings?tab=account') : '/admin/users'
-    );
+    const restored = auth.exitMasquerade();
+    if (!restored) {
+      window.location.assign(isDemoMode() ? withDemoPath('/login') : '/login');
+      return;
+    }
+    window.location.assign(isDemoMode() ? withDemoPath('/settings?tab=account') : '/admin/users');
   };
 
   return (

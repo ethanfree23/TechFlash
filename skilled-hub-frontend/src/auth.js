@@ -15,6 +15,20 @@ const USER_KEY = () => key('user');
 const MSQ_PREV_TOKEN = () => key('tf_masq_prev_token');
 const MSQ_PREV_USER = () => key('tf_masq_prev_user');
 
+function parseTokenPayload(token) {
+  if (!token) return null;
+  try {
+    return JSON.parse(atob(token.split('.')[1]));
+  } catch {
+    return null;
+  }
+}
+
+function tokenIsMasquerade(token) {
+  const payload = parseTokenPayload(token);
+  return payload?.masquerade === true;
+}
+
 export const auth = {
   setToken: (token) => {
     localStorage.setItem(TOKEN_KEY(), token);
@@ -31,33 +45,35 @@ export const auth = {
   isAuthenticated: () => {
     const token = localStorage.getItem(TOKEN_KEY());
     if (!token) return false;
-
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      if (!payload.exp) return true;
-      return payload.exp * 1000 > Date.now();
-    } catch (error) {
-      console.error('Error parsing token:', error);
-      return false;
-    }
+    const payload = parseTokenPayload(token);
+    if (!payload) return false;
+    if (!payload.exp) return true;
+    return payload.exp * 1000 > Date.now();
   },
 
   isMasquerading: () => {
     const token = localStorage.getItem(TOKEN_KEY());
-    if (!token) return false;
-    try {
-      const payload = JSON.parse(atob(token.split('.')[1]));
-      return payload.masquerade === true;
-    } catch {
-      return false;
-    }
+    return tokenIsMasquerade(token);
+  },
+
+  hasMasqueradeBackup: () => {
+    return Boolean(sessionStorage.getItem(MSQ_PREV_TOKEN()) && sessionStorage.getItem(MSQ_PREV_USER()));
+  },
+
+  clearMasqueradeArtifacts: () => {
+    sessionStorage.removeItem(MSQ_PREV_TOKEN());
+    sessionStorage.removeItem(MSQ_PREV_USER());
   },
 
   enterMasquerade: (newToken, newUser) => {
     const prevToken = localStorage.getItem(TOKEN_KEY());
     const prevUser = localStorage.getItem(USER_KEY());
-    if (prevToken) sessionStorage.setItem(MSQ_PREV_TOKEN(), prevToken);
-    if (prevUser) sessionStorage.setItem(MSQ_PREV_USER(), prevUser);
+    const alreadyMasquerading = tokenIsMasquerade(prevToken);
+    // Preserve the original admin snapshot across repeated masquerades.
+    if (!alreadyMasquerading) {
+      if (prevToken) sessionStorage.setItem(MSQ_PREV_TOKEN(), prevToken);
+      if (prevUser) sessionStorage.setItem(MSQ_PREV_USER(), prevUser);
+    }
     localStorage.setItem(TOKEN_KEY(), newToken);
     localStorage.setItem(USER_KEY(), JSON.stringify(newUser));
   },
@@ -65,18 +81,16 @@ export const auth = {
   exitMasquerade: () => {
     const prevToken = sessionStorage.getItem(MSQ_PREV_TOKEN());
     const prevUser = sessionStorage.getItem(MSQ_PREV_USER());
-    sessionStorage.removeItem(MSQ_PREV_TOKEN());
-    sessionStorage.removeItem(MSQ_PREV_USER());
-    if (prevToken) {
+    auth.clearMasqueradeArtifacts();
+    if (prevToken && prevUser) {
       localStorage.setItem(TOKEN_KEY(), prevToken);
-    } else {
-      localStorage.removeItem(TOKEN_KEY());
-    }
-    if (prevUser) {
       localStorage.setItem(USER_KEY(), prevUser);
-    } else {
-      localStorage.removeItem(USER_KEY());
+      return true;
     }
+    // Defensive fallback: never keep a half-restored session.
+    localStorage.removeItem(TOKEN_KEY());
+    localStorage.removeItem(USER_KEY());
+    return false;
   },
 
   setUser: (user) => {
@@ -126,8 +140,7 @@ export const auth = {
   logout: () => {
     auth.removeToken();
     localStorage.removeItem(USER_KEY());
-    sessionStorage.removeItem(MSQ_PREV_TOKEN());
-    sessionStorage.removeItem(MSQ_PREV_USER());
+    auth.clearMasqueradeArtifacts();
   },
 
   getAuthHeader: () => {

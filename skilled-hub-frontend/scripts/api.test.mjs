@@ -77,6 +77,18 @@ async function testAdminUsersListQuery() {
   assert.ok(url.includes('/admin/users?q=raul&role=company'));
 }
 
+async function testAdminDemoAccountsRoute() {
+  setupEnv();
+  let url = '';
+  await withMockedFetch(async (u) => {
+    url = u;
+    return okJson({ accounts: {} });
+  }, async () => {
+    await adminUsersAPI.demoAccounts();
+  });
+  assert.ok(url.includes('/admin/masquerade/demo_accounts'));
+}
+
 async function testJobsFilterSerialization() {
   setupEnv();
   let url = '';
@@ -117,6 +129,7 @@ async function run() {
   await testAuthLoginRequestShape();
   await testCrmSearchEncodesQuery();
   await testAdminUsersListQuery();
+  await testAdminDemoAccountsRoute();
   await testJobsFilterSerialization();
   await testConversationsNormalization();
   await testSettingsFallbackBaseUrl();

@@ -144,6 +144,7 @@ Rails.application.routes.draw do
         resources :simulated_technician_markers, only: %i[index create update destroy]
         resources :coupons, only: %i[index show create update destroy]
         resources :coupon_assignments, only: %i[create update destroy]
+        get "masquerade/demo_accounts", to: "masquerades#demo_accounts"
         post "masquerade", to: "masquerades#create"
         get "location_suggestions", to: "location_suggestions#index"
         post "company_accounts", to: "company_accounts#create"

@@ -60,10 +60,40 @@ function testMasqueradeRoundTrip() {
   assert.strictEqual(auth.getUserRole(), 'admin');
 }
 
+function testNestedMasqueradePreservesOriginalAdmin() {
+  setupGlobals();
+  auth.setToken('admin-token');
+  auth.setUser({ role: 'admin', email: 'admin@example.com' });
+
+  const first = makeJwt({ masquerade: true, exp: Math.floor(Date.now() / 1000) + 3600 });
+  const second = makeJwt({ masquerade: true, exp: Math.floor(Date.now() / 1000) + 3600 });
+  auth.enterMasquerade(first, { role: 'company', email: 'company@example.com' });
+  auth.enterMasquerade(second, { role: 'technician', email: 'tech@example.com' });
+
+  auth.exitMasquerade();
+  assert.strictEqual(auth.getToken(), 'admin-token');
+  assert.strictEqual(auth.getUserRole(), 'admin');
+}
+
+function testExitMasqueradeWithoutCompleteBackupClearsSession() {
+  setupGlobals();
+  const masq = makeJwt({ masquerade: true, exp: Math.floor(Date.now() / 1000) + 3600 });
+  auth.setToken(masq);
+  auth.setUser({ role: 'technician', email: 'tech@example.com' });
+  sessionStorage.setItem('tf_masq_prev_token', 'admin-token-only');
+
+  const restored = auth.exitMasquerade();
+  assert.strictEqual(restored, false);
+  assert.strictEqual(auth.getToken(), null);
+  assert.strictEqual(auth.getUser(), null);
+}
+
 function run() {
   testTokenAuth();
   testUserRoleHelpers();
   testMasqueradeRoundTrip();
+  testNestedMasqueradePreservesOriginalAdmin();
+  testExitMasqueradeWithoutCompleteBackupClearsSession();
   console.log('auth tests passed');
 }
 

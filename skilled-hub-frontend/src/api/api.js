@@ -1,9 +1,9 @@
-import { auth } from '../auth';
-import { formatApiFetchError, isProductionHost, resolveApiBaseUrl } from './apiConfig';
+import { auth } from '../auth.js';
+import { formatApiFetchError, isProductionHost, resolveApiBaseUrl } from './apiConfig.js';
 
 // API helper functions for interacting with the Rails API
 
-export { isProductionHost, resolveApiBaseUrl, resolveDemoApiBaseUrl } from './apiConfig';
+export { isProductionHost, resolveApiBaseUrl, resolveDemoApiBaseUrl } from './apiConfig.js';
 
 // Helper function to make API requests
 const apiRequest = async (endpoint, options = {}) => {
@@ -313,6 +313,7 @@ export const techPresenceAPI = {
 
 // Admin user directory + per-user analytics
 export const adminUsersAPI = {
+  demoAccounts: () => apiRequest('/admin/masquerade/demo_accounts'),
   masqueradeStart: (targetUserId) =>
     apiRequest('/admin/masquerade', {
       method: 'POST',

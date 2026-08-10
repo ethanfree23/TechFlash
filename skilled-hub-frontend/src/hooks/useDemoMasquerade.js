@@ -4,28 +4,49 @@ import { auth } from '../auth';
 import { DEMO_ACCOUNTS } from '../constants/demoAccounts';
 import { withDemoPath } from '../utils/demoMode';
 
-async function resolveDemoUserId(email) {
-  const rows = await adminUsersAPI.list({ q: email });
-  const list = Array.isArray(rows) ? rows : rows?.users || [];
-  const match = list.find((u) => (u.email || '').toLowerCase() === email.toLowerCase());
-  return match?.id || null;
+function normalizeDemoAccounts(payload) {
+  const accounts = payload?.accounts || {};
+  const missingRoles = Array.isArray(payload?.missing_roles) ? payload.missing_roles : [];
+  return {
+    accounts: {
+      admin: accounts.admin || null,
+      company: accounts.company || null,
+      technician: accounts.technician || null,
+    },
+    missingRoles,
+  };
 }
 
 export default function useDemoMasquerade() {
   const [ids, setIds] = useState({});
   const [busy, setBusy] = useState(null);
+  const [loadingTargets, setLoadingTargets] = useState(false);
   const [error, setError] = useState(null);
 
+  const refreshTargets = useCallback(async () => {
+    if (auth.getUserRole() !== 'admin') return { ids: {}, missingRoles: [] };
+    setLoadingTargets(true);
+    try {
+      const payload = await adminUsersAPI.demoAccounts();
+      const { accounts, missingRoles } = normalizeDemoAccounts(payload);
+      const nextIds = {
+        admin: accounts.admin?.id || null,
+        company: accounts.company?.id || null,
+        technician: accounts.technician?.id || null,
+      };
+      setIds(nextIds);
+      return { ids: nextIds, missingRoles };
+    } finally {
+      setLoadingTargets(false);
+    }
+  }, []);
+
   useEffect(() => {
-    if (auth.getUserRole() !== 'admin') return undefined;
     let cancelled = false;
     (async () => {
       try {
-        const [companyId, techId] = await Promise.all([
-          resolveDemoUserId(DEMO_ACCOUNTS.company.email),
-          resolveDemoUserId(DEMO_ACCOUNTS.technician.email),
-        ]);
-        if (!cancelled) setIds({ company: companyId, technician: techId });
+        const resolved = await refreshTargets();
+        if (!cancelled) setIds(resolved.ids);
       } catch {
         /* lookup optional */
       }
@@ -33,18 +54,23 @@ export default function useDemoMasquerade() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshTargets]);
 
   const masqueradeAs = useCallback(
     async (role) => {
-      const id = ids[role];
-      if (!id) {
-        setError(`Could not find ${DEMO_ACCOUNTS[role]?.label || role}. Reset demo data and try again.`);
-        return false;
-      }
       setBusy(role);
       setError(null);
       try {
+        const { ids: resolvedIds, missingRoles } = await refreshTargets();
+        const id = resolvedIds[role];
+        if (!id) {
+          const roleLabel = DEMO_ACCOUNTS[role]?.label || role;
+          const missingMsg = missingRoles.includes(role)
+            ? `${roleLabel} is missing. Run Demo Reset in Settings and try again.`
+            : `Could not find ${roleLabel}. Reset demo data and try again.`;
+          setError(missingMsg);
+          return false;
+        }
         const res = await adminUsersAPI.masqueradeStart(id);
         auth.enterMasquerade(res.token, res.user);
         window.location.assign(withDemoPath('/settings?tab=account'));
@@ -56,13 +82,32 @@ export default function useDemoMasquerade() {
         setBusy(null);
       }
     },
-    [ids]
+    [refreshTargets]
   );
 
   const returnToAdmin = useCallback(() => {
-    auth.exitMasquerade();
+    setBusy('admin');
+    setError(null);
+    const restored = auth.exitMasquerade();
+    if (!restored) {
+      setBusy(null);
+      setError('Admin session backup is missing. Please sign in again.');
+      window.location.assign(withDemoPath('/login'));
+      return false;
+    }
+    setBusy(null);
     window.location.assign(withDemoPath('/settings?tab=account'));
+    return true;
   }, []);
 
-  return { ids, busy, error, clearError: () => setError(null), masqueradeAs, returnToAdmin };
+  return {
+    ids,
+    busy,
+    loadingTargets,
+    error,
+    clearError: () => setError(null),
+    masqueradeAs,
+    returnToAdmin,
+    refreshTargets,
+  };
 }

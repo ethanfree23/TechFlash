@@ -11,6 +11,29 @@ module Api
 
         MASQUERADE_TTL = 8.hours
 
+        # GET /api/v1/admin/masquerade/demo_accounts
+        # Returns canonical demo account IDs used by role switchers.
+        def demo_accounts
+          accounts = {}
+          missing_roles = []
+
+          Demo::MarketData::DEMO_EMAILS.each do |role, email|
+            user = User.find_by("LOWER(email) = ?", email.to_s.downcase)
+            if user
+              accounts[role] = {
+                id: user.id,
+                email: user.email,
+                role: user.role
+              }
+            else
+              accounts[role] = nil
+              missing_roles << role
+            end
+          end
+
+          render json: { accounts: accounts, missing_roles: missing_roles }, status: :ok
+        end
+
         # POST /api/v1/admin/masquerade
         # JSON: { "target_user_id": <id> }
         def create

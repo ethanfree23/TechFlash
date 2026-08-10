@@ -82,8 +82,7 @@ export default function AccountRolePanel({ roleLabel }) {
   const isAdmin = auth.isAdmin();
   const isDemo = isDemoMode();
   const demoEntryUrl = (path) => getDemoAppUrl(path);
-  const { busy, error, clearError, masqueradeAs, returnToAdmin } = useDemoMasquerade();
-  const [prodAlert, setProdAlert] = useState(null);
+  const { busy, loadingTargets, error, clearError, masqueradeAs, returnToAdmin } = useDemoMasquerade();
 
   const showDemoSwitcher = isDemo && (isAdmin || masquerading);
   const showProdDemoLinks = isAdmin && !isDemo && !masquerading;
@@ -111,9 +110,10 @@ export default function AccountRolePanel({ roleLabel }) {
             <button
               type="button"
               onClick={returnToAdmin}
+              disabled={busy === 'admin'}
               className="w-full rounded-xl border border-amber-300 bg-amber-500 px-4 py-3 text-sm font-semibold text-white hover:bg-amber-600"
             >
-              Return to Demo Admin
+              {busy === 'admin' ? 'Returning to Demo Admin…' : 'Return to Demo Admin'}
             </button>
           </>
         )}
@@ -124,19 +124,26 @@ export default function AccountRolePanel({ roleLabel }) {
               Preview the marketplace as a demo company or technician. Your admin session is saved — switch back
               from here or the banner at the top.
             </p>
-            <SwitchRoleButton active disabled busy={false}>
+            <SwitchRoleButton active disabled busy={busy === 'admin' || loadingTargets}>
               Demo Admin
             </SwitchRoleButton>
             <SwitchRoleButton
-              busy={busy === 'company'}
+              disabled={loadingTargets}
+              busy={busy === 'company' || loadingTargets}
               onClick={() => masqueradeAs('company')}
               demoTarget="masquerade-company"
             >
               Bayou City Mechanical (Company)
             </SwitchRoleButton>
-            <SwitchRoleButton busy={busy === 'technician'} onClick={() => masqueradeAs('technician')}>
+            <SwitchRoleButton
+              disabled={loadingTargets}
+              busy={busy === 'technician' || loadingTargets}
+              onClick={() => masqueradeAs('technician')}
+              demoTarget="masquerade-technician"
+            >
               Marcus Alvarez (Technician)
             </SwitchRoleButton>
+            {loadingTargets && <p className="text-xs text-gray-500">Refreshing demo account targets…</p>}
             <div className="pt-2 border-t border-gray-100">
               <p className="text-xs text-gray-500 mb-2">Between walkthroughs</p>
               <DemoResetButton variant="settings" />
@@ -160,9 +167,6 @@ export default function AccountRolePanel({ roleLabel }) {
 
       {error && (
         <AlertModal isOpen title="Could not switch account" message={error} onClose={clearError} />
-      )}
-      {prodAlert && (
-        <AlertModal isOpen title={prodAlert.title} message={prodAlert.message} onClose={() => setProdAlert(null)} />
       )}
     </>
   );
