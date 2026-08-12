@@ -122,6 +122,20 @@ const buildBackgroundCheckOptionsErrorMessage = (error) => {
   return 'Background check setup could not be loaded. TechFlash admin configuration may be incomplete. Please retry or contact support.';
 };
 
+const deriveBackgroundCheckStartBlockers = ({
+  isTechnician,
+  loadingBackgroundCheckOptions,
+  startingBackgroundCheck,
+  backgroundConsentReady,
+}) => {
+  const blockers = [];
+  if (!isTechnician) blockers.push('not_technician');
+  if (loadingBackgroundCheckOptions) blockers.push('options_loading');
+  if (startingBackgroundCheck) blockers.push('start_in_progress');
+  if (!backgroundConsentReady) blockers.push('consent_missing');
+  return blockers;
+};
+
 const referenceStatusLabel = (status) => {
   const key = String(status || '').toLowerCase();
   if (key === 'requested') return 'Requested';
@@ -312,8 +326,50 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   // Keep local demo bypass deterministic for demo walkthroughs, even when Checkr options are configured.
   const localCheckrDemoBypass = demoMode && localCheckrDemoBypassEnabled;
   const effectiveCheckrDemoBypass = backgroundCheckDemoBypass || localCheckrDemoBypass;
-  const backgroundCheckStartEnabled = backgroundCheckReady || effectiveCheckrDemoBypass;
   const backgroundConsentReady = backgroundDisclosureAccepted && backgroundAuthorizationAccepted;
+  const backgroundCheckStartBlockers = useMemo(
+    () => deriveBackgroundCheckStartBlockers({
+      isTechnician,
+      loadingBackgroundCheckOptions,
+      startingBackgroundCheck,
+      backgroundConsentReady,
+    }),
+    [isTechnician, loadingBackgroundCheckOptions, startingBackgroundCheck, backgroundConsentReady]
+  );
+  const backgroundCheckStartEnabled = backgroundCheckStartBlockers.length === 0;
+  const backgroundCheckDiagnostics = useMemo(() => ({
+    isTechnician,
+    demoMode,
+    backgroundCheckReady,
+    backgroundCheckDemoBypass,
+    localCheckrDemoBypass,
+    effectiveCheckrDemoBypass,
+    backgroundConsentReady,
+    loadingBackgroundCheckOptions,
+    startingBackgroundCheck,
+    startEnabled: backgroundCheckStartEnabled,
+    startBlockers: backgroundCheckStartBlockers,
+    optionsError: backgroundCheckOptionsError || null,
+    configuredPackageName: String(backgroundCheckOptions?.configured_package_name || '').trim() || null,
+    packageSelectionReason: backgroundCheckOptions?.package_selection_reason || null,
+    selectedPackageName: selectedPackageName || null,
+  }), [
+    isTechnician,
+    demoMode,
+    backgroundCheckReady,
+    backgroundCheckDemoBypass,
+    localCheckrDemoBypass,
+    effectiveCheckrDemoBypass,
+    backgroundConsentReady,
+    loadingBackgroundCheckOptions,
+    startingBackgroundCheck,
+    backgroundCheckStartEnabled,
+    backgroundCheckStartBlockers,
+    backgroundCheckOptionsError,
+    backgroundCheckOptions?.configured_package_name,
+    backgroundCheckOptions?.package_selection_reason,
+    selectedPackageName,
+  ]);
   const canUndoDemoBackgroundCheck = demoMode && isTechnician && hasInProgressBackgroundCheck(verificationCenter?.background_check);
   const displayBackgroundCheckPackageName = useMemo(
     () => verificationCenter?.background_check?.package_name
@@ -591,6 +647,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     setBackgroundCheckOptionsError('');
     try {
       const options = await verificationAPI.getBackgroundCheckOptions();
+      console.info('[Verification] background_check_options loaded', options || null);
       setBackgroundCheckOptions(options || null);
       const configuredPackageName = String(options?.configured_package_name || '').trim();
       if (configuredPackageName) {
@@ -603,7 +660,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       }
     } catch (err) {
       setBackgroundCheckOptions(null);
-      setBackgroundCheckOptionsError(buildBackgroundCheckOptionsErrorMessage(err));
+      const errorMessage = buildBackgroundCheckOptionsErrorMessage(err);
+      console.error('[Verification] background_check_options failed', {
+        message: errorMessage,
+        rawError: err,
+      });
+      setBackgroundCheckOptionsError(errorMessage);
     } finally {
       setLoadingBackgroundCheckOptions(false);
     }
@@ -651,6 +713,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   useEffect(() => {
     setAccountEmail(user?.email || auth.getUser()?.email || '');
   }, [user?.email]);
+
+  useEffect(() => {
+    if (!isTechnician) return;
+    console.info('[Verification] start diagnostics', backgroundCheckDiagnostics);
+  }, [isTechnician, backgroundCheckDiagnostics]);
 
   useEffect(() => {
     setProfile(null);
@@ -1578,12 +1645,17 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   };
 
   const handleStartBackgroundCheck = async () => {
+    console.info('[Verification] start click', backgroundCheckDiagnostics);
     if (!backgroundCheckStartEnabled) {
       setAlertModal({
         isOpen: true,
         title: 'Background check unavailable',
-        message: 'Background check is not ready because TechFlash backend configuration is incomplete or still processing. Please retry later or contact support.',
+        message: 'Background check is temporarily unavailable. Check browser console for exact blockers and backend status.',
         variant: 'error',
+      });
+      console.warn('[Verification] start blocked before request', {
+        blockers: backgroundCheckStartBlockers,
+        diagnostics: backgroundCheckDiagnostics,
       });
       return;
     }
@@ -1594,6 +1666,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         message: 'Review and accept the disclosure and authorization statements before starting the background check.',
         variant: 'error',
       });
+      console.warn('[Verification] start blocked: consent missing', backgroundCheckDiagnostics);
       return;
     }
     setStartingBackgroundCheck(true);
@@ -1612,6 +1685,10 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
             started_at: new Date().toISOString(),
           },
         }));
+        console.info('[Verification] start redirected via demo bypass', {
+          invitationUrl: demoInvitationUrl,
+          diagnostics: backgroundCheckDiagnostics,
+        });
         window.location.href = demoInvitationUrl;
         return;
       }
@@ -1622,7 +1699,9 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         ...(backgroundDisclosureAcceptedAt ? { disclosure_accepted_at: backgroundDisclosureAcceptedAt } : {}),
         ...(backgroundAuthorizationAcceptedAt ? { authorization_accepted_at: backgroundAuthorizationAcceptedAt } : {}),
       };
+      console.info('[Verification] start request payload', payload);
       const res = await verificationAPI.startBackgroundCheckWithSelection(payload);
+      console.info('[Verification] start response', res);
       if (res?.invitation_url) {
         window.location.href = res.invitation_url;
         return;
@@ -1644,6 +1723,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       setVerificationCenter(latest);
       await loadBackgroundCheckOptions();
     } catch (err) {
+      console.error('[Verification] start failed', {
+        message: err?.message || null,
+        error: err,
+        diagnostics: backgroundCheckDiagnostics,
+      });
       setAlertModal({
         isOpen: true,
         title: 'Unable to start background check',

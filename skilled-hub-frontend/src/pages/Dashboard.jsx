@@ -36,6 +36,11 @@ const formatCurrency = (cents) => {
 
 
 const GOOGLE_MAPS_API_KEY = import.meta.env?.VITE_GOOGLE_MAPS_API_KEY || '';
+const OPEN_JOBS_REFRESH_MS = 5 * 60 * 1000;
+/** Default technician map view: 45-mile radius around the profile location. */
+const DEFAULT_VIEW_RADIUS_MI = 45;
+/** Fallback zoom when radius bounds are unavailable (~90-mile-wide view). */
+const HOME_MAP_ZOOM = 9;
 let googleMapsScriptPromise = null;
 let googleMapsLoaded = false;
 let googleMapsPreconnectInjected = false;
@@ -212,7 +217,7 @@ const Dashboard = ({ user, onLogout }) => {
         /* ignore background refresh errors */
       }
     };
-    const intervalId = window.setInterval(refreshOpenJobsOnly, 30000);
+    const intervalId = window.setInterval(refreshOpenJobsOnly, OPEN_JOBS_REFRESH_MS);
     return () => window.clearInterval(intervalId);
   }, [user?.role]);
 
@@ -532,6 +537,19 @@ function svgDollarJobMarkerUrl(fillColor, strokeColor, radiusPx) {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
+function fitTechnicianHomeView(map, mapsApi, homeLatLng) {
+  if (!map || !homeLatLng) return;
+  const radiusMeters = DEFAULT_VIEW_RADIUS_MI * 1609.344;
+  const radiusCircle = new mapsApi.Circle({ center: homeLatLng, radius: radiusMeters });
+  const radiusBounds = radiusCircle.getBounds();
+  if (radiusBounds) {
+    map.fitBounds(radiusBounds, 48);
+  } else {
+    map.setCenter(homeLatLng);
+    map.setZoom(HOME_MAP_ZOOM);
+  }
+}
+
 /** When jobs share the technician's coordinates (0 mi), spread pins in a small ring so job markers aren't hidden under the home marker. */
 function displayPositionsForJobMarkers(jobs, homeLatLng) {
   if (!jobs?.length) return [];
@@ -567,6 +585,9 @@ const TechnicianOpenJobsMap = ({
   const markersRef = useRef([]);
   const geocodeCacheRef = useRef(new Map());
   const geocodeInFlightRef = useRef(new Set());
+  const appliedHomeCameraKeyRef = useRef(null);
+  const initialResizeTimeoutRef = useRef(null);
+  const homeLatLngRef = useRef(null);
   const [mapsReady, setMapsReady] = useState(googleMapsLoaded || Boolean(window.google?.maps));
   const [loadError, setLoadError] = useState(null);
   const [fallbackCoordsByJobId, setFallbackCoordsByJobId] = useState({});
@@ -579,6 +600,7 @@ const TechnicianOpenJobsMap = ({
     () => (hasTechnicianCoords ? { lat: technicianLat, lng: technicianLng } : null),
     [hasTechnicianCoords, technicianLat, technicianLng]
   );
+  homeLatLngRef.current = homeLatLng;
 
   const homeAddressQuery = useMemo(
     () =>
@@ -631,7 +653,7 @@ const TechnicianOpenJobsMap = ({
   const fallbackQuery = hasTechnicianCoords
     ? `${technicianLat},${technicianLng}`
     : (homeAddressQuery || selectedMapJob?.location || normalizedJobs[0]?.location || 'United States');
-  const fallbackEmbedUrl = `https://www.google.com/maps?q=${encodeURIComponent(fallbackQuery)}&z=10&output=embed`;
+  const fallbackEmbedUrl = `https://www.google.com/maps?q=${encodeURIComponent(fallbackQuery)}&z=${HOME_MAP_ZOOM}&output=embed`;
 
   useEffect(() => {
     let cancelled = false;
@@ -725,7 +747,7 @@ const TechnicianOpenJobsMap = ({
     if (!mapRef.current) {
       mapRef.current = new maps.Map(mapContainerRef.current, {
         center: defaultCenter,
-        zoom: homeLatLng ? 12 : 6,
+        zoom: homeLatLng ? HOME_MAP_ZOOM : 6,
         mapTypeControl: true,
         mapTypeControlOptions: {
           style: maps.MapTypeControlStyle.HORIZONTAL_BAR,
@@ -812,49 +834,55 @@ const TechnicianOpenJobsMap = ({
       markersRef.current.push(marker);
     });
 
-    const DEFAULT_VIEW_RADIUS_MI = 15;
-    if (homeLatLng) {
-      const radiusMeters = DEFAULT_VIEW_RADIUS_MI * 1609.344;
-      const radiusCircle = new maps.Circle({ center: homeLatLng, radius: radiusMeters });
-      const radiusBounds = radiusCircle.getBounds();
-      if (radiusBounds) {
-        mapRef.current.fitBounds(radiusBounds, 48);
-      } else {
-        mapRef.current.setCenter(homeLatLng);
-        mapRef.current.setZoom(12);
+    const homeKey = homeLatLng ? `${homeLatLng.lat.toFixed(5)},${homeLatLng.lng.toFixed(5)}` : '';
+    const shouldApplyDefaultCamera = appliedHomeCameraKeyRef.current !== homeKey;
+    const applyDefaultCamera = () => {
+      if (homeLatLng) {
+        fitTechnicianHomeView(mapRef.current, maps, homeLatLng);
+        return;
       }
-    } else if (selectedLatLng || normalizedJobs.length || presenceMarkers.length) {
-      const bounds = new maps.LatLngBounds();
-      if (selectedLatLng) {
-        bounds.extend(selectedLatLng);
-      } else {
-        markerDisplayPositions.forEach((pos) => bounds.extend(pos));
+      if (selectedLatLng || normalizedJobs.length || presenceMarkers.length) {
+        const bounds = new maps.LatLngBounds();
+        if (selectedLatLng) {
+          bounds.extend(selectedLatLng);
+        } else {
+          markerDisplayPositions.forEach((pos) => bounds.extend(pos));
+        }
+        presenceMarkers.forEach((m) => {
+          const lat = Number(m.latitude);
+          const lng = Number(m.longitude);
+          if (Number.isFinite(lat) && Number.isFinite(lng)) bounds.extend({ lat, lng });
+        });
+        if (!bounds.isEmpty()) {
+          mapRef.current.fitBounds(bounds, 90);
+        } else {
+          mapRef.current.setCenter(selectedLatLng || defaultCenter);
+          mapRef.current.setZoom(normalizedJobs.length ? 9 : 6);
+        }
+        return;
       }
-      presenceMarkers.forEach((m) => {
-        const lat = Number(m.latitude);
-        const lng = Number(m.longitude);
-        if (Number.isFinite(lat) && Number.isFinite(lng)) bounds.extend({ lat, lng });
-      });
-      if (!bounds.isEmpty()) {
-        mapRef.current.fitBounds(bounds, 90);
-      } else {
-        mapRef.current.setCenter(selectedLatLng || defaultCenter);
-        mapRef.current.setZoom(normalizedJobs.length ? 9 : 6);
-      }
-    } else {
-      mapRef.current.setCenter(homeLatLng || selectedLatLng || defaultCenter);
-      mapRef.current.setZoom(homeLatLng ? 12 : normalizedJobs.length ? 11 : 6);
+      mapRef.current.setCenter(defaultCenter);
+      mapRef.current.setZoom(normalizedJobs.length ? 9 : 6);
+    };
+
+    if (shouldApplyDefaultCamera) {
+      appliedHomeCameraKeyRef.current = homeKey;
+      applyDefaultCamera();
     }
 
-    // Maps embedded in flex/grid often need a resize tick before markers/tiles paint reliably.
-    const mapEl = mapRef.current;
-    requestAnimationFrame(() => {
-      maps.event.trigger(mapEl, 'resize');
-    });
-    const resizeLater = window.setTimeout(() => {
-      maps.event.trigger(mapEl, 'resize');
-    }, 200);
-    return () => window.clearTimeout(resizeLater);
+    if (initialResizeTimeoutRef.current == null) {
+      const mapEl = mapRef.current;
+      const restoreHomeCamera = () => {
+        maps.event.trigger(mapEl, 'resize');
+        const home = homeLatLngRef.current;
+        if (home) {
+          fitTechnicianHomeView(mapEl, maps, home);
+        }
+      };
+      requestAnimationFrame(restoreHomeCamera);
+      initialResizeTimeoutRef.current = window.setTimeout(restoreHomeCamera, 200);
+    }
+    return undefined;
   }, [
     mapsReady,
     homeLatLng,
@@ -862,9 +890,16 @@ const TechnicianOpenJobsMap = ({
     selectedMapJobId,
     normalizedJobs,
     onSelectJob,
-    mapPanNonce,
     presenceMarkers,
   ]);
+
+  useEffect(() => {
+    return () => {
+      if (initialResizeTimeoutRef.current != null) {
+        window.clearTimeout(initialResizeTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Parent bumps mapPanNonce when the user asks to focus a job ("Show on map", list row, or marker click).
   useEffect(() => {
@@ -1257,7 +1292,7 @@ const TechnicianDashboardContent = ({
               </span>
             </div>
             <p className="text-sm text-gray-600 mb-4">
-              Open listings refresh every 30 seconds. Jobs are filtered server-side by membership rules (including experience
+              Open listings refresh every 5 minutes. Jobs are filtered server-side by membership rules (including experience
               vs. each posting); we then prioritize pins within {searchRadiusMiles} miles of your profile when coordinates are
               available.
             </p>
