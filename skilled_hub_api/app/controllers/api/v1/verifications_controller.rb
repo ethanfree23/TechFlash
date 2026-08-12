@@ -145,9 +145,23 @@ module Api
       end
 
       def background_check_options
-        render json: build_background_check_options, status: :ok
+        options = build_background_check_options
+        render json: options, status: :ok
       rescue CheckrClient::Error => e
-        render json: { error: e.message }, status: :unprocessable_entity
+        render json: {
+          nodes_exist: false,
+          selected_node_custom_id: nil,
+          nodes: [],
+          packages: [],
+          packages_available: false,
+          package_filter_fallback: false,
+          package_selection_reason: "checkr_api_error",
+          configured_package_name: nil,
+          configured_node_custom_id: nil,
+          ready_for_start: false,
+          options_error: e.message,
+          error: e.message
+        }, status: :ok
       end
 
       def create_background_check_checkout
@@ -244,7 +258,21 @@ module Api
         end
 
         client = CheckrClient.new
-        raise CheckrClient::Error, "Checkr is not configured." unless client.configured?
+        unless client.configured?
+          return {
+            nodes_exist: false,
+            selected_node_custom_id: nil,
+            nodes: [],
+            packages: [],
+            packages_available: false,
+            package_filter_fallback: false,
+            package_selection_reason: "checkr_not_configured",
+            configured_package_name: checkr_configuration.default_package.to_s.presence,
+            configured_node_custom_id: checkr_configuration.default_node_custom_id.to_s.presence,
+            ready_for_start: false,
+            options_error: "Checkr API credentials are not configured. Set CHECKR_SECRET_KEY or enable CHECKR_DEMO_BYPASS=true for testing."
+          }
+        end
 
         configured_package_name = client.default_package.to_s.presence
         configured_node_custom_id = client.default_node_custom_id.to_s.presence
