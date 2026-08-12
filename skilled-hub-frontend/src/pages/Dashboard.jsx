@@ -9,6 +9,7 @@ import {
   formatDistanceMi,
   haversineMiles,
   needsTechnicianMapSetup,
+  zoomForMapWidthMiles,
 } from '../utils/technicianMap';
 import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen, FaBuilding } from 'react-icons/fa';
 import { AdminPlatformCharts, CompanyAnalyticsCharts, TechnicianAnalyticsCharts } from '../components/dashboard/RoleDashboardCharts';
@@ -37,10 +38,10 @@ const formatCurrency = (cents) => {
 
 const GOOGLE_MAPS_API_KEY = import.meta.env?.VITE_GOOGLE_MAPS_API_KEY || '';
 const OPEN_JOBS_REFRESH_MS = 5 * 60 * 1000;
-/** Default technician map view: 45-mile radius around the profile location. */
-const DEFAULT_VIEW_RADIUS_MI = 45;
-/** Fallback zoom when radius bounds are unavailable (~90-mile-wide view). */
-const HOME_MAP_ZOOM = 9;
+/** Default technician map view: 45 miles across the visible map width (diameter, not radius). */
+const DEFAULT_VIEW_DIAMETER_MI = 45;
+/** Fallback zoom when map width is unknown (~45-mile-wide on a typical dashboard pane). */
+const HOME_MAP_ZOOM = 11;
 let googleMapsScriptPromise = null;
 let googleMapsLoaded = false;
 let googleMapsPreconnectInjected = false;
@@ -537,17 +538,12 @@ function svgDollarJobMarkerUrl(fillColor, strokeColor, radiusPx) {
   return `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(svg)}`;
 }
 
-function fitTechnicianHomeView(map, mapsApi, homeLatLng) {
+function fitTechnicianHomeView(map, _mapsApi, homeLatLng) {
   if (!map || !homeLatLng) return;
-  const radiusMeters = DEFAULT_VIEW_RADIUS_MI * 1609.344;
-  const radiusCircle = new mapsApi.Circle({ center: homeLatLng, radius: radiusMeters });
-  const radiusBounds = radiusCircle.getBounds();
-  if (radiusBounds) {
-    map.fitBounds(radiusBounds, 48);
-  } else {
-    map.setCenter(homeLatLng);
-    map.setZoom(HOME_MAP_ZOOM);
-  }
+  map.setCenter(homeLatLng);
+  const widthPx = map.getDiv()?.clientWidth || 0;
+  const zoom = zoomForMapWidthMiles(homeLatLng.lat, widthPx, DEFAULT_VIEW_DIAMETER_MI);
+  map.setZoom(zoom ?? HOME_MAP_ZOOM);
 }
 
 /** When jobs share the technician's coordinates (0 mi), spread pins in a small ring so job markers aren't hidden under the home marker. */
@@ -586,7 +582,7 @@ const TechnicianOpenJobsMap = ({
   const geocodeCacheRef = useRef(new Map());
   const geocodeInFlightRef = useRef(new Set());
   const appliedHomeCameraKeyRef = useRef(null);
-  const initialResizeTimeoutRef = useRef(null);
+  const initialResizeTimeoutsRef = useRef([]);
   const homeLatLngRef = useRef(null);
   const [mapsReady, setMapsReady] = useState(googleMapsLoaded || Boolean(window.google?.maps));
   const [loadError, setLoadError] = useState(null);
@@ -870,7 +866,7 @@ const TechnicianOpenJobsMap = ({
       applyDefaultCamera();
     }
 
-    if (initialResizeTimeoutRef.current == null) {
+    if (initialResizeTimeoutsRef.current.length === 0) {
       const mapEl = mapRef.current;
       const restoreHomeCamera = () => {
         maps.event.trigger(mapEl, 'resize');
@@ -880,7 +876,10 @@ const TechnicianOpenJobsMap = ({
         }
       };
       requestAnimationFrame(restoreHomeCamera);
-      initialResizeTimeoutRef.current = window.setTimeout(restoreHomeCamera, 200);
+      initialResizeTimeoutsRef.current = [
+        window.setTimeout(restoreHomeCamera, 200),
+        window.setTimeout(restoreHomeCamera, 800),
+      ];
     }
     return undefined;
   }, [
@@ -895,9 +894,8 @@ const TechnicianOpenJobsMap = ({
 
   useEffect(() => {
     return () => {
-      if (initialResizeTimeoutRef.current != null) {
-        window.clearTimeout(initialResizeTimeoutRef.current);
-      }
+      initialResizeTimeoutsRef.current.forEach((id) => window.clearTimeout(id));
+      initialResizeTimeoutsRef.current = [];
     };
   }, []);
 
@@ -1292,9 +1290,9 @@ const TechnicianDashboardContent = ({
               </span>
             </div>
             <p className="text-sm text-gray-600 mb-4">
-              Open listings refresh every 5 minutes. Jobs are filtered server-side by membership rules (including experience
-              vs. each posting); we then prioritize pins within {searchRadiusMiles} miles of your profile when coordinates are
-              available.
+              Open listings refresh every 5 minutes. The map opens at a 45-mile-wide view around your profile.
+              Jobs are filtered server-side by membership rules (including experience vs. each posting); we then
+              list pins within {searchRadiusMiles} miles when coordinates are available.
             </p>
             <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
               {mapDisplayJobs.map((job) => (

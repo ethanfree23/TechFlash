@@ -1,6 +1,24 @@
+const DEMO_AUTO_LOGIN_ROLES = new Set(['admin', 'company', 'technician']);
+
 let apiDemoMode = null;
 let demoFlagshipJobId = null;
 let demoReviewedJobId = null;
+
+/** True when the URL is an explicit demo-role auto-login (`?demo=admin|company|technician&auto=1`). */
+export function isDemoRoleAutoLoginSearch(searchParams) {
+  if (!searchParams || typeof searchParams.get !== 'function') return false;
+  const demo = searchParams.get('demo');
+  const auto = searchParams.get('auto');
+  return auto === '1' && DEMO_AUTO_LOGIN_ROLES.has(demo);
+}
+
+/** True on the login route with a demo auto-login query (used to replace a stale session). */
+export function isDemoRoleAutoLoginLocation(location = typeof window !== 'undefined' ? window.location : null) {
+  if (!location) return false;
+  const path = location.pathname || '';
+  if (!/\/login\/?$/.test(path)) return false;
+  return isDemoRoleAutoLoginSearch(new URLSearchParams(location.search || ''));
+}
 
 /** True when URL is under /demo (e.g. techflash.app/demo/login). */
 export function isDemoPath() {

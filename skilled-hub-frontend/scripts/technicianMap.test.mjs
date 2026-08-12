@@ -3,6 +3,7 @@ import {
   haversineMiles,
   filterJobsWithinRadius,
   needsTechnicianMapSetup,
+  zoomForMapWidthMiles,
 } from '../src/utils/technicianMap.js';
 
 function testHaversineMiles() {
@@ -57,11 +58,25 @@ function testNeedsTechnicianMapSetup() {
   );
 }
 
+function testZoomForFortyFiveMileDiameter() {
+  const dallasLat = 32.7767;
+  const z45 = zoomForMapWidthMiles(dallasLat, 800, 45);
+  const z90 = zoomForMapWidthMiles(dallasLat, 800, 90);
+  assert.ok(z45 != null && z45 > 10 && z45 < 11.2, `45-mile-wide zoom should be ~10.5, got ${z45}`);
+  assert.ok(Math.abs(z45 - z90 - 1) < 0.05, 'doubling the visible diameter should drop zoom by 1');
+  assert.strictEqual(zoomForMapWidthMiles(dallasLat, 0, 45), null);
+  assert.ok(
+    zoomForMapWidthMiles(dallasLat, 1200, 45) > z45,
+    'a wider map pane needs a higher zoom to keep the same 45-mile width'
+  );
+}
+
 function run() {
   testHaversineMiles();
   testFilterJobsWithinRadius();
   testFilterWithoutCoordinatesFallsBack();
   testNeedsTechnicianMapSetup();
+  testZoomForFortyFiveMileDiameter();
   console.log('technician map tests passed');
 }
 

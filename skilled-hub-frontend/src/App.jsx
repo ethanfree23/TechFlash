@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useSearchParams } from 'react-router-dom';
 import MarketingPage from './pages/MarketingPage';
 import ForCompaniesPage from './pages/ForCompaniesPage';
 import ForTechniciansPage from './pages/ForTechniciansPage';
@@ -37,16 +37,18 @@ import DemoModeBanner from './components/DemoModeBanner';
 import AppPageLayout from './components/layout/AppPageLayout';
 import { auth } from './auth';
 import { metaAPI } from './api/api';
-import { setApiDemoMode, setDemoFlagshipJobId, setDemoReviewedJobId, getDemoBasePath, isDemoPath } from './utils/demoMode';
+import { setApiDemoMode, setDemoFlagshipJobId, setDemoReviewedJobId, getDemoBasePath, isDemoPath, isDemoRoleAutoLoginSearch, isDemoRoleAutoLoginLocation } from './utils/demoMode';
 
 // Protected Route component
 const ProtectedRoute = ({ children, isAuthenticated }) => {
   return isAuthenticated ? children : <Navigate to="/login" replace />;
 };
 
-// Public Route component (redirects to dashboard if already authenticated)
+// Public Route: stay on login when an explicit demo auto-login is requested so a stale
+// masquerade session cannot skip the intended admin/company/technician sign-in.
 const PublicRoute = ({ children, isAuthenticated }) => {
-  if (!isAuthenticated) return children;
+  const [searchParams] = useSearchParams();
+  if (!isAuthenticated || isDemoRoleAutoLoginSearch(searchParams)) return children;
   return <Navigate to="/dashboard" replace />;
 };
 
@@ -64,6 +66,9 @@ function App() {
   }, []);
 
   useEffect(() => {
+    if (isDemoRoleAutoLoginLocation()) {
+      auth.logout();
+    }
     checkAuth();
     metaAPI.get().then((m) => {
       setApiDemoMode(m?.demo_mode);

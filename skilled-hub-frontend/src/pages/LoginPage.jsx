@@ -60,8 +60,9 @@ const LoginPage = ({ onLoginSuccess }) => {
     }
   }, [searchParams, tab, signupEmail]);
 
-  const completeLogin = async (email, password) => {
+  const completeLogin = useCallback(async (email, password) => {
     const response = await authAPI.login(email, password);
+    auth.logout();
     auth.setToken(response.token);
     auth.setUser(response.user);
     if (response.demo_mode != null) setApiDemoMode(response.demo_mode);
@@ -69,7 +70,7 @@ const LoginPage = ({ onLoginSuccess }) => {
     if (response.reviewed_job_id) setDemoReviewedJobId(response.reviewed_job_id);
     onLoginSuccess(response.user);
     setTimeout(() => navigate('/dashboard'), 100);
-  };
+  }, [navigate, onLoginSuccess]);
 
   const handleLoginSubmit = async (e) => {
     e.preventDefault();
@@ -88,6 +89,7 @@ const LoginPage = ({ onLoginSuccess }) => {
   const handleDemoLogin = useCallback(async (role) => {
     const account = DEMO_ACCOUNTS[role];
     if (!account) return;
+    auth.logout();
     setLoginData({ email: account.email, password: account.password });
     setLoading(true);
     setError('');
@@ -99,7 +101,7 @@ const LoginPage = ({ onLoginSuccess }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [completeLogin]);
 
   useEffect(() => {
     if (tab === 'signup') return;
@@ -232,10 +234,25 @@ const LoginPage = ({ onLoginSuccess }) => {
           )}
 
           {isDemoMode() && (
-            <div className="mb-4 space-y-3">
-              <p className="text-center text-[11px] text-slate-500">
-                Use the demo cards above to load credentials, or sign in manually below.
+            <div className="mb-6 space-y-2">
+              <p className="text-center text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Demo sign-in
               </p>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                {['admin', 'company', 'technician'].map((role) => (
+                  <button
+                    key={role}
+                    type="button"
+                    disabled={loading}
+                    onClick={() => handleDemoLogin(role)}
+                    className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs font-semibold text-slate-800 hover:border-indigo-300 hover:bg-indigo-50 disabled:opacity-50"
+                  >
+                    {loading && loginData.email === DEMO_ACCOUNTS[role].email
+                      ? 'Signing in…'
+                      : `Login as ${DEMO_ACCOUNTS[role].label}`}
+                  </button>
+                ))}
+              </div>
             </div>
           )}
 

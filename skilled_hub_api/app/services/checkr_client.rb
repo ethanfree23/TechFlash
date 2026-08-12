@@ -5,6 +5,7 @@ require "cgi"
 
 class CheckrClient
   class Error < StandardError; end
+  BYTE_ORDER_MARK = "\xEF\xBB\xBF".b
 
   def initialize
     @configuration = CheckrConfiguration.new
@@ -131,7 +132,7 @@ class CheckrClient
     res = Net::HTTP.start(uri.host, uri.port, use_ssl: true, read_timeout: 15, open_timeout: 10) do |http|
       http.request(request)
     end
-    body = res.body.to_s
+    body = normalize_response_body(res.body)
     parsed = body.present? ? JSON.parse(body) : {}
 
     unless res.is_a?(Net::HTTPSuccess)
@@ -140,7 +141,19 @@ class CheckrClient
       raise Error, msg
     end
     parsed
-  rescue JSON::ParserError
-    raise Error, "Invalid response from Checkr"
+  rescue JSON::ParserError => e
+    status = res&.code || "unknown"
+    ctype = res&.[]("content-type").to_s
+    snippet = body.to_s[0, 160].gsub(/\s+/, " ")
+    raise Error, "Invalid response from Checkr (status=#{status}, content_type=#{ctype}, parse_error=#{e.message}, body_start=#{snippet.inspect})"
+  end
+
+  def normalize_response_body(raw_body)
+    body = raw_body.to_s.dup
+    return body if body.empty?
+
+    body.force_encoding(Encoding::UTF_8)
+    body = body.encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: "")
+    body.delete_prefix(BYTE_ORDER_MARK)
   end
 end

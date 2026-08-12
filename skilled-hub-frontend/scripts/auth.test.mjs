@@ -88,12 +88,29 @@ function testExitMasqueradeWithoutCompleteBackupClearsSession() {
   assert.strictEqual(auth.getUser(), null);
 }
 
+function testLogoutClearsMasqueradeBackup() {
+  setupGlobals();
+  auth.setToken('admin-token');
+  auth.setUser({ role: 'admin', email: 'admin@example.com' });
+  const masq = makeJwt({ masquerade: true, exp: Math.floor(Date.now() / 1000) + 3600 });
+  auth.enterMasquerade(masq, { role: 'technician', email: 'demo.tech.dallas.212@techflash.app' });
+  assert.strictEqual(auth.isMasquerading(), true);
+  assert.strictEqual(auth.hasMasqueradeBackup(), true);
+
+  auth.logout();
+  assert.strictEqual(auth.getToken(), null);
+  assert.strictEqual(auth.getUser(), null);
+  assert.strictEqual(auth.isMasquerading(), false);
+  assert.strictEqual(auth.hasMasqueradeBackup(), false);
+}
+
 function run() {
   testTokenAuth();
   testUserRoleHelpers();
   testMasqueradeRoundTrip();
   testNestedMasqueradePreservesOriginalAdmin();
   testExitMasqueradeWithoutCompleteBackupClearsSession();
+  testLogoutClearsMasqueradeBackup();
   console.log('auth tests passed');
 }
 

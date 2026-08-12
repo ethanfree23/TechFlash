@@ -1,3 +1,26 @@
+/** Web Mercator meters-per-pixel at zoom 0 on the equator (Google Maps). */
+const GOOGLE_MAPS_ZOOM0_MPP = 156543.03392;
+
+/**
+ * Zoom so the map's visible WIDTH equals diameterMiles.
+ * fitBounds on a radius circle is wrong here: a wide/short pane zooms out until the
+ * north-south extent fits, which shows far more than the requested diameter east-west.
+ */
+export const zoomForMapWidthMiles = (lat, widthPx, diameterMiles) => {
+  const latN = Number(lat);
+  const w = Number(widthPx);
+  const d = Number(diameterMiles);
+  if (!Number.isFinite(latN) || !Number.isFinite(w) || w < 50 || !Number.isFinite(d) || d <= 0) {
+    return null;
+  }
+  const metersPerPixel = (d * 1609.344) / w;
+  const cosLat = Math.cos((latN * Math.PI) / 180);
+  const clampedCos = Math.max(0.01, Math.abs(cosLat));
+  const zoom = Math.log2((GOOGLE_MAPS_ZOOM0_MPP * clampedCos) / metersPerPixel);
+  if (!Number.isFinite(zoom)) return null;
+  return Math.min(16, Math.max(7, zoom));
+};
+
 /** Axis-aligned bounding box (SW / NE corners) approximating a circle of radiusMiles around center. Good for map fitBounds. */
 export const boundingBoxForRadiusMiles = (centerLat, centerLng, radiusMiles) => {
   const lat = Number(centerLat);
