@@ -227,17 +227,18 @@ export default function UserDrawer({
                     to={`/admin/users/${row.id}`}
                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-tf-blue text-white text-xs font-semibold hover:bg-tf-blue-dark"
                   >
-                    Full profile
-                    <FaExternalLinkAlt className="w-2.5 h-2.5" />
+                    View profile
                   </Link>
-                  <button
-                    type="button"
-                    onClick={() => onSendEmail?.(row)}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-                  >
-                    <FaEnvelope className="w-3 h-3" />
-                    Email
-                  </button>
+                  {(row.role === 'company' || row.role === 'technician') && (
+                    <button
+                      type="button"
+                      onClick={() => onMasquerade?.(row.id)}
+                      disabled={masqueradeBusyId === row.id}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 disabled:opacity-50"
+                    >
+                      {masqueradeBusyId === row.id ? 'Starting…' : 'Impersonate'}
+                    </button>
+                  )}
                   <UserRowActionsMenu
                     user={row}
                     onMasquerade={onMasquerade}
