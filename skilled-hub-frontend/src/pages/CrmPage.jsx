@@ -2515,7 +2515,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     setForm((f) => {
       const fb = { name: f.contact_name, email: f.email, phone: f.phone || '', job_title: '', extension: '' };
       const contacts = editableContacts(f.contacts, fb);
-      const baseContacts = contacts.length > 0 ? contacts : [normalizeContactDraftEntry({})];
+      const baseContacts = contacts.length > 0 ? contacts : [];
       nextContactIndex = baseContacts.length;
       pendingAdditionalContactFocusIdx.current = nextContactIndex;
       const next = [...baseContacts, normalizeContactDraftEntry({})];
@@ -2523,9 +2523,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     });
     if (nextContactIndex != null) {
       setReadModeAddContactIndex(nextContactIndex);
-      setForcedVisibleAdditionalContactIndexes((prev) =>
-        prev.includes(nextContactIndex) ? prev : [...prev, nextContactIndex],
-      );
+      setForcedVisibleAdditionalContactIndexes([nextContactIndex]);
       setReadModeAddingContact(true);
     }
     setContactsEditing(false);
