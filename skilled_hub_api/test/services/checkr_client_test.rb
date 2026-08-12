@@ -1,6 +1,8 @@
 require "test_helper"
 require "ostruct"
 require "net/http"
+require "zlib"
+require "stringio"
 
 class CheckrClientTest < ActiveSupport::TestCase
   test "create_candidate preserves json body when path is normalized to /v1" do
@@ -119,6 +121,47 @@ class CheckrClientTest < ActiveSupport::TestCase
     assert_includes error.message, "status=200"
     assert_includes error.message, "content_type=text/html"
     assert_includes error.message, "body_start="
+  ensure
+    CheckrConfiguration.singleton_class.send(:define_method, :new, original_config_new)
+    Net::HTTP.singleton_class.send(:define_method, :start, original_http_start)
+  end
+
+  test "list_packages parses gzip encoded json response" do
+    fake_config = OpenStruct.new(
+      requests_allowed?: true,
+      requests_block_reason: nil,
+      api_key: "sk_test_123",
+      default_package: "essential_criminal",
+      default_node_custom_id: nil,
+      api_base_url: "https://api.checkr-staging.com"
+    )
+
+    io = StringIO.new
+    gz = Zlib::GzipWriter.new(io)
+    gz.write({ data: [{ id: "pkg_gzip_1", name: "Essential Gzip" }] }.to_json)
+    gz.close
+
+    response = Net::HTTPOK.new("1.1", "200", "OK")
+    response.instance_variable_set(:@read, true)
+    response["content-type"] = "application/json"
+    response["content-encoding"] = "gzip"
+    response.instance_variable_set(:@body, io.string)
+
+    original_config_new = CheckrConfiguration.method(:new)
+    original_http_start = Net::HTTP.method(:start)
+
+    CheckrConfiguration.singleton_class.send(:define_method, :new) { fake_config }
+    Net::HTTP.singleton_class.send(:define_method, :start) do |_host, _port, use_ssl:, read_timeout:, open_timeout:, &block|
+      http = Object.new
+      http.define_singleton_method(:request) { |_request| response }
+      block.call(http)
+    end
+
+    client = CheckrClient.new
+    packages = client.list_packages
+
+    assert_equal 1, packages.size
+    assert_equal "pkg_gzip_1", packages.first["id"]
   ensure
     CheckrConfiguration.singleton_class.send(:define_method, :new, original_config_new)
     Net::HTTP.singleton_class.send(:define_method, :start, original_http_start)

@@ -2,6 +2,8 @@ require "net/http"
 require "uri"
 require "json"
 require "cgi"
+require "zlib"
+require "stringio"
 
 class CheckrClient
   class Error < StandardError; end
@@ -132,7 +134,7 @@ class CheckrClient
     res = Net::HTTP.start(uri.host, uri.port, use_ssl: true, read_timeout: 15, open_timeout: 10) do |http|
       http.request(request)
     end
-    body = normalize_response_body(res.body)
+    body = normalize_response_body(res.body, content_encoding: res["content-encoding"])
     parsed = body.present? ? JSON.parse(body) : {}
 
     unless res.is_a?(Net::HTTPSuccess)
@@ -148,12 +150,28 @@ class CheckrClient
     raise Error, "Invalid response from Checkr (status=#{status}, content_type=#{ctype}, parse_error=#{e.message}, body_start=#{snippet.inspect})"
   end
 
-  def normalize_response_body(raw_body)
-    body = raw_body.to_s.dup
+  def normalize_response_body(raw_body, content_encoding: nil)
+    body = decode_response_body(raw_body.to_s, content_encoding: content_encoding)
     return body if body.empty?
 
     body.force_encoding(Encoding::UTF_8)
     body = body.encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: "")
     body.delete_prefix(BYTE_ORDER_MARK)
+  end
+
+  def decode_response_body(raw_body, content_encoding: nil)
+    return raw_body if raw_body.empty?
+
+    encoding = content_encoding.to_s.downcase
+    case encoding
+    when "gzip", "x-gzip"
+      Zlib::GzipReader.new(StringIO.new(raw_body)).read
+    when "deflate"
+      Zlib::Inflate.inflate(raw_body)
+    else
+      raw_body
+    end
+  rescue Zlib::Error
+    raw_body
   end
 end
