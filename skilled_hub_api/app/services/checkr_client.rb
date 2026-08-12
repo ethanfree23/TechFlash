@@ -5,7 +5,7 @@ require "cgi"
 
 class CheckrClient
   class Error < StandardError; end
-  BYTE_ORDER_MARK = "\xEF\xBB\xBF".b
+  BYTE_ORDER_MARK = "\uFEFF"
 
   def initialize
     @configuration = CheckrConfiguration.new
