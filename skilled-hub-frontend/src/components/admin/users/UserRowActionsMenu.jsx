@@ -72,9 +72,6 @@ export default function UserRowActionsMenu({
       </button>
       {open && (
         <div className="absolute right-0 top-full mt-0.5 z-50 w-48 rounded-lg border border-slate-200 bg-white shadow-lg py-1 ring-1 ring-black/5">
-          {menuItem('View profile', () => navigate(`/admin/users/${user.id}`))}
-          {canMasquerade && menuItem('Impersonate', () => onMasquerade?.(user.id))}
-          <div className="my-1 border-t border-slate-100" />
           {menuItem('Send email', () => onSendEmail?.(user))}
           {menuItem('Send SMS', () => {})}
           {menuItem('Reset password', () => onResetPassword?.(user))}
