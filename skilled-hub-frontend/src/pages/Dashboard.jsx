@@ -726,9 +726,13 @@ const TechnicianOpenJobsMap = ({
       mapRef.current = new maps.Map(mapContainerRef.current, {
         center: defaultCenter,
         zoom: homeLatLng ? 12 : 6,
-        mapTypeControl: false,
+        mapTypeControl: true,
+        mapTypeControlOptions: {
+          style: maps.MapTypeControlStyle.HORIZONTAL_BAR,
+          position: maps.ControlPosition.TOP_RIGHT,
+        },
         streetViewControl: false,
-        fullscreenControl: false,
+        fullscreenControl: true,
       });
     }
 
