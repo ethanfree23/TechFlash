@@ -19,6 +19,7 @@ skilled_hub_api/storage/*
 skilled_hub_api/.bundle
 skilled_hub_api/.env*
 !skilled_hub_api/.env*.erb
+!skilled_hub_api/.env.example
 skilled_hub_api/config/master.key
 
 # SQLite databases (optional - remove if you want to commit dev DB)
