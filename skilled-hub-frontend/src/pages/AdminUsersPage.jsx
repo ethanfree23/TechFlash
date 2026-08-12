@@ -32,6 +32,7 @@ import CreateUserModal from '../components/admin/users/CreateUserModal';
 import InviteUserModal from '../components/admin/users/InviteUserModal';
 import SendUserEmailModal from '../components/admin/users/SendUserEmailModal';
 import AdminActionPlaceholderModal from '../components/admin/users/AdminActionPlaceholderModal';
+import { withDemoPath } from '../utils/demoMode';
 
 const COLUMN_STORAGE_KEY = 'admin-users-table-columns-v3';
 
@@ -212,7 +213,7 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
     try {
       const res = await adminUsersAPI.masqueradeStart(targetUserId);
       auth.enterMasquerade(res.token, res.user);
-      window.location.assign('/dashboard');
+      window.location.assign(withDemoPath('/dashboard'));
     } catch (err) {
       setAlertModal({
         isOpen: true,

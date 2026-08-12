@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import MarketingPage from './pages/MarketingPage';
 import ForCompaniesPage from './pages/ForCompaniesPage';
@@ -55,23 +55,32 @@ function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    // Check authentication status on app load
-    const checkAuth = () => {
-      const authenticated = auth.isAuthenticated();
-      const currentUser = auth.getUser();
-      setIsAuthenticated(authenticated);
-      setUser(currentUser);
-      setLoading(false);
-    };
+  const checkAuth = useCallback(() => {
+    const authenticated = auth.isAuthenticated();
+    const currentUser = auth.getUser();
+    setIsAuthenticated(authenticated);
+    setUser(currentUser);
+    setLoading(false);
+  }, []);
 
+  useEffect(() => {
     checkAuth();
     metaAPI.get().then((m) => {
       setApiDemoMode(m?.demo_mode);
       if (m?.flagship_job_id) setDemoFlagshipJobId(m.flagship_job_id);
       if (m?.reviewed_job_id) setDemoReviewedJobId(m.reviewed_job_id);
     }).catch(() => {});
-  }, []);
+  }, [checkAuth]);
+
+  useEffect(() => {
+    const syncAuthState = () => checkAuth();
+    window.addEventListener('storage', syncAuthState);
+    window.addEventListener('pageshow', syncAuthState);
+    return () => {
+      window.removeEventListener('storage', syncAuthState);
+      window.removeEventListener('pageshow', syncAuthState);
+    };
+  }, [checkAuth]);
 
   const handleLoginSuccess = (userData) => {
     setIsAuthenticated(true);

@@ -197,16 +197,7 @@ const JobDetail = () => {
   }, []);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('user');
-    if (storedUser && storedUser !== 'undefined') {
-      try {
-        setUser(JSON.parse(storedUser));
-      } catch {
-        setUser(null);
-      }
-    } else {
-      setUser(null);
-    }
+    setUser(auth.getUser());
   }, []);
 
   const fetchJobDetails = useCallback(async () => {

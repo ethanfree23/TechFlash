@@ -14,6 +14,7 @@ const testFiles = [
   'api.test.mjs',
   'technicianMap.test.mjs',
   'jobAccessSettings.test.mjs',
+  'demoRouting.test.mjs',
 ];
 
 let successful = 0;

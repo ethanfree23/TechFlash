@@ -116,6 +116,12 @@ const extractDocumentsList = (payload) => {
   return [];
 };
 
+const buildBackgroundCheckOptionsErrorMessage = (error) => {
+  const message = String(error?.message || '').trim();
+  if (message) return message;
+  return 'Background check setup could not be loaded. TechFlash admin configuration may be incomplete. Please retry or contact support.';
+};
+
 const referenceStatusLabel = (status) => {
   const key = String(status || '').toLowerCase();
   if (key === 'requested') return 'Requested';
@@ -305,8 +311,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const backgroundCheckDemoBypass = backgroundCheckOptions?.demo_bypass === true;
   // Keep local demo bypass deterministic for demo walkthroughs, even when Checkr options are configured.
   const localCheckrDemoBypass = demoMode && localCheckrDemoBypassEnabled;
-  const autoCheckrDemoBypass = isTechnician && !backgroundCheckReady && Boolean(backgroundCheckOptionsError);
-  const effectiveCheckrDemoBypass = backgroundCheckDemoBypass || localCheckrDemoBypass || autoCheckrDemoBypass;
+  const effectiveCheckrDemoBypass = backgroundCheckDemoBypass || localCheckrDemoBypass;
   const backgroundCheckStartEnabled = backgroundCheckReady || effectiveCheckrDemoBypass;
   const backgroundConsentReady = backgroundDisclosureAccepted && backgroundAuthorizationAccepted;
   const canUndoDemoBackgroundCheck = demoMode && isTechnician && hasInProgressBackgroundCheck(verificationCenter?.background_check);
@@ -596,11 +601,9 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           'Background check setup is not available yet. TechFlash admin configuration is incomplete. Please retry or contact support.'
         );
       }
-    } catch {
+    } catch (err) {
       setBackgroundCheckOptions(null);
-      setBackgroundCheckOptionsError(
-        'Background check setup could not be loaded. TechFlash admin configuration may be incomplete. Please retry or contact support.'
-      );
+      setBackgroundCheckOptionsError(buildBackgroundCheckOptionsErrorMessage(err));
     } finally {
       setLoadingBackgroundCheckOptions(false);
     }
@@ -648,6 +651,17 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   useEffect(() => {
     setAccountEmail(user?.email || auth.getUser()?.email || '');
   }, [user?.email]);
+
+  useEffect(() => {
+    setProfile(null);
+    setVerificationCenter(null);
+    setBackgroundCheckOptions(null);
+    setBackgroundCheckOptionsError('');
+    setBackgroundDisclosureAccepted(false);
+    setBackgroundAuthorizationAccepted(false);
+    setBackgroundDisclosureAcceptedAt('');
+    setBackgroundAuthorizationAcceptedAt('');
+  }, [user?.role]);
 
   useEffect(() => {
     setForm((prev) => ({

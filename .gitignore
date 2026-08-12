@@ -30,3 +30,5 @@ skilled_hub_api/config/master.key
 .idea
 .DS_Store
 *.sw?
+
+.vercel

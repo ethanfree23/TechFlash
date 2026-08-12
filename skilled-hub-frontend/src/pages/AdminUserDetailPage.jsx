@@ -17,6 +17,7 @@ import { auth } from '../auth';
 import { FaEye, FaUserPlus } from 'react-icons/fa';
 import { formatPhoneInput } from '../utils/phone';
 import { TRADE_OPTIONS } from '../constants/trades';
+import { withDemoPath } from '../utils/demoMode';
 
 const PERIODS = [
   { id: '24h', label: '24h' },
@@ -583,7 +584,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
     try {
       const res = await adminUsersAPI.masqueradeStart(u.id);
       auth.enterMasquerade(res.token, res.user);
-      window.location.assign('/dashboard');
+      window.location.assign(withDemoPath('/dashboard'));
     } catch (err) {
       setAlertModal({
         isOpen: true,

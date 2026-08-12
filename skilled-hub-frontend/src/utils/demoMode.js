@@ -34,12 +34,27 @@ export function withDemoPath(path) {
 
 /** Full URL for demo entry links from production admin (uses VITE_DEMO_APP_URL or default). */
 export function getDemoAppUrl(path = '/login') {
-  const base =
+  const rawBase =
     import.meta.env.VITE_DEMO_APP_URL ||
     (typeof window !== 'undefined'
       ? `${window.location.origin}${getDemoBasePath() || '/demo'}`
       : 'https://techflash.app/demo');
-  const normalizedBase = base.replace(/\/$/, '');
+  let normalizedBase = rawBase.replace(/\/$/, '');
+  try {
+    const fallbackOrigin = typeof window !== 'undefined' ? window.location.origin : 'https://techflash.app';
+    const parsed = new URL(normalizedBase, fallbackOrigin);
+    const pathname = parsed.pathname.replace(/\/+$/, '');
+    const hasDemoSegment = pathname === '/demo' || pathname.startsWith('/demo/');
+    if (!hasDemoSegment) {
+      parsed.pathname = `${pathname || ''}/demo`;
+    }
+    normalizedBase = parsed.toString().replace(/\/$/, '');
+  } catch {
+    const hasDemoSegment = /\/demo(?:\/|$)/.test(normalizedBase);
+    if (!hasDemoSegment) {
+      normalizedBase = `${normalizedBase}/demo`;
+    }
+  }
   const p = path.startsWith('/') ? path : `/${path}`;
   if (normalizedBase.endsWith('/demo') && p.startsWith('/demo')) {
     return `${normalizedBase}${p.slice('/demo'.length)}`;

@@ -48,7 +48,7 @@ export default function DemoEnvironmentCard() {
   const demoEntry = (path) => getDemoAppUrl(path);
 
   const openDemo = () => {
-    window.open(demoEntry('/login'), '_blank', 'noopener,noreferrer');
+    window.open(demoEntry('/login?demo=admin&auto=1'), '_blank', 'noopener,noreferrer');
   };
 
   return (
