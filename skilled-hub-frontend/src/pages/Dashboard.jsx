@@ -725,7 +725,7 @@ const TechnicianOpenJobsMap = ({
     if (!mapRef.current) {
       mapRef.current = new maps.Map(mapContainerRef.current, {
         center: defaultCenter,
-        zoom: homeLatLng ? 11 : 6,
+        zoom: homeLatLng ? 12 : 6,
         mapTypeControl: false,
         streetViewControl: false,
         fullscreenControl: false,
@@ -808,7 +808,7 @@ const TechnicianOpenJobsMap = ({
       markersRef.current.push(marker);
     });
 
-    const DEFAULT_VIEW_RADIUS_MI = 100;
+    const DEFAULT_VIEW_RADIUS_MI = 15;
     if (homeLatLng) {
       const radiusMeters = DEFAULT_VIEW_RADIUS_MI * 1609.344;
       const radiusCircle = new maps.Circle({ center: homeLatLng, radius: radiusMeters });
@@ -817,7 +817,7 @@ const TechnicianOpenJobsMap = ({
         mapRef.current.fitBounds(radiusBounds, 48);
       } else {
         mapRef.current.setCenter(homeLatLng);
-        mapRef.current.setZoom(10);
+        mapRef.current.setZoom(12);
       }
     } else if (selectedLatLng || normalizedJobs.length || presenceMarkers.length) {
       const bounds = new maps.LatLngBounds();
@@ -839,7 +839,7 @@ const TechnicianOpenJobsMap = ({
       }
     } else {
       mapRef.current.setCenter(homeLatLng || selectedLatLng || defaultCenter);
-      mapRef.current.setZoom(homeLatLng ? 11 : normalizedJobs.length ? 9 : 6);
+      mapRef.current.setZoom(homeLatLng ? 12 : normalizedJobs.length ? 11 : 6);
     }
 
     // Maps embedded in flex/grid often need a resize tick before markers/tiles paint reliably.
