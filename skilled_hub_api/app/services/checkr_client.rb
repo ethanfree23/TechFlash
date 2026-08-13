@@ -58,13 +58,7 @@ class CheckrClient
       last_name: user.last_name.to_s.presence || "User",
       email: email,
       custom_id: custom_id,
-      work_locations: [
-        {
-          country: work_location[:country],
-          state: work_location[:state],
-          city: work_location[:city]
-        }.compact
-      ]
+      work_locations: [checkr_work_location(work_location)]
     }
     payload[:zipcode] = zipcode.to_s.strip if zipcode.present?
     post_json("/candidates", payload)
@@ -74,13 +68,7 @@ class CheckrClient
     payload = {
       candidate_id: candidate_id,
       package: package_name.presence || @default_package,
-      work_locations: [
-        {
-          country: work_location[:country],
-          state: work_location[:state],
-          city: work_location[:city]
-        }.compact
-      ],
+      work_locations: [checkr_work_location(work_location)],
       invitation_url: redirect_url
     }
     payload[:node] = node_custom_id if node_custom_id.present?
@@ -95,6 +83,15 @@ class CheckrClient
   end
 
   private
+
+  def checkr_work_location(work_location)
+    loc = work_location.to_h.symbolize_keys
+    {
+      country: GeocodingService.iso_country_code(loc[:country]),
+      state: GeocodingService.us_state_abbreviation(loc[:state]),
+      city: loc[:city].to_s.strip.presence
+    }.compact
+  end
 
   def normalize_base_url(raw_base_url)
     base = raw_base_url.to_s.chomp("/")

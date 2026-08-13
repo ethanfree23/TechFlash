@@ -93,7 +93,7 @@ export function TechnicianInfoFields({ registerData, setRegisterData, idPrefix, 
             </div>
           </label>
           <label className="block text-sm font-medium text-gray-700 sm:col-span-2">
-            Street address
+            Street address (optional)
             <div className={inputWrap}>
               <FaMapMarkerAlt className="h-4 w-4 text-gray-400" aria-hidden />
               <input
@@ -101,11 +101,11 @@ export function TechnicianInfoFields({ registerData, setRegisterData, idPrefix, 
                 type="text"
                 value={registerData.address}
                 onChange={(e) => set({ address: e.target.value })}
-                placeholder="123 Main St"
+                placeholder="e.g. 123 Main St"
                 className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
               />
             </div>
-            <p className="mt-1 text-xs text-gray-500">This address is used as your base service area.</p>
+            <p className="mt-1 text-xs text-gray-500">Optional. Add later for more accurate job distance on the map.</p>
           </label>
           <label className="block text-sm font-medium text-gray-700">
             State

@@ -25,6 +25,31 @@ class GeocodingService
     'west virginia' => 'WV', 'wisconsin' => 'WI', 'wyoming' => 'WY'
   }.freeze
 
+  COUNTRY_CODE_TO_NAME = {
+    "us" => "United States",
+    "gb" => "United Kingdom",
+    "ca" => "Canada",
+    "mx" => "Mexico",
+    "au" => "Australia",
+    "de" => "Germany",
+    "fr" => "France",
+    "it" => "Italy",
+    "es" => "Spain",
+    "br" => "Brazil",
+    "in" => "India"
+  }.freeze
+
+  COUNTRY_NAME_TO_CODE = COUNTRY_CODE_TO_NAME.each_with_object({}) do |(code, name), acc|
+    acc[name.downcase] = code.upcase
+  end.merge(
+    "usa" => "US",
+    "united states of america" => "US",
+    "u.s." => "US",
+    "u.s.a." => "US",
+    "uk" => "GB",
+    "great britain" => "GB"
+  ).freeze
+
   class GeocodingError < StandardError; end
 
   GEOCODE_CACHE_TTL = 12.hours
@@ -333,21 +358,25 @@ class GeocodingService
     abbr.to_s
   end
 
+  def self.us_state_abbreviation(state)
+    s = state.to_s.strip
+    return nil if s.blank?
+    return s.upcase if s.match?(/\A[A-Za-z]{2}\z/)
+
+    US_STATE_FULL_TO_ABBR[s.downcase] || s
+  end
+
   def self.country_name_from_code(code)
     c = code.to_s.downcase
-    {
-      "us" => "United States",
-      "gb" => "United Kingdom",
-      "ca" => "Canada",
-      "mx" => "Mexico",
-      "au" => "Australia",
-      "de" => "Germany",
-      "fr" => "France",
-      "it" => "Italy",
-      "es" => "Spain",
-      "br" => "Brazil",
-      "in" => "India"
-    }[c] || code.to_s.upcase
+    COUNTRY_CODE_TO_NAME[c] || code.to_s.upcase
+  end
+
+  def self.iso_country_code(country)
+    c = country.to_s.strip
+    return nil if c.blank?
+    return c.upcase if c.match?(/\A[A-Za-z]{2}\z/)
+
+    COUNTRY_NAME_TO_CODE[c.downcase] || c
   end
 
   def self.google_geocode(address:, city:, state:, zip_code:, country:)

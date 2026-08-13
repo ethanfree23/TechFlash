@@ -8,7 +8,7 @@ import {
   filterJobsWithinRadius,
   formatDistanceMi,
   haversineMiles,
-  needsTechnicianMapSetup,
+  needsExactStreetAddress,
   zoomForMapWidthMiles,
 } from '../utils/technicianMap';
 import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen, FaBuilding } from 'react-icons/fa';
@@ -1210,7 +1210,7 @@ const TechnicianDashboardContent = ({
   }, [user?.role]);
 
   const nearbyPreviewDistance = mapDisplayJobs.find((job) => job.id === nearbyJobPreviewId)?.distanceMiles;
-  const needsExactAddressPrompt = needsTechnicianMapSetup(technicianProfile);
+  const needsExactAddressPrompt = needsExactStreetAddress(technicianProfile);
 
   const openNearbyJobPreview = (jobId) => {
     setSelectedMapJobId(jobId);

@@ -2,6 +2,7 @@ import assert from 'assert';
 import {
   haversineMiles,
   filterJobsWithinRadius,
+  needsExactStreetAddress,
   needsTechnicianMapSetup,
   zoomForMapWidthMiles,
 } from '../src/utils/technicianMap.js';
@@ -54,7 +55,49 @@ function testNeedsTechnicianMapSetup() {
       latitude: 29.7604,
       longitude: -95.3698,
     }),
+    false
+  );
+
+  assert.strictEqual(
+    needsTechnicianMapSetup({
+      address: '',
+      city: '',
+      state: 'Texas',
+      country: 'United States',
+    }),
     true
+  );
+}
+
+function testNeedsExactStreetAddress() {
+  assert.strictEqual(
+    needsExactStreetAddress({
+      address: '',
+      city: 'Houston',
+      state: 'Texas',
+      country: 'United States',
+    }),
+    true
+  );
+
+  assert.strictEqual(
+    needsExactStreetAddress({
+      address: '100 Main St',
+      city: 'Houston',
+      state: 'Texas',
+      country: 'United States',
+    }),
+    false
+  );
+
+  assert.strictEqual(
+    needsExactStreetAddress({
+      address: '',
+      city: '',
+      state: 'Texas',
+      country: 'United States',
+    }),
+    false
   );
 }
 
@@ -76,6 +119,7 @@ function run() {
   testFilterJobsWithinRadius();
   testFilterWithoutCoordinatesFallsBack();
   testNeedsTechnicianMapSetup();
+  testNeedsExactStreetAddress();
   testZoomForFortyFiveMileDiameter();
   console.log('technician map tests passed');
 }

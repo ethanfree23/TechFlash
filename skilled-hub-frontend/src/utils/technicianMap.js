@@ -88,8 +88,12 @@ export const formatDistanceMi = (miles) => {
 };
 
 export const needsTechnicianMapSetup = (profile) => (
-  !String(profile?.address || '').trim() ||
   !String(profile?.city || '').trim() ||
   !String(profile?.state || '').trim() ||
   !String(profile?.country || '').trim()
+);
+
+export const needsExactStreetAddress = (profile) => (
+  !needsTechnicianMapSetup(profile) &&
+  !String(profile?.address || '').trim()
 );

@@ -262,10 +262,6 @@ const RegisterForm = ({
       return false;
     }
     if (registerData.role === 'technician') {
-      if (!registerData.address.trim()) {
-        setError('Street address is required.');
-        return false;
-      }
       if (!registerData.city.trim() || !registerData.state.trim() || !registerData.zip_code.trim()) {
         setError('City, state, and ZIP are required.');
         return false;
