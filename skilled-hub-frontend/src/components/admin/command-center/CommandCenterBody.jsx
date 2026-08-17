@@ -16,6 +16,7 @@ import {
 import DataTable from './DataTable';
 import StatusBadge from './StatusBadge';
 import SupplyDemandPanel from './SupplyDemandPanel';
+import { technicianClassLabel } from '../../../constants/technicianClass';
 
 const PIE_COLORS = ['#1e293b', '#0d9488', '#ea580c', '#64748b', '#475569', '#334155'];
 
@@ -170,7 +171,12 @@ export default function CommandCenterBody({ model, section = 'all' }) {
                 ),
               },
               { key: 'company_name', label: 'Company' },
-              { key: 'skill_class', label: 'Trade' },
+              { key: 'trade_type', label: 'Trade' },
+              {
+                key: 'skill_class',
+                label: 'Class',
+                render: (r) => technicianClassLabel(r.skill_class) || '—',
+              },
               { key: 'locationLabel', label: 'Location' },
               {
                 key: 'created_at',

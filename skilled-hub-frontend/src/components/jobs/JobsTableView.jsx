@@ -9,6 +9,7 @@ import {
   formatJobStart,
   getClaimedTechnicianName,
 } from '../../utils/jobDisplayUtils';
+import { technicianClassLabel } from '../../constants/technicianClass';
 
 const ROW_BG = {
   open: 'hover:bg-blue-50/40',
@@ -41,7 +42,7 @@ export default function JobsTableView({
               {role === 'admin' && (
                 <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Company</th>
               )}
-              <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Trade</th>
+              <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Class</th>
               <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Location</th>
               <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Start</th>
               <th className="px-3 py-3 text-left text-[10px] font-bold uppercase tracking-wider text-slate-500">Pay</th>
@@ -78,7 +79,7 @@ export default function JobsTableView({
                       )}
                     </td>
                   )}
-                  <td className="px-3 py-3 text-slate-600 whitespace-nowrap text-xs">{job.skill_class || '—'}</td>
+                  <td className="px-3 py-3 text-slate-600 whitespace-nowrap text-xs">{technicianClassLabel(job.skill_class) || '—'}</td>
                   <td className="px-3 py-3 text-slate-600 max-w-[10rem] truncate text-xs">{formatJobLocation(job) || '—'}</td>
                   <td className="px-3 py-3 text-slate-600 whitespace-nowrap text-xs">{formatJobStart(job) || '—'}</td>
                   <td className="px-3 py-3 text-slate-900 font-semibold whitespace-nowrap text-xs">{formatJobPay(job) || '—'}</td>

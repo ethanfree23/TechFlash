@@ -18,6 +18,7 @@ import { fetchAdminCommandCenterInsights } from '../services/fetchAdminCommandCe
 import DemoWalkthrough from '../components/demo/DemoWalkthrough';
 import StartDemoButton from '../components/demo/StartDemoButton';
 import { isDemoMode } from '../utils/demoMode';
+import { technicianClassLabel } from '../constants/technicianClass';
 import { normalizeJobsListResponse } from '../utils/jobsApiResponse';
 import JobStatusBadge from '../components/jobs/JobStatusBadge';
 const statusLabel = (job) => {
@@ -155,12 +156,7 @@ const Dashboard = ({ user, onLogout }) => {
         profilesAPI.getTechnicianProfile().catch(() => null),
       ]);
       const { jobs: openList } = normalizeJobsListResponse(openJobsRes);
-      const now = Date.now();
-      const liveOpenJobs = openList.filter((job) => {
-        const endAt = job?.scheduled_end_at ? new Date(job.scheduled_end_at).getTime() : null;
-        return endAt == null || endAt >= now;
-      });
-      setOpenJobs(liveOpenJobs);
+      setOpenJobs(openList);
       setTechnicianProfile(technicianProfileRes);
     } finally {
       setProfileLoading(false);
@@ -208,12 +204,7 @@ const Dashboard = ({ user, onLogout }) => {
       try {
         const openJobsRes = await jobsAPI.getAll({ status: 'open', page: 1, per_page: 40 }).catch(() => ({ jobs: [] }));
         const { jobs: openList } = normalizeJobsListResponse(openJobsRes);
-        const now = Date.now();
-        const liveOpenJobs = openList.filter((job) => {
-          const endAt = job?.scheduled_end_at ? new Date(job.scheduled_end_at).getTime() : null;
-          return endAt == null || endAt >= now;
-        });
-        setOpenJobs(liveOpenJobs);
+        setOpenJobs(openList);
       } catch {
         /* ignore background refresh errors */
       }
@@ -467,7 +458,7 @@ const TechnicianNearbyJobPreviewModal = ({
               )}
               {job.skill_class && (
                 <p>
-                  <span className="font-medium text-gray-800">Trade:</span> {job.skill_class}
+                  <span className="font-medium text-gray-800">Class:</span> {technicianClassLabel(job.skill_class)}
                 </p>
               )}
               {(rateLabel || job.hours_per_day != null || job.days != null) && (
@@ -961,26 +952,15 @@ const CompanyDashboardContent = ({
   navigate,
   showWelcome = false,
 }) => {
-  const now = Date.now();
   const counts = jobs?.counts;
   const requested = sortByMostRecent(jobs?.requested || []);
-  const unrequested = jobs?.unrequested || [];
-  const openJobs = sortByMostRecent(unrequested.filter(j => {
-    const endAt = j.scheduled_end_at ? new Date(j.scheduled_end_at).getTime() : null;
-    return endAt === null || endAt >= now;
-  }));
-  const expiredOpen = sortByMostRecent(unrequested.filter(j => {
-    const endAt = j.scheduled_end_at ? new Date(j.scheduled_end_at).getTime() : null;
-    return endAt !== null && endAt < now;
-  }));
-  const completed = sortByMostRecent(jobs?.expired || []);
+  const openJobs = sortByMostRecent(jobs?.unrequested || []);
+  const expiredOpen = sortByMostRecent(jobs?.expired_listings || []);
+  const completed = sortByMostRecent(jobs?.completed || jobs?.expired || []);
   const tableJobs = [...requested, ...openJobs, ...expiredOpen, ...completed].slice(0, 25);
   const totalJobs = counts?.total ?? tableJobs.length;
   const openCount = counts?.unrequested ?? openJobs.length;
-  const activeCount = analytics?.jobs_active ?? requested.filter((j) => {
-    const startAt = j.scheduled_start_at ? new Date(j.scheduled_start_at).getTime() : null;
-    return startAt !== null && startAt <= now;
-  }).length;
+  const activeCount = analytics?.jobs_active ?? requested.filter((j) => j.effective_status === 'active').length;
   const completedCount = counts?.completed ?? completed.length;
   const statsLoading = jobsLoading && !counts && !jobs?.requested;
 

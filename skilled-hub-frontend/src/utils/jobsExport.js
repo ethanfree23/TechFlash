@@ -1,4 +1,5 @@
 import { formatJobPay, formatJobLocation, getClaimedTechnicianName } from './jobDisplayUtils';
+import { technicianClassLabel } from '../constants/technicianClass';
 import { getJobDisplayStatus } from './jobStatus';
 
 const escapeCsv = (value) => {
@@ -18,6 +19,7 @@ export const exportJobsToCsv = (jobs, filename = 'techflash-jobs-export.csv') =>
     'Title',
     'Company',
     'Trade',
+    'Class',
     'Location',
     'Start Date',
     'Pay',
@@ -34,7 +36,8 @@ export const exportJobsToCsv = (jobs, filename = 'techflash-jobs-export.csv') =>
         job.id,
         job.title,
         job.company_profile?.company_name || '',
-        job.skill_class || '',
+        job.trade_type || '',
+        technicianClassLabel(job.skill_class) || '',
         formatJobLocation(job) || '',
         job.scheduled_start_at ? new Date(job.scheduled_start_at).toISOString() : '',
         formatJobPay(job) || '',

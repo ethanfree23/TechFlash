@@ -2,7 +2,7 @@
 <p>
   A new job matches your alert preferences:
   <strong><%= @job.title %></strong>
-  <% if @job.skill_class.present? %> · <%= @job.skill_class %><% end %>
+  <% if @job.skill_class.present? %> · <%= TechnicianClassCatalog.label_for(@job.skill_class) %><% end %>
 </p>
 <% if @job_alert_hourly_rate.present? || @job_alert_estimated_total.present? %>
   <p>

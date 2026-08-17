@@ -19,7 +19,8 @@ module Api
           city: "Houston",
           state: "Texas",
           zip_code: "77007",
-          country: "United States"
+          country: "United States",
+          skill_class: "Journeyman"
         }.merge(overrides)
       end
 
@@ -97,6 +98,7 @@ module Api
                email: "tech-with-location@example.com",
                role: "technician",
                trade_type: "Electrician",
+               skill_class: "Journeyman",
                phone: "713-444-9988",
                address: "500 Market St",
                city: "Houston",
@@ -114,6 +116,62 @@ module Api
         assert_equal "Houston", profile.city
         assert_equal "Texas", profile.state
         assert_equal "77002", profile.zip_code
+        assert_equal "journeyman", profile.skill_class
+      end
+
+      test "signup rejects duplicate email" do
+        User.create!(
+          email: "dup-tech@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician,
+          first_name: "Existing",
+          last_name: "Tech"
+        )
+
+        post "/api/v1/users",
+             params: base_signup_params(
+               email: "dup-tech@example.com",
+               role: "technician",
+               trade_type: "Electrician",
+               skill_class: "Journeyman"
+             ),
+             as: :json
+
+        assert_response :unprocessable_entity
+        body = JSON.parse(response.body)
+        messages = [body["error"], body["errors"]].flatten.compact.join(" ")
+        assert_match(/already been taken/i, messages)
+      end
+
+      test "technician signup requires skill_class" do
+        post "/api/v1/users",
+             params: base_signup_params(
+               email: "tech-missing-class@example.com",
+               role: "technician",
+               trade_type: "Electrician",
+               skill_class: ""
+             ),
+             as: :json
+
+        assert_response :unprocessable_entity
+        body = JSON.parse(response.body)
+        assert_match(/skill_class is required/i, body["error"].to_s)
+      end
+
+      test "technician signup rejects non-catalog skill_class" do
+        post "/api/v1/users",
+             params: base_signup_params(
+               email: "tech-invalid-class@example.com",
+               role: "technician",
+               trade_type: "Electrician",
+               skill_class: "HVAC"
+             ),
+             as: :json
+
+        assert_response :unprocessable_entity
+        body = JSON.parse(response.body)
+        assert_match(/apprentice, journeyman, or master/i, body["error"].to_s)
       end
 
       test "company signup stores phone and normalized location fields in profile" do

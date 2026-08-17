@@ -29,7 +29,7 @@ function pickJobFields(job: unknown): { title: string; subtitle: string } {
   if (!job || typeof job !== 'object') return { title: 'Job', subtitle: '' };
   const j = job as Record<string, unknown>;
   const title = typeof j.title === 'string' ? j.title : 'Job';
-  const status = typeof j.status === 'string' ? j.status : '';
+  const status = typeof j.effective_status === 'string' ? j.effective_status : typeof j.status === 'string' ? j.status : '';
   const id = typeof j.id === 'number' ? j.id : '';
   const subtitle = [status && `Status: ${status}`, id && `#${id}`].filter(Boolean).join(' · ');
   return { title, subtitle };

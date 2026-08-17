@@ -117,6 +117,7 @@ module Api
         address = params[:address].to_s.strip
         country = params[:country].to_s.strip.presence || "United States"
         trade_type = params[:trade_type].to_s.strip
+        skill_class = params[:skill_class].to_s.strip
 
         if blocked_signup_email?(email) || params[:honeypot].to_s.present?
           block_marketing_email!(email)
@@ -147,6 +148,14 @@ module Api
             return render json: { error: "trade_type must be selected from the role list" }, status: :unprocessable_entity
           end
           trade_type = normalized_trade
+          if skill_class.blank?
+            return render json: { error: "skill_class is required for technician signup" }, status: :unprocessable_entity
+          end
+          normalized_class = TechnicianClassCatalog.normalized_label(skill_class)
+          unless normalized_class.present?
+            return render json: { error: "skill_class must be Apprentice, Journeyman, or Master" }, status: :unprocessable_entity
+          end
+          skill_class = normalized_class
         end
 
         if permitted_role == 'company'
@@ -215,9 +224,10 @@ module Api
               else
                 []
               end
-            TechnicianProfile.create!(
+            profile = TechnicianProfile.new(
               user: user,
               trade_type: trade_type,
+              skill_class: skill_class,
               experience_years: 0,
               availability: 'Full-time',
               phone: phone,
@@ -229,11 +239,19 @@ module Api
               membership_level: assigned_level,
               specialties: specialties
             )
+            unless profile.save
+              user.destroy
+              return render json: { errors: profile.errors.full_messages }, status: :unprocessable_entity
+            end
           end
           MailDelivery.safe_deliver { UserMailer.welcome_email(user).deliver_now }
           if user.technician?
-            pref = JobAlertDispatcher.default_preference_for(user)
-            pref.update!(trade_label: trade_type)
+            begin
+              pref = JobAlertDispatcher.default_preference_for(user)
+              pref.update!(trade_label: trade_type)
+            rescue StandardError => e
+              Rails.logger.warn("[signup] job alert preference failed: #{e.message}")
+            end
           end
           token = JWT.encode({ user_id: user.id }, Rails.application.secret_key_base, "HS256")
           origin = ENV.fetch("FRONTEND_URL", "http://localhost:5173").chomp("/")

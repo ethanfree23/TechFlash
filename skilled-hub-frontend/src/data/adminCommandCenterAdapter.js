@@ -146,12 +146,12 @@ export function buildAdminCommandCenterModel(input) {
   const companyGeo = (r) => ({ city: r.location, state: r.state, location: r.location });
 
   const filterJobRow = (row) =>
-    rowMatchesMarket(geoRow(row), market) && rowMatchesTrade(row.skill_class, null, trade);
+    rowMatchesMarket(geoRow(row), market) && rowMatchesTrade(null, row.trade_type, trade);
   const filterTechRow = (row) =>
-    rowMatchesMarket(geoRow(row), market) && rowMatchesTrade(row.trade_type, row.trade_type, trade);
+    rowMatchesMarket(geoRow(row), market) && rowMatchesTrade(null, row.trade_type, trade);
   const filterCoRow = (row) => rowMatchesMarket(companyGeo(row), market);
   const filterAppRow = (ap) =>
-    rowMatchesMarket(geoRow(ap), market) && rowMatchesTrade(ap.skill_class, null, trade);
+    rowMatchesMarket(geoRow(ap), market) && rowMatchesTrade(null, ap.trade_type, trade);
 
   openJobs = openJobs.filter(filterJobRow);
   progressJobs = progressJobs.filter(filterJobRow);
@@ -504,9 +504,9 @@ function buildTradeRows({ technicians, openJobs, applications, completedJobs }) 
     const techsForTrade = technicians.filter((r) => rowMatchesTrade(r.trade_type, r.trade_type, tid));
     const techsN = techsForTrade.length;
     const verifiedN = techsForTrade.filter((r) => r.background_verified).length;
-    const openN = openJobs.filter((r) => rowMatchesTrade(r.skill_class, null, tid)).length;
-    const appsN = applications.filter((r) => rowMatchesTrade(r.skill_class, null, tid)).length;
-    const completedForTrade = completedJobs.filter((r) => rowMatchesTrade(r.skill_class, null, tid));
+    const openN = openJobs.filter((r) => rowMatchesTrade(null, r.trade_type, tid)).length;
+    const appsN = applications.filter((r) => rowMatchesTrade(null, r.trade_type, tid)).length;
+    const completedForTrade = completedJobs.filter((r) => rowMatchesTrade(null, r.trade_type, tid));
     const filledN = completedForTrade.length;
     const releasedCents = sumBy(completedForTrade, 'money_released_cents');
     const denom = openN + filledN;
@@ -515,7 +515,7 @@ function buildTradeRows({ technicians, openJobs, applications, completedJobs }) 
     if (openN > techsN * 2 && openN >= 3) risk = 'Undersupplied';
     if (techsN > openN * 4 && techsN >= 5) risk = 'Oversupplied';
     if (techsN > 0 && fill < 15 && openN >= 2) risk = 'Needs attention';
-    const rates = [...openJobs, ...completedJobs].filter((j) => rowMatchesTrade(j.skill_class, null, tid) && j.hourly_rate_cents);
+    const rates = [...openJobs, ...completedJobs].filter((j) => rowMatchesTrade(null, j.trade_type, tid) && j.hourly_rate_cents);
     const avgRate =
       rates.length > 0 ? Math.round(rates.reduce((s, j) => s + (j.hourly_rate_cents || 0), 0) / rates.length) : null;
     return {
@@ -561,7 +561,7 @@ function buildAlerts({ staleOpen, feedbackList, nowMs, marketLabel, tradeLabel }
   const filterNote = [marketLabel, tradeLabel].filter(Boolean).join(' · ');
   const out = [];
   staleOpen.slice(0, 12).forEach((j) => {
-    const tradeHint = j.skill_class ? String(j.skill_class) : 'Trade TBD';
+    const tradeHint = j.trade_type ? String(j.trade_type) : 'Trade TBD';
     out.push({
       id: `stale-${j.id}`,
       severity: 'Warning',

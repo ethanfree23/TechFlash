@@ -65,4 +65,13 @@ class JobAlertDispatcherTest < ActiveSupport::TestCase
     assert mailer_called, "expected UserMailer.job_alert_email to be called"
     delivery_message.verify
   end
+
+  test "matches_trade uses job trade_type not skill_class" do
+    pref = Struct.new(:trade_label).new("Electrician")
+    job = Job.new(trade_type: "Electrician", skill_class: "HVAC")
+    assert JobAlertDispatcher.matches_trade?(pref: pref, job: job)
+
+    hvac_pref = Struct.new(:trade_label).new("HVAC")
+    refute JobAlertDispatcher.matches_trade?(pref: hvac_pref, job: job)
+  end
 end

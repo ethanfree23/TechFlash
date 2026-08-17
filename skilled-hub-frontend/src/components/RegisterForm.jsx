@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FaLock } from 'react-icons/fa';
 import { authAPI, licensingSettingsAPI, membershipTierConfigsAPI } from '../api/api';
@@ -10,6 +10,7 @@ import { SignupProgressStepper } from './signup/SignupProgressStepper';
 import { SignupTrustPanel } from './signup/SignupTrustPanel';
 import { SignupWizardShell } from './signup/SignupWizardShell';
 import { TechnicianInfoFields } from './signup/TechnicianInfoFields';
+import { technicianClassLabel } from '../constants/technicianClass';
 import { RoleSelector } from './signup/RoleSelector';
 import { requiresElectricalLicenseForState, setLocalOnlyLicenseStates } from '../utils/licensingRules';
 import { adaptMembershipTierList } from '../utils/membershipTierAdapter';
@@ -37,7 +38,11 @@ const RegisterForm = ({
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [errorCode, setErrorCode] = useState(null);
+  const [emailLocked, setEmailLocked] = useState(() => Boolean((initialEmail || '').trim()));
   const [step, setStep] = useState(1);
+  const submittingRef = useRef(false);
+  const errorBannerRef = useRef(null);
   const [billingInterval, setBillingInterval] = useState('monthly');
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [tierConfigRaw, setTierConfigRaw] = useState({ technician: [], company: [] });
@@ -61,6 +66,7 @@ const RegisterForm = ({
     business_zip_code: '',
     electrical_license_number: '',
     trade_type: '',
+    skill_class: '',
     company_name: '',
     industry: '',
     primary_hiring_need: '',
@@ -71,16 +77,21 @@ const RegisterForm = ({
     honeypot: '',
   });
 
-  const emailLocked = Boolean((initialEmail || '').trim());
-
   useEffect(() => {
+    const nextEmail = (initialEmail || '').trim();
     setRegisterData((prev) => ({
       ...prev,
-      email: (initialEmail || '').trim() || prev.email,
+      email: nextEmail || prev.email,
       role: initialRole,
       role_view: initialRoleView,
     }));
+    if (nextEmail) setEmailLocked(true);
   }, [initialEmail, initialRole, initialRoleView]);
+
+  useEffect(() => {
+    if (!error) return;
+    errorBannerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [error, step]);
 
   useEffect(() => {
     let active = true;
@@ -157,6 +168,7 @@ const RegisterForm = ({
   }, [selectedPlan, basicPlan]);
 
   const validateStepOne = () => {
+    setErrorCode(null);
     if (!registerData.email?.trim()) {
       setError('Email is required.');
       return false;
@@ -177,6 +189,7 @@ const RegisterForm = ({
   };
 
   const validateStepTwo = () => {
+    setErrorCode(null);
     if (!registerData.first_name.trim() || !registerData.last_name.trim()) {
       setError('First and last name are required.');
       return false;
@@ -196,6 +209,10 @@ const RegisterForm = ({
       }
       if (!registerData.trade_type.trim()) {
         setError('Select a primary trade.');
+        return false;
+      }
+      if (!registerData.skill_class.trim()) {
+        setError('Select a class (Apprentice, Journeyman, or Master).');
         return false;
       }
     } else {
@@ -235,6 +252,7 @@ const RegisterForm = ({
   };
 
   const validateStepThree = () => {
+    setErrorCode(null);
     if (tierLoadError || adaptedTiers.length === 0) {
       setError('Membership plans could not be loaded. Refresh and try again.');
       return false;
@@ -247,6 +265,7 @@ const RegisterForm = ({
   };
 
   const validateStepFour = () => {
+    setErrorCode(null);
     if (!termsAccepted) {
       setError('Please accept the Terms of Service and Privacy Policy.');
       return false;
@@ -276,9 +295,12 @@ const RegisterForm = ({
     }
 
     if (!validateStepFour()) return;
+    if (submittingRef.current) return;
 
+    submittingRef.current = true;
     setLoading(true);
     setError('');
+    setErrorCode(null);
     try {
       const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
       const payload = {
@@ -306,32 +328,70 @@ const RegisterForm = ({
         payload.state = registerData.business_state.trim();
         payload.zip_code = registerData.business_zip_code.trim();
         delete payload.trade_type;
+        delete payload.skill_class;
         delete payload.specialties;
       }
       const response = await authAPI.register(payload);
+      if (!response?.token || !response?.user) {
+        throw new Error('Account was created but sign-in failed. Please log in.');
+      }
       auth.setToken(response.token);
       auth.setUser(response.user);
-      trackCompleteRegistration({
-        userType: registerData.role === 'company' ? 'company' : 'technician',
-      });
+      onLoginSuccess(response.user);
+      try {
+        trackCompleteRegistration({
+          userType: registerData.role === 'company' ? 'company' : 'technician',
+        });
+      } catch {
+        /* analytics should not block signup */
+      }
       if (response.checkout?.url) {
         window.location.href = response.checkout.url;
         return;
       }
-      onLoginSuccess(response.user);
-      setTimeout(() => navigate('/dashboard'), 100);
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       console.error('Registration error:', err);
-      setError(err.message || 'Registration failed');
-    } finally {
+      const message = err.message || 'Registration failed';
+      const emailTaken = /already been taken/i.test(message);
+      submittingRef.current = false;
       setLoading(false);
+      if (emailTaken) {
+        setEmailLocked(false);
+        setStep(1);
+        setErrorCode('email_taken');
+        setError('This email already has an account. Log in, or use a different email to sign up.');
+      } else {
+        setErrorCode(null);
+        setError(message);
+      }
     }
   };
+
+  const renderErrorBanner = (attachRef = false) =>
+    error ? (
+      <div
+        ref={attachRef ? errorBannerRef : undefined}
+        className="mb-6 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800"
+        role="alert"
+      >
+        <p>{error}</p>
+        {errorCode === 'email_taken' && (
+          <Link
+            to={`/login?tab=login&email=${encodeURIComponent(registerData.email || '')}`}
+            className="mt-2 inline-block font-semibold text-[#3A7CA5] hover:underline"
+          >
+            Go to login
+          </Link>
+        )}
+      </div>
+    ) : null;
 
   const trustVariant = step === 1 ? 'email' : step === 2 ? 'profile' : step === 3 ? 'membership' : 'review';
 
   const goBack = () => {
     setError('');
+    setErrorCode(null);
     setStep((s) => Math.max(1, s - 1));
   };
 
@@ -345,9 +405,7 @@ const RegisterForm = ({
       <div className="mx-auto -mt-10 max-w-5xl px-4 pb-16 sm:px-6 lg:px-8">
       <SignupWizardShell>
         <form id="signup-wizard" onSubmit={handleSubmit} className="text-left">
-          {error && (
-            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-800">{error}</div>
-          )}
+          {renderErrorBanner(step !== 4)}
 
           <div className="grid gap-10 lg:grid-cols-12 lg:gap-12">
             <div className="lg:col-span-4">
@@ -422,8 +480,6 @@ const RegisterForm = ({
                     role={registerData.role}
                     onChange={(role) => {
                       setRegisterData((p) => ({ ...p, role, role_view: role }));
-                      setPaymentToken(null);
-                      setPaymentSummary(null);
                     }}
                   />
                   {registerData.role === 'technician' ? (
@@ -488,8 +544,6 @@ const RegisterForm = ({
                         billingInterval={billingInterval}
                         onSelect={() => {
                           setRegisterData((p) => ({ ...p, membership_tier: plan.id }));
-                          setPaymentToken(null);
-                          setPaymentSummary(null);
                         }}
                       />
                     ))}
@@ -573,6 +627,10 @@ const RegisterForm = ({
                           <div>
                             <dt className="text-xs font-semibold uppercase text-gray-500">Primary trade</dt>
                             <dd>{registerData.trade_type}</dd>
+                          </div>
+                          <div>
+                            <dt className="text-xs font-semibold uppercase text-gray-500">Class</dt>
+                            <dd>{technicianClassLabel(registerData.skill_class)}</dd>
                           </div>
                           <div className="sm:col-span-2">
                             <dt className="text-xs font-semibold uppercase text-gray-500">Specialties</dt>
@@ -694,6 +752,7 @@ const RegisterForm = ({
             </div>
           </div>
 
+          {step === 4 && renderErrorBanner(true)}
           <SignupFormActions
             form="signup-wizard"
             showBack={step > 1}

@@ -114,7 +114,7 @@ export default function JobsScreen() {
                 <Text style={styles.sub}>{formatJobAddress(item)}</Text>
                 <View style={styles.statusRow}>
                   <Text style={styles.statusLabel}>Status</Text>
-                  <Text style={styles.statusValue}>{String(item.status || 'unknown')}</Text>
+                  <Text style={styles.statusValue}>{String(item.effective_status || item.status || 'unknown')}</Text>
                 </View>
               </Card>
             </Pressable>

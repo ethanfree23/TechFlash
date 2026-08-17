@@ -22,7 +22,7 @@ export default function JobsCommandHeader({
   saveSearchBusy,
   savedSearchCount,
 }) {
-  const kpis = config.showKpis ? buildKpiCards(role, analytics, []) : [];
+  const kpis = config.showKpis ? buildKpiCards(role, analytics) : [];
   const roleBadge = ROLE_LABELS[role];
 
   return (

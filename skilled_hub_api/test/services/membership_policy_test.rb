@@ -309,4 +309,40 @@ class MembershipPolicyTest < ActiveSupport::TestCase
 
     assert_not MembershipPolicy.job_visible_to_technician?(job: job, technician_profile: tech_profile)
   end
+
+  test "skill_class is not used as a trade fallback" do
+    company_owner = User.create!(email: "company-class-not-trade@example.com", password: "password123", password_confirmation: "password123", role: :company)
+    company_profile = CompanyProfile.create!(user: company_owner, membership_level: "basic")
+    company_owner.update_column(:company_profile_id, company_profile.id)
+
+    job = Job.create!(
+      company_profile: company_profile,
+      title: "Electrical job with legacy class",
+      description: "desc",
+      status: :open,
+      trade_type: "Electrician",
+      skill_class: "HVAC",
+      go_live_at: 3.days.ago
+    )
+
+    hvac_user = User.create!(email: "hvac-class-fallback@example.com", password: "password123", password_confirmation: "password123", role: :technician)
+    hvac_profile = TechnicianProfile.create!(
+      user: hvac_user,
+      trade_type: "HVAC Technician",
+      availability: "Full-time",
+      membership_level: "basic"
+    )
+    electrician_user = User.create!(email: "elec-class-fallback@example.com", password: "password123", password_confirmation: "password123", role: :technician)
+    electrician_profile = TechnicianProfile.create!(
+      user: electrician_user,
+      trade_type: "Electrician",
+      availability: "Full-time",
+      membership_level: "basic"
+    )
+
+    assert_not MembershipPolicy.technician_trade_match?(job: job, technician_profile: hvac_profile)
+    assert MembershipPolicy.technician_trade_match?(job: job, technician_profile: electrician_profile)
+    assert_not MembershipPolicy.job_visible_to_technician?(job: job, technician_profile: hvac_profile)
+    assert MembershipPolicy.job_visible_to_technician?(job: job, technician_profile: electrician_profile)
+  end
 end

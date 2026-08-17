@@ -14,14 +14,9 @@ class CompanyMetrics
     return default_hash unless @company_profile
 
     jobs = @company_profile.jobs
+    counts = Jobs::StatusCounts.for(jobs)
 
-    completed_jobs = jobs.where(status: :finished)
-    open_jobs = jobs.where(status: :open).where("scheduled_end_at IS NULL OR scheduled_end_at >= ?", Time.current)
-    expired_open = jobs.where(status: :open).where("scheduled_end_at IS NOT NULL AND scheduled_end_at < ?", Time.current)
-    active_jobs = jobs.where(status: %i[reserved filled])
-      .where("scheduled_start_at IS NOT NULL AND scheduled_start_at <= ?", Time.current)
-    claimed_jobs = jobs.where(status: %i[reserved filled])
-      .where("scheduled_start_at IS NULL OR scheduled_start_at > ?", Time.current)
+    completed_jobs = jobs.merge(Job.effectively_completed)
 
     total_spent_cents = completed_jobs.to_a.sum(&:company_charge_cents)
 
@@ -38,14 +33,15 @@ class CompanyMetrics
 
     {
       total_spent_cents: total_spent_cents,
-      jobs_posted: jobs.count,
-      jobs_completed: completed_jobs.count,
-      jobs_open: open_jobs.count,
-      jobs_expired: expired_open.count,
-      jobs_active: active_jobs.count,
-      jobs_claimed: claimed_jobs.count,
+      jobs_posted: counts[:total],
+      jobs_completed: counts[:completed],
+      jobs_open: counts[:open],
+      jobs_expired: counts[:expired],
+      jobs_active: counts[:active],
+      jobs_claimed: counts[:claimed_unstarted],
+      jobs_counter_pending: counts[:counter_pending],
       unique_technicians_hired: unique_technicians,
-      total_jobs: jobs.count,
+      total_jobs: counts[:total],
       jobs_created_by_day: jobs_created_by_day
     }
   end
@@ -59,6 +55,7 @@ class CompanyMetrics
       jobs_expired: 0,
       jobs_active: 0,
       jobs_claimed: 0,
+      jobs_counter_pending: 0,
       unique_technicians_hired: 0,
       total_jobs: 0,
       jobs_created_by_day: DashboardTrends.counts_per_day_by_created_at(Job.none)

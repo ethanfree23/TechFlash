@@ -16,7 +16,7 @@ module Api
       def create
         job = Job.find(params[:job_id])
         return render json: { error: "Only technicians can create counter offers" }, status: :forbidden unless @current_user.technician?
-        return render json: { error: "Job is no longer available" }, status: :unprocessable_entity unless job.open?
+        return render json: { error: "Job is no longer available" }, status: :unprocessable_entity unless job.available_for_claim?
 
         technician_profile = @current_user.technician_profile
         return render json: { error: "Technician profile not found" }, status: :unprocessable_entity if technician_profile.blank?

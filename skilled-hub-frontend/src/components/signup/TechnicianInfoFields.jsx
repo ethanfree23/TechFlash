@@ -2,6 +2,7 @@ import React, { useCallback, useState } from 'react';
 import { FaEnvelope, FaMapMarkerAlt, FaPhone, FaTimes, FaUser, FaWrench } from 'react-icons/fa';
 import { US_STATES } from '../../data/statesByCountry';
 import { TRADE_OPTIONS } from '../../constants/trades';
+import { isTechnicianClass, technicianClassSelectOptions, technicianClassLabel } from '../../constants/technicianClass';
 
 const inputWrap =
   'mt-1 flex w-full items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm focus-within:border-[#3A7CA5] focus-within:ring-1 focus-within:ring-[#3A7CA5]';
@@ -155,7 +156,7 @@ export function TechnicianInfoFields({ registerData, setRegisterData, idPrefix, 
       <section>
         <h3 className="text-base font-bold text-tf-navy">Trade &amp; Specialty</h3>
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
-          <label className="block text-sm font-medium text-gray-700 sm:col-span-2">
+          <label className="block text-sm font-medium text-gray-700">
             Primary trade
             <div className={inputWrap}>
               <FaWrench className="h-4 w-4 text-gray-400" aria-hidden />
@@ -169,6 +170,24 @@ export function TechnicianInfoFields({ registerData, setRegisterData, idPrefix, 
                 {TRADE_OPTIONS.map((t) => (
                   <option key={t} value={t}>
                     {t}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            Class
+            <div className={inputWrap}>
+              <select
+                id={`${idPrefix}-class`}
+                value={registerData.skill_class || ''}
+                onChange={(e) => set({ skill_class: e.target.value })}
+                className="min-w-0 flex-1 cursor-pointer border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
+              >
+                <option value="">Select class</option>
+                {technicianClassSelectOptions(registerData.skill_class).map((value) => (
+                  <option key={value} value={value} disabled={!isTechnicianClass(value)}>
+                    {technicianClassLabel(value)}
                   </option>
                 ))}
               </select>

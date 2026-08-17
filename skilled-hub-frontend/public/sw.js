@@ -2,7 +2,7 @@
  * Minimal installable PWA shell. Bump CACHE_NAME when you need to force-refresh
  * cached HTML after a deploy (or rely on users getting fresh navigations online).
  */
-const CACHE_NAME = 'techflash-shell-v1';
+const CACHE_NAME = 'techflash-shell-v2';
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -26,14 +26,13 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request).catch(async () => {
-        const cache = await caches.open(CACHE_NAME);
-        return (await cache.match('/index.html')) || Response.error();
-      })
-    );
-    return;
-  }
-  event.respondWith(fetch(request));
+  // Only intercept page navigations. Wrapping API/asset fetches in respondWith(fetch())
+  // turns network blips into failed requests and can leave signup stuck on "Please wait…".
+  if (request.mode !== 'navigate') return;
+  event.respondWith(
+    fetch(request).catch(async () => {
+      const cache = await caches.open(CACHE_NAME);
+      return (await cache.match('/index.html')) || Response.error();
+    })
+  );
 });

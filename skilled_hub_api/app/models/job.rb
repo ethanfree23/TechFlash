@@ -1,5 +1,6 @@
 class Job < ApplicationRecord
   include ContentSafetyValidations
+  include JobEffectiveStatus
 
   has_secure_token :share_token
 
@@ -118,6 +119,7 @@ class Job < ApplicationRecord
   has_many :job_issue_reports, dependent: :destroy
   validate :validate_schedule_rules
   validate :validate_trade_type
+  validate :validate_skill_class
   validate :validate_rolling_start_rule
   validate :validate_weekend_policy_rules
   validate :validate_overtime_fields
@@ -137,7 +139,8 @@ class Job < ApplicationRecord
   private
 
   def normalize_job_display_fields
-    self.skill_class = skill_class.to_s.strip.presence
+    normalized_class = TechnicianClassCatalog.normalized_label(skill_class)
+    self.skill_class = normalized_class.presence || skill_class.to_s.strip.presence
     self.notes = notes.to_s.strip.presence
     if minimum_years_experience.to_s.strip.blank?
       self.minimum_years_experience = nil
@@ -221,6 +224,15 @@ class Job < ApplicationRecord
     return if TradeCatalog.valid_label?(trade_type)
 
     errors.add(:trade_type, "must be selected from the approved trade list.")
+  end
+
+  def validate_skill_class
+    return if skill_class.blank?
+    return if new_record?
+    return unless will_save_change_to_skill_class?
+    return if TechnicianClassCatalog.valid_label?(skill_class)
+
+    errors.add(:skill_class, "must be Apprentice, Journeyman, or Master.")
   end
 
   def validate_rolling_start_rule

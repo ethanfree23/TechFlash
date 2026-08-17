@@ -233,7 +233,7 @@ export default function useJobsDashboard() {
   }, []);
 
   const tradeOptions = useMemo(() => {
-    const fromJobs = [...new Set(jobs.map((j) => j.trade_type || j.skill_class).filter(Boolean))];
+    const fromJobs = [...new Set(jobs.map((j) => j.trade_type).filter(Boolean))];
     return fromJobs.sort((a, b) => a.localeCompare(b));
   }, [jobs]);
 
@@ -270,6 +270,9 @@ export default function useJobsDashboard() {
     serverFilters.keyword || serverFilters.location || serverFilters.status
   );
   const hasClientFiltersActive = hasActiveClientFilters(clientFilters);
+  const resultCount = hasClientFiltersActive
+    ? sortedJobs.length
+    : (jobsMeta?.total ?? sortedJobs.length);
   const hasAnyFilters = hasServerFilters || hasClientFiltersActive;
 
   const emptyVariant = useMemo(() => {
@@ -359,6 +362,8 @@ export default function useJobsDashboard() {
     setCurrentPage,
     currentJobs,
     sortedJobs,
+    resultCount,
+    jobsMeta,
     totalPages,
     indexOfFirstJob,
     indexOfLastJob,

@@ -33,11 +33,9 @@ module Api
               .where(status: [:reserved, :filled])
             case params[:status].to_s
             when 'active'
-              # Active = in progress (started)
-              jobs = base_claimed.where('scheduled_start_at IS NOT NULL AND scheduled_start_at <= ?', Time.current)
+              jobs = base_claimed.merge(Job.effectively_active)
             when 'reserved'
-              # Reserved/Claimed = claimed but not yet started
-              jobs = base_claimed.where('scheduled_start_at IS NULL OR scheduled_start_at > ?', Time.current)
+              jobs = base_claimed.merge(Job.effectively_claimed)
             else
               jobs = base_claimed
             end
@@ -45,17 +43,15 @@ module Api
             # Completed: jobs they've done (finished)
             jobs = Job.joins(:job_applications)
               .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })
-              .where(status: [:finished])
+              .merge(Job.effectively_completed)
           else
-            # Browse: when "All" show all jobs (open, claimed, active, completed); otherwise open/available only
+            # Browse: when "All" show available + the tech's own claimed/completed work.
             jobs = jobs.where.not(status: :pending_funding)
             if params[:status].present?
               jobs = jobs.where.not(status: [:filled, :finished])
-              unless params[:include_past] == 'true'
-                # Open jobs should remain visible through their end time,
-                # even after their start time has passed.
-                jobs = jobs.where('scheduled_end_at IS NULL OR scheduled_end_at >= ?', Time.current)
-              end
+            end
+            unless params[:include_past] == 'true'
+              jobs = jobs.where.not(id: Job.expired_listings.select(:id))
             end
             # Technicians must never see jobs claimed by other technicians
             if technician_profile
@@ -95,19 +91,17 @@ module Api
         if params[:status].present? && !(@current_user&.technician? && %w[active reserved completed].include?(params[:status].to_s))
           case params[:status].to_s
           when 'active'
-            # Active = claimed and in progress (started)
-            jobs = jobs.where(status: [:reserved, :filled])
-              .where('scheduled_start_at IS NOT NULL AND scheduled_start_at <= ?', Time.current)
+            jobs = jobs.merge(Job.effectively_active)
           when 'reserved'
-            # Reserved/Claimed = claimed but not yet started
-            jobs = jobs.where(status: [:reserved, :filled])
-              .where('scheduled_start_at IS NULL OR scheduled_start_at > ?', Time.current)
+            jobs = jobs.merge(Job.effectively_claimed)
+          when 'in_progress'
+            jobs = jobs.merge(Job.in_progress)
           when 'completed'
-            jobs = jobs.where(status: [:finished])
+            jobs = jobs.merge(Job.effectively_completed)
           when 'expired'
-            # Expired = open jobs past their scheduled end date (never claimed)
-            jobs = jobs.where(status: :open)
-              .where('scheduled_end_at IS NOT NULL AND scheduled_end_at <= ?', Time.current)
+            jobs = jobs.merge(Job.expired_listings)
+          when 'open'
+            jobs = jobs.merge(Job.effectively_open)
           else
             jobs = jobs.where(status: params[:status])
           end
@@ -134,6 +128,7 @@ module Api
           jobs = company_profile ? company_profile.jobs : Job.none
         elsif @current_user&.technician?
           jobs = jobs.where.not(status: [:filled, :finished, :pending_funding])
+            .where.not(id: Job.expired_listings.select(:id))
         end
         locs = jobs.where.not(location: [nil, '']).distinct.pluck(:location).sort
         render json: { locations: locs }, status: :ok
@@ -194,6 +189,10 @@ module Api
         if trade_validation_error.present?
           return render json: { error: trade_validation_error }, status: :unprocessable_entity
         end
+        skill_class_error = assign_and_validate_skill_class!(job, required: true)
+        if skill_class_error.present?
+          return render json: { error: skill_class_error }, status: :unprocessable_entity
+        end
         set_go_live_at_for_post!(job) unless needs_funding
         unless job.save
           return render json: { errors: job.errors.full_messages }, status: :unprocessable_entity
@@ -219,7 +218,7 @@ module Api
         end
 
         CrmProspectPromotion.promote_after_job_created!(job.company_profile_id)
-        JobAlertDispatcher.dispatch_for_job(job) if job.open?
+        JobAlertDispatcher.dispatch_for_job(job) if job.effectively_open?
         Rails.logger.info("[mail] job_posted_email job_id=#{job.id}")
         MailDelivery.safe_deliver { UserMailer.job_posted_email(job).deliver_now }
         render json: job, serializer: JobSerializer, status: :created
@@ -248,6 +247,10 @@ module Api
         if trade_validation_error.present?
           return render json: { error: trade_validation_error }, status: :unprocessable_entity
         end
+        skill_class_error = assign_and_validate_skill_class!(job, required: params.key?(:skill_class))
+        if skill_class_error.present?
+          return render json: { error: skill_class_error }, status: :unprocessable_entity
+        end
         if blocking_open_while_claimed?(job)
           return render json: {
             error: 'Cannot set job to open while a technician claim is accepted. Use Deny Technician first, or ask an admin.'
@@ -266,7 +269,7 @@ module Api
         set_go_live_at_for_post!(job)
         if job.save
           Jobs::TermChangeAuditLogger.log!(job: job, actor_user: @current_user, reason: params[:change_reason])
-          JobAlertDispatcher.dispatch_for_job(job) if job.open?
+          JobAlertDispatcher.dispatch_for_job(job) if job.effectively_open?
           render json: job, serializer: JobSerializer, status: :ok
         else
           render json: { errors: job.errors.full_messages }, status: :unprocessable_entity
@@ -304,24 +307,30 @@ module Api
         recency = Arel.sql("COALESCE(jobs.finished_at, jobs.updated_at, jobs.created_at) DESC")
         base = company_profile.jobs
 
-        claimed_scope = base.where(status: %i[reserved filled])
-        unclaimed_scope = base.where(status: :open)
-        completed_scope = base.where(status: :finished)
+        claimed_scope = base.merge(Job.in_progress)
+        unclaimed_scope = base.merge(Job.effectively_open)
+        expired_listings_scope = base.merge(Job.expired_listings)
+        completed_scope = base.merge(Job.effectively_completed)
 
         claimed = claimed_scope.includes(:job_applications).order(recency).limit(limit)
         unclaimed = unclaimed_scope.includes(:job_applications).order(recency).limit(limit)
+        expired_listings = expired_listings_scope.includes(:job_applications).order(recency).limit(limit)
         completed = completed_scope.includes(:job_applications).order(recency).limit(limit)
 
+        completed_payload = ActiveModel::Serializer::CollectionSerializer.new(completed, serializer: JobSerializer)
         render json: {
           counts: {
             requested: claimed_scope.count,
             unrequested: unclaimed_scope.count,
             completed: completed_scope.count,
+            expired_listings: expired_listings_scope.count,
             total: base.count
           },
           requested: ActiveModel::Serializer::CollectionSerializer.new(claimed, serializer: JobSerializer),
           unrequested: ActiveModel::Serializer::CollectionSerializer.new(unclaimed, serializer: JobSerializer),
-          expired: ActiveModel::Serializer::CollectionSerializer.new(completed, serializer: JobSerializer)
+          expired_listings: ActiveModel::Serializer::CollectionSerializer.new(expired_listings, serializer: JobSerializer),
+          completed: completed_payload,
+          expired: completed_payload
         }, status: :ok
       end
 
@@ -427,6 +436,7 @@ module Api
             title: j.title,
             location: j.location,
             status: j.status,
+            effective_status: j.effective_status,
             created_at: j.created_at,
             updated_at: j.updated_at,
             finished_at: j.finished_at,
@@ -475,7 +485,7 @@ module Api
         if result[:error]
           return render json: result, status: :unprocessable_entity
         end
-        if job.reload.open?
+        if job.reload.effectively_open?
           JobAlertDispatcher.dispatch_for_job(job)
           MailDelivery.safe_deliver { UserMailer.job_posted_email(job).deliver_now }
         end
@@ -671,12 +681,25 @@ module Api
         end
 
         if requested_trade.blank?
-          inferred = TradeCatalog.normalized_label(job.skill_class)
-          job.trade_type = inferred if inferred.present?
           return nil
         end
 
         job.trade_type = requested_trade
+        nil
+      end
+
+      def assign_and_validate_skill_class!(job, required:)
+        return nil unless required || job.will_save_change_to_skill_class?
+
+        raw = job.skill_class
+        normalized = TechnicianClassCatalog.normalized_label(raw)
+        if required && raw.to_s.strip.blank?
+          return "Select a class (Apprentice, Journeyman, or Master)."
+        end
+        if raw.to_s.strip.present? && normalized.blank?
+          return "Class must be Apprentice, Journeyman, or Master."
+        end
+        job.skill_class = normalized if normalized.present?
         nil
       end
     end

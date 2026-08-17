@@ -4,6 +4,7 @@ class TechnicianProfile < ApplicationRecord
   before_save :sync_location_from_address
   before_save :geocode_address
   before_validation :normalize_membership_level
+  before_validation :normalize_skill_class
 
   belongs_to :user
   has_many :job_applications, dependent: :destroy
@@ -17,6 +18,7 @@ class TechnicianProfile < ApplicationRecord
   has_many :companies_that_favorited, through: :favorite_technician_entries, source: :company_profile
 
   validate :membership_level_must_be_configured
+  validate :skill_class_must_be_catalog_value
   validates :phone, presence: true, on: :update
 
   def average_rating
@@ -68,5 +70,17 @@ class TechnicianProfile < ApplicationRecord
     unless MembershipPolicy.level_valid?(membership_level, audience: :technician)
       errors.add(:membership_level, "is not a valid tier")
     end
+  end
+
+  def normalize_skill_class
+    normalized = TechnicianClassCatalog.normalized_label(skill_class)
+    self.skill_class = normalized.presence || skill_class.to_s.strip.presence
+  end
+
+  def skill_class_must_be_catalog_value
+    return if skill_class.blank?
+    return if TechnicianClassCatalog.valid_label?(skill_class)
+
+    errors.add(:skill_class, "must be Apprentice, Journeyman, or Master.")
   end
 end

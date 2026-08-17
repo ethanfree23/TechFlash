@@ -162,6 +162,81 @@ module Api
         assert_equal ["Electrician", "HVAC Technician", "Plumber"], body["specialties"]
       end
 
+      test "technician settings stores canonical skill_class slug" do
+        user = User.create!(
+          email: "tech-class-update@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        profile = TechnicianProfile.create!(
+          user: user,
+          trade_type: "Electrician",
+          experience_years: 2,
+          availability: "Full-time",
+          phone: "713-555-0390",
+          city: "Austin"
+        )
+
+        patch "/api/v1/technicians/#{profile.id}",
+              params: { skill_class: "Journeyman" },
+              headers: auth_header_for(user),
+              as: :json
+
+        assert_response :ok
+        assert_equal "journeyman", profile.reload.skill_class
+        assert_equal "journeyman", JSON.parse(response.body)["skill_class"]
+      end
+
+      test "technician settings rejects arbitrary skill_class" do
+        user = User.create!(
+          email: "tech-class-reject@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        profile = TechnicianProfile.create!(
+          user: user,
+          trade_type: "Electrician",
+          experience_years: 2,
+          availability: "Full-time",
+          phone: "713-555-0391",
+          city: "Austin"
+        )
+
+        patch "/api/v1/technicians/#{profile.id}",
+              params: { skill_class: "HVAC" },
+              headers: auth_header_for(user),
+              as: :json
+
+        assert_response :unprocessable_entity
+        assert_nil profile.reload.skill_class
+      end
+
+      test "technician with null skill_class can still load profile" do
+        user = User.create!(
+          email: "tech-class-null@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        TechnicianProfile.create!(
+          user: user,
+          trade_type: "Electrician",
+          experience_years: 2,
+          availability: "Full-time",
+          phone: "713-555-0392",
+          city: "Austin"
+        )
+
+        get "/api/v1/technicians/profile",
+            headers: auth_header_for(user),
+            as: :json
+
+        assert_response :ok
+        assert_nil JSON.parse(response.body)["skill_class"]
+      end
+
       test "company can filter technician directory by verification requirements" do
         company_user = User.create!(
           email: "company-tech-filter@example.com",

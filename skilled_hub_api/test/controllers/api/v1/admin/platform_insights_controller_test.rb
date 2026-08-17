@@ -41,7 +41,7 @@ module Api
               state: "TX",
               location: "Houston, TX",
               hourly_rate_cents: 45_00,
-              scheduled_end_at: 1.week.from_now
+              scheduled_end_at: Time.zone.parse("2027-01-15 12:00:00")
             )
           end
 

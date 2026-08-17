@@ -96,6 +96,7 @@ module AdminAccountProvisioner
   def provision_technician!(
     email:,
     trade_type: nil,
+    skill_class: nil,
     location: nil,
     address: nil,
     city: nil,
@@ -145,6 +146,7 @@ module AdminAccountProvisioner
         user: user,
         membership_level: "basic",
         trade_type: trade_type.to_s.strip.presence || "Technician",
+        skill_class: TechnicianClassCatalog.normalized_label(skill_class),
         location: location.to_s.strip.presence,
         address: address.to_s.strip.presence,
         city: city.to_s.strip.presence,

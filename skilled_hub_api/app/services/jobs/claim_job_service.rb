@@ -12,7 +12,7 @@ module Jobs
 
     def call
       return { error: "Only technicians can claim jobs" } unless @technician_user.technician?
-      return { error: "Job is no longer available" } unless @job.open?
+      return { error: "Job is no longer available" } unless @job.available_for_claim?
 
       technician_profile = @technician_user.technician_profile || create_default_technician_profile!
 

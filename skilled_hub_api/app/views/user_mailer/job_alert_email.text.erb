@@ -1,6 +1,6 @@
 Hi <%= @user.first_name.presence || 'there' %>,
 
-A new job matches your alert preferences: <%= @job.title %><%= @job.skill_class.present? ? " (#{@job.skill_class})" : '' %>.
+A new job matches your alert preferences: <%= @job.title %><%= @job.skill_class.present? ? " (#{TechnicianClassCatalog.label_for(@job.skill_class)})" : '' %>.
 
 <% if @job_alert_hourly_rate.present? || @job_alert_estimated_total.present? %>
 Pay: <% if @job_alert_hourly_rate.present? %><%= @job_alert_hourly_rate %><% end %><% if @job_alert_hourly_rate.present? && @job_alert_estimated_total.present? %> · <% end %><% if @job_alert_estimated_total.present? %>est. total <%= @job_alert_estimated_total %><% end %>

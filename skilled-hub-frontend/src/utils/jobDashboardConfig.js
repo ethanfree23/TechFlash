@@ -1,9 +1,4 @@
 import { auth } from '../auth';
-import {
-  computeClaimedCountFromJobs,
-  computeCounterPendingCountFromJobs,
-  computeExpiredCountFromJobs,
-} from './jobDisplayUtils';
 
 export const VIEW_MODES = {
   CARD: 'card',
@@ -20,8 +15,9 @@ export const getRoleKey = () => {
 const ADMIN_STATUS_OPTIONS = [
   { value: '', label: 'All statuses' },
   { value: 'open', label: 'Open' },
+  { value: 'in_progress', label: 'Claimed' },
   { value: 'active', label: 'Active (Live)' },
-  { value: 'reserved', label: 'Claimed' },
+  { value: 'reserved', label: 'Claimed (upcoming)' },
   { value: 'completed', label: 'Completed' },
   { value: 'expired', label: 'Expired' },
 ];
@@ -152,17 +148,15 @@ export const ROLE_CONFIG = {
 
 export const getDashboardConfig = () => ROLE_CONFIG[getRoleKey()] || ROLE_CONFIG.technician;
 
-export const buildKpiCards = (role, analytics, allJobsSnapshot) => {
-  const jobs = allJobsSnapshot || [];
-
+export const buildKpiCards = (role, analytics) => {
   if (role === 'admin') {
     return [
-      { id: 'total', label: 'Total Jobs', value: analytics?.total_jobs ?? jobs.length, tone: 'slate', filterStatus: '' },
+      { id: 'total', label: 'Total Jobs', value: analytics?.total_jobs ?? 0, tone: 'slate', filterStatus: '' },
       { id: 'open', label: 'Open Jobs', value: analytics?.jobs_open ?? 0, tone: 'blue', filterStatus: 'open' },
-      { id: 'claimed', label: 'Claimed', value: analytics?.jobs_in_progress ?? 0, tone: 'orange', filterStatus: 'reserved' },
+      { id: 'claimed', label: 'Claimed', value: analytics?.jobs_in_progress ?? 0, tone: 'orange', filterStatus: 'in_progress' },
       { id: 'completed', label: 'Completed Jobs', value: analytics?.jobs_finished ?? 0, tone: 'green', filterStatus: 'completed' },
-      { id: 'expired', label: 'Expired Jobs', value: computeExpiredCountFromJobs(jobs), tone: 'gray', filterStatus: 'expired' },
-      { id: 'counter', label: 'Counter Pending', value: computeCounterPendingCountFromJobs(jobs), tone: 'orange', filterStatus: '' },
+      { id: 'expired', label: 'Expired Jobs', value: analytics?.jobs_expired ?? 0, tone: 'gray', filterStatus: 'expired' },
+      { id: 'counter', label: 'Counter Pending', value: analytics?.jobs_counter_pending ?? 0, tone: 'orange', filterStatus: '' },
     ];
   }
 
@@ -170,9 +164,9 @@ export const buildKpiCards = (role, analytics, allJobsSnapshot) => {
     return [
       { id: 'active', label: 'Active', value: analytics?.jobs_active ?? 0, tone: 'green', filterStatus: 'active' },
       { id: 'open', label: 'Open', value: analytics?.jobs_open ?? 0, tone: 'blue', filterStatus: 'open' },
-      { id: 'claimed', label: 'Claimed', value: analytics?.jobs_claimed ?? computeClaimedCountFromJobs(jobs), tone: 'orange', filterStatus: 'reserved' },
+      { id: 'claimed', label: 'Claimed', value: analytics?.jobs_claimed ?? 0, tone: 'orange', filterStatus: 'reserved' },
       { id: 'completed', label: 'Completed Jobs', value: analytics?.jobs_completed ?? 0, tone: 'green', filterStatus: 'completed' },
-      { id: 'expired', label: 'Expired Jobs', value: analytics?.jobs_expired ?? computeExpiredCountFromJobs(jobs), tone: 'gray', filterStatus: 'expired' },
+      { id: 'expired', label: 'Expired Jobs', value: analytics?.jobs_expired ?? 0, tone: 'gray', filterStatus: 'expired' },
     ];
   }
 

@@ -26,6 +26,7 @@ import { needsTechnicianMapSetup } from '../utils/technicianMap';
 import { requiresElectricalLicenseForState, setLocalOnlyLicenseStates } from '../utils/licensingRules';
 import { formatPhoneInput } from '../utils/phone';
 import { TRADE_OPTIONS, TRADE_OTHER_SENTINEL } from '../constants/trades';
+import { isTechnicianClass, technicianClassSelectOptions, technicianClassLabel, technicianClassSlug } from '../constants/technicianClass';
 import { getNotificationCategories } from '../config/notificationPreferenceCatalog';
 import { isDemoMode, demoSimulatedMessage, withDemoPath } from '../utils/demoMode';
 import { mediaUrlWithCacheBust, resolveMediaUrl } from '../utils/mediaUrl';
@@ -499,6 +500,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     if (isTechnician) {
       requiredItems.push(
         'Trade type',
+        'Class',
         'Bio',
         'Full address for maps',
         'Identity verification',
@@ -506,6 +508,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         'Reference verification'
       );
       if (!(form.trade_type || '').trim()) missing.push('Trade type');
+      if (!isTechnicianClass(form.skill_class)) missing.push('Class');
       if (!(form.bio || '').trim()) missing.push('Bio');
       if (needsMapSetup) missing.push('Full address for maps');
       if (!verificationChecklistStatus.identityComplete) missing.push('Identity verification');
@@ -577,6 +580,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           ...nameFields(),
           phone: p?.phone ?? phoneFromUser(),
           trade_type: p?.trade_type || '',
+          skill_class: technicianClassSlug(p?.skill_class),
           specialties: normalizeTradeSelections(p?.trade_type, p?.specialties),
           experience_years: p?.experience_years ?? '',
           availability: p?.availability || '',
@@ -1024,6 +1028,10 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
     if (!phoneDigits || phoneDigits.length < 10) {
       failProfileSave('A valid phone number is required (10 digits).');
+      return;
+    }
+    if (isTechnician && !isTechnicianClass(form.skill_class)) {
+      failProfileSave('Select a class (Apprentice, Journeyman, or Master).');
       return;
     }
 
@@ -2591,7 +2599,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
             {isTechnician && (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-1">Trade type</label>
                     <select
@@ -2612,6 +2620,23 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                       {TRADE_OPTIONS.map((trade) => (
                         <option key={trade} value={trade}>
                           {trade}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
+                    <select
+                      name="skill_class"
+                      value={form.skill_class || ''}
+                      onChange={handleChange}
+                      className="w-full border rounded-lg px-3 py-2 bg-white"
+                      required
+                    >
+                      <option value="">Select class</option>
+                      {technicianClassSelectOptions(form.skill_class).map((value) => (
+                        <option key={value} value={value} disabled={!isTechnicianClass(value)}>
+                          {technicianClassLabel(value)}
                         </option>
                       ))}
                     </select>

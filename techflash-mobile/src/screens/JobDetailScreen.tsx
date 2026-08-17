@@ -11,6 +11,7 @@ import type { AppStackParamList } from '../navigation/RootNavigator';
 import { Card } from '../components/ui/Card';
 import { geocodeAddress } from '../utils/geocode';
 import { formatJobAddress } from '../utils/address';
+import { technicianClassLabel } from '../constants/technicianClass';
 
 type DetailRoute = RouteProp<AppStackParamList, 'JobDetail'>;
 type Nav = NativeStackNavigationProp<AppStackParamList, 'JobDetail'>;
@@ -169,7 +170,8 @@ export default function JobDetailScreen() {
           },
         ]
       : [];
-  const statusText = String(job.status || 'unknown');
+  const statusText = String(job.effective_status || job.status || 'unknown');
+  const canClaim = String(job.effective_status || job.status || '') === 'open';
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
@@ -232,7 +234,7 @@ export default function JobDetailScreen() {
         <Text style={styles.sub}>{String(job.description || '')}</Text>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>Class</Text>
-          <Text style={styles.metaValue}>{String(job.skill_class || 'N/A')}</Text>
+          <Text style={styles.metaValue}>{technicianClassLabel(job.skill_class) || 'N/A'}</Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>Experience</Text>
@@ -271,9 +273,11 @@ export default function JobDetailScreen() {
       {isTech ? (
         <Card style={styles.actionCard}>
           <Text style={styles.section}>Technician actions</Text>
+          {canClaim ? (
           <Pressable style={styles.btn} onPress={onClaim} disabled={saving}>
             <Text style={styles.btnText}>{saving ? 'Working...' : 'Claim job'}</Text>
           </Pressable>
+          ) : null}
           <Pressable style={styles.btnGhost} onPress={onFinish} disabled={saving}>
             <Text style={styles.btnGhostText}>Finish job</Text>
           </Pressable>

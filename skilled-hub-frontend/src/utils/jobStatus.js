@@ -1,6 +1,9 @@
 /** Matches `Job` enum order in Rails (`app/models/job.rb`). */
 export const JOB_STATUS_KEYS = ['open', 'reserved', 'accepted', 'completed', 'filled', 'finished', 'pending_funding'];
 
+/** Canonical business lifecycle keys from `Job#effective_status`. */
+export const EFFECTIVE_STATUS_KEYS = ['pending_funding', 'completed', 'active', 'claimed', 'expired', 'open'];
+
 const LABELS = {
   open: 'Open',
   reserved: 'Reserved',
@@ -9,6 +12,18 @@ const LABELS = {
   filled: 'Filled',
   finished: 'Finished',
   pending_funding: 'Pending funding',
+  expired: 'Expired',
+  claimed: 'Claimed',
+  active: 'Active',
+};
+
+const DISPLAY = {
+  open: { label: 'Open', tone: 'blue' },
+  expired: { label: 'Expired', tone: 'gray' },
+  claimed: { label: 'Claimed', tone: 'yellow' },
+  active: { label: 'Active', tone: 'green' },
+  completed: { label: 'Completed', tone: 'green' },
+  pending_funding: { label: 'Pending funding', tone: 'orange' },
 };
 
 export const jobStatusLabel = (key) => LABELS[key] || key;
@@ -28,38 +43,33 @@ export function normalizeJobStatusKey(source) {
   return 'open';
 }
 
+/**
+ * Canonical lifecycle key from the API. Does not re-derive expiration from dates.
+ * @param {unknown} job
+ * @returns {string}
+ */
+export function canonicalStatusKey(job) {
+  if (job && typeof job === 'object' && !Array.isArray(job) && job.effective_status) {
+    return String(job.effective_status).toLowerCase();
+  }
+  const persisted = normalizeJobStatusKey(job);
+  if (persisted === 'finished' || persisted === 'completed') return 'completed';
+  if (persisted === 'reserved' || persisted === 'filled' || persisted === 'accepted') return 'claimed';
+  return persisted;
+}
+
 /** @typedef {'blue'|'green'|'orange'|'gray'|'yellow'|'red'} JobStatusTone */
 
 /**
  * User-facing display status for job cards and badges.
+ * Maps canonical effective_status to labels/colors only.
  * @returns {{ key: string, label: string, tone: JobStatusTone, hasCounterPending: boolean }}
  */
 export function getJobDisplayStatus(job) {
-  const status = normalizeJobStatusKey(job);
+  const key = canonicalStatusKey(job);
   const hasCounterPending = Boolean(job?.pending_counter_offer);
-  const now = Date.now();
-  const endAt = job?.scheduled_end_at ? new Date(job.scheduled_end_at).getTime() : null;
-  const startAt = job?.scheduled_start_at ? new Date(job.scheduled_start_at).getTime() : null;
-
-  if (status === 'pending_funding') {
-    return { key: 'pending_funding', label: 'Pending funding', tone: 'orange', hasCounterPending };
-  }
-  if (status === 'open') {
-    if (endAt !== null && endAt < now) {
-      return { key: 'expired', label: 'Expired', tone: 'gray', hasCounterPending };
-    }
-    return { key: 'open', label: 'Open', tone: 'blue', hasCounterPending };
-  }
-  if (status === 'finished' || status === 'completed') {
-    return { key: 'completed', label: 'Completed', tone: 'green', hasCounterPending };
-  }
-  if (status === 'reserved' || status === 'filled' || status === 'accepted') {
-    if (startAt !== null && startAt <= now) {
-      return { key: 'active', label: 'Active', tone: 'green', hasCounterPending };
-    }
-    return { key: 'claimed', label: 'Claimed', tone: 'yellow', hasCounterPending };
-  }
-  return { key: status, label: jobStatusLabel(status), tone: 'gray', hasCounterPending };
+  const display = DISPLAY[key] || { label: jobStatusLabel(key), tone: 'gray' };
+  return { key, label: display.label, tone: display.tone, hasCounterPending };
 }
 
 export const STATUS_BADGE_CLASSES = {

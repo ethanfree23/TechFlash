@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { jobsAPI } from '../api/api';
 import { formatExperienceLong } from '../constants/experienceSelect';
+import { technicianClassLabel } from '../constants/technicianClass';
 import { FormattedJobDescription } from '../utils/formattedJobText';
 
 const STATUS_LABELS = {
@@ -142,7 +143,7 @@ export default function PublicJobSharePage() {
                 {preview.skill_class && (
                   <div>
                     <h3 className="font-medium text-gray-900 mb-1">Class</h3>
-                    <p className="text-gray-700">{preview.skill_class}</p>
+                    <p className="text-gray-700">{technicianClassLabel(preview.skill_class)}</p>
                   </div>
                 )}
                 {preview.minimum_years_experience != null && preview.minimum_years_experience !== '' && (

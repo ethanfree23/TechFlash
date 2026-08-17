@@ -5,6 +5,7 @@ import { IndustryMultiSelect, ServiceCityPicker } from './admin/AdminUserFormPic
 import { formatPhoneInput } from '../utils/phone';
 import { requiresElectricalLicenseForState, setLocalOnlyLicenseStates } from '../utils/licensingRules';
 import { TRADE_OPTIONS } from '../constants/trades';
+import { technicianClassSelectOptions, isTechnicianClass, technicianClassLabel } from '../constants/technicianClass';
 
 /**
  * Same "Create user" flow as the Admin Users list page.
@@ -39,6 +40,7 @@ export default function AdminCreateUserModal({
     state: '',
     electrical_license_number: '',
     trade_type: '',
+    skill_class: '',
     experience_years: '',
     location: '',
     address: '',
@@ -115,6 +117,7 @@ export default function AdminCreateUserModal({
       state: '',
       electrical_license_number: '',
       trade_type: '',
+      skill_class: '',
       experience_years: '',
       location: '',
       address: '',
@@ -194,6 +197,7 @@ export default function AdminCreateUserModal({
       state: '',
       electrical_license_number: '',
       trade_type: '',
+      skill_class: '',
       experience_years: '',
       location: '',
       address: '',
@@ -328,6 +332,7 @@ export default function AdminCreateUserModal({
           password: password || undefined,
           password_confirmation: passwordConfirmation || undefined,
           trade_type: createForm.trade_type?.trim() || undefined,
+          skill_class: createForm.skill_class?.trim() || undefined,
           location: createForm.location?.trim() || undefined,
           address: createForm.address?.trim() || undefined,
           city: createForm.city?.trim() || undefined,
@@ -744,6 +749,21 @@ export default function AdminCreateUserModal({
                       <option key={t} value={t} />
                     ))}
                   </datalist>
+                </label>
+                <label className="block">
+                  <span className="text-xs font-medium text-gray-500 uppercase">Class</span>
+                  <select
+                    className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
+                    value={createForm.skill_class}
+                    onChange={(e) => setCreateForm((f) => ({ ...f, skill_class: e.target.value }))}
+                  >
+                    <option value="">Select class</option>
+                    {technicianClassSelectOptions(createForm.skill_class).map((value) => (
+                      <option key={value} value={value} disabled={!isTechnicianClass(value)}>
+                        {technicianClassLabel(value)}
+                      </option>
+                    ))}
+                  </select>
                 </label>
                 <label className="block">
                   <span className="text-xs font-medium text-gray-500 uppercase">Years experience</span>

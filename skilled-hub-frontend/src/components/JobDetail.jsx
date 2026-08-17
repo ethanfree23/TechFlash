@@ -14,6 +14,7 @@ import {
   payBasisLabel,
 } from '../utils/companyPlatformFee';
 import { EXPERIENCE_YEAR_OPTIONS, formatExperienceLong } from '../constants/experienceSelect';
+import { isTechnicianClass, technicianClassSelectOptions, technicianClassLabel, technicianClassSlug } from '../constants/technicianClass';
 import Modal from 'react-modal';
 import StarRating from './StarRating';
 import JobAddressFields from './JobAddressFields';
@@ -23,7 +24,7 @@ import { FormattedJobDescription } from '../utils/formattedJobText';
 import JobStatusBadge from './jobs/JobStatusBadge';
 import JobTimeEntriesPanel from './jobs/JobTimeEntriesPanel';
 import { confirmStripeCardPayment } from '../utils/confirmStripePayment';
-import { formatWorkingDays, formatWeekendPolicySummary, formatOvertimeSummary } from '../utils/jobDisplayUtils';
+import { formatWorkingDays, formatWeekendPolicySummary, formatOvertimeSummary, canTechnicianClaim } from '../utils/jobDisplayUtils';
 
 const toDatetimeLocal = (d) => {
   if (!d) return '';
@@ -517,7 +518,7 @@ const JobDetail = () => {
     const hasNewPricing = job.hourly_rate_cents != null && job.days != null;
     setEditData({
       description: job.description || '',
-      skill_class: job.skill_class || '',
+      skill_class: technicianClassSlug(job.skill_class),
       minimum_years_experience: job.minimum_years_experience != null ? String(job.minimum_years_experience) : '',
       notes: job.notes || '',
       required_certifications: (() => {
@@ -606,6 +607,15 @@ const JobDetail = () => {
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
+    if (!isTechnicianClass(editData.skill_class)) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Class required',
+        message: 'Select a class (Apprentice, Journeyman, or Master).',
+        variant: 'error',
+      });
+      return;
+    }
     setSavingEdit(true);
     try {
       const hr = parseFloat(editData.hourly_rate_cents) || 0;
@@ -618,7 +628,7 @@ const JobDetail = () => {
         : parseInt(editData.minimum_years_experience, 10);
       const payload = {
         description: editData.description,
-        skill_class: (editData.skill_class || '').trim() || null,
+        skill_class: (editData.skill_class || '').trim(),
         minimum_years_experience: years != null && !Number.isNaN(years) ? years : null,
         notes: (editData.notes || '').trim() || null,
         required_certifications: Array.isArray(editData.required_certifications) && editData.required_certifications.filter((c) => c?.trim()).length
@@ -865,7 +875,7 @@ const JobDetail = () => {
     (currentUser?.id && String(job?.company_profile?.user_id) === String(currentUser.id))
   );
   const canManageJob = isAdmin || isCompanyOwner;
-  const showTopTechOpenActions = currentUser?.role === 'technician' && job?.status === 'open';
+  const showTopTechOpenActions = currentUser?.role === 'technician' && canTechnicianClaim(job);
   const rollingSummaryText = rollingRuleSummary(job);
   const jobMapUrl = buildMapEmbedUrl(job);
   const workingDaysText = formatWorkingDays(job) || 'Monday, Tuesday, Wednesday, Thursday, Friday';
@@ -1375,7 +1385,7 @@ const JobDetail = () => {
                     {counterOffers.length === 0 && <p className="text-sm text-gray-500">No counter offers yet.</p>}
                   </div>
                 )}
-                {(currentUser?.role === 'technician' || canRespondToPendingCounter) && job.status === 'open' && (
+                {((currentUser?.role === 'technician' && canTechnicianClaim(job)) || canRespondToPendingCounter) && (
                   <form onSubmit={submitCounterOffer} className="space-y-3">
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       <div>
@@ -1430,7 +1440,7 @@ const JobDetail = () => {
                 {job.skill_class && (
                   <div>
                     <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Class</p>
-                    <p className="font-medium text-gray-900">{job.skill_class}</p>
+                    <p className="font-medium text-gray-900">{technicianClassLabel(job.skill_class)}</p>
                   </div>
                 )}
                 {job.minimum_years_experience != null && (
@@ -1807,7 +1817,20 @@ const JobDetail = () => {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="block text-sm font-medium mb-1">Class</label>
-                <input name="skill_class" value={editData.skill_class} onChange={handleEditChange} className="w-full border rounded p-2" placeholder="e.g. Journeyman" />
+                <select
+                  name="skill_class"
+                  value={editData.skill_class}
+                  onChange={handleEditChange}
+                  className="w-full border rounded p-2 bg-white"
+                  required
+                >
+                  <option value="">Select class</option>
+                  {technicianClassSelectOptions(editData.skill_class).map((value) => (
+                    <option key={value} value={value} disabled={!isTechnicianClass(value)}>
+                      {technicianClassLabel(value)}
+                    </option>
+                  ))}
+                </select>
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">Experience</label>

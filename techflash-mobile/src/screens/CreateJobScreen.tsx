@@ -5,6 +5,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors } from '../theme';
 import { createJob } from '../api/jobsApi';
+import { TECHNICIAN_CLASS_OPTIONS, isTechnicianClass, technicianClassLabel } from '../constants/technicianClass';
 import type { AppStackParamList } from '../navigation/RootNavigator';
 
 type Nav = NativeStackNavigationProp<AppStackParamList, 'CreateJob'>;
@@ -156,6 +157,10 @@ export default function CreateJobScreen() {
       setValidation('Title and description are required.');
       return;
     }
+    if (!isTechnicianClass(skillClass)) {
+      setValidation('Select a class (Apprentice, Journeyman, or Master).');
+      return;
+    }
     if (!city.trim() && !address.trim()) {
       setValidation('Provide at least city or street address.');
       return;
@@ -179,7 +184,7 @@ export default function CreateJobScreen() {
         description: description.trim(),
         status: 'open',
         go_live_at: new Date().toISOString(),
-        skill_class: skillClass.trim() || undefined,
+        skill_class: skillClass.trim(),
         skill_tags: tagsText
           .split(',')
           .map((t) => t.trim())
@@ -220,7 +225,18 @@ export default function CreateJobScreen() {
       {!!validation && <Text style={styles.error}>{validation}</Text>}
       <Field label="Title" value={title} onChangeText={setTitle} />
       <Field label="Description" value={description} onChangeText={setDescription} multiline />
-      <Field label="Class" value={skillClass} onChangeText={setSkillClass} />
+      <Text style={styles.label}>Class</Text>
+      <View style={styles.payRow}>
+        {TECHNICIAN_CLASS_OPTIONS.map((opt) => (
+          <Pressable
+            key={opt}
+            style={[styles.payChip, skillClass === opt && styles.payChipOn]}
+            onPress={() => setSkillClass(opt)}
+          >
+            <Text style={[styles.payChipText, skillClass === opt && styles.payChipTextOn]}>{technicianClassLabel(opt)}</Text>
+          </Pressable>
+        ))}
+      </View>
       <Field
         label="Minimum years experience"
         value={minimumYearsExperience}

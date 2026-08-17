@@ -65,7 +65,8 @@ module Api
                  title: "Admin posted job with card check",
                  description: "desc",
                  status: "open",
-                 company_profile_id: company_profile.id
+                 company_profile_id: company_profile.id,
+                 skill_class: "Journeyman"
                },
                headers: auth_header_for(admin),
                as: :json
@@ -104,7 +105,8 @@ module Api
                  company_profile_id: company_profile.id,
                  hourly_rate_cents: 5000,
                  hours_per_day: 8,
-                 days: 1
+                 days: 1,
+                 skill_class: "Journeyman"
                },
                headers: auth_header_for(admin),
                as: :json
@@ -142,7 +144,8 @@ module Api
                  skip_card_validation: true,
                  hourly_rate_cents: 5000,
                  hours_per_day: 8,
-                 days: 1
+                 days: 1,
+                 skill_class: "Journeyman"
                },
                headers: auth_header_for(admin),
                as: :json
@@ -163,7 +166,8 @@ module Api
              params: {
                title: "Admin posted job missing company",
                description: "desc",
-               status: "open"
+               status: "open",
+               skill_class: "Journeyman"
              },
              headers: auth_header_for(admin),
              as: :json
@@ -194,7 +198,8 @@ module Api
                  company_profile_id: profile.id,
                  hourly_rate_cents: 5000,
                  hours_per_day: 8,
-                 days: 1
+                 days: 1,
+                 skill_class: "Journeyman"
                },
                headers: auth_header_for(user),
                as: :json
@@ -222,7 +227,8 @@ module Api
                title: "Billing exempt posting",
                description: "Can post without saved card",
                status: "open",
-               company_profile_id: profile.id
+               company_profile_id: profile.id,
+               skill_class: "Journeyman"
              },
              headers: auth_header_for(user),
              as: :json
@@ -247,7 +253,8 @@ module Api
         post "/api/v1/jobs",
              params: {
                title: "Missing status job",
-               description: "Status should default to open"
+               description: "Status should default to open",
+               skill_class: "Journeyman"
              },
              headers: auth_header_for(user),
              as: :json
@@ -426,7 +433,8 @@ module Api
              params: {
                title: "Single trade job",
                description: "desc",
-               status: "open"
+               status: "open",
+               skill_class: "Journeyman"
              },
              headers: auth_header_for(user),
              as: :json
@@ -456,13 +464,223 @@ module Api
              params: {
                title: "Missing trade selection",
                description: "desc",
-               status: "open"
+               status: "open",
+               skill_class: "Journeyman"
              },
              headers: auth_header_for(user),
              as: :json
 
         assert_response :unprocessable_entity
         assert_match(/select a trade/i, JSON.parse(response.body)["error"].to_s)
+      end
+
+      test "create job requires technician class" do
+        user = User.create!(
+          email: "company-missing-class@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "premium",
+          membership_fee_waived: true,
+          industry: "Electrician",
+          service_trades: ["Electrician"]
+        )
+        user.update_column(:company_profile_id, profile.id)
+
+        post "/api/v1/jobs",
+             params: {
+               title: "Missing class job",
+               description: "desc",
+               status: "open"
+             },
+             headers: auth_header_for(user),
+             as: :json
+
+        assert_response :unprocessable_entity
+        assert_match(/select a class/i, JSON.parse(response.body)["error"].to_s)
+      end
+
+      test "create job rejects non-catalog class values" do
+        user = User.create!(
+          email: "company-invalid-class@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "premium",
+          membership_fee_waived: true,
+          industry: "Electrician",
+          service_trades: ["Electrician"]
+        )
+        user.update_column(:company_profile_id, profile.id)
+
+        post "/api/v1/jobs",
+             params: {
+               title: "Legacy class job",
+               description: "desc",
+               status: "open",
+               skill_class: "HVAC"
+             },
+             headers: auth_header_for(user),
+             as: :json
+
+        assert_response :unprocessable_entity
+        assert_match(/apprentice, journeyman, or master/i, JSON.parse(response.body)["error"].to_s)
+      end
+
+      test "create job does not infer trade from class" do
+        user = User.create!(
+          email: "company-no-class-trade@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "premium",
+          membership_fee_waived: true
+        )
+        user.update_column(:company_profile_id, profile.id)
+
+        post "/api/v1/jobs",
+             params: {
+               title: "Class is not a trade",
+               description: "desc",
+               status: "open",
+               skill_class: "Journeyman"
+             },
+             headers: auth_header_for(user),
+             as: :json
+
+        assert_response :created
+        created_job = Job.order(:id).last
+        assert_equal "journeyman", created_job.skill_class
+        assert_nil created_job.trade_type
+      end
+
+      test "create job accepts each canonical class slug" do
+        %w[apprentice journeyman master].each do |slug|
+          user = User.create!(
+            email: "company-class-#{slug}@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :company
+          )
+          profile = CompanyProfile.create!(
+            user: user,
+            membership_level: "premium",
+            membership_fee_waived: true
+          )
+          user.update_column(:company_profile_id, profile.id)
+
+          post "/api/v1/jobs",
+               params: {
+                 title: "#{slug} job",
+                 description: "desc",
+                 status: "open",
+                 skill_class: slug
+               },
+               headers: auth_header_for(user),
+               as: :json
+
+          assert_response :created
+          assert_equal slug, Job.order(:id).last.skill_class
+        end
+      end
+
+      test "legacy free-text class job still loads" do
+        user = User.create!(
+          email: "company-legacy-class-get@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "premium",
+          membership_fee_waived: true
+        )
+        user.update_column(:company_profile_id, profile.id)
+        job = Job.create!(
+          company_profile: profile,
+          title: "Legacy HVAC class load",
+          description: "desc",
+          status: :open,
+          skill_class: "HVAC"
+        )
+
+        get "/api/v1/jobs/#{job.id}",
+            headers: auth_header_for(user),
+            as: :json
+
+        assert_response :ok
+        assert_equal "HVAC", JSON.parse(response.body)["skill_class"]
+      end
+
+      test "update job rejects non-catalog class when skill_class is sent" do
+        user = User.create!(
+          email: "company-update-class@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "premium",
+          membership_fee_waived: true
+        )
+        user.update_column(:company_profile_id, profile.id)
+        job = Job.create!(
+          company_profile: profile,
+          title: "Legacy HVAC class",
+          description: "desc",
+          status: :open,
+          skill_class: "HVAC"
+        )
+
+        patch "/api/v1/jobs/#{job.id}",
+              params: { skill_class: "HVAC", notes: "keep listing" },
+              headers: auth_header_for(user),
+              as: :json
+
+        assert_response :unprocessable_entity
+        assert_match(/apprentice, journeyman, or master/i, JSON.parse(response.body)["error"].to_s)
+      end
+
+      test "update job allows other fields without changing legacy class" do
+        user = User.create!(
+          email: "company-update-legacy-class@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "premium",
+          membership_fee_waived: true
+        )
+        user.update_column(:company_profile_id, profile.id)
+        job = Job.create!(
+          company_profile: profile,
+          title: "Legacy HVAC class stay",
+          description: "desc",
+          status: :open,
+          skill_class: "HVAC"
+        )
+
+        patch "/api/v1/jobs/#{job.id}",
+              params: { notes: "Updated notes only" },
+              headers: auth_header_for(user),
+              as: :json
+
+        assert_response :ok
+        assert_equal "HVAC", job.reload.skill_class
+        assert_equal "Updated notes only", job.notes
       end
 
       test "rolling start with days-after-acceptance rule sets start from claim time" do
@@ -568,7 +786,8 @@ module Api
                  description: "Posted now",
                  status: "open",
                  company_profile_id: profile.id,
-                 go_live_at: 3.days.from_now
+                 go_live_at: 3.days.from_now,
+                 skill_class: "Journeyman"
                },
                headers: auth_header_for(user),
                as: :json

@@ -46,6 +46,7 @@ export default function JobsDashboard() {
     setCurrentPage,
     currentJobs,
     sortedJobs,
+    resultCount,
     totalPages,
     indexOfFirstJob,
     indexOfLastJob,
@@ -156,7 +157,6 @@ export default function JobsDashboard() {
       await savedJobSearchesAPI.create({
         keyword: serverFilters.keyword || null,
         location: serverFilters.location || null,
-        skill_class: clientFilters.trade || null,
         max_distance_miles: clientFilters.maxDistanceMiles ? Number(clientFilters.maxDistanceMiles) : null,
         min_hourly_rate_cents: clientFilters.minPayCents || null,
         max_required_years_experience:
@@ -245,9 +245,9 @@ export default function JobsDashboard() {
           )}
           {!jobsLoading && (
             <p className="text-xs text-slate-500 tabular-nums">
-              {sortedJobs.length === 0
+              {resultCount === 0
                 ? 'No results'
-                : `${sortedJobs.length} job${sortedJobs.length !== 1 ? 's' : ''}`}
+                : `${resultCount} job${resultCount !== 1 ? 's' : ''}`}
               {totalPages > 1 && ` · Page ${currentPage} of ${totalPages}`}
             </p>
           )}
@@ -343,7 +343,7 @@ export default function JobsDashboard() {
             </button>
           </nav>
           <p className="mt-3 text-center text-xs text-slate-500">
-            Showing {indexOfFirstJob + 1}–{Math.min(indexOfLastJob, sortedJobs.length)} of {sortedJobs.length}
+            Showing {indexOfFirstJob}–{Math.min(indexOfLastJob, resultCount)} of {resultCount}
           </p>
         </>
       )}

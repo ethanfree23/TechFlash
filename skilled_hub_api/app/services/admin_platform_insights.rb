@@ -256,9 +256,9 @@ class AdminPlatformInsights
   def job_scope_for_category
     case @category
     when "total_jobs" then Job.all
-    when "open_jobs" then Job.where(status: :open)
-    when "jobs_in_progress" then Job.where(status: %i[reserved filled])
-    when "completed" then Job.where(status: :finished)
+    when "open_jobs" then Job.effectively_open
+    when "jobs_in_progress" then Job.in_progress
+    when "completed" then Job.effectively_completed
     else Job.none
     end
   end
@@ -311,9 +311,11 @@ class AdminPlatformInsights
         id: jid,
         title: job.title,
         status: job.status,
+        effective_status: job.effective_status,
         company_name: job.company_profile&.company_name,
         created_at: job.created_at&.iso8601,
         scheduled_end_at: job.scheduled_end_at&.iso8601,
+        trade_type: job.trade_type,
         skill_class: job.skill_class,
         city: job.city,
         state: job.state,
@@ -372,6 +374,7 @@ class AdminPlatformInsights
         job_title: job.title,
         technician_email: u&.email,
         company_name: job.company_profile&.company_name,
+        trade_type: job.trade_type,
         skill_class: job.skill_class,
         city: job.city,
         state: job.state,

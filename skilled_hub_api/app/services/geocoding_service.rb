@@ -389,7 +389,11 @@ class GeocodingService
     uri.query = URI.encode_www_form(address: query, key: google_maps_api_key, components: components.join("|"))
 
     with_retry(MAX_GEOCODE_ATTEMPTS) do
-      res = Net::HTTP.get_response(uri)
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = true
+      http.open_timeout = 5
+      http.read_timeout = 5
+      res = http.request(Net::HTTP::Get.new(uri))
       return nil unless res.is_a?(Net::HTTPSuccess)
 
       body = JSON.parse(res.body)

@@ -132,15 +132,18 @@ module Api
       end
 
       def admin_analytics
+        counts = Jobs::StatusCounts.for(Job.all)
         {
           total_users: User.count,
           technicians_count: User.technician.count,
           companies_count: User.company.count,
           admins_count: User.admin.count,
-          total_jobs: Job.count,
-          jobs_open: Job.where(status: :open).count,
-          jobs_finished: Job.where(status: :finished).count,
-          jobs_in_progress: Job.where(status: [:reserved, :filled]).count,
+          total_jobs: counts[:total],
+          jobs_open: counts[:open],
+          jobs_finished: counts[:completed],
+          jobs_in_progress: counts[:claimed],
+          jobs_expired: counts[:expired],
+          jobs_counter_pending: counts[:counter_pending],
           total_job_applications: JobApplication.count,
           trends_last_30d: DashboardTrends.admin_platform_trends
         }

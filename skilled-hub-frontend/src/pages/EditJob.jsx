@@ -8,6 +8,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import WorkScheduleCalendarPopup from '../components/WorkScheduleCalendarPopup';
 import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
 import { TRADE_OPTIONS } from '../constants/trades';
+import { isTechnicianClass, technicianClassSelectOptions, technicianClassLabel, technicianClassSlug } from '../constants/technicianClass';
 import { companyChargeFromJobAmount, formatPlatformFeePercent } from '../utils/companyPlatformFee';
 import { auth } from '../auth';
 import { JOB_STATUS_KEYS, jobStatusLabel, normalizeJobStatusKey } from '../utils/jobStatus';
@@ -103,7 +104,7 @@ const EditJob = () => {
         setForm({
           title: data.title || '',
           description: data.description || '',
-          skill_class: data.skill_class || '',
+          skill_class: technicianClassSlug(data.skill_class),
           trade_type: data.trade_type || '',
           minimum_years_experience: data.minimum_years_experience != null ? String(data.minimum_years_experience) : '',
           notes: data.notes || '',
@@ -267,6 +268,15 @@ const EditJob = () => {
       });
       return;
     }
+    if (!isTechnicianClass(form.skill_class)) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Class required',
+        message: 'Select a class (Apprentice, Journeyman, or Master).',
+        variant: 'error',
+      });
+      return;
+    }
     setSaving(true);
     try {
       const years = (form.minimum_years_experience || '').toString().trim() === ''
@@ -276,7 +286,7 @@ const EditJob = () => {
         title: form.title,
         description: form.description,
         trade_type: (form.trade_type || '').trim() || null,
-        skill_class: (form.skill_class || '').trim() || null,
+        skill_class: (form.skill_class || '').trim(),
         minimum_years_experience: years != null && !Number.isNaN(years) ? years : null,
         notes: (form.notes || '').trim() || null,
         required_certifications: Array.isArray(form.required_certifications) && form.required_certifications.filter((c) => c?.trim()).length
@@ -458,13 +468,20 @@ const EditJob = () => {
           </div>
           <div>
             <label className={labelClass}>Class</label>
-            <input
+            <select
               className={fieldClass}
               name="skill_class"
               value={form.skill_class}
               onChange={handleChange}
-              placeholder="e.g. Journeyman, Residential"
-            />
+              required
+            >
+              <option value="">Select class</option>
+              {technicianClassSelectOptions(form.skill_class).map((value) => (
+                <option key={value} value={value} disabled={!isTechnicianClass(value)}>
+                  {technicianClassLabel(value)}
+                </option>
+              ))}
+            </select>
           </div>
           <div>
             <label className={labelClass}>Experience</label>

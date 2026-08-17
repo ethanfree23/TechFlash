@@ -84,6 +84,7 @@ module Api
               result = AdminAccountProvisioner.provision_technician!(
                 email: params[:email],
                 trade_type: params[:trade_type],
+                skill_class: params[:skill_class],
                 location: params[:location],
                 address: params[:address],
                 city: params[:city],
@@ -123,7 +124,7 @@ module Api
               {
                 user: UserSerializer.new(user).as_json,
                 technician_profile: profile.as_json(
-                  only: %i[id trade_type location experience_years availability bio user_id created_at updated_at]
+                  only: %i[id trade_type skill_class location experience_years availability bio user_id created_at updated_at]
                 )
               }
             end
@@ -379,6 +380,7 @@ module Api
         def technician_profile_admin_params
           p = params.permit(
             :trade_type,
+            :skill_class,
             :location,
             :availability,
             :bio,

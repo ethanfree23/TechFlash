@@ -7,6 +7,7 @@ import AlertModal from '../components/AlertModal';
 import WorkScheduleCalendarPopup from '../components/WorkScheduleCalendarPopup';
 import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
 import { TRADE_OPTIONS } from '../constants/trades';
+import { isTechnicianClass, technicianClassSelectOptions, technicianClassLabel, technicianClassSlug } from '../constants/technicianClass';
 import { auth } from '../auth';
 import { companyChargeFromJobAmount, formatPlatformFeePercent } from '../utils/companyPlatformFee';
 import { confirmStripeCardPayment } from '../utils/confirmStripePayment';
@@ -28,17 +29,6 @@ const toDatetimeLocal = (d) => {
 };
 
 const LUNCH_HOURS = 1;
-const CLASS_SUGGESTIONS = [
-  'Apprentice',
-  'Journeyman',
-  'Master',
-  'Service Technician',
-  'Installation Technician',
-  'HVAC',
-  'Electrical',
-  'Plumbing',
-  'General Labor',
-];
 const ROLLING_WEEKDAY_OPTIONS = [
   { value: '0', label: 'Sunday' },
   { value: '1', label: 'Monday' },
@@ -180,7 +170,7 @@ const CreateJob = () => {
     const job = duplicateFrom;
     setTitle(job.title ? `Copy of ${job.title}` : '');
     setDescription(String(job.description || ''));
-    setSkillClass(String(job.skill_class || ''));
+    setSkillClass(technicianClassSlug(job.skill_class));
     setTradeType(String(job.trade_type || ''));
     setMinimumYearsExperience(
       job.minimum_years_experience != null ? String(job.minimum_years_experience) : ''
@@ -252,7 +242,7 @@ const CreateJob = () => {
       const draft = JSON.parse(raw);
       setTitle(String(draft.title || ''));
       setDescription(String(draft.description || ''));
-      setSkillClass(String(draft.skillClass || ''));
+      setSkillClass(technicianClassSlug(draft.skillClass));
       setTradeType(String(draft.tradeType || ''));
       setMinimumYearsExperience(String(draft.minimumYearsExperience || ''));
       setNotes(String(draft.notes || ''));
@@ -540,6 +530,10 @@ const CreateJob = () => {
       setErrorModal('Select the trade for this job. This company has multiple service trades.');
       return;
     }
+    if (!isTechnicianClass(skillClass)) {
+      setErrorModal('Select a class (Apprentice, Journeyman, or Master).');
+      return;
+    }
     if (weekendWorkPolicy === 'required' && saturdayWorkPolicy === 'unavailable' && sundayWorkPolicy === 'unavailable') {
       setErrorModal('Weekend-required jobs must include Saturday or Sunday availability.');
       return;
@@ -567,7 +561,7 @@ const CreateJob = () => {
         title,
         description,
         trade_type: tradeType || null,
-        skill_class: skillClass.trim() || null,
+        skill_class: skillClass.trim(),
         minimum_years_experience: years != null && !Number.isNaN(years) ? years : null,
         notes: notes.trim() || null,
         required_certifications: requiredCertifications.filter((c) => c.trim()).length
@@ -799,18 +793,19 @@ const CreateJob = () => {
           </div>
           <div>
             <label className={labelClass}>Class</label>
-            <input
+            <select
               className={fieldClass}
               value={skillClass}
               onChange={(e) => setSkillClass(e.target.value)}
-              placeholder="e.g. Journeyman, Residential"
-              list="job-class-suggestions"
-            />
-            <datalist id="job-class-suggestions">
-              {CLASS_SUGGESTIONS.map((value) => (
-                <option key={value} value={value} />
+              required
+            >
+              <option value="">Select class</option>
+              {technicianClassSelectOptions(skillClass).map((value) => (
+                <option key={value} value={value} disabled={!isTechnicianClass(value)}>
+                  {technicianClassLabel(value)}
+                </option>
               ))}
-            </datalist>
+            </select>
           </div>
           <div>
             <label className={labelClass}>Experience</label>

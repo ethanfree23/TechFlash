@@ -12,6 +12,7 @@ class PublicJobPreviewSerializer < ActiveModel::Serializer
              :state,
              :country,
              :status,
+             :effective_status,
              :scheduled_start_at,
              :scheduled_end_at,
              :finished_at,

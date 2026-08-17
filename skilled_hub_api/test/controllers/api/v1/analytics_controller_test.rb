@@ -27,6 +27,10 @@ module Api
         assert_includes row.keys, "users_created"
         assert_includes row.keys, "jobs_created"
         assert_includes row.keys, "applications_created"
+        assert_includes body.keys, "jobs_expired"
+        assert_includes body.keys, "jobs_counter_pending"
+        assert_equal Job.effectively_open.count, body["jobs_open"]
+        assert_equal Job.expired_listings.count, body["jobs_expired"]
       end
 
       test "company analytics includes jobs_created_by_day spine" do

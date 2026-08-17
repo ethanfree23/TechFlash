@@ -1,4 +1,4 @@
-import { normalizeJobStatusKey } from './jobStatus';
+import { getJobDisplayStatus, normalizeJobStatusKey } from './jobStatus';
 import { formatWeekdayList, toMultiplierLabel } from './workSchedule';
 
 export const haversineMiles = (lat1, lon1, lat2, lon2) => {
@@ -102,23 +102,13 @@ export const formatCertifications = (job) => {
   return str || null;
 };
 
-export const isJobExpired = (job) => {
-  const status = normalizeJobStatusKey(job);
-  if (status !== 'open') return false;
-  const endAt = job?.scheduled_end_at ? new Date(job.scheduled_end_at).getTime() : null;
-  return endAt !== null && endAt < Date.now();
-};
+export const isJobExpired = (job) => getJobDisplayStatus(job).key === 'expired';
 
-export const isJobActive = (job) => {
-  const status = normalizeJobStatusKey(job);
-  if (status !== 'reserved' && status !== 'filled') return false;
-  const startAt = job?.scheduled_start_at ? new Date(job.scheduled_start_at).getTime() : null;
-  return startAt !== null && startAt <= Date.now();
-};
+export const isJobActive = (job) => getJobDisplayStatus(job).key === 'active';
 
 export const isJobClaimed = (job) => {
-  const status = normalizeJobStatusKey(job);
-  return status === 'reserved' || status === 'filled' || status === 'accepted';
+  const key = getJobDisplayStatus(job).key;
+  return key === 'claimed' || key === 'active';
 };
 
 export const getAcceptedApplication = (job) => {
@@ -177,9 +167,7 @@ export const isJobEditable = (job) => normalizeJobStatusKey(job) !== 'finished';
 
 export const canTechnicianClaim = (job) => {
   if (!job) return false;
-  if (normalizeJobStatusKey(job) !== 'open') return false;
-  if (isJobExpired(job)) return false;
-  return true;
+  return getJobDisplayStatus(job).key === 'open';
 };
 
 export const getTechnicianUnavailableReason = (job, technicianProfile) => {
@@ -235,13 +223,7 @@ export const matchesSavedSearch = (job, saved, technicianProfile) => {
 
 export const computeClaimedCountFromJobs = (jobs) => {
   if (!Array.isArray(jobs)) return 0;
-  const now = Date.now();
-  return jobs.filter((job) => {
-    const status = normalizeJobStatusKey(job);
-    if (status !== 'reserved' && status !== 'filled') return false;
-    const startAt = job.scheduled_start_at ? new Date(job.scheduled_start_at).getTime() : null;
-    return startAt === null || startAt > now;
-  }).length;
+  return jobs.filter((job) => getJobDisplayStatus(job).key === 'claimed').length;
 };
 
 export const computeExpiredCountFromJobs = (jobs) => {

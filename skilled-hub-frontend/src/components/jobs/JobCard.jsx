@@ -12,6 +12,7 @@ import {
 import JobStatusBadge from './JobStatusBadge';
 import JobCardActions from './JobCardActions';
 import { getCardSurfaceClasses } from '../../utils/jobStatus';
+import { technicianClassLabel } from '../../constants/technicianClass';
 import { isFlagshipDemoJob, sanitizeDemoJobNotes } from '../../utils/demoMode';
 import {
   formatCertifications,
@@ -91,7 +92,7 @@ export default function JobCard({
               </Link>
             )}
             {role === 'company' && job.skill_class && (
-              <p className="mt-1 text-xs font-medium text-slate-500 truncate">{job.skill_class}</p>
+              <p className="mt-1 text-xs font-medium text-slate-500 truncate">{technicianClassLabel(job.skill_class)}</p>
             )}
           </div>
           <JobStatusBadge job={job} layout="stack" />
@@ -133,7 +134,7 @@ export default function JobCard({
         <div className="flex flex-wrap gap-1 mb-3 min-h-[1.25rem]">
           {job.skill_class && role !== 'company' && (
             <span className="inline-flex rounded-md bg-slate-100/90 px-2 py-0.5 text-[11px] font-semibold text-slate-700">
-              {job.skill_class}
+              {technicianClassLabel(job.skill_class)}
             </span>
           )}
           {job.minimum_years_experience != null && (

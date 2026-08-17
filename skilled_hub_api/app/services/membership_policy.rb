@@ -150,7 +150,7 @@ class MembershipPolicy
     scoped = jobs
       .where("COALESCE(jobs.minimum_years_experience, 0) <= ?", tech_years)
       .where(
-        "COALESCE(jobs.trade_type, jobs.skill_class, '') = '' OR LOWER(COALESCE(jobs.trade_type, jobs.skill_class, '')) IN (?)",
+        "COALESCE(jobs.trade_type, '') = '' OR LOWER(jobs.trade_type) IN (?)",
         trade_labels.map(&:downcase)
       )
 
@@ -276,7 +276,7 @@ class MembershipPolicy
   end
 
   def self.technician_trade_match?(job:, technician_profile:)
-    job_trade = TradeCatalog.normalized_label(job.trade_type) || TradeCatalog.normalized_label(job.skill_class)
+    job_trade = TradeCatalog.normalized_label(job.trade_type)
     return true if job_trade.blank?
 
     technician_trade_labels(technician_profile).include?(job_trade)

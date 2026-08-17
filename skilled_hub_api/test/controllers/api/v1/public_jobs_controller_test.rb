@@ -40,6 +40,7 @@ module Api
         assert_equal "Public preview title", preview["title"]
         assert_equal "Public preview description", preview["description"]
         assert_equal "open", preview["status"]
+        assert_equal "open", preview["effective_status"]
         cp = preview["company_preview"]
         assert_equal company_profile.id, cp["id"]
         assert_equal "Share Test Co", cp["company_name"]

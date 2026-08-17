@@ -2,6 +2,8 @@ class JobAlertDispatcher
   DEDUPE_TTL = 1.hour
 
   def self.dispatch_for_job(job)
+    return unless job.effectively_open?
+
     TechnicianProfile.includes(:user).find_each do |tech|
       user = tech.user
       next unless user&.job_alert_notifications_enabled?
@@ -39,9 +41,9 @@ class JobAlertDispatcher
 
   def self.matches_trade?(pref:, job:)
     return true if pref.trade_label.blank?
-    return true if job.skill_class.blank?
+    return true if job.trade_type.blank?
 
-    pref.trade_label.to_s.downcase == job.skill_class.to_s.downcase
+    pref.trade_label.to_s.downcase == job.trade_type.to_s.downcase
   end
 
   def self.matches_pay?(pref:, job:)
@@ -79,7 +81,7 @@ class JobAlertDispatcher
   end
 
   def self.deliver_sms(user:, job:)
-    body = "New #{job.skill_class.presence || 'trade'} job: #{job.title}".truncate(320)
+    body = "New #{job.trade_type.presence || 'trade'} job: #{job.title}".truncate(320)
     log = SmsDeliveryLog.create!(
       user_id: user.id,
       category: "job_alert",
