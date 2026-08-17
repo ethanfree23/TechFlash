@@ -52,11 +52,12 @@ module Api
         return render json: { error: "Background check already in progress." }, status: :unprocessable_entity if existing.present?
 
         membership_level = @current_user.technician_profile&.membership_level.to_s
-        premium = membership_level == "premium"
-        payment_status = (premium || demo_bypass) ? :waived : :pending
+        tier = MembershipTierConfig.find_by(audience: "technician", slug: membership_level)
+        fee_waived = tier&.waives_background_check_fee?
+        payment_status = (fee_waived || demo_bypass) ? :waived : :pending
         paid_by =
-          if premium
-            "premium"
+          if fee_waived
+            "membership"
           elsif demo_bypass
             "admin"
           else
@@ -102,7 +103,7 @@ module Api
           }, status: :ok
         end
 
-        unless premium
+        unless fee_waived
           VerificationEventNotifier.background_payment_required(@current_user, background_check)
           return render json: {
             background_check: background_check,

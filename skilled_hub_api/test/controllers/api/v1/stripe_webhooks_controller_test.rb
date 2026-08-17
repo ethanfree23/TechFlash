@@ -94,6 +94,71 @@ module Api
         assert_equal 1, launch_calls
       end
 
+      test "missing webhook secret in production returns 500" do
+        old_secret = ENV["STRIPE_WEBHOOK_SECRET"]
+        ENV["STRIPE_WEBHOOK_SECRET"] = nil
+        Rails.stub(:env, ActiveSupport::StringInquirer.new("production")) do
+          post "/api/v1/stripe/webhook",
+               params: { id: "evt_missing_secret" }.to_json,
+               headers: { "Content-Type" => "application/json", "HTTP_STRIPE_SIGNATURE" => "test" }
+        end
+        assert_response :internal_server_error
+      ensure
+        ENV["STRIPE_WEBHOOK_SECRET"] = old_secret
+      end
+
+      test "charge.refunded writes a refund ledger row once" do
+        company_user = User.create!(email: "wh-refund-co-#{SecureRandom.hex(3)}@example.com", password: "password123", password_confirmation: "password123", role: :company)
+        company_profile = CompanyProfile.create!(user: company_user, membership_level: "basic")
+        company_user.update_column(:company_profile_id, company_profile.id)
+        job = Job.create!(
+          company_profile: company_profile,
+          title: "Refund webhook job",
+          description: "desc",
+          status: :open,
+          hourly_rate_cents: 5000,
+          hours_per_day: 1,
+          days: 1
+        )
+        payment = job.payments.create!(amount_cents: 5500, status: "held", transfer_group: job.transfer_group, currency: "usd")
+        JobPaymentTransaction.create!(
+          payment: payment,
+          job: job,
+          transaction_type: :initial_job_charge,
+          direction: :inbound,
+          amount_cents: 5500,
+          currency: "usd",
+          status: :succeeded,
+          stripe_payment_intent_id: "pi_refund_wh",
+          stripe_charge_id: "ch_refund_wh",
+          idempotency_key: "tf_wh_#{job.id}_initial",
+          revision: 1,
+          succeeded_at: Time.current
+        )
+
+        refund = OpenStruct.new(id: "re_wh_1", amount: 2000, currency: "usd")
+        charge = OpenStruct.new(
+          id: "ch_refund_wh",
+          payment_intent: "pi_refund_wh",
+          refunds: OpenStruct.new(data: [refund])
+        )
+        event = OpenStruct.new(id: "evt_charge_refunded_1", type: "charge.refunded", data: OpenStruct.new(object: charge))
+        payload = { id: "evt_charge_refunded_1", type: "charge.refunded" }.to_json
+
+        with_stubbed_stripe_webhook(event) do
+          post "/api/v1/stripe/webhook",
+               params: payload,
+               headers: { "Content-Type" => "application/json", "HTTP_STRIPE_SIGNATURE" => "test" }
+          post "/api/v1/stripe/webhook",
+               params: payload,
+               headers: { "Content-Type" => "application/json", "HTTP_STRIPE_SIGNATURE" => "test" }
+        end
+
+        assert_response :ok
+        assert_equal 1, JobPaymentTransaction.where(stripe_refund_id: "re_wh_1").count
+        assert_equal 2000, JobPaymentTransaction.find_by(stripe_refund_id: "re_wh_1").amount_cents
+      end
+
       private
 
       def with_stubbed_stripe_webhook(event, launch_counter: nil)

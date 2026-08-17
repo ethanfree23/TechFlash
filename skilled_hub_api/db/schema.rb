@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_08_07_143000) do
+ActiveRecord::Schema[7.1].define(version: 2026_08_14_000003) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -163,6 +163,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_07_143000) do
     t.string "electrical_license_number"
     t.string "primary_hiring_need"
     t.json "service_trades", default: [], null: false
+    t.string "pending_membership_level"
     t.index ["membership_level"], name: "index_company_profiles_on_membership_level"
     t.index ["state"], name: "index_company_profiles_on_state"
     t.index ["stripe_membership_subscription_id"], name: "index_company_profiles_on_stripe_membership_subscription_id", unique: true
@@ -374,6 +375,25 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_07_143000) do
     t.index ["technician_profile_id"], name: "index_job_counter_offers_on_technician_profile_id"
   end
 
+  create_table "job_financial_revisions", force: :cascade do |t|
+    t.integer "job_id", null: false
+    t.integer "revision_number", null: false
+    t.string "source", null: false
+    t.integer "hourly_rate_cents"
+    t.decimal "estimated_hours", precision: 10, scale: 2
+    t.integer "labor_cents", default: 0, null: false
+    t.integer "company_required_cents", default: 0, null: false
+    t.integer "technician_payout_cents", default: 0, null: false
+    t.decimal "company_commission_percent", precision: 6, scale: 3
+    t.decimal "technician_commission_percent", precision: 6, scale: 3
+    t.integer "job_payment_transaction_id"
+    t.json "metadata_json", default: {}
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["job_id", "revision_number"], name: "index_job_financial_revisions_on_job_id_and_revision_number", unique: true
+    t.index ["job_id"], name: "index_job_financial_revisions_on_job_id"
+  end
+
   create_table "job_issue_reports", force: :cascade do |t|
     t.integer "job_id", null: false
     t.integer "user_id", null: false
@@ -383,6 +403,34 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_07_143000) do
     t.datetime "updated_at", null: false
     t.index ["job_id"], name: "index_job_issue_reports_on_job_id"
     t.index ["user_id"], name: "index_job_issue_reports_on_user_id"
+  end
+
+  create_table "job_payment_transactions", force: :cascade do |t|
+    t.integer "payment_id", null: false
+    t.integer "job_id", null: false
+    t.integer "transaction_type", null: false
+    t.integer "direction", null: false
+    t.integer "amount_cents", null: false
+    t.string "currency", default: "usd", null: false
+    t.integer "status", default: 0, null: false
+    t.string "stripe_payment_intent_id"
+    t.string "stripe_charge_id"
+    t.string "stripe_refund_id"
+    t.string "stripe_transfer_id"
+    t.string "idempotency_key", null: false
+    t.integer "revision", default: 1, null: false
+    t.json "metadata_json", default: {}
+    t.text "error_message"
+    t.datetime "succeeded_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["idempotency_key"], name: "index_job_payment_transactions_on_idempotency_key", unique: true
+    t.index ["job_id", "transaction_type"], name: "index_job_payment_transactions_on_job_id_and_transaction_type"
+    t.index ["job_id"], name: "index_job_payment_transactions_on_job_id"
+    t.index ["payment_id"], name: "index_job_payment_transactions_on_payment_id"
+    t.index ["stripe_payment_intent_id"], name: "index_job_payment_transactions_on_stripe_payment_intent_id"
+    t.index ["stripe_refund_id"], name: "index_job_payment_transactions_on_stripe_refund_id"
+    t.index ["stripe_transfer_id"], name: "index_job_payment_transactions_on_stripe_transfer_id"
   end
 
   create_table "job_term_change_audits", force: :cascade do |t|
@@ -460,10 +508,25 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_07_143000) do
     t.json "standard_day_shifts", default: {}, null: false
     t.json "weekend_day_shifts", default: {}, null: false
     t.string "trade_type"
+    t.integer "pay_basis", default: 0, null: false
+    t.integer "agreed_hourly_rate_cents"
+    t.decimal "estimated_hours", precision: 10, scale: 2
+    t.integer "agreed_labor_cents"
+    t.decimal "company_commission_percent_snapshot", precision: 6, scale: 3
+    t.decimal "technician_commission_percent_snapshot", precision: 6, scale: 3
+    t.integer "company_membership_tier_config_id"
+    t.integer "technician_membership_tier_config_id"
+    t.integer "funding_status", default: 0, null: false
+    t.integer "settlement_status", default: 0, null: false
+    t.integer "financial_revision", default: 1, null: false
+    t.index ["company_membership_tier_config_id"], name: "index_jobs_on_company_membership_tier_config_id"
     t.index ["company_profile_id"], name: "index_jobs_on_company_profile_id"
+    t.index ["funding_status"], name: "index_jobs_on_funding_status"
+    t.index ["pay_basis"], name: "index_jobs_on_pay_basis"
     t.index ["rolling_start_rule_type"], name: "index_jobs_on_rolling_start_rule_type"
     t.index ["share_token"], name: "index_jobs_on_share_token", unique: true
     t.index ["start_mode"], name: "index_jobs_on_start_mode"
+    t.index ["technician_membership_tier_config_id"], name: "index_jobs_on_technician_membership_tier_config_id"
     t.index ["trade_type"], name: "index_jobs_on_trade_type"
   end
 
@@ -501,6 +564,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_07_143000) do
     t.text "commission_summary"
     t.boolean "is_highlighted", default: false, null: false
     t.boolean "active", default: true, null: false
+    t.boolean "waives_background_check_fee", default: false, null: false
     t.index ["audience", "slug"], name: "index_membership_tier_configs_on_audience_and_slug", unique: true
     t.index ["audience", "sort_order"], name: "index_membership_tier_configs_on_audience_and_sort_order"
   end
@@ -527,6 +591,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_07_143000) do
     t.datetime "released_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "currency", default: "usd", null: false
+    t.string "transfer_group"
     t.index ["job_id"], name: "index_payments_on_job_id"
     t.index ["status"], name: "index_payments_on_status"
     t.index ["stripe_payment_intent_id"], name: "index_payments_on_stripe_payment_intent_id"
@@ -688,6 +754,13 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_07_143000) do
     t.string "phone"
     t.boolean "background_verified", default: false, null: false
     t.json "specialties", default: [], null: false
+    t.boolean "stripe_charges_enabled", default: false, null: false
+    t.boolean "stripe_payouts_enabled", default: false, null: false
+    t.boolean "stripe_details_submitted", default: false, null: false
+    t.string "stripe_transfers_capability_status"
+    t.json "stripe_connect_requirements_due", default: {}
+    t.datetime "stripe_connect_synced_at"
+    t.string "pending_membership_level"
     t.index ["membership_level"], name: "index_technician_profiles_on_membership_level"
     t.index ["stripe_membership_subscription_id"], name: "index_technician_profiles_on_stripe_membership_subscription_id", unique: true
     t.index ["user_id"], name: "index_technician_profiles_on_user_id"
@@ -905,8 +978,11 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_07_143000) do
   add_foreign_key "job_counter_offers", "job_counter_offers", column: "parent_offer_id"
   add_foreign_key "job_counter_offers", "jobs"
   add_foreign_key "job_counter_offers", "technician_profiles"
+  add_foreign_key "job_financial_revisions", "jobs"
   add_foreign_key "job_issue_reports", "jobs"
   add_foreign_key "job_issue_reports", "users"
+  add_foreign_key "job_payment_transactions", "jobs"
+  add_foreign_key "job_payment_transactions", "payments"
   add_foreign_key "job_term_change_audits", "jobs"
   add_foreign_key "job_term_change_audits", "users", column: "actor_user_id"
   add_foreign_key "jobs", "company_profiles"

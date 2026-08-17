@@ -169,9 +169,9 @@ module Api
         unless MembershipPolicy.level_valid?(membership_level, audience: permitted_role)
           return render json: { error: "membership_tier is not valid for the selected role" }, status: :unprocessable_entity
         end
-        unless payment_valid_for_tier?(membership_level, permitted_role)
-          return render json: { error: "Valid payment is required for selected membership tier." }, status: :unprocessable_entity
-        end
+        assigned_level = MembershipPolicy.default_slug_for(permitted_role)
+        rule = MembershipPolicy.rules_for_audience(permitted_role)[membership_level]
+        assigned_level = membership_level if rule && rule[:fee_cents].to_i <= 0
 
         user = User.new(user_params.merge(email: email, role: permitted_role, first_name: first_name, last_name: last_name))
         user.password_set_actor = 'user'
@@ -182,7 +182,7 @@ module Api
               company_name: params[:company_name].to_s.strip,
               industry: industry,
               primary_hiring_need: params[:primary_hiring_need].to_s.strip.presence,
-              membership_level: membership_level,
+              membership_level: assigned_level,
               phone: phone.presence,
               state: state.presence,
               service_trades: industry.present? ? [industry] : [],
@@ -226,7 +226,7 @@ module Api
               state: state,
               zip_code: zip_code,
               country: country,
-              membership_level: membership_level,
+              membership_level: assigned_level,
               specialties: specialties
             )
           end
@@ -236,7 +236,23 @@ module Api
             pref.update!(trade_label: trade_type)
           end
           token = JWT.encode({ user_id: user.id }, Rails.application.secret_key_base, "HS256")
-          render json: { token: token, user: UserSerializer.new(user).as_json }, status: :created
+          origin = ENV.fetch("FRONTEND_URL", "http://localhost:5173").chomp("/")
+          begin
+            signup_result = MembershipSignupService.checkout_after_create!(
+              user: user,
+              requested_level: membership_level,
+              success_url: params[:success_url].presence || "#{origin}/settings?tab=membership&membership=success",
+              cancel_url: params[:cancel_url].presence || "#{origin}/settings?tab=membership&membership=cancel"
+            )
+          rescue MembershipSubscriptionService::Error => e
+            Rails.logger.warn("[membership signup] checkout failed after user create: #{e.message}")
+            signup_result = { user: user, checkout_error: e.message }
+          end
+          payload = { token: token, user: UserSerializer.new(user.reload).as_json }
+          payload[:checkout] = signup_result[:checkout] if signup_result[:checkout]
+          payload[:pending_membership_level] = signup_result[:pending_membership_level] if signup_result[:pending_membership_level]
+          payload[:checkout_error] = signup_result[:checkout_error] if signup_result[:checkout_error]
+          render json: payload, status: :created
         else
           render json: { errors: user.errors.full_messages }, status: :unprocessable_entity
         end
@@ -311,23 +327,6 @@ module Api
         lead.honeypot_triggered = true
         lead.blocked_at ||= Time.current
         lead.save(validate: false)
-      end
-
-      def payment_valid_for_tier?(membership_level, role)
-        rule = MembershipPolicy.rules_for_audience(role)[membership_level]
-        return false unless rule
-
-        return true if rule[:fee_cents].to_i <= 0
-
-        intent_id = params[:signup_payment_intent_id].to_s
-        return false if intent_id.blank? || Stripe.api_key.blank?
-
-        intent = Stripe::PaymentIntent.retrieve(intent_id)
-        return false unless intent.status == "succeeded"
-
-        intent.metadata["membership_tier"] == membership_level
-      rescue Stripe::StripeError
-        false
       end
 
       def sync_company_user_to_crm_contacts(user, company_profile: nil)

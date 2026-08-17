@@ -48,7 +48,13 @@ module Api
         return render json: { error: "Access denied" }, status: :forbidden unless can_respond_to_offer?(offer)
 
         claim_result = Jobs::ClaimJobService.call(job: offer.job, technician_user: offer.technician_profile.user, offer: offer)
-        return render json: { error: claim_result[:error] }, status: (claim_result[:status] || :unprocessable_entity) if claim_result[:error]
+        if claim_result[:error]
+          return render json: {
+            error: claim_result[:error],
+            payment_adjustment_required: claim_result[:payment_adjustment_required] || false,
+            client_secret: claim_result[:client_secret]
+          }, status: (claim_result[:status] || :unprocessable_entity)
+        end
 
         offer.update!(status: :accepted, responded_at: Time.current)
         offer.job.job_counter_offers.where(status: [:pending_company, :pending_technician]).where.not(id: offer.id).update_all(status: JobCounterOffer.statuses[:superseded], responded_at: Time.current)

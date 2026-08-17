@@ -2,6 +2,7 @@ ENV["RAILS_ENV"] ||= "test"
 require_relative "../config/environment"
 require "rails/test_help"
 require "jwt"
+require "minitest/mock"
 
 class ActiveSupport::TestCase
   MEMBERSHIP_SEED_LOCK = Mutex.new
@@ -51,6 +52,18 @@ class ActiveSupport::TestCase
       rows.map { |r| r.merge(created_at: now, updated_at: now) },
       unique_by: %i[audience slug]
     )
+    MembershipTierConfig.where(audience: "technician", slug: "premium").update_all(waives_background_check_fee: true)
+  end
+
+  def fund_job!(job)
+    JobFundingService.snapshot_company!(job)
+    job.update_columns(
+      status: Job.statuses[:open],
+      funding_status: Job.funding_statuses[:funded],
+      go_live_at: job.go_live_at || Time.current,
+      updated_at: Time.current
+    )
+    job.reload
   end
 end
 

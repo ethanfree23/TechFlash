@@ -1,5 +1,5 @@
 /** Matches `Job` enum order in Rails (`app/models/job.rb`). */
-export const JOB_STATUS_KEYS = ['open', 'reserved', 'accepted', 'completed', 'filled', 'finished'];
+export const JOB_STATUS_KEYS = ['open', 'reserved', 'accepted', 'completed', 'filled', 'finished', 'pending_funding'];
 
 const LABELS = {
   open: 'Open',
@@ -8,6 +8,7 @@ const LABELS = {
   completed: 'Completed',
   filled: 'Filled',
   finished: 'Finished',
+  pending_funding: 'Pending funding',
 };
 
 export const jobStatusLabel = (key) => LABELS[key] || key;
@@ -40,6 +41,9 @@ export function getJobDisplayStatus(job) {
   const endAt = job?.scheduled_end_at ? new Date(job.scheduled_end_at).getTime() : null;
   const startAt = job?.scheduled_start_at ? new Date(job.scheduled_start_at).getTime() : null;
 
+  if (status === 'pending_funding') {
+    return { key: 'pending_funding', label: 'Pending funding', tone: 'orange', hasCounterPending };
+  }
   if (status === 'open') {
     if (endAt !== null && endAt < now) {
       return { key: 'expired', label: 'Expired', tone: 'gray', hasCounterPending };
@@ -74,6 +78,7 @@ export const CARD_ACCENT_CLASSES = {
   claimed: 'border-l-[3px] border-l-amber-500',
   active: 'border-l-[3px] border-l-emerald-600',
   completed: 'border-l-[3px] border-l-emerald-400',
+  pending_funding: 'border-l-[3px] border-l-orange-500',
   default: 'border-l-[3px] border-l-slate-200',
 };
 

@@ -3,7 +3,10 @@ class Job < ApplicationRecord
 
   has_secure_token :share_token
 
-  enum :status, { open: 0, reserved: 1, accepted: 2, completed: 3, filled: 4, finished: 5 }
+  enum :status, { open: 0, reserved: 1, accepted: 2, completed: 3, filled: 4, finished: 5, pending_funding: 6 }
+  enum :pay_basis, { actual_hours_worked: 0, guaranteed_job_pay: 1 }
+  enum :funding_status, { unfunded: 0, funded: 1, adjustment_required: 2, funding_failed: 3 }, prefix: :funding
+  enum :settlement_status, { unsettled: 0, settling: 1, settled: 2, settlement_blocked: 3 }, prefix: :settlement
   enum :start_mode, { hard_start: 0, rolling_start: 1 }
   enum :rolling_start_rule_type, {
     none: 0,
@@ -32,9 +35,13 @@ class Job < ApplicationRecord
   }, scopes: false
 
   belongs_to :company_profile
+  belongs_to :company_membership_tier_config, class_name: "MembershipTierConfig", optional: true
+  belongs_to :technician_membership_tier_config, class_name: "MembershipTierConfig", optional: true
 
   has_many :job_applications, dependent: :destroy
   has_many :payments, dependent: :destroy
+  has_many :job_payment_transactions, dependent: :destroy
+  has_many :job_financial_revisions, dependent: :destroy
   has_many :job_counter_offers, dependent: :destroy
   has_many :weekend_work_requests, dependent: :destroy
   has_many :time_entries, dependent: :destroy
@@ -43,23 +50,53 @@ class Job < ApplicationRecord
   # Total job amount (before platform fees): hourly_rate * hours_per_day * days
   # Falls back to price_cents for legacy jobs
   def job_amount_cents
-    if hourly_rate_cents.present? && hours_per_day.present? && days.present?
-      (hourly_rate_cents * hours_per_day * days).to_i
-    else
-      price_cents || 0
-    end
+    JobMoney.labor_cents(
+      hourly_rate_cents: hourly_rate_cents,
+      hours_per_day: hours_per_day,
+      days: days,
+      fallback_cents: price_cents || 0
+    )
   end
 
-  # What company is charged: job amount + company commission
+  def company_commission_percent
+    return company_commission_percent_snapshot.to_d if company_commission_percent_snapshot.present?
+
+    MembershipPolicy.company_commission_percent(company_profile)
+  end
+
+  def technician_commission_percent
+    return technician_commission_percent_snapshot.to_d if technician_commission_percent_snapshot.present?
+
+    accepted_app = job_applications.find_by(status: :accepted)
+    MembershipPolicy.technician_commission_percent(accepted_app&.technician_profile)
+  end
+
   def company_charge_cents
-    commission_multiplier = company_commission_percent.to_f / 100.0
-    (job_amount_cents * (1 + commission_multiplier)).round
+    JobMoney.company_charge_cents(job_amount_cents, company_commission_percent)
   end
 
-  # What tech receives: job amount - technician commission
   def tech_payout_cents
-    commission_multiplier = technician_commission_percent.to_f / 100.0
-    (job_amount_cents * (1 - commission_multiplier)).round
+    JobMoney.technician_payout_cents(job_amount_cents, technician_commission_percent)
+  end
+
+  def financial_ledger
+    JobLedger.for(self)
+  end
+
+  def transfer_group
+    "TECHFLASH_JOB_#{id}"
+  end
+
+  def priced?
+    job_amount_cents.positive?
+  end
+
+  def billing_exempt?
+    MembershipPolicy.billing_exempt?(company_profile)
+  end
+
+  def funded_terms_locked?
+    funding_funded? || funding_adjustment_required?
   end
 
   before_validation :normalize_job_display_fields
@@ -93,17 +130,11 @@ class Job < ApplicationRecord
       .update_all(status: Job.statuses[:finished], finished_at: Time.current)
   end
 
+  def self.publicly_visible
+    where.not(status: :pending_funding)
+  end
+
   private
-
-  def company_commission_percent
-    MembershipPolicy.company_commission_percent(company_profile)
-  end
-
-  def technician_commission_percent
-    accepted_app = job_applications.find_by(status: :accepted)
-    tech_profile = accepted_app&.technician_profile
-    MembershipPolicy.technician_commission_percent(tech_profile)
-  end
 
   def normalize_job_display_fields
     self.skill_class = skill_class.to_s.strip.presence

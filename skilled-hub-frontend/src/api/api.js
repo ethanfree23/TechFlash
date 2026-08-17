@@ -199,18 +199,6 @@ export const licensingSettingsAPI = {
   get: () => apiRequest('/licensing_settings'),
 };
 
-export const signupPaymentsAPI = {
-  createIntent: ({ email, role, membership_tier: membershipTier }) =>
-    apiRequest('/signup_payment_intents', {
-      method: 'POST',
-      body: JSON.stringify({
-        email,
-        role,
-        membership_tier: membershipTier,
-      }),
-    }),
-};
-
 // Admin CRM (company pipeline + optional link to platform company account)
 export const crmAPI = {
   list: () => apiRequest('/admin/crm_leads'),
@@ -627,6 +615,16 @@ export const jobsAPI = {
       method: 'PATCH',
     }),
 
+  confirmFunding: (id) =>
+    apiRequest(`/jobs/${id}/confirm_funding`, {
+      method: 'POST',
+    }),
+
+  unpublish: (id) =>
+    apiRequest(`/jobs/${id}/unpublish`, {
+      method: 'POST',
+    }),
+
   finish: (id) =>
     apiRequest(`/jobs/${id}/finish`, {
       method: 'PATCH',
@@ -765,14 +763,6 @@ export const favoriteTechniciansAPI = {
     }),
 };
 
-// Payments (Stripe)
-export const paymentsAPI = {
-  createIntent: (jobId) =>
-    apiRequest(`/jobs/${jobId}/create_payment_intent`, {
-      method: 'POST',
-    }),
-};
-
 // Settings (profile + payment setup)
 export const settingsAPI = {
   createSetupIntent: () =>
@@ -782,6 +772,14 @@ export const settingsAPI = {
       method: 'POST',
       body: JSON.stringify({ base_url: baseUrl || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173') }),
     }),
+  billingHistory: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v != null && String(v).trim() !== '') qs.set(k, String(v));
+    });
+    const query = qs.toString();
+    return apiRequest(`/billing_history${query ? `?${query}` : ''}`);
+  },
 };
 
 // Job Applications endpoints

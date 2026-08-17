@@ -1,37 +1,51 @@
 # Cron Jobs
 
-Schedule these rake tasks so payments release and review reminders work correctly in production.
+Schedule these so payments release and review reminders work in production.
 
-## 1. Payment Release (hourly)
+**Railway Cron is not configured in this repo.** `skilled_hub_api/railway.json` has no schedule. Add jobs in the Railway (or host) dashboard.
 
-Releases held payments to technicians when eligible (both reviewed OR 72h since job finished).
+## 1. Payment release (hourly)
+
+Settles finished jobs, then transfers when:
+
+- both parties reviewed **or** 72h since `finished_at`
+- ledger fully funded
+- technician Connect is payout-ready
+- no existing successful technician transfer
 
 ```bash
 cd /path/to/skilled_hub_api && bundle exec rails payments:release_eligible
 ```
 
-**Example crontab (hourly):**
+**Railway Cron example**
+
+- Schedule: `0 * * * *` (hourly)
+- Command: `bundle exec rails payments:release_eligible`
+
+**HTTP alternative** (if rake-in-cron is awkward):
+
 ```
-0 * * * * cd /path/to/skilled_hub_api && bundle exec rails payments:release_eligible
+POST /api/v1/internal/payments/release_eligible
+Header: X-Payments-Cron-Secret: <PAYMENTS_CRON_SECRET>
 ```
 
-## 2. Review Reminders (daily)
+Verbose skip reasons: `VERBOSE=1 bundle exec rails payments:release_eligible`
 
-Sends reminder emails to users who completed jobs 3–7 days ago but haven't left a review.
+Diagnostics (manual): `bundle exec rails payments:diagnose`
+
+## 2. Review reminders (daily)
 
 ```bash
 cd /path/to/skilled_hub_api && bundle exec rake skilled_hub:review_reminders
 ```
 
-**Example crontab (daily at 9am):**
+**Example crontab (09:00):**
+
 ```
 0 9 * * * cd /path/to/skilled_hub_api && bundle exec rake skilled_hub:review_reminders
 ```
 
----
+## Other hosts
 
-## Railway / Heroku / Other Hosts
-
-- **Railway**: Use a cron add-on or scheduled worker.
-- **Heroku**: Add Heroku Scheduler and create two daily jobs; for hourly payments, use a third-party cron service.
-- **Render / Fly.io**: Configure cron jobs in their dashboard or use a separate cron service (e.g. cron-job.org) to hit a protected endpoint if you add one.
+- **Heroku**: Scheduler for daily review reminders; hourly payments via Scheduler or a third-party cron hitting the HTTP endpoint.
+- **Render / Fly.io**: dashboard cron or an external ping to the protected HTTP endpoint.

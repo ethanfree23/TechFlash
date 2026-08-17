@@ -1,30 +1,10 @@
 # frozen_string_literal: true
 
 class PaymentService
-  RELEASE_HOURS = 72
+  RELEASE_HOURS = JobSettlementService::RELEASE_HOURS
 
   class PaymentError < StandardError; end
 
-  def self.demo_simulate_charge!(job)
-    payment = job.payments.create!(
-      amount_cents: job.tech_payout_cents,
-      status: "held",
-      stripe_payment_intent_id: "pi_demo_#{job.id}",
-      held_at: Time.current
-    )
-    { success: true, payment: payment, simulated: true }
-  end
-
-  def self.demo_simulate_release!(payment)
-    payment.update!(
-      status: "released",
-      stripe_transfer_id: "tr_demo_#{payment.id}",
-      released_at: Time.current
-    )
-    { success: true, payment: payment, simulated: true }
-  end
-
-  # Check if company has a valid card on file (for posting jobs)
   def self.company_has_payment_method?(user)
     return true if defined?(DemoMode) && DemoMode.enabled?
 
@@ -34,158 +14,15 @@ class PaymentService
     customer_id = StripeCustomerService.validate_or_clear_customer_id!(user)
     return false if customer_id.blank?
 
-    customer = Stripe::Customer.retrieve(customer_id, expand: ['invoice_settings.default_payment_method'])
-    pm_id = customer.invoice_settings&.default_payment_method
-    pm_id ||= Stripe::PaymentMethod.list(customer: customer_id, type: 'card').data.first&.id
-    pm_id.present?
+    JobFundingService.default_payment_method_id(customer_id).present?
   rescue Stripe::StripeError
     false
   end
 
-  # Charge company when tech claims a paid job (off-session, using saved card)
-  def self.charge_company_on_claim(job)
-    if defined?(DemoMode) && DemoMode.enabled?
-      return demo_simulate_charge!(job) if job.job_amount_cents.present? && job.job_amount_cents.positive?
-      return { success: true, simulated: true }
-    end
-
-    return { error: 'Job has no price' } if job.job_amount_cents.blank? || job.job_amount_cents <= 0
-    return { error: 'Job already has a payment' } if job.payments.held.any? || job.payments.released.any?
-
-    company_user = job.company_profile.user
-    stripe_customer_id = StripeCustomerService.validate_or_clear_customer_id!(company_user)
-    return { error: 'Company must add a payment method in Settings before technicians can claim this job' } if stripe_customer_id.blank?
-
-    payment = job.payments.create!(
-      amount_cents: job.tech_payout_cents,
-      status: 'pending'
-    )
-
-    begin
-      return { error: 'Stripe not configured' } if Stripe.api_key.blank?
-
-      # Get customer's default payment method or first available
-      customer = Stripe::Customer.retrieve(stripe_customer_id, expand: ['invoice_settings.default_payment_method'])
-      pm_id = customer.invoice_settings&.default_payment_method
-      pm_id ||= Stripe::PaymentMethod.list(customer: stripe_customer_id, type: 'card').data.first&.id
-      return { error: 'Company has no payment method on file. Ask them to add a card in Settings.' } if pm_id.blank?
-
-      intent = Stripe::PaymentIntent.create(
-        amount: job.company_charge_cents,
-        currency: 'usd',
-        customer: stripe_customer_id,
-        payment_method: pm_id,
-        off_session: true,
-        confirm: true,
-        metadata: { job_id: job.id.to_s, payment_id: payment.id.to_s },
-        automatic_payment_methods: { enabled: true }
-      )
-
-      if intent.status == 'succeeded'
-        payment.update!(
-          status: 'held',
-          stripe_payment_intent_id: intent.id,
-          held_at: Time.current
-        )
-        { success: true, payment: payment }
-      elsif intent.status == 'requires_action'
-        payment.update!(status: 'failed')
-        { error: 'Payment requires authentication. Company should use a different card in Settings.' }
-      else
-        payment.update!(status: 'failed')
-        { error: intent.last_payment_error&.message || 'Payment failed' }
-      end
-    rescue Stripe::StripeError => e
-      payment.update!(status: 'failed') if payment.persisted?
-      { error: e.message }
-    end
-  end
-
-  # Refund payment when company denies the claimed tech
   def self.refund_payment(job)
-    if defined?(DemoMode) && DemoMode.enabled?
-      payment = job.payments.held.first
-      payment&.update!(status: "refunded")
-      return { success: true, simulated: true }
-    end
-
-    payment = job.payments.held.first
-    return { error: 'No held payment to refund' } unless payment
-    return { error: 'No Stripe payment to refund' } if payment.stripe_payment_intent_id.blank?
-
-    return { error: 'Stripe not configured' } if Stripe.api_key.blank?
-
-    begin
-      Stripe::Refund.create(payment_intent: payment.stripe_payment_intent_id)
-      payment.update!(status: 'refunded')
-      { success: true }
-    rescue Stripe::StripeError => e
-      { error: e.message }
-    end
+    JobFundingAdjustmentService.refund_unfilled_job!(job)
   end
 
-  # Charge company when they accept the tech (job -> filled) - legacy, kept for reference
-  def self.charge_and_hold(job:, payment_method_id:)
-    return { error: 'Job has no price' } if job.price_cents.blank? || job.price_cents <= 0
-    return { error: 'Job already has a payment' } if job.payments.held.any? || job.payments.released.any?
-
-    company_user = job.company_profile.user
-    stripe_customer_id = company_user.stripe_customer_id
-    return { error: 'Company has no payment method on file' } if payment_method_id.blank? && stripe_customer_id.blank?
-
-    payment = job.payments.create!(
-      amount_cents: job.price_cents,
-      status: 'pending'
-    )
-
-    begin
-      return { error: 'Stripe not configured' } if Stripe.api_key.blank?
-
-      # Create or retrieve customer
-      customer_id = stripe_customer_id
-      unless customer_id
-        customer = Stripe::Customer.create(
-          email: company_user.email,
-          payment_method: payment_method_id,
-          invoice_settings: { default_payment_method: payment_method_id }
-        )
-        customer_id = customer.id
-        company_user.update!(stripe_customer_id: customer_id)
-      end
-
-      # Create PaymentIntent and capture immediately (charge company)
-      intent_params = {
-        amount: job.price_cents,
-        currency: 'usd',
-        customer: customer_id,
-        metadata: { job_id: job.id.to_s, payment_id: payment.id.to_s },
-        confirm: true,
-        automatic_payment_methods: { enabled: true }
-      }
-      intent_params[:payment_method] = payment_method_id if payment_method_id.present?
-
-      intent = Stripe::PaymentIntent.create(intent_params)
-
-      if intent.status == 'succeeded'
-        payment.update!(
-          status: 'held',
-          stripe_payment_intent_id: intent.id,
-          held_at: Time.current
-        )
-        { success: true, payment: payment }
-      elsif intent.status == 'requires_action'
-        { success: false, requires_action: true, client_secret: intent.client_secret }
-      else
-        payment.update!(status: 'failed')
-        { error: intent.last_payment_error&.message || 'Payment failed' }
-      end
-    rescue Stripe::StripeError => e
-      payment.update!(status: 'failed') if payment.persisted?
-      { error: e.message }
-    end
-  end
-
-  # Sum of Stripe transfers to a technician's connected account (source of truth for earnings)
   def self.stripe_earnings_cents_for(technician_profile)
     return nil if technician_profile.blank? || technician_profile.stripe_account_id.blank?
     return nil if Stripe.api_key.blank?
@@ -204,6 +41,7 @@ class PaymentService
       list = Stripe::Transfer.list(params)
       list.data.each do |t|
         next if t.reversed
+
         amount_reversed = t.respond_to?(:amount_reversed) ? (t.amount_reversed || 0) : 0
         total += (t.amount || 0) - amount_reversed
       end
@@ -216,90 +54,82 @@ class PaymentService
     nil
   end
 
-  # Release funds to tech when: both reviewed OR 72 hours passed since job finished
   def self.release_if_eligible(job)
-    return unless job.finished?
-    return unless job.finished_at.present?
-
-    payment = job.payments.held.first
-    return unless payment
-
-    return unless release_eligible?(job)
-
-    release_to_technician(payment)
+    JobSettlementService.settle_and_release_if_eligible!(job)
   end
 
   def self.release_eligible?(job)
-    return false unless job.finished? && job.finished_at.present?
-
-    # Condition 1: 72 hours (3 days) have passed
-    return true if job.finished_at <= RELEASE_HOURS.hours.ago
-
-    # Condition 2: Both parties have left a review
-    company_profile = job.company_profile
-    accepted_app = job.job_applications.find_by(status: :accepted)
-    technician_profile = accepted_app&.technician_profile
-    return false unless technician_profile
-
-    company_reviewed = Rating.exists?(job: job, reviewer: company_profile)
-    tech_reviewed = Rating.exists?(job: job, reviewer: technician_profile)
-    company_reviewed && tech_reviewed
+    JobSettlementService.release_eligible?(job)
   end
 
   def self.release_to_technician(payment)
-    if defined?(DemoMode) && DemoMode.enabled?
-      return demo_simulate_release!(payment)
-    end
+    return { error: "No payment header" } if payment.blank?
 
     job = payment.job
+    ledger = JobLedger.for(job)
+    return { error: "Job is underfunded; technician payout is blocked." } unless ledger.fully_funded
+    return { error: "Technician payout already transferred." } if ledger.transferred_cents.positive?
+
+    existing = job.job_payment_transactions.find_by(transaction_type: :technician_transfer, status: :succeeded)
+    return { success: true, payment: payment, transaction: existing } if existing
+
     accepted_app = job.job_applications.find_by(status: :accepted)
     technician_profile = accepted_app&.technician_profile
-    return { error: 'No technician to pay' } unless technician_profile
-    return { error: 'Technician has no Stripe account' } if technician_profile.stripe_account_id.blank?
+    return { error: "No technician to pay" } unless technician_profile
+    return { error: "Technician has no Stripe account" } if technician_profile.stripe_account_id.blank?
+    unless StripeConnectAccountService.payout_ready?(technician_profile, sync: true)
+      return { error: "Technician Stripe Connect account is not ready to receive payouts." }
+    end
 
-    return { error: 'Stripe not configured' } if Stripe.api_key.blank?
+    payout_amount = ledger.technician_net_payout_cents
+    return { error: "No approved payable hours available for payout." } if payout_amount <= 0
+    if payout_amount > ledger.net_funded_cents
+      return { error: "Payout exceeds funded amount." }
+    end
 
-    begin
-      payout_amount = payout_amount_cents_for_job(job, payment)
-      if payout_amount <= 0
-        return { error: 'No approved payable hours available for payout.' }
-      end
-
-      # Transfer from platform balance to connected account
-      transfer = Stripe::Transfer.create(
-        amount: payout_amount,
-        currency: 'usd',
-        destination: technician_profile.stripe_account_id,
-        metadata: { job_id: job.id.to_s, payment_id: payment.id.to_s }
+    key = "tf_job_#{job.id}_txn_technician_transfer_r#{job.financial_revision}"
+    txn = JobPaymentTransaction.find_or_initialize_by(idempotency_key: key)
+    if txn.new_record?
+      txn.assign_attributes(
+        payment: payment,
+        job: job,
+        transaction_type: :technician_transfer,
+        direction: :outbound,
+        amount_cents: payout_amount,
+        currency: "usd",
+        status: :pending,
+        revision: job.financial_revision
       )
+      txn.save!
+    elsif txn.status_succeeded?
+      return { success: true, payment: payment, transaction: txn }
+    end
 
+    result = JobStripeOps.transfer!(
+      amount_cents: payout_amount,
+      destination: technician_profile.stripe_account_id,
+      metadata: JobFundingService.stripe_metadata(job, txn),
+      transfer_group: job.transfer_group,
+      idempotency_key: key
+    )
+    if result.succeeded?
+      txn.update!(status: :succeeded, stripe_transfer_id: result.stripe_id, succeeded_at: Time.current)
       payment.update!(
-        status: 'released',
-        stripe_transfer_id: transfer.id,
+        status: "released",
+        stripe_transfer_id: result.stripe_id,
         released_at: Time.current,
         amount_cents: payout_amount
       )
-      mark_paid_time_entries!(job)
+      TimeEntry.where(job_id: job.id, status: TimeEntry.statuses[:approved]).update_all(
+        status: TimeEntry.statuses[:paid],
+        paid_at: Time.current,
+        updated_at: Time.current
+      )
       MailDelivery.safe_deliver { UserMailer.payment_received_email(job, payout_amount).deliver_now }
-      { success: true, payment: payment }
-    rescue Stripe::StripeError => e
-      { error: e.message }
+      { success: true, payment: payment, transaction: txn }
+    else
+      txn.update!(status: :failed, error_message: result.error)
+      { error: result.error }
     end
-  end
-
-  def self.payout_amount_cents_for_job(job, payment)
-    approved_lines = TimeEntryPayLine.joins(:time_entry)
-      .where(job_id: job.id, time_entries: { status: TimeEntry.statuses[:approved] })
-    return payment.amount_cents if approved_lines.empty?
-
-    approved_lines.sum(:gross_pay_cents).to_i
-  end
-
-  def self.mark_paid_time_entries!(job)
-    TimeEntry.where(job_id: job.id, status: TimeEntry.statuses[:approved]).update_all(
-      status: TimeEntry.statuses[:paid],
-      paid_at: Time.current,
-      updated_at: Time.current
-    )
   end
 end

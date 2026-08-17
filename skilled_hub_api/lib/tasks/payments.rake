@@ -1,79 +1,83 @@
 # frozen_string_literal: true
 
 namespace :payments do
-  desc 'Add funds to available balance (test mode only). Use before release when 4242 charges are pending.'
-  task add_test_balance: :environment do
-    amount_cents = (ENV['AMOUNT'] || 800_000).to_i # default $8000 (covers Job #18's $7600)
-
-    if Stripe.api_key.blank?
-      puts "ERROR: Stripe not configured (set STRIPE_SECRET_KEY in .env, or STRIPE_SECRET_KEY_TEST as fallback)"
-      next
-    end
-
-    if Stripe.api_key.start_with?('sk_live_')
-      puts "ERROR: This task is for TEST mode only. Do not run with live keys."
-      next
-    end
-
-    begin
-      intent = Stripe::PaymentIntent.create(
-        amount: amount_cents,
-        currency: 'usd',
-        payment_method: 'pm_card_bypassPending',
-        payment_method_types: ['card'],
-        confirm: true
-      )
-      puts "Added $#{amount_cents / 100.0} to available balance (PaymentIntent #{intent.id})"
-      puts "Run: bundle exec rails payments:release_eligible"
-    rescue Stripe::StripeError => e
-      puts "ERROR: #{e.message}"
-    end
-  end
-
-  desc 'Release held payments when eligible (both reviewed OR 72h since job finished)'
+  desc "Release settled, eligible job payouts (reviews or 72h). Idempotent."
   task release_eligible: :environment do
-    count = 0
-    Job.where(status: :finished).where.not(finished_at: nil).find_each do |job|
-      next unless job.payments.held.any?
-      next unless PaymentService.release_eligible?(job)
-
-      result = PaymentService.release_to_technician(job.payments.held.first)
-      if result[:success]
-        count += 1
-      else
-        puts "Job #{job.id}: release failed - #{result[:error]}"
-      end
-    end
-    puts "Released #{count} payment(s)"
+    result = PaymentsReleaseRunner.call
+    puts "Released #{result[:released]} payment(s)"
+    result[:failed].each { |row| puts "Job #{row[:job_id]}: FAILED #{row[:error]}" }
+    result[:skipped].each { |row| puts "Job #{row[:job_id]}: skipped #{row[:reason]}" if ENV["VERBOSE"] }
   end
 
-  desc 'Diagnose held payments: check tech Stripe connection, release eligibility, and attempt release'
+  desc "Diagnose job funding, Connect, membership, and payout inconsistencies"
   task diagnose: :environment do
-    held = Payment.held.includes(job: [:company_profile, { job_applications: :technician_profile }])
-    puts "=== Held payments: #{held.count} ===\n\n"
+    puts "=== Job financial diagnostics ==="
+    Job.find_each do |job|
+      next unless job.priced? || job.payments.any?
 
-    held.each do |payment|
-      job = payment.job
-      accepted = job.job_applications.find_by(status: :accepted)
-      tech_profile = accepted&.technician_profile
-      tech_user = tech_profile&.user
+      ledger = JobLedger.for(job)
+      issues = []
+      issues << "underfunded completed job" if job.finished? && !ledger.fully_funded
+      issues << "excess funding" if ledger.amount_refundable_cents.positive? && job.finished?
+      issues << "held eligible for payout" if job.finished? && ledger.fully_funded && ledger.transferred_cents.zero? && JobSettlementService.release_eligible?(job)
+      issues << "missing snapshots" if job.funding_funded? && job.company_commission_percent_snapshot.blank?
+      issues << "unknown company tier" if job.company_membership_tier_config_id.present? && MembershipTierConfig.find_by(id: job.company_membership_tier_config_id).blank?
+      next if issues.empty?
 
-      puts "Job ##{job.id} | Amount: $#{payment.amount_cents / 100.0} | Tech: #{tech_user&.email || 'N/A'}"
-      puts "  stripe_account_id: #{tech_profile&.stripe_account_id.presence || 'MISSING'}"
-      puts "  release_eligible?: #{PaymentService.release_eligible?(job)}"
-      puts "  company_reviewed: #{Rating.exists?(job: job, reviewer: job.company_profile)}"
-      puts "  tech_reviewed: #{tech_profile ? Rating.exists?(job: job, reviewer: tech_profile) : 'N/A'}"
-
-      if PaymentService.release_eligible?(job)
-        puts "  Attempting release..."
-        result = PaymentService.release_to_technician(payment)
-        if result[:success]
-          puts "  => SUCCESS (transferred to tech)"
-        else
-          puts "  => FAILED: #{result[:error]}"
-        end
-      end
-      puts
+      puts "Job ##{job.id} #{job.title.inspect} status=#{job.status} funding=#{job.funding_status} settlement=#{job.settlement_status}"
+      puts "  required=#{ledger.company_required_cents} net=#{ledger.net_funded_cents} due=#{ledger.amount_due_cents} transferred=#{ledger.transferred_cents}"
+      puts "  issues: #{issues.join(', ')}"
     end
+
+    puts "\n=== Connect accounts ==="
+    TechnicianProfile.where.not(stripe_account_id: nil).find_each do |profile|
+      ready = StripeConnectAccountService.payout_ready?(profile)
+      next if ready
+
+      puts "Tech ##{profile.id} #{profile.user&.email} acct=#{profile.stripe_account_id} payout_ready=#{ready} charges=#{profile.stripe_charges_enabled} payouts=#{profile.stripe_payouts_enabled} transfers=#{profile.stripe_transfers_capability_status}"
+    end
+
+    puts "\n=== Membership Stripe prices ==="
+    MembershipTierConfig.where("monthly_fee_cents > 0").find_each do |cfg|
+      next if cfg.stripe_price_id.present?
+
+      puts "Missing Stripe price: #{cfg.audience}/#{cfg.slug} fee=#{cfg.monthly_fee_cents}"
+    end
+
+    puts "\n=== Paid members without subscription IDs ==="
+    [CompanyProfile, TechnicianProfile].each do |klass|
+      klass.find_each do |profile|
+        audience = klass == CompanyProfile ? :company : :technician
+        fee = MembershipPolicy.rules_for_audience(audience)[profile.membership_level]
+        next unless fee && fee[:fee_cents].to_i.positive?
+        next if profile.membership_fee_waived?
+        next if profile.stripe_membership_subscription_id.present?
+
+        puts "#{klass.name} ##{profile.id} user=#{profile.user&.email} tier=#{profile.membership_level} missing subscription"
+      end
+    end
+  end
+
+  desc "Add funds to available balance (test mode only)"
+  task add_test_balance: :environment do
+    amount_cents = (ENV["AMOUNT"] || 800_000).to_i
+    if Stripe.api_key.blank?
+      puts "ERROR: Stripe not configured"
+      next
+    end
+    if Stripe.api_key.start_with?("sk_live_")
+      puts "ERROR: This task is for TEST mode only."
+      next
+    end
+    intent = Stripe::PaymentIntent.create(
+      amount: amount_cents,
+      currency: "usd",
+      payment_method: "pm_card_bypassPending",
+      payment_method_types: ["card"],
+      confirm: true
+    )
+    puts "Added $#{amount_cents / 100.0} (PaymentIntent #{intent.id})"
+  rescue Stripe::StripeError => e
+    puts "ERROR: #{e.message}"
   end
 end

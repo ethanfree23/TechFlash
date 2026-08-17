@@ -31,6 +31,7 @@ import { isDemoMode, demoSimulatedMessage, withDemoPath } from '../utils/demoMod
 import { mediaUrlWithCacheBust, resolveMediaUrl } from '../utils/mediaUrl';
 import AccountRolePanel from '../components/settings/AccountRolePanel';
 import { parseSettingsUrl, replaceSettingsUrl } from '../utils/settingsUrl';
+import { trackMembershipSubscribe } from '../utils/metaPixel';
 import SettingsPageShell from '../components/settings/SettingsPageShell';
 import SettingsHeader from '../components/settings/SettingsHeader';
 import SettingsTabs from '../components/settings/SettingsTabs';
@@ -224,6 +225,8 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [form, setForm] = useState({});
   const [paymentError, setPaymentError] = useState(null);
   const [paymentSuccess, setPaymentSuccess] = useState(null);
+  const [billingHistory, setBillingHistory] = useState([]);
+  const [billingHistoryLoading, setBillingHistoryLoading] = useState(false);
   const [accountEmail, setAccountEmail] = useState('');
   const [accountPassword, setAccountPassword] = useState('');
   const [accountPasswordConfirm, setAccountPasswordConfirm] = useState('');
@@ -629,6 +632,26 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   }, [fetchProfile]);
 
   useEffect(() => {
+    if (settingsTab !== 'payment' || !isCompany) return;
+    let active = true;
+    setBillingHistoryLoading(true);
+    settingsAPI.billingHistory()
+      .then((res) => {
+        if (!active) return;
+        setBillingHistory(Array.isArray(res?.billing_history) ? res.billing_history : []);
+      })
+      .catch(() => {
+        if (active) setBillingHistory([]);
+      })
+      .finally(() => {
+        if (active) setBillingHistoryLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [settingsTab, isCompany]);
+
+  useEffect(() => {
     if (isTechnician && profile?.id) {
       documentsAPI.getAll()
         .then((docsPayload) => {
@@ -847,6 +870,9 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       return;
     }
     if (membershipParam === 'success' || membershipParam === 'cancel') {
+      if (membershipParam === 'success') {
+        trackMembershipSubscribe();
+      }
       setSettingsTab('profile');
       removeSettingsQueryParams(['membership']);
       if (membershipParam === 'success') {
@@ -2887,7 +2913,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           {isCompany && (
             <div>
               <h3 className="text-base font-medium text-gray-900 mb-2">Credit card</h3>
-              <p className="text-gray-600 mb-4">Add a credit or debit card to pay for jobs when you accept technicians.</p>
+              <p className="text-gray-600 mb-4">Add a credit or debit card. Priced jobs are charged when you post them.</p>
               {!isValidStripePublishableKey(publishableKey) && (
                 <p className="mb-4 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
                   Stripe is not configured for this build. Set <code className="font-mono text-xs">VITE_STRIPE_PUBLISHABLE_KEY_TEST</code> or{' '}
@@ -2906,10 +2932,16 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
           {isTechnician && (
             <div>
-              <p className="text-gray-600 mb-4">
+              <p className="text-gray-600 mb-2">
                 Connect your bank account to receive payouts when jobs are completed.
-                {profile?.stripe_connected && <span className="text-green-600 font-medium ml-2">✓ Connected</span>}
               </p>
+              {profile?.stripe_payout_ready ? (
+                <p className="text-green-700 font-medium mb-4">Payout-ready — charges and payouts are enabled.</p>
+              ) : profile?.stripe_connected ? (
+                <p className="text-amber-800 font-medium mb-4">Onboarding incomplete or restricted. Finish Stripe Connect before payouts can be sent.</p>
+              ) : (
+                <p className="text-gray-500 mb-4">Not connected.</p>
+              )}
               <button
                 onClick={handleConnectBank}
                 className="px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700"
@@ -2925,7 +2957,25 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
           {!isAdmin && isCompany && (
             <SettingsCard title="Billing history" collapsible defaultOpen={false}>
-              <p className="text-sm text-gray-600">Invoice and receipt history will appear here when billing exports are connected.</p>
+              {billingHistoryLoading ? (
+                <p className="text-sm text-gray-600">Loading billing history…</p>
+              ) : billingHistory.length === 0 ? (
+                <p className="text-sm text-gray-600">No job charges or refunds yet.</p>
+              ) : (
+                <ul className="space-y-2">
+                  {billingHistory.slice(0, 25).map((row) => (
+                    <li key={row.id} className="text-sm border border-gray-200 rounded-lg p-3">
+                      <div className="font-medium text-gray-900">{row.job_title || `Job #${row.job_id}`}</div>
+                      <div className="text-gray-600">
+                        {row.transaction_type?.replace(/_/g, ' ')} · {row.status} · ${((row.amount_cents || 0) / 100).toFixed(2)}
+                      </div>
+                      {row.occurred_at && (
+                        <div className="text-xs text-gray-500">{new Date(row.occurred_at).toLocaleString()}</div>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
             </SettingsCard>
           )}
               </div>

@@ -101,7 +101,10 @@ module Api
                  title: "Admin posted job blocked",
                  description: "desc",
                  status: "open",
-                 company_profile_id: company_profile.id
+                 company_profile_id: company_profile.id,
+                 hourly_rate_cents: 5000,
+                 hours_per_day: 8,
+                 days: 1
                },
                headers: auth_header_for(admin),
                as: :json
@@ -136,7 +139,10 @@ module Api
                  description: "desc",
                  status: "open",
                  company_profile_id: company_profile.id,
-                 skip_card_validation: true
+                 skip_card_validation: true,
+                 hourly_rate_cents: 5000,
+                 hours_per_day: 8,
+                 days: 1
                },
                headers: auth_header_for(admin),
                as: :json
@@ -185,7 +191,10 @@ module Api
                  title: "Card required posting",
                  description: "Must fail without card",
                  status: "open",
-                 company_profile_id: profile.id
+                 company_profile_id: profile.id,
+                 hourly_rate_cents: 5000,
+                 hours_per_day: 8,
+                 days: 1
                },
                headers: auth_header_for(user),
                as: :json
@@ -372,18 +381,20 @@ module Api
         )
 
         travel_to Time.zone.parse("2026-04-27 14:00:00") do
-          job = Job.create!(
+          job = Job.new(
             company_profile: company_profile,
             title: "Rolling start claim",
             description: "desc",
             status: :open,
             go_live_at: 3.days.ago,
             start_mode: :rolling_start,
+            rolling_start_rule_type: :none,
             hourly_rate_cents: 3_000,
             hours_per_day: 8,
             days: 3,
             scheduled_end_at: 1.week.from_now
           )
+          job.save!(validate: false)
 
           patch "/api/v1/jobs/#{job.id}/claim",
                 headers: auth_header_for(technician_user),

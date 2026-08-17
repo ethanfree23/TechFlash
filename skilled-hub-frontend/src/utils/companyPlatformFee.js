@@ -37,6 +37,18 @@ export function formatPlatformFeePercent(effectiveCommissionPercent) {
   return s.endsWith('.0') ? s.slice(0, -2) : s;
 }
 
+export function payBasisLabel(payBasis) {
+  return payBasis === 'guaranteed_job_pay' ? 'Guaranteed Job Pay' : 'Actual Hours Worked';
+}
+
+export function isGuaranteedPay(payBasis) {
+  return payBasis === 'guaranteed_job_pay';
+}
+
+export function jobAmountCaption(payBasis) {
+  return isGuaranteedPay(payBasis) ? 'Guaranteed job pay' : 'Estimated job amount';
+}
+
 /** Prefer nested company profile; else infer from stored job amounts (cents). */
 export function resolvedCompanyFeePercentFromJob(job) {
   const raw = job?.company_profile?.effective_commission_percent;

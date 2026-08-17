@@ -1,9 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { FaLock } from 'react-icons/fa';
-import { authAPI, licensingSettingsAPI, membershipTierConfigsAPI, signupPaymentsAPI } from '../api/api';
+import { authAPI, licensingSettingsAPI, membershipTierConfigsAPI } from '../api/api';
 import { auth } from '../auth';
-import CardPaymentForm from './CardPaymentForm';
 import { MembershipPlanCard } from './membership/MembershipPlanCard';
 import { CompanyInfoFields } from './signup/CompanyInfoFields';
 import { SignupFormActions } from './signup/SignupFormActions';
@@ -12,70 +11,9 @@ import { SignupTrustPanel } from './signup/SignupTrustPanel';
 import { SignupWizardShell } from './signup/SignupWizardShell';
 import { TechnicianInfoFields } from './signup/TechnicianInfoFields';
 import { RoleSelector } from './signup/RoleSelector';
-import { getStripePublishableKey, isValidStripePublishableKey } from '../stripeConfig';
 import { requiresElectricalLicenseForState, setLocalOnlyLicenseStates } from '../utils/licensingRules';
 import { adaptMembershipTierList } from '../utils/membershipTierAdapter';
-
-const FALLBACK_RAW_TIERS = {
-  technician: [
-    {
-      slug: 'basic',
-      display_name: 'Basic',
-      monthly_fee_cents: 0,
-      yearly_fee_cents: 0,
-      commission_percent: 20,
-      feature_bullets: [],
-      active: true,
-    },
-    {
-      slug: 'pro',
-      display_name: 'Pro',
-      monthly_fee_cents: 4900,
-      yearly_fee_cents: 0,
-      commission_percent: 20,
-      feature_bullets: [],
-      active: true,
-    },
-    {
-      slug: 'premium',
-      display_name: 'Premium',
-      monthly_fee_cents: 24900,
-      yearly_fee_cents: 0,
-      commission_percent: 10,
-      feature_bullets: [],
-      active: true,
-    },
-  ],
-  company: [
-    {
-      slug: 'basic',
-      display_name: 'Basic',
-      monthly_fee_cents: 0,
-      yearly_fee_cents: 0,
-      commission_percent: 20,
-      feature_bullets: [],
-      active: true,
-    },
-    {
-      slug: 'pro',
-      display_name: 'Pro',
-      monthly_fee_cents: 9900,
-      yearly_fee_cents: 0,
-      commission_percent: 15,
-      feature_bullets: [],
-      active: true,
-    },
-    {
-      slug: 'premium',
-      display_name: 'Premium',
-      monthly_fee_cents: 24900,
-      yearly_fee_cents: 0,
-      commission_percent: 10,
-      feature_bullets: [],
-      active: true,
-    },
-  ],
-};
+import { trackCompleteRegistration } from '../utils/metaPixel';
 
 const roleLabel = (role) => (role === 'company' ? 'Company' : 'Technician');
 const ONE_JOB_BASELINE_CENTS = 25 * 8 * 5 * 100;
@@ -97,22 +35,13 @@ const RegisterForm = ({
   initialRoleView = 'technician',
 }) => {
   const navigate = useNavigate();
-  const publishableKey = getStripePublishableKey();
-  const stripe = useMemo(() => {
-    if (window.Stripe && isValidStripePublishableKey(publishableKey)) {
-      return window.Stripe(publishableKey);
-    }
-    return null;
-  }, [publishableKey]);
-
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [step, setStep] = useState(1);
-  const [paymentToken, setPaymentToken] = useState(null);
-  const [paymentSummary, setPaymentSummary] = useState(null);
   const [billingInterval, setBillingInterval] = useState('monthly');
   const [termsAccepted, setTermsAccepted] = useState(false);
-  const [tierConfigRaw, setTierConfigRaw] = useState(FALLBACK_RAW_TIERS);
+  const [tierConfigRaw, setTierConfigRaw] = useState({ technician: [], company: [] });
+  const [tierLoadError, setTierLoadError] = useState(false);
   const [registerData, setRegisterData] = useState({
     email: initialEmail,
     password: '',
@@ -168,9 +97,10 @@ const RegisterForm = ({
     const load = async () => {
       const [tech, company] = await Promise.all([loadAudience('technician'), loadAudience('company')]);
       if (!active) return;
+      if (!tech && !company) setTierLoadError(true);
       setTierConfigRaw({
-        technician: tech || FALLBACK_RAW_TIERS.technician,
-        company: company || FALLBACK_RAW_TIERS.company,
+        technician: tech || [],
+        company: company || [],
       });
     };
     load();
@@ -202,8 +132,6 @@ const RegisterForm = ({
     const slugs = adaptedTiers.map((t) => t.id);
     if (!slugs.includes(registerData.membership_tier) && slugs.length > 0) {
       setRegisterData((prev) => ({ ...prev, membership_tier: slugs[0] }));
-      setPaymentToken(null);
-      setPaymentSummary(null);
     }
   }, [adaptedTiers, registerData.membership_tier]);
 
@@ -307,6 +235,10 @@ const RegisterForm = ({
   };
 
   const validateStepThree = () => {
+    if (tierLoadError || adaptedTiers.length === 0) {
+      setError('Membership plans could not be loaded. Refresh and try again.');
+      return false;
+    }
     if (!registerData.membership_tier) {
       setError('Please select a membership plan.');
       return false;
@@ -319,50 +251,7 @@ const RegisterForm = ({
       setError('Please accept the Terms of Service and Privacy Policy.');
       return false;
     }
-    if (selectedPlan?.requiresPayment && !paymentToken) {
-      setError('Add a payment method to continue.');
-      return false;
-    }
     return true;
-  };
-
-  const handlePaymentConfirm = async ({ card, billing_details }) => {
-    setError('');
-    if (!stripe) throw new Error('Payment form is not ready');
-    const intent = await signupPaymentsAPI.createIntent({
-      email: registerData.email.trim(),
-      role: registerData.role,
-      membership_tier: registerData.membership_tier,
-    });
-    const clientSecret = intent?.client_secret;
-    if (!clientSecret) throw new Error(intent?.error || 'Could not initialize payment');
-    const { paymentIntent, error: confirmError } = await stripe.confirmCardPayment(clientSecret, {
-      payment_method: { card, billing_details },
-    });
-    if (confirmError) throw new Error(confirmError.message);
-    setPaymentToken(paymentIntent?.id || null);
-
-    let pm = paymentIntent?.payment_method;
-    if (typeof pm === 'string' && stripe.retrievePaymentMethod) {
-      try {
-        const res = await stripe.retrievePaymentMethod({ paymentMethod: pm });
-        pm = res?.paymentMethod;
-      } catch {
-        pm = null;
-      }
-    }
-    const cardInfo = pm?.card;
-    if (cardInfo) {
-      const m = String(cardInfo.exp_month || '').padStart(2, '0');
-      const y = cardInfo.exp_year;
-      setPaymentSummary({
-        brand: (cardInfo.brand || 'Card').toUpperCase(),
-        last4: cardInfo.last4 || '••••',
-        expLabel: y ? `${m}/${y}` : '',
-      });
-    } else {
-      setPaymentSummary({ brand: 'CARD', last4: '••••', expLabel: '' });
-    }
   };
 
   const handleSubmit = async (e) => {
@@ -391,12 +280,14 @@ const RegisterForm = ({
     setLoading(true);
     setError('');
     try {
+      const origin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
       const payload = {
         ...registerData,
         email: registerData.email.trim(),
         first_name: registerData.first_name.trim(),
         last_name: registerData.last_name.trim(),
-        signup_payment_intent_id: paymentToken,
+        success_url: `${origin}/settings?tab=membership&membership=success`,
+        cancel_url: `${origin}/settings?tab=membership&membership=cancel`,
       };
       if (registerData.role === 'technician') {
         payload.specialties = Array.isArray(registerData.specialties) ? registerData.specialties : [];
@@ -420,6 +311,13 @@ const RegisterForm = ({
       const response = await authAPI.register(payload);
       auth.setToken(response.token);
       auth.setUser(response.user);
+      trackCompleteRegistration({
+        userType: registerData.role === 'company' ? 'company' : 'technician',
+      });
+      if (response.checkout?.url) {
+        window.location.href = response.checkout.url;
+        return;
+      }
       onLoginSuccess(response.user);
       setTimeout(() => navigate('/dashboard'), 100);
     } catch (err) {
@@ -553,11 +451,7 @@ const RegisterForm = ({
                     <div className="inline-flex rounded-full border border-gray-200 bg-gray-50 p-1">
                       <button
                         type="button"
-                        onClick={() => {
-                          setBillingInterval('monthly');
-                          setPaymentToken(null);
-                          setPaymentSummary(null);
-                        }}
+                        onClick={() => setBillingInterval('monthly')}
                         className={`rounded-full px-4 py-2 text-sm font-semibold ${
                           billingInterval === 'monthly' ? 'bg-white text-tf-navy shadow' : 'text-gray-600'
                         }`}
@@ -566,11 +460,7 @@ const RegisterForm = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          setBillingInterval('yearly');
-                          setPaymentToken(null);
-                          setPaymentSummary(null);
-                        }}
+                        onClick={() => setBillingInterval('yearly')}
                         className={`inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold ${
                           billingInterval === 'yearly' ? 'bg-sky-100 text-[#3A7CA5] shadow' : 'text-gray-600'
                         }`}
@@ -584,6 +474,11 @@ const RegisterForm = ({
                       </button>
                     </div>
                   </div>
+                  {tierLoadError && (
+                    <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                      Membership plans could not be loaded from the server. Refresh the page and try again — we do not show fallback prices.
+                    </p>
+                  )}
                   <div className="grid gap-4 lg:grid-cols-3">
                     {adaptedTiers.map((plan) => (
                       <MembershipPlanCard
@@ -764,44 +659,14 @@ const RegisterForm = ({
                   </section>
 
                   <section className="rounded-2xl border border-gray-100 bg-gray-50/50 p-5">
-                    <div className="flex items-start justify-between gap-3">
-                      <h3 className="text-lg font-bold text-tf-navy">Payment method</h3>
-                      {selectedPlan?.requiresPayment && paymentToken && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setPaymentToken(null);
-                            setPaymentSummary(null);
-                          }}
-                          className="text-sm font-semibold text-[#3A7CA5] hover:underline"
-                        >
-                          Edit
-                        </button>
-                      )}
-                    </div>
-                    {!selectedPlan?.requiresPayment && (
-                      <p className="mt-2 text-sm text-gray-600">No payment method required for this plan.</p>
-                    )}
-                    {selectedPlan?.requiresPayment && paymentSummary && (
-                      <p className="mt-2 text-sm text-gray-800">
-                        {paymentSummary.brand} ending in {paymentSummary.last4}
-                        {paymentSummary.expLabel ? ` · Expires ${paymentSummary.expLabel}` : ''}
+                    <h3 className="text-lg font-bold text-tf-navy">Billing</h3>
+                    {!selectedPlan?.requiresPayment ? (
+                      <p className="mt-2 text-sm text-gray-600">No payment is required for this plan.</p>
+                    ) : (
+                      <p className="mt-2 text-sm text-gray-700">
+                        After you create your account you will complete monthly billing on Stripe Checkout.
+                        Your paid plan is not active until checkout succeeds. If you leave checkout, you stay on the free plan and can upgrade in Settings.
                       </p>
-                    )}
-                    {selectedPlan?.requiresPayment && !paymentToken && (
-                      <div className="mt-4 rounded-xl border border-orange-100 bg-orange-50/50 p-4">
-                        {!isValidStripePublishableKey(publishableKey) && (
-                          <p className="mb-3 text-sm text-amber-800">Stripe is not configured for this build yet.</p>
-                        )}
-                        <CardPaymentForm
-                          stripe={stripe}
-                          publishableKey={publishableKey}
-                          onConfirm={handlePaymentConfirm}
-                          submitLabel="Save payment method"
-                          disabled={false}
-                          amountLabel={`${selectedPlan.name} — ${selectedPlan.priceLabel}`}
-                        />
-                      </div>
                     )}
                   </section>
 
@@ -845,7 +710,7 @@ const RegisterForm = ({
                       : 'Complete Sign Up'
             }
             SubmitIcon={step === 4 ? FaLock : undefined}
-            disabled={(step === 4 && selectedPlan?.requiresPayment && !paymentToken) || loading}
+            disabled={loading}
             loading={loading && step === 4}
           />
         </form>

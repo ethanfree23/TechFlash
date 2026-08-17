@@ -48,15 +48,16 @@ module Api
           if MembershipTierConfig.where(audience: @config.audience).count <= 1
             return render json: { errors: ["Cannot delete the last tier for this audience."] }, status: :unprocessable_entity
           end
-          if @config.in_use?
-            assigned_users = assigned_users_for_config(@config)
+          historically_referenced = Job.where(company_membership_tier_config_id: @config.id)
+            .or(Job.where(technician_membership_tier_config_id: @config.id))
+            .exists?
+          if @config.in_use? || historically_referenced
+            @config.update!(active: false)
             return render json: {
-              errors: ["This tier is assigned to one or more profiles; reassign them before deleting."],
-              error_code: "tier_in_use",
-              tier: serialize(@config),
-              assigned_users: assigned_users.first(100),
-              total_assigned_users: assigned_users.length
-            }, status: :unprocessable_entity
+              membership_tier_config: serialize(@config.reload),
+              archived: true,
+              message: "Tier was archived (removed from future use) because it is assigned or used on historical jobs."
+            }, status: :ok
           end
 
           @config.destroy!
@@ -116,7 +117,7 @@ module Api
           p = params.permit(
             :slug, :display_name, :monthly_fee_cents, :yearly_fee_cents, :yearly_savings_label,
             :commission_percent, :early_access_delay_hours, :job_access_summary, :commission_summary,
-            :is_highlighted, :active, :job_access_min_experience_years, :job_access_min_jobs_completed,
+            :is_highlighted, :active, :waives_background_check_fee, :job_access_min_experience_years, :job_access_min_jobs_completed,
             :job_access_min_successful_jobs, :job_access_min_profile_completeness_percent,
             :job_access_requires_verified_background, :sort_order, :stripe_price_id, feature_bullets: []
           ).to_h
@@ -130,6 +131,7 @@ module Api
           p[:commission_summary] = p[:commission_summary].to_s.strip.presence if p.key?(:commission_summary)
           p[:is_highlighted] = ActiveModel::Type::Boolean.new.cast(p[:is_highlighted]) if p.key?(:is_highlighted)
           p[:active] = ActiveModel::Type::Boolean.new.cast(p[:active]) if p.key?(:active)
+          p[:waives_background_check_fee] = ActiveModel::Type::Boolean.new.cast(p[:waives_background_check_fee]) if p.key?(:waives_background_check_fee)
           if p.key?(:feature_bullets)
             p[:feature_bullets] = Array(p[:feature_bullets]).map { |s| s.to_s.strip }.reject(&:blank?)
           end
@@ -163,7 +165,7 @@ module Api
           p = params.permit(
             :display_name, :monthly_fee_cents, :yearly_fee_cents, :yearly_savings_label,
             :commission_percent, :early_access_delay_hours, :job_access_summary, :commission_summary,
-            :is_highlighted, :active, :job_access_min_experience_years, :job_access_min_jobs_completed,
+            :is_highlighted, :active, :waives_background_check_fee, :job_access_min_experience_years, :job_access_min_jobs_completed,
             :job_access_min_successful_jobs, :job_access_min_profile_completeness_percent,
             :job_access_requires_verified_background, :sort_order, :stripe_price_id, feature_bullets: []
           ).to_h
@@ -176,6 +178,7 @@ module Api
           p[:commission_summary] = p[:commission_summary].to_s.strip.presence if p.key?(:commission_summary)
           p[:is_highlighted] = ActiveModel::Type::Boolean.new.cast(p[:is_highlighted]) if p.key?(:is_highlighted)
           p[:active] = ActiveModel::Type::Boolean.new.cast(p[:active]) if p.key?(:active)
+          p[:waives_background_check_fee] = ActiveModel::Type::Boolean.new.cast(p[:waives_background_check_fee]) if p.key?(:waives_background_check_fee)
           if p.key?(:feature_bullets)
             p[:feature_bullets] = Array(p[:feature_bullets]).map { |s| s.to_s.strip }.reject(&:blank?)
           end
@@ -224,6 +227,7 @@ module Api
             job_access_min_successful_jobs: config.job_access_min_successful_jobs,
             job_access_min_profile_completeness_percent: config.job_access_min_profile_completeness_percent,
             job_access_requires_verified_background: config.job_access_requires_verified_background,
+            waives_background_check_fee: config.waives_background_check_fee,
             sort_order: config.sort_order,
             stripe_price_id: config.stripe_price_id,
             is_highlighted: config.is_highlighted,

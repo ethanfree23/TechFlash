@@ -1568,10 +1568,11 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
         <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" aria-hidden="true" />
           <div className="relative bg-white rounded-xl shadow-xl max-w-2xl w-full p-6 border border-red-100">
-            <h3 className="text-lg font-semibold text-gray-900 mb-2">Delete tier?</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Remove tier from future use?</h3>
             <p className="text-sm text-gray-600 mb-4">
-              This will permanently remove the <span className="font-mono font-medium">{deleteTarget.slug}</span>{' '}
-              tier for this audience. Profiles must not be assigned to this tier. Type{' '}
+              This archives <span className="font-mono font-medium">{deleteTarget.slug}</span> so it is hidden from signup
+              and future assignments. Historical job snapshots keep their rates. An unused tier with no assignments or job
+              snapshots can be deleted. Type{' '}
               <span className="font-mono font-semibold">DELETE</span> to confirm.
             </p>
             {deleteBlockedUsers.length > 0 && (

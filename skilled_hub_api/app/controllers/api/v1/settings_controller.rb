@@ -57,6 +57,7 @@ module Api
           )
           profile.update!(stripe_account_id: account.id)
         end
+        StripeConnectAccountService.sync!(profile)
 
         base_url = params[:base_url].presence || 'http://localhost:5173'
         return_url = "#{base_url}/settings?connect=return"
@@ -68,7 +69,13 @@ module Api
           return_url: return_url,
           type: 'account_onboarding'
         )
-        render json: { url: link.url }, status: :ok
+        render json: {
+          url: link.url,
+          stripe_payout_ready: StripeConnectAccountService.payout_ready?(profile.reload),
+          stripe_charges_enabled: profile.stripe_charges_enabled,
+          stripe_payouts_enabled: profile.stripe_payouts_enabled,
+          stripe_details_submitted: profile.stripe_details_submitted
+        }, status: :ok
       rescue Stripe::StripeError => e
         render json: { error: e.message }, status: :unprocessable_entity
       end

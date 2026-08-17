@@ -10,14 +10,19 @@ import {
   formatPlatformFeePercent,
   resolvedCompanyFeePercentFromJob,
   technicianTakeHomeCents,
+  jobAmountCaption,
+  payBasisLabel,
 } from '../utils/companyPlatformFee';
 import { EXPERIENCE_YEAR_OPTIONS, formatExperienceLong } from '../constants/experienceSelect';
 import Modal from 'react-modal';
 import StarRating from './StarRating';
 import JobAddressFields from './JobAddressFields';
 import { JOB_STATUS_KEYS, jobStatusLabel, normalizeJobStatusKey } from '../utils/jobStatus';
+import { trackTechnicianJobClaimed } from '../utils/metaPixel';
 import { FormattedJobDescription } from '../utils/formattedJobText';
 import JobStatusBadge from './jobs/JobStatusBadge';
+import JobTimeEntriesPanel from './jobs/JobTimeEntriesPanel';
+import { confirmStripeCardPayment } from '../utils/confirmStripePayment';
 import { formatWorkingDays, formatWeekendPolicySummary, formatOvertimeSummary } from '../utils/jobDisplayUtils';
 
 const toDatetimeLocal = (d) => {
@@ -360,6 +365,7 @@ const JobDetail = () => {
     try {
       setClaiming(true);
       await jobsAPI.claim(id);
+      trackTechnicianJobClaimed();
       await fetchJobDetails();
     } catch (err) {
       const reasons = Array.isArray(err?.details?.verification_reasons) ? err.details.verification_reasons : [];
@@ -433,7 +439,19 @@ const JobDetail = () => {
   const respondToCounter = async (action, offerId) => {
     try {
       setSubmittingCounter(true);
-      if (action === 'accept') await jobsAPI.acceptCounterOffer(offerId);
+      if (action === 'accept') {
+        try {
+          await jobsAPI.acceptCounterOffer(offerId);
+        } catch (err) {
+          if (err.details?.payment_adjustment_required && err.details?.client_secret) {
+            await confirmStripeCardPayment(err.details.client_secret);
+            await jobsAPI.confirmFunding(id);
+            await jobsAPI.acceptCounterOffer(offerId);
+          } else {
+            throw err;
+          }
+        }
+      }
       if (action === 'decline') await jobsAPI.declineCounterOffer(offerId);
       if (action === 'counter') await jobsAPI.counterCounterOffer(offerId, buildCounterPayload());
       await Promise.all([fetchCounterOffers(), fetchJobDetails()]);
@@ -1085,12 +1103,38 @@ const JobDetail = () => {
       )}
 
       {job.payment_summary && (
-        <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700">
-          <span className="font-medium">Payment status: </span>
-          {job.payment_summary.state === 'released' && 'Released to technician.'}
-          {job.payment_summary.state === 'held' && 'Held in escrow until completion rules are met.'}
-          {job.payment_summary.state === 'none' && 'No card charge on file for this job.'}
+        <div className="mb-6 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm text-gray-700 space-y-1">
+          <p>
+            <span className="font-medium">Pay basis: </span>
+            {payBasisLabel(job.pay_basis || job.payment_summary.pay_basis)}
+          </p>
+          <p>
+            <span className="font-medium">Funding: </span>
+            {job.funding_status === 'funded' && (job.payment_summary.fully_funded ? 'Funded.' : 'Partially funded.')}
+            {job.funding_status === 'adjustment_required' && 'Additional payment is required before these terms can proceed.'}
+            {job.funding_status === 'funding_failed' && 'The last collection attempt failed. This job is not listed until payment succeeds.'}
+            {job.funding_status === 'unfunded' && 'Not funded yet.'}
+            {!job.funding_status && 'Funding status unavailable.'}
+          </p>
+          {job.payment_summary.amount_due_cents > 0 && (
+            <p className="text-amber-800">Amount still due: ${((job.payment_summary.amount_due_cents) / 100).toFixed(2)}</p>
+          )}
+          {job.payment_summary.transferred_cents > 0 && <p>Released to technician.</p>}
         </div>
+      )}
+      {job.status === 'pending_funding' && canManageJob && (
+        <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          This job is unpublished until funding is completed.
+        </div>
+      )}
+
+      {['filled', 'reserved', 'accepted', 'finished'].includes(job.status) && (canManageJob || isJobClaimedByMe()) && (
+        <JobTimeEntriesPanel
+          job={job}
+          canManage={canManageJob}
+          canSubmit={canManageJob || isJobClaimedByMe()}
+          onChanged={fetchJobDetails}
+        />
       )}
 
       {canReportIssue && (
@@ -1125,7 +1169,7 @@ const JobDetail = () => {
                     <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm1-13a1 1 0 10-2 0v.092a4.535 4.535 0 00-1.676.662C6.602 6.234 6 7.009 6 8c0 .99.602 1.765 1.324 2.246.48.32 1.054.545 1.676.662v1.941c-.391-.127-.68-.317-.843-.504a1 1 0 10-1.51 1.31c.562.649 1.413 1.076 2.353 1.253V15a1 1 0 102 0v-.092a4.535 4.535 0 001.676-.662C13.398 13.766 14 12.991 14 12c0-.99-.602-1.765-1.324-2.246A4.535 4.535 0 0011 9.092V7.151c.391.127.68.317.843.504a1 1 0 101.511-1.31c-.563-.649-1.413-1.076-2.354-1.253V5z" clipRule="evenodd" />
                   </svg>
                   <div>
-                    <p className="text-sm text-gray-500">Job amount</p>
+                    <p className="text-sm text-gray-500">{jobAmountCaption(job.pay_basis)}</p>
                     <p className="font-medium">${((job?.job_amount_cents ?? job?.price_cents ?? 0) / 100).toFixed(2)}</p>
                     {currentUser?.role === 'technician' && !viewerTechCommissionKnown && (
                       <p className="text-xs text-gray-400">Loading your payout estimate…</p>

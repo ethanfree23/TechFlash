@@ -3,6 +3,8 @@ class JobSerializer < ActiveModel::Serializer
              :share_token,
              :scheduled_start_at, :scheduled_end_at, :finished_at, :price_cents, :hourly_rate_cents, :hours_per_day, :days,
              :job_amount_cents, :company_charge_cents, :tech_payout_cents,
+             :pay_basis, :agreed_hourly_rate_cents, :estimated_hours, :agreed_labor_cents,
+             :funding_status, :settlement_status, :financial_revision,
              :address, :city, :state, :zip_code, :country, :latitude, :longitude,
              :skill_class, :trade_type, :minimum_years_experience, :notes, :go_live_at, :start_mode,
              :require_background_check, :require_identity_verification, :minimum_verified_references, :require_insurance_verification,
@@ -45,18 +47,26 @@ class JobSerializer < ActiveModel::Serializer
   end
 
   def payment_summary
-    held = object.payments.find { |p| p.status == 'held' }
-    released = object.payments.find { |p| p.status == 'released' }
+    ledger = object.financial_ledger
     {
-      state: if released
-               'released'
-             elsif held
-               'held'
-             else
-               'none'
-             end,
-      held_at: held&.held_at&.iso8601,
-      released_at: released&.released_at&.iso8601,
+      state: object.funding_status,
+      settlement_status: object.settlement_status,
+      pay_basis: object.pay_basis,
+      labor_cents: ledger.labor_cents,
+      collected_cents: ledger.collected_cents,
+      refunded_cents: ledger.refunded_cents,
+      net_funded_cents: ledger.net_funded_cents,
+      company_required_cents: ledger.company_required_cents,
+      amount_due_cents: ledger.amount_due_cents,
+      technician_net_payout_cents: ledger.technician_net_payout_cents,
+      transferred_cents: ledger.transferred_cents,
+      fully_funded: ledger.fully_funded,
+      tech_payout_cents: object.tech_payout_cents,
+      company_charge_cents: object.company_charge_cents
+    }
+  rescue StandardError
+    {
+      state: object.try(:funding_status),
       tech_payout_cents: object.tech_payout_cents,
       company_charge_cents: object.company_charge_cents
     }

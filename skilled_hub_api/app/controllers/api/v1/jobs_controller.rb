@@ -48,6 +48,7 @@ module Api
               .where(status: [:finished])
           else
             # Browse: when "All" show all jobs (open, claimed, active, completed); otherwise open/available only
+            jobs = jobs.where.not(status: :pending_funding)
             if params[:status].present?
               jobs = jobs.where.not(status: [:filled, :finished])
               unless params[:include_past] == 'true'
@@ -132,7 +133,7 @@ module Api
           company_profile = @current_user.company_profile
           jobs = company_profile ? company_profile.jobs : Job.none
         elsif @current_user&.technician?
-          jobs = jobs.where.not(status: [:filled, :finished])
+          jobs = jobs.where.not(status: [:filled, :finished, :pending_funding])
         end
         locs = jobs.where.not(location: [nil, '']).distinct.pluck(:location).sort
         render json: { locations: locs }, status: :ok
@@ -146,6 +147,9 @@ module Api
         end
         if @current_user&.company? && job.company_profile_id != @current_user.company_profile&.id
           return render json: { error: "You can only view your own jobs" }, status: :forbidden
+        end
+        if @current_user&.technician? && job.pending_funding?
+          return render json: { error: "Job not found" }, status: :not_found
         end
         if @current_user&.technician? && (tp = @current_user.technician_profile)
           unless MembershipPolicy.job_visible_to_technician?(job: job, technician_profile: tp)
@@ -171,28 +175,54 @@ module Api
 
         requires_saved_card = !MembershipPolicy.billing_exempt?(company_profile)
         skip_card_validation = @current_user&.admin? && ActiveModel::Type::Boolean.new.cast(params[:skip_card_validation])
-        if requires_saved_card && !skip_card_validation && !PaymentService.company_has_payment_method?(company_profile.user)
+        priced_preview = JobMoney.labor_cents(
+          hourly_rate_cents: job_params[:hourly_rate_cents],
+          hours_per_day: job_params[:hours_per_day],
+          days: job_params[:days],
+          fallback_cents: job_params[:price_cents].to_i
+        )
+        if requires_saved_card && priced_preview.positive? && !skip_card_validation && !PaymentService.company_has_payment_method?(company_profile.user)
           return render json: { error: 'Add a valid credit or debit card in Profile & Settings → Payment before posting a job.' }, status: :unprocessable_entity
         end
 
         job = Job.new(job_params.except(:company_profile_id, :skip_card_validation))
         job.company_profile_id = company_profile.id
-        # Mobile payloads should create posted/open jobs even if status is omitted.
-        job.status = :open if job.status.blank?
+        job.pay_basis = params[:pay_basis] if params[:pay_basis].present?
+        needs_funding = job.priced? && !MembershipPolicy.billing_exempt?(company_profile) && !skip_card_validation
+        job.status = needs_funding ? :pending_funding : :open
         trade_validation_error = assign_and_validate_trade_type!(job: job, company_profile: company_profile)
         if trade_validation_error.present?
           return render json: { error: trade_validation_error }, status: :unprocessable_entity
         end
-        set_go_live_at_for_post!(job)
-        if job.save
-          CrmProspectPromotion.promote_after_job_created!(job.company_profile_id)
-          JobAlertDispatcher.dispatch_for_job(job) if job.open?
-          Rails.logger.info("[mail] job_posted_email job_id=#{job.id}") # confirm this code path + deploy hit Mailtrap
-          MailDelivery.safe_deliver { UserMailer.job_posted_email(job).deliver_now }
-          render json: job, serializer: JobSerializer, status: :created
-        else
-          render json: { errors: job.errors.full_messages }, status: :unprocessable_entity
+        set_go_live_at_for_post!(job) unless needs_funding
+        unless job.save
+          return render json: { errors: job.errors.full_messages }, status: :unprocessable_entity
         end
+
+        if needs_funding
+          result = JobFundingService.fund_for_publish!(job)
+          if result[:requires_action]
+            return render json: {
+              job: JobSerializer.new(job.reload, scope: @current_user).as_json,
+              payment_adjustment_required: true,
+              client_secret: result[:client_secret]
+            }, status: :accepted
+          end
+          unless result[:success]
+            return render json: { error: result[:error] || "Payment failed. This job was not published.", job: JobSerializer.new(job.reload, scope: @current_user).as_json }, status: :unprocessable_entity
+          end
+          job.reload
+        else
+          JobFundingService.snapshot_company!(job)
+          job.update!(funding_status: :funded)
+          JobFundingService.record_revision!(job, source: "posting")
+        end
+
+        CrmProspectPromotion.promote_after_job_created!(job.company_profile_id)
+        JobAlertDispatcher.dispatch_for_job(job) if job.open?
+        Rails.logger.info("[mail] job_posted_email job_id=#{job.id}")
+        MailDelivery.safe_deliver { UserMailer.job_posted_email(job).deliver_now }
+        render json: job, serializer: JobSerializer, status: :created
       end
 
       def update
@@ -203,7 +233,17 @@ module Api
         previous_weekend_policy = job.weekend_work_policy
         previous_sat_multiplier = job.saturday_multiplier
         previous_sun_multiplier = job.sunday_multiplier
-        job.assign_attributes(job_params)
+        incoming = job_params
+        if job.funded_terms_locked?
+          locked = %w[hourly_rate_cents hours_per_day days pay_basis price_cents]
+          changed_locked = locked.select { |attr| incoming.key?(attr) && incoming[attr].to_s != job.public_send(attr).to_s }
+          if changed_locked.any?
+            return render json: {
+              error: "Funded job pay terms cannot be edited directly. Use a counteroffer or unpublish the job."
+            }, status: :unprocessable_entity
+          end
+        end
+        job.assign_attributes(incoming)
         trade_validation_error = assign_and_validate_trade_type!(job: job, company_profile: job.company_profile)
         if trade_validation_error.present?
           return render json: { error: trade_validation_error }, status: :unprocessable_entity
@@ -285,7 +325,7 @@ module Api
         }, status: :ok
       end
 
-      # Company denies the claimed technician (refunds if already charged)
+      # Company denies the claimed technician. Job funding stays on the job.
       def deny
         job = Job.find(params[:id])
         unless @current_user.company? && job.company_profile_id == @current_user.company_profile&.id
@@ -300,13 +340,8 @@ module Api
           return render json: { error: 'No technician to deny' }, status: :unprocessable_entity
         end
 
-        # Refund if we charged the company
-        if job.payments.held.any?
-          result = PaymentService.refund_payment(job)
-          return render json: { error: result[:error] }, status: :unprocessable_entity if result[:error]
-        end
-
         accepted_app.update!(status: :rejected)
+        JobFundingService.clear_technician_snapshot!(job)
         job.update!(status: :open, go_live_at: Time.current)
         render json: job, serializer: JobSerializer, status: :ok
       rescue ActiveRecord::RecordNotFound
@@ -324,7 +359,7 @@ module Api
         end
         if can_finish
           job.update!(status: :finished, finished_at: Time.current)
-          PaymentService.release_if_eligible(job)
+          JobSettlementService.settle_and_release_if_eligible!(job)
           ReferralRewardMarker.mark_for_finished_job!(job)
           MailDelivery.safe_deliver do
             UserMailer.job_completed_for_company(job).deliver_now
@@ -430,6 +465,46 @@ module Api
         render json: { error: 'Job not found' }, status: :not_found
       end
 
+      def confirm_funding
+        job = Job.find(params[:id])
+        unless can_manage_job?(job)
+          return render json: { error: "Access denied" }, status: :forbidden
+        end
+
+        result = JobFundingService.confirm_requires_action!(job)
+        if result[:error]
+          return render json: result, status: :unprocessable_entity
+        end
+        if job.reload.open?
+          JobAlertDispatcher.dispatch_for_job(job)
+          MailDelivery.safe_deliver { UserMailer.job_posted_email(job).deliver_now }
+        end
+        render json: job, serializer: JobSerializer, status: :ok
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: "Job not found" }, status: :not_found
+      end
+
+      def unpublish
+        job = Job.find(params[:id])
+        unless can_manage_job?(job)
+          return render json: { error: "Access denied" }, status: :forbidden
+        end
+        unless job.open? || job.pending_funding?
+          return render json: { error: "Only unfilled jobs can be unpublished." }, status: :unprocessable_entity
+        end
+        if job.job_applications.accepted.any?
+          return render json: { error: "Deny the technician before unpublishing." }, status: :unprocessable_entity
+        end
+
+        result = JobFundingAdjustmentService.refund_unfilled_job!(job)
+        return render json: { error: result[:error] }, status: :unprocessable_entity if result[:error]
+
+        job.update!(status: :pending_funding, funding_status: :unfunded)
+        render json: job, serializer: JobSerializer, status: :ok
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: "Job not found" }, status: :not_found
+      end
+
       private
 
       def resolve_company_profile_for_create
@@ -452,7 +527,7 @@ module Api
 
       def job_params
         params.permit(:title, :description, :required_documents, :required_certifications, :location, :status, :company_profile_id, :timeline, :skip_card_validation,
-                      :scheduled_start_at, :scheduled_end_at, :price_cents, :hourly_rate_cents, :hours_per_day, :days,
+                      :scheduled_start_at, :scheduled_end_at, :price_cents, :hourly_rate_cents, :hours_per_day, :days, :pay_basis,
                       :address, :city, :state, :zip_code, :country, :latitude, :longitude,
                       :skill_class, :trade_type, :minimum_years_experience, :notes, :go_live_at, :start_mode,
                       :require_background_check, :require_identity_verification, :minimum_verified_references, :require_insurance_verification,
@@ -488,35 +563,6 @@ module Api
         job.go_live_at = Time.current
       end
 
-      def capture_payment_and_hold(job, payment_intent_id)
-        return { error: 'Stripe not configured' } if Stripe.api_key.blank?
-
-        intent = Stripe::PaymentIntent.retrieve(payment_intent_id)
-        unless intent.status == 'succeeded'
-          return { error: 'Payment not completed. Please complete the payment first.' }
-        end
-        unless intent.metadata['job_id'].to_s == job.id.to_s
-          return { error: 'Payment does not match this job' }
-        end
-
-        payment = job.payments.find_or_initialize_by(stripe_payment_intent_id: payment_intent_id)
-        if payment.persisted? && payment.held?
-          return {} # Already captured
-        end
-
-        # amount_cents = what we transfer to tech (95% of job amount)
-        payment.assign_attributes(
-          amount_cents: job.tech_payout_cents,
-          status: 'held',
-          held_at: Time.current
-        )
-        payment.save!
-        {}
-      rescue Stripe::StripeError => e
-        { error: e.message }
-      end
-
-      # Company: own jobs only. Admin: any job, any status (open, claimed, finished, expired-open, etc.).
       def can_manage_job?(job)
         return true if @current_user&.admin?
         @current_user&.company? && job.company_profile_id == @current_user.company_profile&.id

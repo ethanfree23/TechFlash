@@ -396,6 +396,29 @@ module Api
         assert_equal "713-555-0888", contact["phone"]
         assert_equal "company-update-me-sync@example.com", contact["email"]
       end
+
+      test "paid membership signup creates free account then returns checkout url" do
+        email = "paid-signup-#{SecureRandom.hex(3)}@example.com"
+        checkout = { session_id: "cs_test_signup", url: "https://checkout.stripe.com/c/test" }
+        MembershipSubscriptionService.stub(:create_checkout_session!, checkout) do
+          post "/api/v1/users",
+               params: base_signup_params(
+                 email: email,
+                 role: "technician",
+                 trade_type: "Electrician",
+                 membership_tier: "pro"
+               ),
+               as: :json
+        end
+
+        assert_response :created
+        body = JSON.parse(response.body)
+        assert_equal "https://checkout.stripe.com/c/test", body.dig("checkout", "url")
+        assert_equal "pro", body["pending_membership_level"]
+        user = User.find_by!(email: email)
+        assert_equal "basic", user.technician_profile.membership_level
+        assert_equal "pro", user.technician_profile.pending_membership_level
+      end
     end
   end
 end

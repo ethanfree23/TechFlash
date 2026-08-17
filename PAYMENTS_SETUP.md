@@ -1,30 +1,91 @@
 # Payment Setup Guide
 
-This document describes how to configure and use the payment system for TechFlash.
+This document describes TechFlash job funding, membership billing, Connect payouts, and how Admin pricing is applied.
 
 ## Profile & Settings
 
-Both companies and technicians have a **Profile & Settings** page (`/settings`) where they can:
+Both companies and technicians have a **Profile & Settings** page (`/settings`):
 
-- **Profile**: Bio, photo (avatar), company name/industry/location (company), trade type/experience/availability (technician)
-- **Payment**:
-  - **Company**: Add credit/debit card to pay for jobs when accepting technicians
-  - **Technician**: Connect bank account (Stripe Connect) to receive payouts
+- **Company**: Add a credit/debit card. **Priced jobs are charged when posted** (pay-to-post), not when a technician claims.
+- **Technician**: Connect a bank account with Stripe Connect Express. An account ID is not enough — payouts require charges enabled, payouts enabled, and an active transfers capability (`stripe_payout_ready`).
+- **Billing history** (company): ledger of job charges, top-ups, and refunds from `GET /api/v1/billing_history`.
 
-Access via the "Profile & Settings" link in the nav, or by clicking your avatar in the dashboard header.
+## Pricing source of truth
 
-## Overview
+**Admin `MembershipTierConfig` is the master** for monthly/yearly fees, Stripe Price IDs, company platform fees, and technician commissions (including overrides and coupons).
 
-- **Job posting**: Companies set a price (USD) when creating or editing a job.
-- **Fees**: Company pays **price + 5%**; technician receives **price - 5%**; TechFlash earns 10% total.
-- **When job is accepted**: Company pays via Stripe. Funds are held in escrow.
-- **Release conditions**: Money is released to the technician when:
-  1. Both parties have left a review, **OR**
-  2. 72 hours (3 days) have passed since the job was marked complete.
+There are **no hardcoded 5%/10%/20% rates** in runtime money math. Signup and Settings load live tier configs from the API.
 
-## Backend Setup
+When a job is funded, TechFlash **snapshots** commission percents and tier IDs onto the job. Later Admin edits do not change already-funded jobs.
 
-### 1. Run migrations
+- Company snapshot: at successful publish / funding
+- Technician snapshot: at claim or accepted counteroffer that engages a tech
+- Counteroffers that change rate/hours/days bump a financial revision and keep the **company** commission snapshot
+
+`billing_exempt?` (`membership_fee_waived`) skips the **charge** on publish. It does not zero commissions unless an admin also sets a 0% override.
+
+## Pay-to-post
+
+1. Company prepares terms (rate, hours/day, days, pay basis).
+2. Quote = labor + company commission snapshot (from current Admin pricing at snapshot time).
+3. Off-session charge on the saved card.
+4. Success → job `open` and `funding_status: funded`.
+5. 3DS / `requires_action` → job stays `pending_funding` (not listed) until the company confirms.
+6. Failure → unpublished (`pending_funding` / `funding_failed`).
+7. `$0` or billing-exempt jobs publish with snapshots and no charge.
+
+**Claim does not charge.** Claim at posted terms fills the job and snapshots technician commission. The job must already be funded (or exempt / zero-price).
+
+**Deny technician:** reopen the job, **keep funding**, clear technician snapshots until a new tech is engaged.
+
+**Unpublish** an unfilled funded job: refund net collected.
+
+After funding, `hourly_rate_cents`, `hours_per_day`, `days`, and `pay_basis` are locked on PATCH. Change them only via counteroffer or settlement.
+
+## Pay bases
+
+| Value | Label | Settlement labor |
+|---|---|---|
+| `actual_hours_worked` (default, including existing jobs) | Actual Hours Worked | Sum of approved `TimeEntryPayLine.gross_pay_cents` (keeps OT/weekend), then apply **technician and company commission snapshots** |
+| `guaranteed_job_pay` | Guaranteed Job Pay | Snapshotted `agreed_labor_cents`. Time entries are operational only |
+
+Estimated hours/value must never be labeled guaranteed.
+
+## Counteroffers
+
+Accepting a counter that changes rate/hours/days:
+
+1. Compute the new required company total from the **job company commission snapshot**.
+2. Charge or refund **only the delta**.
+3. If collection fails or needs 3DS, **do not fill** the job.
+
+## Payouts
+
+Transfer to the technician only if:
+
+- Release rules: both reviews **or** 72 hours since finish
+- Ledger fully funded (`amount_due == 0`)
+- Technician Connect is **payout-ready**
+- No successful `technician_transfer` already exists
+
+Payout amount uses snapshot technician commission (not raw gross pay).
+
+## Membership signup
+
+1. Free/default tiers: account is created and granted immediately (no Stripe).
+2. Paid tiers: create the user first on the **free/default** slug with `pending_membership_level`. Then Stripe Checkout **Subscription** (Customer + recurring Price ID).
+3. Paid access is granted only when `checkout.session.completed` / subscription webhooks succeed.
+4. Abandoned Checkout leaves a free account; Settings upgrade still works.
+
+Company job cards still use SetupIntent in Settings. Membership does **not** use a one-time guest PaymentIntent.
+
+## Ledger
+
+- `payments`: one header row per priced job (`transfer_group`: `TECHFLASH_JOB_<id>`).
+- `job_payment_transactions`: append-only charges, refunds, and transfers.
+- Idempotency keys: `tf_job_<job_id>_txn_<type>_r<rev>_<amount>`.
+
+## Backend setup
 
 ```bash
 cd skilled_hub_api
@@ -32,79 +93,40 @@ bundle install
 bundle exec rails db:migrate
 ```
 
-### 2. Configure Stripe credentials
+**Production:** `STRIPE_SECRET_KEY=sk_live_...`
 
-**Production (Railway / live):** set `STRIPE_SECRET_KEY` to your **live** secret key (`sk_live_...`) from https://dashboard.stripe.com/apikeys — see `RAILWAY_SETUP.md`.
+**Local/dev:** `STRIPE_SECRET_KEY_TEST=sk_test_...` (preferred so live keys are never loaded in development).
 
-**Local development (sandbox):** use a separate variable so live keys are never loaded in dev:
+**Required in production/staging:** `STRIPE_WEBHOOK_SECRET`. Missing/invalid secret returns **500** and does not process events. Dev/demo logs a skip instead of pretending health.
 
-```
-STRIPE_SECRET_KEY_TEST=sk_test_your_actual_key_here
-```
+**Cron secret (optional HTTP trigger):** `PAYMENTS_CRON_SECRET` for `POST /api/v1/internal/payments/release_eligible` with header `X-Payments-Cron-Secret`.
 
-If `STRIPE_SECRET_KEY_TEST` is unset, dev falls back to `STRIPE_SECRET_KEY` or credentials (legacy).
+### Stripe Connect
 
-Get test keys at https://dashboard.stripe.com/test/apikeys
+Technicians complete Express onboarding from Settings. Readiness is stored on `technician_profiles` (`stripe_charges_enabled`, `stripe_payouts_enabled`, `stripe_transfers_capability_status`, …) and synced from `account.updated` webhooks.
 
-**Rails credentials (optional)**
-
-```bash
-EDITOR=code bundle exec rails credentials:edit
-```
-
-Add under the `stripe` key (often used for one environment only):
-
-```yaml
-stripe:
-  secret_key: sk_test_xxxxx
-```
-
-### 3. Stripe Connect (for technician payouts)
-
-Technicians need a Stripe Connect account to receive payouts. Set `stripe_account_id` on their `TechnicianProfile` (e.g. `acct_xxxxx`). You can:
-
-- Use [Stripe Connect Express](https://stripe.com/docs/connect/express-accounts) onboarding flow
-- Manually set via Rails console: `TechnicianProfile.find(id).update(stripe_account_id: 'acct_xxx')`
-
-### 4. Cron job for 72-hour release
-
-Run this task periodically (e.g. every hour) to release payments when 72 hours have passed:
+### Payment release
 
 ```bash
 bundle exec rails payments:release_eligible
 ```
 
-Or add to crontab:
+This is **not** scheduled in-repo (`skilled_hub_api/railway.json` has no cron). Configure Railway Cron (or equivalent) in the dashboard. See `CRON_JOBS.md`.
 
-```
-0 * * * * cd /path/to/skilled_hub_api && bundle exec rails payments:release_eligible
-```
+## Webhook events to enable
 
-## Frontend Setup
+In the Stripe Dashboard endpoint for `/api/v1/stripe/webhook`:
 
-### 1. Stripe publishable keys (sandbox vs live)
+- `payment_intent.succeeded`
+- `payment_intent.payment_failed`
+- `charge.refunded`
+- `checkout.session.completed`
+- `customer.subscription.created`
+- `customer.subscription.updated`
+- `customer.subscription.deleted`
+- `invoice.paid`
+- `account.updated`
 
-- **Production build / deploy:** set `VITE_STRIPE_PUBLISHABLE_KEY` to your **live** publishable key (`pk_live_...`) from https://dashboard.stripe.com/apikeys (CI or hosting env vars).
-- **Local `npm run dev`:** set `VITE_STRIPE_PUBLISHABLE_KEY_TEST` to `pk_test_...` (https://dashboard.stripe.com/test/apikeys). If unset, dev uses `VITE_STRIPE_PUBLISHABLE_KEY`.
+## Admin tiers
 
-See `.env.example` in the frontend folder for a template.
-
-### 2. Install dependencies
-
-```bash
-cd skilled-hub-frontend
-npm install
-```
-
-## Flow Summary
-
-1. **Create job** → Company adds price (optional; leave blank for unpaid jobs). Company must add a card in Settings before posting paid jobs.
-2. **Technician claims** → Job is theirs immediately. If job has price: company's card is charged (price + 5%) and funds are held.
-3. **Company can deny** (optional) → Refunds payment and reopens the job.
-4. **Mark complete** → Company or technician marks job finished.
-5. **Release** → When both have reviewed OR 72h passed → funds transfer to technician's Stripe account.
-
-## API Endpoints
-
-- `PATCH /api/v1/jobs/:id/claim` – Technician claims job. Charges company's card if job has price.
-- `PATCH /api/v1/jobs/:id/deny` – Company denies claimed technician (refunds and reopens job).
+Destroying a tier that is assigned or referenced by job snapshots **archives** it (`active: false`) instead of deleting history. Public/signup listings already hide inactive tiers. Transfer assignments first if you want to move live users off a slug.

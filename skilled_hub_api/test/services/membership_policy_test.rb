@@ -269,7 +269,7 @@ class MembershipPolicyTest < ActiveSupport::TestCase
       description: "desc",
       status: :open,
       trade_type: "Plumber",
-      go_live_at: 2.hours.ago
+      go_live_at: 3.days.ago
     )
 
     tech_user = User.create!(email: "tech-trade-specialty@example.com", password: "password123", password_confirmation: "password123", role: :technician)
@@ -295,7 +295,7 @@ class MembershipPolicyTest < ActiveSupport::TestCase
       description: "desc",
       status: :open,
       trade_type: "Electrician",
-      go_live_at: 2.hours.ago
+      go_live_at: 3.days.ago
     )
 
     tech_user = User.create!(email: "tech-trade-mismatch@example.com", password: "password123", password_confirmation: "password123", role: :technician)

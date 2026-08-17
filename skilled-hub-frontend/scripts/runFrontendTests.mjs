@@ -15,6 +15,8 @@ const testFiles = [
   'technicianMap.test.mjs',
   'jobAccessSettings.test.mjs',
   'demoRouting.test.mjs',
+  'payBasis.test.mjs',
+  'metaPixel.test.mjs',
 ];
 
 let successful = 0;

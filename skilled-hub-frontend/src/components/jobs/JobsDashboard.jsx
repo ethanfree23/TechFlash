@@ -4,6 +4,7 @@ import { jobsAPI, ratingsAPI, savedJobSearchesAPI } from '../../api/api';
 import { auth } from '../../auth';
 import { VIEW_MODES, getSavedJobsStorageKey } from '../../utils/jobDashboardConfig';
 import { exportJobsToCsv } from '../../utils/jobsExport';
+import { trackTechnicianJobClaimed } from '../../utils/metaPixel';
 import useJobsDashboard, { getPageNumbers } from './useJobsDashboard';
 import useJobMessaging from './useJobMessaging';
 import JobsCommandHeader from './JobsCommandHeader';
@@ -124,6 +125,7 @@ export default function JobsDashboard() {
     try {
       setClaimingJobId(jobId);
       await jobsAPI.claim(jobId);
+      trackTechnicianJobClaimed();
       await refetch();
     } catch (err) {
       showAlert('Unable to claim job', err.message || 'Failed to claim job');

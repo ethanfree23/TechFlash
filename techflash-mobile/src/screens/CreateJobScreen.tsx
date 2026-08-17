@@ -26,6 +26,7 @@ export default function CreateJobScreen() {
   const [hourlyRate, setHourlyRate] = useState('');
   const [hoursPerDay, setHoursPerDay] = useState('8');
   const [days, setDays] = useState('1');
+  const [payBasis, setPayBasis] = useState<'actual_hours_worked' | 'guaranteed_job_pay'>('actual_hours_worked');
   const [scheduledStartAt, setScheduledStartAt] = useState('');
   const [scheduledEndAt, setScheduledEndAt] = useState('');
   const [pickerField, setPickerField] = useState<'start' | 'end' | null>(null);
@@ -98,6 +99,7 @@ export default function CreateJobScreen() {
         setHourlyRate(String(draft.hourlyRate || ''));
         setHoursPerDay(String(draft.hoursPerDay || '8'));
         setDays(String(draft.days || '1'));
+        setPayBasis(draft.payBasis === 'guaranteed_job_pay' ? 'guaranteed_job_pay' : 'actual_hours_worked');
         setScheduledStartAt(String(draft.scheduledStartAt || ''));
         setScheduledEndAt(String(draft.scheduledEndAt || ''));
       })
@@ -123,6 +125,7 @@ export default function CreateJobScreen() {
       hourlyRate,
       hoursPerDay,
       days,
+      payBasis,
       scheduledStartAt,
       scheduledEndAt,
     };
@@ -142,6 +145,7 @@ export default function CreateJobScreen() {
     hourlyRate,
     hoursPerDay,
     days,
+    payBasis,
     scheduledStartAt,
     scheduledEndAt,
   ]);
@@ -191,6 +195,7 @@ export default function CreateJobScreen() {
         hourly_rate_cents: Number.isFinite(rate) ? Math.round(rate * 100) : undefined,
         hours_per_day: Number.isFinite(hpd) ? hpd : undefined,
         days: Number.isFinite(dayCount) ? dayCount : undefined,
+        pay_basis: payBasis,
         scheduled_start_at: scheduledStartAt.trim() || undefined,
         scheduled_end_at: scheduledEndAt.trim() || undefined,
       });
@@ -235,6 +240,22 @@ export default function CreateJobScreen() {
       <Field label="Country" value={country} onChangeText={setCountry} />
 
       <Text style={styles.section}>Pricing</Text>
+      <Text style={styles.hint}>Priced jobs are charged when you post them. Hours are an estimate unless you choose Guaranteed Job Pay.</Text>
+      <Text style={styles.label}>Pay basis</Text>
+      <View style={styles.payRow}>
+        <Pressable
+          style={[styles.payChip, payBasis === 'actual_hours_worked' && styles.payChipOn]}
+          onPress={() => setPayBasis('actual_hours_worked')}
+        >
+          <Text style={[styles.payChipText, payBasis === 'actual_hours_worked' && styles.payChipTextOn]}>Actual Hours Worked</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.payChip, payBasis === 'guaranteed_job_pay' && styles.payChipOn]}
+          onPress={() => setPayBasis('guaranteed_job_pay')}
+        >
+          <Text style={[styles.payChipText, payBasis === 'guaranteed_job_pay' && styles.payChipTextOn]}>Guaranteed Job Pay</Text>
+        </Pressable>
+      </View>
       <Field label="Hourly rate (USD)" value={hourlyRate} onChangeText={setHourlyRate} keyboardType="decimal-pad" />
       <Field label="Hours per day" value={hoursPerDay} onChangeText={setHoursPerDay} keyboardType="numeric" />
       <Field label="Days" value={days} onChangeText={setDays} keyboardType="numeric" />
@@ -399,4 +420,17 @@ const styles = StyleSheet.create({
   cancelBtnText: { color: colors.text, fontWeight: '700' },
   applyBtn: { flex: 1, backgroundColor: colors.primaryBlue, borderRadius: 10, alignItems: 'center', paddingVertical: 10 },
   applyBtnText: { color: colors.white, fontWeight: '700' },
+  hint: { color: colors.muted, fontSize: 13, marginTop: 4, marginBottom: 6 },
+  payRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 8 },
+  payChip: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    backgroundColor: colors.white,
+  },
+  payChipOn: { borderColor: colors.primaryBlue, backgroundColor: '#E8F1F8' },
+  payChipText: { color: colors.text, fontWeight: '600', fontSize: 13 },
+  payChipTextOn: { color: colors.primaryBlue },
 });

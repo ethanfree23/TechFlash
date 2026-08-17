@@ -88,11 +88,10 @@ module Api
 
           delete "/api/v1/admin/membership_tier_configs/#{orphan.id}", headers: auth_header_for(admin)
 
-          assert_response :unprocessable_entity
+          assert_response :ok
           body = JSON.parse(response.body)
-          assert_equal "tier_in_use", body["error_code"]
-          assert_equal 1, body["total_assigned_users"]
-          assert_equal "tech-on-orphan@example.com", body.dig("assigned_users", 0, "email")
+          assert_equal true, body["archived"]
+          assert_equal false, orphan.reload.active
         end
 
         test "admin transfers assignments to another tier" do

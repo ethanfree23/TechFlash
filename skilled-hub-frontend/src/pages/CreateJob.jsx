@@ -9,6 +9,8 @@ import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
 import { TRADE_OPTIONS } from '../constants/trades';
 import { auth } from '../auth';
 import { companyChargeFromJobAmount, formatPlatformFeePercent } from '../utils/companyPlatformFee';
+import { confirmStripeCardPayment } from '../utils/confirmStripePayment';
+import { trackCompanyJobPosted } from '../utils/metaPixel';
 import {
   WEEKDAY_OPTIONS,
   WEEKEND_WORK_OPTIONS,
@@ -126,6 +128,7 @@ const CreateJob = () => {
   const [hourlyRate, setHourlyRate] = useState("");
   const [hoursPerDay, setHoursPerDay] = useState("8");
   const [days, setDays] = useState("");
+  const [payBasis, setPayBasis] = useState("actual_hours_worked");
   const [status, setStatus] = useState("open");
   const [startMode, setStartMode] = useState("hard_start");
   const [rollingStartRuleType, setRollingStartRuleType] = useState('days_after_acceptance');
@@ -201,6 +204,7 @@ const CreateJob = () => {
     );
     setHoursPerDay(String(job.hours_per_day ?? '8'));
     setDays(job.days != null ? String(job.days) : '');
+    setPayBasis(job.pay_basis === 'guaranteed_job_pay' ? 'guaranteed_job_pay' : 'actual_hours_worked');
     setStatus('open');
     setRequireBackgroundCheck(Boolean(job.require_background_check));
     setRequireIdentityVerification(Boolean(job.require_identity_verification));
@@ -265,6 +269,7 @@ const CreateJob = () => {
       setHourlyRate(String(draft.hourlyRate || ''));
       setHoursPerDay(String(draft.hoursPerDay || '8'));
       setDays(String(draft.days || ''));
+      setPayBasis(draft.payBasis === 'guaranteed_job_pay' ? 'guaranteed_job_pay' : 'actual_hours_worked');
       setStatus(String(draft.status || 'open'));
       setRequireBackgroundCheck(Boolean(draft.requireBackgroundCheck));
       setRequireIdentityVerification(Boolean(draft.requireIdentityVerification));
@@ -316,6 +321,7 @@ const CreateJob = () => {
           hourlyRate,
           hoursPerDay,
           days,
+          payBasis,
           status,
           requireBackgroundCheck,
           requireIdentityVerification,
@@ -363,6 +369,7 @@ const CreateJob = () => {
     hourlyRate,
     hoursPerDay,
     days,
+    payBasis,
     status,
     requireBackgroundCheck,
     requireIdentityVerification,
@@ -618,9 +625,18 @@ const CreateJob = () => {
         payload.hourly_rate_cents = Math.round(hr * 100);
         payload.hours_per_day = hpd;
         payload.days = d;
+        payload.pay_basis = payBasis;
       }
-      await jobsAPI.create(payload);
+      const created = await jobsAPI.create(payload);
+      if (created?.payment_adjustment_required && created.client_secret) {
+        await confirmStripeCardPayment(created.client_secret);
+        const jobId = created.job?.id || created.id;
+        await jobsAPI.confirmFunding(jobId);
+      }
       localStorage.removeItem(DRAFT_KEY);
+      if (!isAdmin) {
+        trackCompanyJobPosted();
+      }
       setSuccessModal(true);
     } catch (err) {
       setErrorModal(err.message || 'Failed to create job');
@@ -936,11 +952,23 @@ const CreateJob = () => {
           <h3 className="font-semibold text-slate-900">Pricing</h3>
           <p className="text-sm text-slate-600">
             {feeLabel != null
-              ? `When a tech claims this job, you will be charged the job total plus a ${feeLabel}% platform fee (your company tier).`
+              ? `Priced jobs are charged when you post them. You pay the ${payBasis === 'guaranteed_job_pay' ? 'guaranteed' : 'estimated'} job total plus a ${feeLabel}% platform fee (your company tier).`
               : isAdmin
-                ? 'When a tech claims this job, you will be charged the job total plus a platform fee based on the selected company’s tier. Select a company account to see the rate.'
+                ? 'Priced jobs are charged when you post them. The platform fee comes from the selected company’s membership tier.'
                 : 'Loading your company’s platform fee…'}
           </p>
+          <div>
+            <label className="block text-sm font-semibold text-slate-800 mb-1.5">Pay basis</label>
+            <select className={fieldClass} value={payBasis} onChange={(e) => setPayBasis(e.target.value)}>
+              <option value="actual_hours_worked">Actual Hours Worked</option>
+              <option value="guaranteed_job_pay">Guaranteed Job Pay</option>
+            </select>
+            <p className="text-xs text-slate-500 mt-1">
+              {payBasis === 'guaranteed_job_pay'
+                ? 'The posted amount is guaranteed. Time entries are operational only and do not change payout.'
+                : 'Hours below are an estimate. Final pay uses approved time entries (including overtime/weekend premiums), then membership commissions.'}
+            </p>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-semibold text-slate-800 mb-1.5">Hourly rate (USD)</label>
@@ -980,7 +1008,7 @@ const CreateJob = () => {
           </div>
           {jobAmount > 0 && (
             <div className="text-sm space-y-1 pt-2 border-t border-slate-200">
-              <p><span className="font-medium">Job total:</span> ${jobAmount.toFixed(2)}</p>
+              <p><span className="font-medium">{payBasis === 'guaranteed_job_pay' ? 'Guaranteed job pay:' : 'Estimated job total:'}</span> ${jobAmount.toFixed(2)}</p>
               {companyCharge != null && feeLabel != null ? (
                 <p>
                   <span className="font-medium">You pay (incl. {feeLabel}% fee):</span> ${companyCharge.toFixed(2)}
@@ -1280,7 +1308,7 @@ const CreateJob = () => {
           navigate('/dashboard');
         }}
         title="Job created!"
-        message="Your job has been posted. Technicians can now discover and claim it."
+        message="Your job has been posted. Technicians can now discover and claim it. Priced jobs are already funded."
         variant="success"
       />
 

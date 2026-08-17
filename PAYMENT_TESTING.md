@@ -1,155 +1,63 @@
 # Payment Flow Testing Guide
 
-This guide walks you through testing the full payment flow: **charge company (price + 5%)** when a tech claims a job, and **transfer to tech (price - 5%)** when the job is complete and release conditions are met.
+Test **pay-to-post**, counteroffer deltas, actual-hours vs guaranteed settlement, membership Checkout, and Connect payouts. Use Stripe **test** keys only — no live money.
 
-**Flow**: Tech claims job → company is charged immediately (no acceptance step). Company can optionally deny the tech (refunds and reopens the job).
+**Flow**: Company posts a priced job → saved card is charged → job is listed → technician claims (no second charge) → hours/settlement → payout when reviews or 72h pass **and** Connect is payout-ready.
 
-## Fee Structure
+## Fee structure
 
-| Party | Amount | Example ($100 job) |
-|-------|--------|--------------------|
-| **Company pays** | Job price + 5% | $105.00 |
-| **Tech receives** | Job price - 5% | $95.00 |
-| **TechFlash revenue** | 10% total (5% from each side) | $10.00 |
+Rates come from **Admin membership tiers**, not a fixed 5%/5%. Example if the company snapshot is 10% and the technician snapshot is 20% on a $6,000 labor total:
+
+| Party | Formula | Example |
+|---|---|---|
+| Company pays | labor + company commission | $6,600 |
+| Tech receives | labor − technician commission | $4,800 |
+| TechFlash | both commissions | $1,800 |
+
+After funding, changing Admin percents must **not** change that job.
+
+## Pay bases
+
+- **Actual Hours Worked** (default): submit/approve time entries on the job. Settlement uses approved gross (OT/weekend included), then snapshot commissions. 80 estimated hours → 60 approved hours refunds the unused company funding.
+- **Guaranteed Job Pay**: 80 posted hours vs 60 worked still settles at the guaranteed labor (e.g. $6,000), not time-entry hours.
 
 ## Prerequisites
 
-1. **Stripe keys** configured in `skilled_hub_api/.env` and `skilled-hub-frontend/.env`
-2. **Company** must add a card in Settings **before** a tech can claim a paid job
-3. **Technician** has connected a Stripe Connect bank account in Settings (see test bank details below)
-4. **Test cards** (company payments): `4242 4242 4242 4242` — https://stripe.com/docs/testing#cards
-5. **Test bank** (technician payouts): see "Technician: Test Bank Account" below
-
----
+1. Stripe test keys in `skilled_hub_api/.env` and frontend `VITE_STRIPE_PUBLISHABLE_KEY_TEST`
+2. Company has a card in Settings **before posting** a priced job
+3. Technician completed Connect onboarding until Settings shows **payout-ready** (not merely “connected”)
+4. Test card: `4242 4242 4242 4242` — https://stripe.com/docs/testing#cards
+5. 3DS test card if you need `pending_funding`: `4000 0025 0000 3155`
 
 ## Technician: Test Bank Account (Stripe Connect)
 
-When a technician clicks "Connect Bank Account" in Settings, they go through Stripe Connect Express onboarding. Use these **test values** (test mode only):
-
 | Field | Test Value |
-|-------|------------|
-| **Routing number** | `110000000` |
-| **Account number** | `000123456789` |
-| **SMS verification** (if prompted) | `000-000` |
+|---|---|
+| Routing number | `110000000` |
+| Account number | `000123456789` |
+| SMS verification | `000-000` |
 
-These simulate a US bank account. In test mode, payouts are simulated—no real money moves. The transfer appears in the Stripe Dashboard under **Connect → Accounts** and **Transfers**.
+## Suggested scenarios
 
-> **Note:** Use your **test** Stripe keys (`sk_test_...`, `pk_test_...`). Test bank numbers only work with test API keys.
+1. Post $75 × 8h × 10 days on Actual Hours. Confirm charge = labor + current company fee. Claim does not create a second PI.
+2. Change the company tier commission in Admin. Funded job quote stays on the snapshot.
+3. Accept a counter to $80 × 8 × 10. Only the **delta** is charged. Decline/fail collection → job stays unfilled.
+4. Accept a lower counter. Only the delta is refunded.
+5. Deny the technician: job reopens, funding remains.
+6. Actual Hours: approve 60h of 80h estimate → company refund, tech paid from 60h after commission snapshot.
+7. Guaranteed: approve 60h of 80h → still $6,000 labor.
+8. Actual Hours over estimate without collecting the top-up → payout blocked.
+9. Paid membership signup: account exists immediately on free/default; paid slug applies only after Checkout webhook.
+10. Connect account id without `charges_enabled`/`payouts_enabled` → no transfer.
 
----
-
-## Test 1: Charge Company (Price + 5%) on Claim
-
-### Steps
-
-1. **Create a company account** and log in
-2. **Add a card** in Profile & Settings → Payment → Add Card (required for paid jobs)
-3. **Create a job** with a price:
-   - Set hourly rate, hours, days (e.g. $50/hr × 8 hrs × 1 day = $400)
-   - Or use `price_cents` for legacy jobs
-   - Job amount = $400 → Company will be charged **$420** (400 × 1.05) when tech claims
-4. **Create a technician account** (different browser/incognito) and log in
-5. **Technician: Connect bank** in Profile & Settings → Connect Bank Account (use test bank details below)
-6. **Technician: Claim the job** (browse jobs → click "Claim Job")
-
-### Expected
-
-- Claim succeeds
-- Company's card is charged **$420.00** automatically (price + 5%)
-- Job status → filled (tech has the job)
-- In Stripe Dashboard → Payments: charge of $420.00
-- Funds are held on the platform (escrow)
-
-### If claim fails
-
-- "Company must add a payment method in Settings before technicians can claim this job" → Company needs to add a card first
-
----
-
-## Test 2: Transfer to Tech (Price - 5%)
-
-### Release conditions (either one)
-
-- **Both parties have reviewed each other**, OR
-- **72 hours (3 days)** have passed since the job was marked finished
-
-### Option A: Both parties review
-
-1. **Mark job complete**: Company or technician clicks "Mark Complete" on the job
-2. **Company leaves a review** for the technician
-3. **Technician leaves a review** for the company
-4. **Immediate release**: Funds transfer to the technician's Stripe Connect account
-
-### Option B: 72-hour timeout
-
-1. **Mark job complete**
-2. **Wait 72 hours** (or simulate in Rails console – see below)
-3. **Run the release task**:
-   ```bash
-   cd skilled_hub_api
-   bundle exec rails payments:release_eligible
-   ```
-
-### Simulating 72 hours (for quick testing)
+## Release
 
 ```bash
 cd skilled_hub_api
-bundle exec rails console
+bundle exec rails payments:release_eligible
+bundle exec rails payments:diagnose
 ```
 
-```ruby
-# Find the finished job
-job = Job.find(YOUR_JOB_ID)
+Or `POST /api/v1/internal/payments/release_eligible` with `X-Payments-Cron-Secret`.
 
-# Set finished_at to 73 hours ago
-job.update!(finished_at: 73.hours.ago)
-
-# Run release
-PaymentService.release_if_eligible(job)
-# => {:success=>true, :payment=>#<Payment ...>}
-```
-
-### Expected
-
-- Payment status → `released`
-- In Stripe Dashboard → **Transfers**: transfer of $380.00 (for $400 job) to the technician's connected account
-- Technician's connected account balance increases (test mode: simulated, no real bank transfer)
-
-### Verify technician payout
-
-1. **Stripe Dashboard** → **Connect** → **Accounts** → select the technician's account
-2. **Balance** tab: shows the transferred amount
-3. **Transfers** (https://dashboard.stripe.com/test/transfers): platform → connected account
-
----
-
-## Verify in Stripe Dashboard
-
-1. **Payments** (https://dashboard.stripe.com/test/payments): Company charge = price + 5%
-2. **Transfers** (https://dashboard.stripe.com/test/transfers): Transfer to connected account = price - 5%
-3. **Connect** → **Accounts**: Technician's Express account shows the transfer
-
----
-
-## Troubleshooting
-
-| Issue | Check |
-|-------|------|
-| "Company has no payment method" | Add card in Settings → Payment |
-| "Technician has no Stripe account" | Connect bank in Settings (technician) with test routing `110000000`, account `000123456789` |
-| Payment fails | Use valid Stripe test card (4242 4242 4242 4242) |
-| Transfer fails | Technician must complete Stripe Connect onboarding; use test bank numbers above |
-| "Must use test bank account" | Ensure you're using test API keys and test bank (110000000 / 000123456789) |
-| Release doesn't run | Call `PaymentService.release_if_eligible(job)` or run `rails payments:release_eligible` |
-
----
-
-## Cron for Production
-
-To automatically release payments after 72 hours, add to crontab:
-
-```
-0 * * * * cd /path/to/skilled_hub_api && bundle exec rails payments:release_eligible
-```
-
-This runs every hour and releases any eligible held payments.
+Automated coverage lives in `skilled_hub_api/test/services/job_financial_flow_test.rb` (Stripe stubbed).

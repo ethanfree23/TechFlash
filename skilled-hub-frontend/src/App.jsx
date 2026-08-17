@@ -38,6 +38,7 @@ import AppPageLayout from './components/layout/AppPageLayout';
 import { auth } from './auth';
 import { metaAPI } from './api/api';
 import { setApiDemoMode, setDemoFlagshipJobId, setDemoReviewedJobId, getDemoBasePath, isDemoPath, isDemoRoleAutoLoginSearch, isDemoRoleAutoLoginLocation } from './utils/demoMode';
+import MetaPixelRouteTracker from './components/MetaPixelRouteTracker';
 
 // Protected Route component
 const ProtectedRoute = ({ children, isAuthenticated }) => {
@@ -117,6 +118,7 @@ function App() {
 
   return (
     <Router basename={routerBasename}>
+      <MetaPixelRouteTracker />
       <div className="App min-w-0 overflow-x-hidden">
         <MasqueradeBanner />
         <DemoModeBanner />

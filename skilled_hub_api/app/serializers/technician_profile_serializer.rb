@@ -1,7 +1,7 @@
 class TechnicianProfileSerializer < ActiveModel::Serializer
   include ActiveStorageUrlHelper
 
-  attributes :id, :trade_type, :experience_years, :availability, :bio, :phone, :location, :avatar_url, :stripe_connected, :user_id, :average_rating, :created_at, :updated_at,
+  attributes :id, :trade_type, :experience_years, :availability, :bio, :phone, :location, :avatar_url, :stripe_connected, :stripe_payout_ready, :user_id, :average_rating, :created_at, :updated_at,
              :address, :city, :state, :zip_code, :country, :latitude, :longitude, :specialties,
              :membership_level, :membership_fee_override_cents, :commission_override_percent, :membership_fee_waived,
              :membership_status, :membership_current_period_end_at, :effective_membership_fee_cents, :effective_commission_percent,
@@ -17,6 +17,10 @@ class TechnicianProfileSerializer < ActiveModel::Serializer
 
   def stripe_connected
     object.stripe_account_id.present?
+  end
+
+  def stripe_payout_ready
+    StripeConnectAccountService.payout_ready?(object)
   end
 
   def effective_membership_fee_cents

@@ -147,7 +147,7 @@ module Api
           update_double_blind_visibility!(job)
           run_basic_fraud_checks!(rating)
           MailDelivery.safe_deliver { UserMailer.review_received_email(rating).deliver_now }
-          PaymentService.release_if_eligible(job)
+          JobSettlementService.settle_and_release_if_eligible!(job)
           render json: rating, serializer: RatingSerializer, status: :created
         else
           render json: { errors: rating.errors.full_messages }, status: :unprocessable_entity

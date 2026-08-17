@@ -10,8 +10,12 @@ module Api
         secret = ENV['STRIPE_WEBHOOK_SECRET'].presence || Rails.application.credentials.dig(:stripe, :webhook_secret).presence
 
         unless secret.present?
+          if webhook_secret_required?
+            Rails.logger.error('[stripe webhook] STRIPE_WEBHOOK_SECRET is required in this environment')
+            return head :internal_server_error
+          end
           Rails.logger.warn('[stripe webhook] STRIPE_WEBHOOK_SECRET not configured — ignoring')
-          return head :ok
+          return head :service_unavailable
         end
 
         begin
@@ -43,23 +47,9 @@ module Api
       def process_event(event)
         case event.type
         when 'payment_intent.succeeded'
-          pi = event.data.object
-          job_id = pi.metadata&.[]('job_id')
-          return if job_id.blank?
-
-          job = Job.find_by(id: job_id)
-          return unless job
-
-          payment = job.payments.find_by(stripe_payment_intent_id: pi.id)
-          return unless payment
-
-          return if payment.status == 'held' || payment.status == 'released'
-
-          payment.update!(
-            status: 'held',
-            held_at: Time.zone.at(pi.created),
-            stripe_payment_intent_id: pi.id
-          )
+          reconcile_payment_intent_succeeded(event.data.object)
+        when 'payment_intent.payment_failed'
+          reconcile_payment_intent_failed(event.data.object)
         when 'checkout.session.completed'
           session = event.data.object
           if session.mode.to_s == "subscription"
@@ -83,15 +73,21 @@ module Api
           technician_profile = TechnicianProfile.find_by(stripe_membership_subscription_id: subscription.id)
           profile = company_profile || technician_profile
           if profile
+            audience = company_profile ? :company : :technician
             profile.update!(
-              membership_level: "basic",
+              membership_level: MembershipPolicy.default_slug_for(audience),
               membership_status: subscription.status,
               stripe_membership_subscription_id: nil,
-              membership_current_period_end_at: nil
+              membership_current_period_end_at: nil,
+              pending_membership_level: nil
             )
           end
         when 'charge.refunded'
-          Rails.logger.info("[stripe webhook] charge.refunded id=#{event.id}")
+          reconcile_charge_refunded(event.data.object)
+        when 'account.updated'
+          account = event.data.object
+          profile = TechnicianProfile.find_by(stripe_account_id: account.id)
+          StripeConnectAccountService.sync!(profile) if profile
         else
           Rails.logger.info("[stripe webhook] unhandled type=#{event.type} id=#{event.id}")
         end
@@ -176,6 +172,59 @@ module Api
           .where.not(processed_at: nil)
           .where("payload LIKE ?", "%\"id\":\"#{object_id}\"%")
           .exists?
+      end
+
+      def webhook_secret_required?
+        return false if defined?(DemoMode) && DemoMode.enabled?
+
+        Rails.env.production? || Rails.env.to_s == "staging"
+      end
+
+      def reconcile_payment_intent_succeeded(pi)
+        txn = JobPaymentTransaction.find_by(stripe_payment_intent_id: pi.id)
+        txn ||= JobPaymentTransaction.find_by(id: pi.metadata&.[]("transaction_id").to_i) if pi.metadata&.[]("transaction_id").present?
+        if txn && !txn.status_succeeded?
+          JobFundingService.mark_txn_succeeded!(txn, stripe_id: pi.id, charge_id: pi.latest_charge.to_s.presence)
+          job = txn.job
+          payment = txn.payment
+          payment.update!(status: "held", stripe_payment_intent_id: pi.id, held_at: Time.current) if payment.status == "pending" || payment.status == "failed"
+          JobFundingService.publish!(job) if txn.initial_job_charge? && job.pending_funding?
+          job.update!(funding_status: :funded) if job.funding_adjustment_required?
+        end
+      end
+
+      def reconcile_payment_intent_failed(pi)
+        txn = JobPaymentTransaction.find_by(stripe_payment_intent_id: pi.id)
+        txn&.update!(status: :failed, error_message: pi.last_payment_error&.message)
+      end
+
+      def reconcile_charge_refunded(charge)
+        refunds = charge.refunds&.data || []
+        refunds.each do |refund|
+          next if JobPaymentTransaction.exists?(stripe_refund_id: refund.id)
+
+          pi_id = charge.payment_intent.to_s.presence
+          source = JobPaymentTransaction.status_succeeded.company_collections.find_by(stripe_payment_intent_id: pi_id)
+          source ||= JobPaymentTransaction.find_by(stripe_charge_id: charge.id)
+          next unless source
+
+          JobPaymentTransaction.create!(
+            payment: source.payment,
+            job: source.job,
+            transaction_type: :refund,
+            direction: :outbound,
+            amount_cents: refund.amount.to_i,
+            currency: refund.currency || "usd",
+            status: :succeeded,
+            stripe_refund_id: refund.id,
+            stripe_charge_id: charge.id,
+            stripe_payment_intent_id: pi_id,
+            idempotency_key: "tf_stripe_refund_#{refund.id}",
+            revision: source.job.financial_revision,
+            succeeded_at: Time.current,
+            metadata_json: { "source" => "stripe_webhook" }
+          )
+        end
       end
 
       def timestamp_to_time(value)

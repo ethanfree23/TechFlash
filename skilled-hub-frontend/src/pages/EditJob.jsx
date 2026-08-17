@@ -68,7 +68,7 @@ const EditJob = () => {
   const [error, setError] = useState(null);
   const [form, setForm] = useState({
     title: '', description: '', skill_class: '', trade_type: '', minimum_years_experience: '', notes: '', required_certifications: [''], address: '', city: '', state: '', zip_code: '', country: '', status: 'open',
-    hourly_rate_cents: '', hours_per_day: '8', days: '', start_mode: 'hard_start',
+    hourly_rate_cents: '', hours_per_day: '8', days: '', pay_basis: 'actual_hours_worked', start_mode: 'hard_start',
     require_background_check: false, require_identity_verification: false, minimum_verified_references: '0', require_insurance_verification: false,
     weekend_work_policy: 'prohibited', standard_work_days: DEFAULT_STANDARD_WORK_DAYS, standard_day_shifts: {},
     saturday_work_policy: 'unavailable', sunday_work_policy: 'unavailable', saturday_multiplier: '1.5', sunday_multiplier: '1.5',
@@ -126,6 +126,7 @@ const EditJob = () => {
           hourly_rate_cents: hasHourlyRate ? (data.hourly_rate_cents / 100).toFixed(2) : '',
           hours_per_day: data.hours_per_day ?? 8,
           days: data.days ?? '',
+          pay_basis: data.pay_basis === 'guaranteed_job_pay' ? 'guaranteed_job_pay' : 'actual_hours_worked',
           weekend_work_policy: data.weekend_work_policy || 'prohibited',
           standard_work_days: Array.isArray(data.standard_work_days) && data.standard_work_days.length ? data.standard_work_days : DEFAULT_STANDARD_WORK_DAYS,
           standard_day_shifts: data.standard_day_shifts || {},
@@ -210,6 +211,7 @@ const EditJob = () => {
   const hpd = parseInt(form.hours_per_day, 10) || 8;
   const d = parseInt(form.days, 10) || 0;
   const jobAmount = hr * hpd * d;
+  const termsLocked = job?.funding_status === 'funded' || job?.funding_status === 'adjustment_required';
   const feePct = platformFeePercent ?? 10;
   const feeLabel = formatPlatformFeePercent(feePct);
   const companyCharge = jobAmount > 0 ? companyChargeFromJobAmount(jobAmount, feePct) : 0;
@@ -326,11 +328,12 @@ const EditJob = () => {
         hard_deadline_at: form.hard_deadline_at ? new Date(form.hard_deadline_at).toISOString() : null,
         job_timezone: form.job_timezone || 'UTC',
       };
-      if (jobAmount > 0) {
+      if (jobAmount > 0 && !termsLocked) {
         payload.hourly_rate_cents = Math.round(hr * 100);
         payload.hours_per_day = hpd;
         payload.days = d;
-      } else {
+        payload.pay_basis = form.pay_basis || 'actual_hours_worked';
+      } else if (jobAmount <= 0 && !termsLocked) {
         payload.hourly_rate_cents = null;
         payload.hours_per_day = null;
         payload.days = null;
@@ -577,8 +580,26 @@ const EditJob = () => {
         <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
           <h3 className="font-semibold text-slate-900">Pricing</h3>
           <p className="text-sm text-slate-600">
-            When a tech claims this job, the company is charged the job total plus a {feeLabel}% platform fee (company tier).
+            Priced jobs are charged when posted. The company pays the {form.pay_basis === 'guaranteed_job_pay' ? 'guaranteed' : 'estimated'} job total plus a {feeLabel}% platform fee (company tier).
           </p>
+          {termsLocked && (
+            <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
+              Funded pay terms are locked. Use a counteroffer to change rate, hours, days, or pay basis.
+            </p>
+          )}
+          <div>
+            <label className="block text-sm font-semibold text-slate-800 mb-1.5">Pay basis</label>
+            <select
+              className={fieldClass}
+              name="pay_basis"
+              value={form.pay_basis || 'actual_hours_worked'}
+              onChange={handleChange}
+              disabled={termsLocked}
+            >
+              <option value="actual_hours_worked">Actual Hours Worked</option>
+              <option value="guaranteed_job_pay">Guaranteed Job Pay</option>
+            </select>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-semibold text-slate-800 mb-1.5">Hourly rate (USD)</label>
@@ -591,6 +612,7 @@ const EditJob = () => {
                 value={form.hourly_rate_cents}
                 onChange={handleChange}
                 placeholder="e.g. 50"
+                disabled={termsLocked}
               />
             </div>
             <div>
@@ -603,6 +625,7 @@ const EditJob = () => {
                 className={fieldClass}
                 value={form.hours_per_day}
                 onChange={handleChange}
+                disabled={termsLocked}
               />
             </div>
             <div>
@@ -615,12 +638,13 @@ const EditJob = () => {
                 value={form.days}
                 onChange={handleChange}
                 placeholder="e.g. 3"
+                disabled={termsLocked}
               />
             </div>
           </div>
           {jobAmount > 0 && (
             <div className="text-sm space-y-1 pt-2 border-t border-slate-200">
-              <p><span className="font-medium">Job total:</span> ${jobAmount.toFixed(2)}</p>
+              <p><span className="font-medium">{form.pay_basis === 'guaranteed_job_pay' ? 'Guaranteed job pay:' : 'Estimated job total:'}</span> ${jobAmount.toFixed(2)}</p>
               <p><span className="font-medium">You pay (incl. {feeLabel}% fee):</span> ${companyCharge.toFixed(2)}</p>
             </div>
           )}

@@ -13,7 +13,6 @@ Rails.application.routes.draw do
       patch "password_resets", to: "password_resets#update"
       get "public/jobs/:share_token", to: "public_jobs#show", constraints: { share_token: %r{[^/]+} }
       post "marketing_leads", to: "marketing_leads#create"
-      post "signup_payment_intents", to: "signup_payment_intents#create"
       get "membership_tier_configs", to: "membership_tier_configs#index"
       get "licensing_settings", to: "licensing_settings#show"
       get 'technicians/profile', to: 'technicians#profile'
@@ -39,6 +38,8 @@ Rails.application.routes.draw do
           patch :deny
           patch :finish
           patch :extend
+          post :confirm_funding
+          post :unpublish
         end
         resources :counter_offers, only: [:index, :create], controller: :job_counter_offers
         resources :weekend_work_requests, only: [:index, :create, :update]
@@ -56,7 +57,7 @@ Rails.application.routes.draw do
           patch :counter, controller: :job_counter_offers
         end
       end
-      post 'jobs/:job_id/create_payment_intent', to: 'payments#create_intent'
+      post 'stripe/webhook', to: 'stripe_webhooks#create'
       post 'settings/create_setup_intent', to: 'settings#create_setup_intent'
       post 'settings/create_connect_account_link', to: 'settings#create_connect_account_link'
       resource :membership, only: %i[show update], controller: :memberships
@@ -104,7 +105,8 @@ Rails.application.routes.draw do
       get 'favorite_technicians', to: 'favorite_technicians#index'
       post 'favorite_technicians', to: 'favorite_technicians#create'
       delete 'favorite_technicians/:id', to: 'favorite_technicians#destroy'
-      post 'stripe/webhook', to: 'stripe_webhooks#create'
+      get "billing_history", to: "billing_history#show"
+      post "internal/payments/release_eligible", to: "internal_payments#release_eligible"
       post 'checkr/webhook', to: 'checkr_webhooks#create'
       post 'webhooks/checkr', to: 'checkr_webhooks#create'
       resource :verification, only: [:show], controller: :verifications do

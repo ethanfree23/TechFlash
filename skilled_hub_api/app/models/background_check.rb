@@ -57,7 +57,7 @@ class BackgroundCheck < ApplicationRecord
   }, default: :none, prefix: true
 
   validates :provider, presence: true
-  validates :paid_by, inclusion: { in: %w[technician premium admin company] }
+  validates :paid_by, inclusion: { in: %w[technician premium admin company membership] }
   validates :normalized_status, inclusion: { in: NORMALIZED_STATUSES }, allow_blank: true
 
   scope :active_or_processing, -> { where(status: %i[invited pending processing]) }

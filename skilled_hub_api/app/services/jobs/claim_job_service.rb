@@ -36,32 +36,38 @@ module Jobs
       return { error: "Job has already been claimed" } if @job.job_applications.accepted.any?
       return { error: overlap_error_message } if overlapping_claim?(technician_profile)
 
+      if @offer.present?
+        funding = JobFundingAdjustmentService.reconcile!(@job, source: "counteroffer", transaction_type_prefix: "counteroffer")
+        if funding[:requires_action]
+          revert_offer_terms! if @previous_terms.present?
+          return {
+            error: funding[:error] || "Additional payment is required before these terms can be accepted.",
+            requires_action: true,
+            client_secret: funding[:client_secret],
+            payment_adjustment_required: true
+          }
+        end
+        unless funding[:success]
+          revert_offer_terms! if @previous_terms.present?
+          return { error: funding[:error] || "Could not fund the accepted counteroffer." }
+        end
+      else
+        unless @job.funding_funded? || !@job.priced? || @job.billing_exempt?
+          return { error: "This job is not funded yet and cannot be claimed." }
+        end
+      end
+
       job_application = JobApplication.create!(
         job: @job,
         technician_profile: technician_profile,
         status: :accepted
       )
 
-      charge_required = @job.job_amount_cents > 0 && !MembershipPolicy.billing_exempt?(@job.company_profile)
-      if charge_required
-        result = PaymentService.charge_company_on_claim(@job)
-        if result[:error]
-          job_application.destroy!
-          @job.reload
-          return { error: result[:error] }
-        end
-        @job.update!(status: :filled)
-        MailDelivery.safe_deliver do
-          UserMailer.job_claimed_email(@job).deliver_now
-          UserMailer.payment_confirmation_email(@job, @job.company_charge_cents).deliver_now
-          UserMailer.technician_claimed_job_email(@job).deliver_now
-        end
-      else
-        @job.update!(status: :filled)
-        MailDelivery.safe_deliver do
-          UserMailer.job_claimed_email(@job).deliver_now
-          UserMailer.technician_claimed_job_email(@job).deliver_now
-        end
+      JobFundingService.snapshot_technician!(@job, technician_profile)
+      @job.update!(status: :filled)
+      MailDelivery.safe_deliver do
+        UserMailer.job_claimed_email(@job).deliver_now
+        UserMailer.technician_claimed_job_email(@job).deliver_now
       end
 
       { job: @job }
@@ -79,15 +85,40 @@ module Jobs
     end
 
     def apply_offer_terms!
-      @job.assign_attributes(
+      @previous_terms = {
+        hourly_rate_cents: @job.hourly_rate_cents,
+        hours_per_day: @job.hours_per_day,
+        days: @job.days,
+        start_mode: @job.start_mode,
+        scheduled_start_at: @job.scheduled_start_at,
+        scheduled_end_at: @job.scheduled_end_at,
+        agreed_hourly_rate_cents: @job.agreed_hourly_rate_cents,
+        estimated_hours: @job.estimated_hours,
+        agreed_labor_cents: @job.agreed_labor_cents,
+        financial_revision: @job.financial_revision
+      }
+      JobFundingAdjustmentService.apply_accepted_terms!(
+        job: @job,
         hourly_rate_cents: @offer.proposed_hourly_rate_cents,
         hours_per_day: @offer.proposed_hours_per_day,
-        days: @offer.proposed_days,
+        days: @offer.proposed_days
+      )
+      @job.assign_attributes(
         start_mode: @offer.proposed_start_mode,
         scheduled_start_at: @offer.proposed_start_at,
         scheduled_end_at: @offer.proposed_end_at
       )
+      if @job.rolling_start? && (@job.rolling_start_rule_type.blank? || @job.rolling_start_rule_type == "none")
+        @job.rolling_start_rule_type = :exact_datetime
+        @job.rolling_start_exact_start_at = Time.current
+      end
       @job.save!
+    end
+
+    def revert_offer_terms!
+      return if @previous_terms.blank?
+
+      @job.update!(@previous_terms)
     end
 
     def ensure_schedule_for_start_mode!
