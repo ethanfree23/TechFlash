@@ -70,8 +70,12 @@ export function useTableColumnPreferences({
 
   useEffect(() => {
     if (hydratedScopeKey !== scopeKey || !user) return;
+    if (auth.isMasquerading()) return;
 
+    const controller = new AbortController();
     const timer = setTimeout(() => {
+      if (auth.isMasquerading()) return;
+
       const payload = serializeTableColumns(columns);
       const savedNested = user.ui_preferences?.table_columns?.[tableId];
       let compareTo = savedNested;
@@ -84,25 +88,32 @@ export function useTableColumnPreferences({
       if (normalizeSavedColumnsJson(compareTo) === JSON.stringify(payload)) return;
 
       authAPI
-        .updateMe({
-          ui_preferences: {
-            table_columns: {
-              [tableId]: payload,
+        .updateMe(
+          {
+            ui_preferences: {
+              table_columns: {
+                [tableId]: payload,
+              },
             },
           },
-        })
+          { signal: controller.signal }
+        )
         .then((res) => {
-          if (res?.user) {
-            auth.setUser(res.user);
+          if (controller.signal.aborted || auth.isMasquerading()) return;
+          if (res?.user && auth.setUser(res.user)) {
             onUserUpdateRef.current?.(res.user);
           }
         })
-        .catch(() => {
+        .catch((err) => {
+          if (err?.name === 'AbortError' || controller.signal.aborted) return;
           onSaveErrorRef.current?.();
         });
     }, 450);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [columns, user, tableId, hydratedScopeKey, scopeKey]);
 
   return [columns, setColumns];

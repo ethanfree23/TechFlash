@@ -36,7 +36,7 @@ import MasqueradeBanner from './components/MasqueradeBanner';
 import DemoModeBanner from './components/DemoModeBanner';
 import AppPageLayout from './components/layout/AppPageLayout';
 import { auth } from './auth';
-import { metaAPI } from './api/api';
+import { metaAPI, authAPI } from './api/api';
 import { setApiDemoMode, setDemoFlagshipJobId, setDemoReviewedJobId, getDemoBasePath, isDemoPath, isDemoRoleAutoLoginSearch, isDemoRoleAutoLoginLocation } from './utils/demoMode';
 import MetaPixelRouteTracker from './components/MetaPixelRouteTracker';
 
@@ -88,6 +88,28 @@ function App() {
     };
   }, [checkAuth]);
 
+  useEffect(() => {
+    if (!isAuthenticated || !auth.isMasquerading()) return;
+    const jwtId = auth.jwtUserId();
+    const current = auth.getUser();
+    if (!jwtId || (current && String(current.id) === String(jwtId))) return;
+
+    let cancelled = false;
+    authAPI
+      .getById(jwtId)
+      .then((res) => {
+        if (cancelled) return;
+        const fetched = res?.user?.id ? res.user : res;
+        if (fetched && auth.setUser(fetched)) {
+          setUser(auth.getUser());
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated, user]);
+
   const handleLoginSuccess = (userData) => {
     setIsAuthenticated(true);
     setUser(userData);
@@ -100,7 +122,12 @@ function App() {
   };
 
   const handleUserUpdate = (updatedUser) => {
-    setUser(updatedUser);
+    if (updatedUser) {
+      if (auth.setUser(updatedUser) === false) return;
+      setUser(auth.getUser());
+      return;
+    }
+    setUser(null);
   };
 
   if (loading) {

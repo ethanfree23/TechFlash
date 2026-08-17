@@ -17,11 +17,11 @@ function testMasqueradeRedirectsStayDemoAware() {
   const adminDetail = read('src/pages/AdminUserDetailPage.jsx');
 
   assert.ok(
-    adminUsers.includes("window.location.assign(withDemoPath('/dashboard'))"),
+    adminUsers.includes("window.location.replace(withDemoPath('/dashboard'))"),
     'AdminUsersPage masquerade should redirect via withDemoPath(/dashboard)',
   );
   assert.ok(
-    adminDetail.includes("window.location.assign(withDemoPath('/dashboard'))"),
+    adminDetail.includes("window.location.replace(withDemoPath('/dashboard'))"),
     'AdminUserDetailPage masquerade should redirect via withDemoPath(/dashboard)',
   );
   assert.ok(

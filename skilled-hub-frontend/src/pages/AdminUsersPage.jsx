@@ -209,11 +209,24 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   };
 
   const startMasquerade = async (targetUserId) => {
-    setMasqueradeBusyId(targetUserId);
+    const id = auth.coerceTargetUserId(targetUserId);
+    if (!id) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Masquerade failed',
+        message: 'Could not start masquerade session',
+        variant: 'error',
+      });
+      return;
+    }
+    setMasqueradeBusyId(id);
     try {
-      const res = await adminUsersAPI.masqueradeStart(targetUserId);
-      auth.enterMasquerade(res.token, res.user);
-      window.location.assign(withDemoPath('/dashboard'));
+      const res = await adminUsersAPI.masqueradeStart(id);
+      if (!res?.token || !res?.user) throw new Error('Invalid masquerade response');
+      if (!auth.enterMasquerade(res.token, res.user)) {
+        throw new Error('Could not start masquerade session');
+      }
+      window.location.replace(withDemoPath('/dashboard'));
     } catch (err) {
       setAlertModal({
         isOpen: true,

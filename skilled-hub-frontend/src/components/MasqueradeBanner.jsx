@@ -3,6 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { auth } from '../auth';
 import { isDemoMode, withDemoPath } from '../utils/demoMode';
 
+function masqueradeDisplayUser() {
+  const current = auth.getUser();
+  if (current && String(current.role || '').toLowerCase() !== 'admin') return current;
+  const snap = auth.getMasqueradeTargetUser();
+  if (snap && String(snap.role || '').toLowerCase() !== 'admin') return snap;
+  return null;
+}
+
 /**
  * Shown while an admin is masquerading as another user; restores admin JWT from sessionStorage on exit.
  */
@@ -11,7 +19,7 @@ export default function MasqueradeBanner() {
 
   if (!auth.isMasquerading()) return null;
 
-  const user = auth.getUser();
+  const user = masqueradeDisplayUser();
 
   const exit = () => {
     const restored = auth.exitMasquerade();
@@ -28,7 +36,9 @@ export default function MasqueradeBanner() {
         <p className="text-sm font-medium">
           <span className="uppercase tracking-wide text-amber-100 mr-2">Masquerade</span>
           Acting as <span className="font-semibold">{user?.email || 'user'}</span>
-          <span className="text-amber-100 capitalize ml-2">({user?.role})</span>
+          {user?.role ? (
+            <span className="text-amber-100 capitalize ml-2">({user.role})</span>
+          ) : null}
         </p>
         <div className="flex flex-wrap items-center gap-2">
           {isDemoMode() && (

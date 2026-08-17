@@ -579,12 +579,16 @@ export default function AdminUserDetailPage({ user, onLogout }) {
   };
 
   const startMasquerade = async () => {
-    if (!u?.id || !(isCompany || isTech)) return;
+    const id = auth.coerceTargetUserId(u?.id);
+    if (!id || !(isCompany || isTech)) return;
     setMasqueradeBusy(true);
     try {
-      const res = await adminUsersAPI.masqueradeStart(u.id);
-      auth.enterMasquerade(res.token, res.user);
-      window.location.assign(withDemoPath('/dashboard'));
+      const res = await adminUsersAPI.masqueradeStart(id);
+      if (!res?.token || !res?.user) throw new Error('Invalid masquerade response');
+      if (!auth.enterMasquerade(res.token, res.user)) {
+        throw new Error('Could not start masquerade session');
+      }
+      window.location.replace(withDemoPath('/dashboard'));
     } catch (err) {
       setAlertModal({
         isOpen: true,

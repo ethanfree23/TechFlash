@@ -55,6 +55,7 @@ const apiRequest = async (endpoint, options = {}) => {
       return raw;
     }
   } catch (error) {
+    if (error?.name === 'AbortError') throw error;
     console.error('API request failed:', error);
     throw formatApiFetchError(error);
   }
@@ -137,11 +138,13 @@ export const authAPI = {
       method: 'DELETE',
     }),
 
-  updateMe: (data) =>
+  updateMe: (data, options = {}) =>
     apiRequest('/users/me', {
       method: 'PATCH',
       body: JSON.stringify(data),
+      ...options,
     }),
+  getById: (id) => apiRequest(`/users/${id}`),
   deleteMe: () =>
     apiRequest('/users/me', {
       method: 'DELETE',

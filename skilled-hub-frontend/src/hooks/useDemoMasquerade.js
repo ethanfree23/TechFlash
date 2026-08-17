@@ -71,9 +71,17 @@ export default function useDemoMasquerade() {
           setError(missingMsg);
           return false;
         }
-        const res = await adminUsersAPI.masqueradeStart(id);
-        auth.enterMasquerade(res.token, res.user);
-        window.location.assign(withDemoPath('/settings?tab=account'));
+        const targetId = auth.coerceTargetUserId(id);
+        if (!targetId) {
+          setError(`Could not find ${DEMO_ACCOUNTS[role]?.label || role}. Reset demo data and try again.`);
+          return false;
+        }
+        const res = await adminUsersAPI.masqueradeStart(targetId);
+        if (!res?.token || !res?.user) throw new Error('Invalid masquerade response');
+        if (!auth.enterMasquerade(res.token, res.user)) {
+          throw new Error('Could not switch user.');
+        }
+        window.location.replace(withDemoPath('/settings?tab=account'));
         return true;
       } catch (e) {
         setError(e.message || 'Could not switch user.');
