@@ -12,7 +12,7 @@ function formatMoney(cents, suffix = '/month') {
 function defaultCommissionLabel(tier) {
   const pct = tier.commission_percent;
   if (pct == null || Number.isNaN(Number(pct))) return 'Commission set in plan details.';
-  return `${pct}% commission on completed jobs`;
+  return `${pct}%`;
 }
 
 function defaultJobAccessLabel(tier) {
@@ -47,10 +47,7 @@ export function adaptMembershipTier(tier, billingInterval = 'monthly') {
     yearlySavingsLabel: tier.yearly_savings_label || '',
     features,
     jobAccessLabel: defaultJobAccessLabel(tier),
-    commissionLabel:
-      tier.commission_summary && String(tier.commission_summary).trim()
-        ? String(tier.commission_summary).trim()
-        : defaultCommissionLabel(tier),
+    commissionLabel: defaultCommissionLabel(tier),
     isPopular: !!tier.is_highlighted,
     requiresPayment: feeCents > 0,
     raw: tier,

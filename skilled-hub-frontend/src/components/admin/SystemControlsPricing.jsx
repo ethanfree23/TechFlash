@@ -307,7 +307,7 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
     const missingStripe = rows.filter((r) => !String(r.stripe_price_id || '').trim()).length;
     const avgComm = commVals.length ? commVals.reduce((a, b) => a + b, 0) / commVals.length : 0;
     return {
-      count: rows.length,
+      count: rows.filter((r) => r.active !== false).length,
       missingStripe,
       avgComm: avgComm.toFixed(1),
     };
@@ -945,7 +945,7 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
                                   onChange={(e) => updateRow(r.id, 'commission_summary', e.target.value)}
                                   rows={4}
                                   className="mt-1 w-full border rounded px-2 py-1 text-sm"
-                                  placeholder="Leave blank to use commission % only in UI"
+                                  placeholder="Optional extra copy. Signup Commission uses the Commission % column."
                                 />
                               </label>
                             </div>
