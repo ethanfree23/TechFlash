@@ -24,7 +24,8 @@ module Api
         @company_profile = CompanyProfile.create!(
           user: @company_user,
           membership_level: "premium",
-          membership_fee_waived: true
+          membership_fee_waived: true,
+          job_funding_waived: true
         )
         @company_user.update_column(:company_profile_id, @company_profile.id)
 

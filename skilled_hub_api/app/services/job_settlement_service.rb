@@ -15,20 +15,39 @@ class JobSettlementService
 
   def self.settle!(job)
     labor = settlement_labor_cents(job)
-    if job.actual_hours_worked? && labor.nil?
-      job.update!(settlement_status: :settlement_blocked)
-      return { success: false, error: "Approved time entries are required before settling an Actual Hours Worked job." }
+    due_cents = 0
+    refundable_cents = 0
+    revision = nil
+
+    Job.transaction do
+      locked = Job.lock.find(job.id)
+      if locked.actual_hours_worked? && labor.nil?
+        locked.update!(settlement_status: :settlement_blocked)
+        return { success: false, error: "Approved time entries are required before settling an Actual Hours Worked job." }
+      end
+
+      locked.update!(agreed_labor_cents: labor) if locked.actual_hours_worked? && labor.present?
+
+      begin
+        ledger = JobLedger.for(locked)
+      rescue JobLedger::MissingCommissionSnapshotError => e
+        locked.update!(settlement_status: :settlement_blocked)
+        return { success: false, error: e.message }
+      end
+
+      due_cents = ledger.amount_due_cents
+      refundable_cents = ledger.amount_refundable_cents
+      revision = locked.financial_revision.to_i
     end
 
-    job.update!(agreed_labor_cents: labor) if job.actual_hours_worked? && labor.present?
-    ledger = JobLedger.for(job)
+    job.reload
 
-    if ledger.amount_due_cents.positive?
+    if due_cents.positive?
       result = JobFundingService.collect!(
         job: job,
-        amount_cents: ledger.amount_due_cents,
+        amount_cents: due_cents,
         transaction_type: :final_hours_top_up,
-        revision: job.financial_revision.to_i + 1
+        revision: revision + 1
       )
       job.increment!(:financial_revision)
       if result[:requires_action]
@@ -39,12 +58,12 @@ class JobSettlementService
         job.update!(funding_status: :adjustment_required, settlement_status: :settlement_blocked)
         return { success: false, error: result[:error] || "Could not collect the remaining job amount." }
       end
-    elsif ledger.amount_refundable_cents.positive?
+    elsif refundable_cents.positive?
       result = JobFundingService.refund_delta!(
         job: job,
-        amount_cents: ledger.amount_refundable_cents,
+        amount_cents: refundable_cents,
         transaction_type: :final_hours_refund,
-        revision: job.financial_revision.to_i + 1
+        revision: revision + 1
       )
       job.increment!(:financial_revision)
       unless result[:success]
@@ -53,7 +72,12 @@ class JobSettlementService
       end
     end
 
-    ledger = JobLedger.for(job.reload)
+    begin
+      ledger = JobLedger.for(job.reload)
+    rescue JobLedger::MissingCommissionSnapshotError => e
+      job.update!(settlement_status: :settlement_blocked)
+      return { success: false, error: e.message }
+    end
     unless ledger.fully_funded
       job.update!(settlement_status: :settlement_blocked, funding_status: :adjustment_required)
       return { success: false, error: "Job is underfunded and cannot be settled." }

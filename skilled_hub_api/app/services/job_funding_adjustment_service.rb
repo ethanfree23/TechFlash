@@ -22,7 +22,11 @@ class JobFundingAdjustmentService
   end
 
   def self.reconcile!(job, source:, transaction_type_prefix:)
-    ledger = JobLedger.for(job)
+    begin
+      ledger = JobLedger.for(job)
+    rescue JobLedger::MissingCommissionSnapshotError => e
+      return { success: false, error: e.message, job: job }
+    end
     revision = job.financial_revision
 
     if ledger.amount_due_cents.positive?
@@ -72,7 +76,11 @@ class JobFundingAdjustmentService
   end
 
   def self.refund_unfilled_job!(job)
-    ledger = JobLedger.for(job)
+    begin
+      ledger = JobLedger.for(job)
+    rescue JobLedger::MissingCommissionSnapshotError => e
+      return { success: false, error: e.message, job: job }
+    end
     return { success: true, job: job } if ledger.net_funded_cents <= 0
 
     result = JobFundingService.refund_delta!(

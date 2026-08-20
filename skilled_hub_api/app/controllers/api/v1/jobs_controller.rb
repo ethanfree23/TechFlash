@@ -168,7 +168,7 @@ module Api
         company_profile = resolve_company_profile_for_create
         return if performed?
 
-        requires_saved_card = !MembershipPolicy.billing_exempt?(company_profile)
+        requires_saved_card = !company_profile.job_funding_waived?
         skip_card_validation = @current_user&.admin? && ActiveModel::Type::Boolean.new.cast(params[:skip_card_validation])
         priced_preview = JobMoney.labor_cents(
           hourly_rate_cents: job_params[:hourly_rate_cents],
@@ -183,7 +183,7 @@ module Api
         job = Job.new(job_params.except(:company_profile_id, :skip_card_validation))
         job.company_profile_id = company_profile.id
         job.pay_basis = params[:pay_basis] if params[:pay_basis].present?
-        needs_funding = job.priced? && !MembershipPolicy.billing_exempt?(company_profile) && !skip_card_validation
+        needs_funding = job.priced? && !job.job_funding_waived?
         job.status = needs_funding ? :pending_funding : :open
         trade_validation_error = assign_and_validate_trade_type!(job: job, company_profile: company_profile)
         if trade_validation_error.present?

@@ -181,12 +181,14 @@ module Api
       end
 
       def reconcile_payment_intent_succeeded(pi)
-        txn = JobPaymentTransaction.find_by(stripe_payment_intent_id: pi.id)
-        txn ||= JobPaymentTransaction.find_by(id: pi.metadata&.[]("transaction_id").to_i) if pi.metadata&.[]("transaction_id").present?
-        if txn && !txn.status_succeeded?
+        Job.transaction do
+          txn = JobPaymentTransaction.lock.find_by(stripe_payment_intent_id: pi.id)
+          txn ||= JobPaymentTransaction.lock.find_by(id: pi.metadata&.[]("transaction_id").to_i) if pi.metadata&.[]("transaction_id").present?
+          next unless txn && !txn.status_succeeded?
+
           JobFundingService.mark_txn_succeeded!(txn, stripe_id: pi.id, charge_id: pi.latest_charge.to_s.presence)
-          job = txn.job
-          payment = txn.payment
+          job = Job.lock.find(txn.job_id)
+          payment = Payment.lock.find(txn.payment_id)
           payment.update!(status: "held", stripe_payment_intent_id: pi.id, held_at: Time.current) if payment.status == "pending" || payment.status == "failed"
           JobFundingService.publish!(job) if txn.initial_job_charge? && job.pending_funding?
           job.update!(funding_status: :funded) if job.funding_adjustment_required?

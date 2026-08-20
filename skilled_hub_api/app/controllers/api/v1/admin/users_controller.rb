@@ -307,10 +307,15 @@ module Api
           end
           if params.key?(:commission_override_percent)
             value = params[:commission_override_percent]
-            attrs[:commission_override_percent] = value.present? ? value.to_f : nil
+            parsed = value.present? ? value.to_f : nil
+            # Legacy 0 meant "use the chart"; do not persist a zero override.
+            attrs[:commission_override_percent] = parsed.nil? || parsed.zero? ? nil : parsed
           end
           if params.key?(:membership_fee_waived)
             attrs[:membership_fee_waived] = ActiveModel::Type::Boolean.new.cast(params[:membership_fee_waived])
+          end
+          if user.company? && params.key?(:job_funding_waived)
+            attrs[:job_funding_waived] = ActiveModel::Type::Boolean.new.cast(params[:job_funding_waived])
           end
 
           profile.update!(attrs) if attrs.any?
@@ -558,6 +563,7 @@ module Api
             membership_fee_override_cents: profile.membership_fee_override_cents,
             commission_override_percent: profile.commission_override_percent,
             membership_fee_waived: profile.membership_fee_waived,
+            job_funding_waived: user.company? ? !!profile.try(:job_funding_waived) : nil,
             membership_status: profile.membership_status,
             membership_current_period_end_at: profile.membership_current_period_end_at,
             active_coupon_assignment: serialize_coupon_assignment(user)

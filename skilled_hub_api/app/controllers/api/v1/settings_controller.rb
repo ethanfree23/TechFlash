@@ -14,6 +14,10 @@ module Api
         if Stripe.api_key.blank?
           return render json: { error: 'Payments not configured' }, status: :service_unavailable
         end
+        mode_error = StripeModeGuard.error_message
+        if mode_error
+          return render json: { error: mode_error }, status: :service_unavailable
+        end
 
         customer_id = StripeCustomerService.ensure_customer_id!(@current_user)
 
@@ -35,6 +39,10 @@ module Api
 
         if Stripe.api_key.blank?
           return render json: { error: 'Payments not configured' }, status: :service_unavailable
+        end
+        mode_error = StripeModeGuard.error_message
+        if mode_error
+          return render json: { error: mode_error }, status: :service_unavailable
         end
 
         profile = @current_user.technician_profile

@@ -66,44 +66,91 @@ class PaymentService
     return { error: "No payment header" } if payment.blank?
 
     job = payment.job
-    ledger = JobLedger.for(job)
-    return { error: "Job is underfunded; technician payout is blocked." } unless ledger.fully_funded
-    return { error: "Technician payout already transferred." } if ledger.transferred_cents.positive?
+    payout_amount = nil
+    technician_profile = nil
+    key = nil
+    txn = nil
+    early = nil
 
-    existing = job.job_payment_transactions.find_by(transaction_type: :technician_transfer, status: :succeeded)
-    return { success: true, payment: payment, transaction: existing } if existing
+    Job.transaction do
+      locked_job = Job.lock.find(job.id)
+      if locked_job.technician_commission_percent_snapshot.nil? &&
+          !locked_job.job_financial_revisions.where.not(technician_commission_percent: nil).exists?
+        early = { error: "Technician commission snapshot is missing; refusing to transfer." }
+        next
+      end
 
-    accepted_app = job.job_applications.find_by(status: :accepted)
-    technician_profile = accepted_app&.technician_profile
-    return { error: "No technician to pay" } unless technician_profile
-    return { error: "Technician has no Stripe account" } if technician_profile.stripe_account_id.blank?
-    unless StripeConnectAccountService.payout_ready?(technician_profile, sync: true)
-      return { error: "Technician Stripe Connect account is not ready to receive payouts." }
+      begin
+        ledger = JobLedger.for(locked_job)
+      rescue JobLedger::MissingCommissionSnapshotError => e
+        early = { error: e.message }
+        next
+      end
+      JobLedger.new(locked_job).technician_commission_percent!
+
+      unless ledger.fully_funded
+        early = { error: "Job is underfunded; technician payout is blocked." }
+        next
+      end
+      if ledger.transferred_cents.positive?
+        early = { error: "Technician payout already transferred." }
+        next
+      end
+      if ledger.technician_net_payout_cents.nil?
+        early = { error: "Technician commission snapshot is missing; refusing to transfer." }
+        next
+      end
+
+      existing = locked_job.job_payment_transactions.find_by(transaction_type: :technician_transfer, status: :succeeded)
+      if existing
+        early = { success: true, payment: payment, transaction: existing }
+        next
+      end
+
+      accepted_app = locked_job.job_applications.find_by(status: :accepted)
+      technician_profile = accepted_app&.technician_profile
+      unless technician_profile
+        early = { error: "No technician to pay" }
+        next
+      end
+      if technician_profile.stripe_account_id.blank?
+        early = { error: "Technician has no Stripe account" }
+        next
+      end
+      unless StripeConnectAccountService.payout_ready?(technician_profile, sync: true)
+        early = { error: "Technician Stripe Connect account is not ready to receive payouts." }
+        next
+      end
+
+      payout_amount = ledger.technician_net_payout_cents
+      if payout_amount.to_i <= 0
+        early = { error: "No approved payable hours available for payout." }
+        next
+      end
+      if payout_amount > ledger.net_funded_cents
+        early = { error: "Payout exceeds funded amount." }
+        next
+      end
+
+      key = "tf_job_#{locked_job.id}_txn_technician_transfer_r#{locked_job.financial_revision}"
+      txn = JobPaymentTransaction.lock.find_or_initialize_by(idempotency_key: key)
+      if txn.new_record?
+        txn.assign_attributes(
+          payment: payment,
+          job: locked_job,
+          transaction_type: :technician_transfer,
+          direction: :outbound,
+          amount_cents: payout_amount,
+          currency: "usd",
+          status: :pending,
+          revision: locked_job.financial_revision
+        )
+        txn.save!
+      elsif txn.status_succeeded?
+        early = { success: true, payment: payment, transaction: txn }
+      end
     end
-
-    payout_amount = ledger.technician_net_payout_cents
-    return { error: "No approved payable hours available for payout." } if payout_amount <= 0
-    if payout_amount > ledger.net_funded_cents
-      return { error: "Payout exceeds funded amount." }
-    end
-
-    key = "tf_job_#{job.id}_txn_technician_transfer_r#{job.financial_revision}"
-    txn = JobPaymentTransaction.find_or_initialize_by(idempotency_key: key)
-    if txn.new_record?
-      txn.assign_attributes(
-        payment: payment,
-        job: job,
-        transaction_type: :technician_transfer,
-        direction: :outbound,
-        amount_cents: payout_amount,
-        currency: "usd",
-        status: :pending,
-        revision: job.financial_revision
-      )
-      txn.save!
-    elsif txn.status_succeeded?
-      return { success: true, payment: payment, transaction: txn }
-    end
+    return early if early
 
     result = JobStripeOps.transfer!(
       amount_cents: payout_amount,
@@ -112,24 +159,35 @@ class PaymentService
       transfer_group: job.transfer_group,
       idempotency_key: key
     )
-    if result.succeeded?
-      txn.update!(status: :succeeded, stripe_transfer_id: result.stripe_id, succeeded_at: Time.current)
-      payment.update!(
-        status: "released",
-        stripe_transfer_id: result.stripe_id,
-        released_at: Time.current,
-        amount_cents: payout_amount
-      )
-      TimeEntry.where(job_id: job.id, status: TimeEntry.statuses[:approved]).update_all(
-        status: TimeEntry.statuses[:paid],
-        paid_at: Time.current,
-        updated_at: Time.current
-      )
-      MailDelivery.safe_deliver { UserMailer.payment_received_email(job, payout_amount).deliver_now }
-      { success: true, payment: payment, transaction: txn }
-    else
-      txn.update!(status: :failed, error_message: result.error)
-      { error: result.error }
+
+    Job.transaction do
+      locked_txn = JobPaymentTransaction.lock.find(txn.id)
+      locked_payment = Payment.lock.find(payment.id)
+      if locked_txn.status_succeeded?
+        return { success: true, payment: locked_payment, transaction: locked_txn }
+      end
+
+      if result.succeeded?
+        locked_txn.update!(status: :succeeded, stripe_transfer_id: result.stripe_id, succeeded_at: Time.current)
+        locked_payment.update!(
+          status: "released",
+          stripe_transfer_id: result.stripe_id,
+          released_at: Time.current,
+          amount_cents: payout_amount
+        )
+        TimeEntry.where(job_id: job.id, status: TimeEntry.statuses[:approved]).update_all(
+          status: TimeEntry.statuses[:paid],
+          paid_at: Time.current,
+          updated_at: Time.current
+        )
+        MailDelivery.safe_deliver { UserMailer.payment_received_email(job, payout_amount).deliver_now }
+        { success: true, payment: locked_payment, transaction: locked_txn }
+      else
+        locked_txn.update!(status: :failed, error_message: result.error)
+        { error: result.error }
+      end
     end
+  rescue JobLedger::MissingCommissionSnapshotError => e
+    { error: e.message }
   end
 end

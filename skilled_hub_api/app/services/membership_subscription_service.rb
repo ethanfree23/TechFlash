@@ -16,6 +16,8 @@ class MembershipSubscriptionService
 
   def self.create_checkout_session!(user:, membership_level:, success_url:, cancel_url:)
     raise Error, "Stripe is not configured" if Stripe.api_key.blank?
+    mode_error = StripeModeGuard.error_message
+    raise Error, mode_error if mode_error
 
     level = MembershipPolicy.normalized_level(membership_level, audience: user.role)
     rule = MembershipPolicy.rules_for_audience(user.role)[level]

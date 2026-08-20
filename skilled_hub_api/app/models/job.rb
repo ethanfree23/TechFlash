@@ -60,13 +60,13 @@ class Job < ApplicationRecord
   end
 
   def company_commission_percent
-    return company_commission_percent_snapshot.to_d if company_commission_percent_snapshot.present?
+    return company_commission_percent_snapshot.to_d unless company_commission_percent_snapshot.nil?
 
     MembershipPolicy.company_commission_percent(company_profile)
   end
 
   def technician_commission_percent
-    return technician_commission_percent_snapshot.to_d if technician_commission_percent_snapshot.present?
+    return technician_commission_percent_snapshot.to_d unless technician_commission_percent_snapshot.nil?
 
     accepted_app = job_applications.find_by(status: :accepted)
     MembershipPolicy.technician_commission_percent(accepted_app&.technician_profile)
@@ -92,8 +92,8 @@ class Job < ApplicationRecord
     job_amount_cents.positive?
   end
 
-  def billing_exempt?
-    MembershipPolicy.billing_exempt?(company_profile)
+  def job_funding_waived?
+    !!company_profile&.job_funding_waived?
   end
 
   def funded_terms_locked?

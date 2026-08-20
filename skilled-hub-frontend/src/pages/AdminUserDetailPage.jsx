@@ -152,6 +152,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
   const [membershipDraft, setMembershipDraft] = useState({
     membership_level: 'basic',
     membership_fee_waived: false,
+    job_funding_waived: false,
     membership_fee_override_cents: '',
     commission_override_percent: '',
   });
@@ -257,6 +258,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
     setMembershipDraft({
       membership_level: profile.membership_level || 'basic',
       membership_fee_waived: !!profile.membership_fee_waived,
+      job_funding_waived: !!profile.job_funding_waived,
       membership_fee_override_cents:
         profile.membership_fee_override_cents == null ? '' : String(profile.membership_fee_override_cents),
       commission_override_percent:
@@ -267,6 +269,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
     profile?.id,
     profile?.membership_level,
     profile?.membership_fee_waived,
+    profile?.job_funding_waived,
     profile?.membership_fee_override_cents,
     profile?.commission_override_percent,
   ]);
@@ -508,12 +511,14 @@ export default function AdminUserDetailPage({ user, onLogout }) {
         throw new Error('Commission override must be a non-negative number.');
       }
 
-      await adminUsersAPI.updateMembershipPricing(u.id, {
+      const payload = {
         membership_level: membershipDraft.membership_level,
         membership_fee_waived: !!membershipDraft.membership_fee_waived,
         membership_fee_override_cents: feeOverride == null ? null : Math.round(feeOverride),
         commission_override_percent: commissionOverride,
-      });
+      };
+      if (isCompany) payload.job_funding_waived = !!membershipDraft.job_funding_waived;
+      await adminUsersAPI.updateMembershipPricing(u.id, payload);
       await load();
       setAlertModal({
         isOpen: true,
@@ -1552,9 +1557,24 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                       onChange={(e) => setMembershipDraft((d) => ({ ...d, membership_fee_waived: e.target.checked }))}
                     />
                     <span className="text-sm text-gray-700">
-                      <span className="font-semibold text-gray-900">Billing exempt</span>
+                      <span className="font-semibold text-gray-900">Waive monthly membership fee</span>
                       <br />
-                      Keeps tier access while making effective membership fee and commission 0. Also allows posting without a saved card.
+                      Sets the recurring membership subscription fee to $0. Does not skip job charges. The company still pays labor plus the job commission from their tier.
+                    </span>
+                  </label>
+
+                  <label className="flex items-start gap-3 p-3 border border-amber-200 rounded-lg bg-amber-50">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4"
+                      checked={!!membershipDraft.job_funding_waived}
+                      disabled={membershipSaveBusy}
+                      onChange={(e) => setMembershipDraft((d) => ({ ...d, job_funding_waived: e.target.checked }))}
+                    />
+                    <span className="text-sm text-gray-700">
+                      <span className="font-semibold text-gray-900">Waive job funding</span>
+                      <br />
+                      Admin-only. Lets this company post and fill priced jobs without a Stripe PaymentIntent. Do not use for a real first live payment.
                     </span>
                   </label>
 
@@ -1637,9 +1657,9 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                       onChange={(e) => setMembershipDraft((d) => ({ ...d, membership_fee_waived: e.target.checked }))}
                     />
                     <span className="text-sm text-gray-700">
-                      <span className="font-semibold text-gray-900">Billing exempt</span>
+                      <span className="font-semibold text-gray-900">Waive monthly membership fee</span>
                       <br />
-                      Keeps tier access while making effective membership fee and commission 0 for this technician.
+                      Sets the recurring membership subscription fee to $0. Does not change this technician&apos;s job commission.
                     </span>
                   </label>
 

@@ -9,7 +9,7 @@ import WorkScheduleCalendarPopup from '../components/WorkScheduleCalendarPopup';
 import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
 import { TRADE_OPTIONS } from '../constants/trades';
 import { isTechnicianClass, technicianClassSelectOptions, technicianClassLabel, technicianClassSlug } from '../constants/technicianClass';
-import { companyChargeFromJobAmount, formatPlatformFeePercent } from '../utils/companyPlatformFee';
+import { companyChargeFromJobAmount, formatPlatformFeePercent, parseLoadedCommissionPercent } from '../utils/companyPlatformFee';
 import { auth } from '../auth';
 import { JOB_STATUS_KEYS, jobStatusLabel, normalizeJobStatusKey } from '../utils/jobStatus';
 import {
@@ -171,7 +171,7 @@ const EditJob = () => {
         } else {
           setCompanyServiceTrades(normalizedCompanyTrades(data.company_profile));
         }
-        setPlatformFeePercent(pct != null ? Number(pct) : 10);
+        setPlatformFeePercent(parseLoadedCommissionPercent(pct));
       } catch {
         setError('Failed to load job details');
       } finally {
@@ -213,9 +213,11 @@ const EditJob = () => {
   const d = parseInt(form.days, 10) || 0;
   const jobAmount = hr * hpd * d;
   const termsLocked = job?.funding_status === 'funded' || job?.funding_status === 'adjustment_required';
-  const feePct = platformFeePercent ?? 10;
-  const feeLabel = formatPlatformFeePercent(feePct);
-  const companyCharge = jobAmount > 0 ? companyChargeFromJobAmount(jobAmount, feePct) : 0;
+  const feeReady = Number.isFinite(platformFeePercent);
+  const feeLabel = feeReady ? formatPlatformFeePercent(platformFeePercent) : null;
+  const companyCharge = feeReady && jobAmount > 0
+    ? companyChargeFromJobAmount(jobAmount, platformFeePercent)
+    : null;
   const scheduleSummary = buildScheduleSummary({
     standardWorkDays: form.standard_work_days,
     weekendWorkPolicy: form.weekend_work_policy,
@@ -597,7 +599,9 @@ const EditJob = () => {
         <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-4 space-y-4">
           <h3 className="font-semibold text-slate-900">Pricing</h3>
           <p className="text-sm text-slate-600">
-            Priced jobs are charged when posted. The company pays the {form.pay_basis === 'guaranteed_job_pay' ? 'guaranteed' : 'estimated'} job total plus a {feeLabel}% platform fee (company tier).
+            {feeLabel != null
+              ? `Priced jobs are charged when posted. The company pays the ${form.pay_basis === 'guaranteed_job_pay' ? 'guaranteed' : 'estimated'} job total plus a ${feeLabel}% platform fee (company tier).`
+              : 'Priced jobs are charged when posted. Loading the company’s platform fee…'}
           </p>
           {termsLocked && (
             <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
@@ -662,7 +666,13 @@ const EditJob = () => {
           {jobAmount > 0 && (
             <div className="text-sm space-y-1 pt-2 border-t border-slate-200">
               <p><span className="font-medium">{form.pay_basis === 'guaranteed_job_pay' ? 'Guaranteed job pay:' : 'Estimated job total:'}</span> ${jobAmount.toFixed(2)}</p>
-              <p><span className="font-medium">You pay (incl. {feeLabel}% fee):</span> ${companyCharge.toFixed(2)}</p>
+              {companyCharge != null && feeLabel != null ? (
+                <p>
+                  <span className="font-medium">You pay (incl. {feeLabel}% fee):</span> ${companyCharge.toFixed(2)}
+                </p>
+              ) : (
+                <p className="text-slate-500">Platform fee will appear once the company tier loads.</p>
+              )}
             </div>
           )}
         </div>

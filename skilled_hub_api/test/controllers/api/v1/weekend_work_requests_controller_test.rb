@@ -7,7 +7,7 @@ module Api
 
       def setup
         @company_user = User.create!(email: "company-weekend-#{SecureRandom.hex(3)}@example.com", password: "password123", password_confirmation: "password123", role: :company)
-        @company_profile = CompanyProfile.create!(user: @company_user, membership_level: "premium", membership_fee_waived: true)
+        @company_profile = CompanyProfile.create!(user: @company_user, membership_level: "premium", membership_fee_waived: true, job_funding_waived: true)
         @company_user.update_column(:company_profile_id, @company_profile.id)
 
         @technician_user = User.create!(email: "tech-weekend-#{SecureRandom.hex(3)}@example.com", password: "password123", password_confirmation: "password123", role: :technician)

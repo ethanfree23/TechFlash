@@ -128,6 +128,7 @@ class AdminUserDetail
         stripe_customer_id: user.stripe_customer_id,
         membership_level: MembershipPolicy.normalized_level(cp.membership_level, audience: :company),
         membership_fee_waived: cp.membership_fee_waived,
+        job_funding_waived: cp.job_funding_waived,
         membership_fee_override_cents: cp.membership_fee_override_cents,
         commission_override_percent: cp.commission_override_percent,
         effective_membership_fee_cents: MembershipPolicy.company_monthly_fee_cents(cp),

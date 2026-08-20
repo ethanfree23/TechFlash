@@ -5,6 +5,7 @@ class CompanyProfileSerializer < ActiveModel::Serializer
              :phone, :website_url, :facebook_url, :instagram_url, :linkedin_url, :service_cities, :service_trades,
              :state, :electrical_license_number,
              :membership_level, :membership_fee_override_cents, :commission_override_percent, :membership_fee_waived,
+             :job_funding_waived,
              :membership_status, :membership_current_period_end_at, :effective_membership_fee_cents, :effective_commission_percent,
              :review_summary
 

@@ -15,12 +15,26 @@ namespace :payments do
     Job.find_each do |job|
       next unless job.priced? || job.payments.any?
 
-      ledger = JobLedger.for(job)
+      if job.funding_funded? && job.company_commission_percent_snapshot.nil? &&
+          !job.job_financial_revisions.where.not(company_commission_percent: nil).exists?
+        puts "Job ##{job.id} #{job.title.inspect} status=#{job.status} funding=#{job.funding_status}"
+        puts "  issues: missing company commission snapshot (refusing to invent 0%)"
+        next
+      end
+
+      begin
+        ledger = JobLedger.for(job)
+      rescue JobLedger::MissingCommissionSnapshotError => e
+        puts "Job ##{job.id} #{job.title.inspect} status=#{job.status} funding=#{job.funding_status}"
+        puts "  issues: #{e.message}"
+        next
+      end
+
       issues = []
       issues << "underfunded completed job" if job.finished? && !ledger.fully_funded
       issues << "excess funding" if ledger.amount_refundable_cents.positive? && job.finished?
       issues << "held eligible for payout" if job.finished? && ledger.fully_funded && ledger.transferred_cents.zero? && JobSettlementService.release_eligible?(job)
-      issues << "missing snapshots" if job.funding_funded? && job.company_commission_percent_snapshot.blank?
+      issues << "missing snapshots" if job.funding_funded? && job.company_commission_percent_snapshot.nil?
       issues << "unknown company tier" if job.company_membership_tier_config_id.present? && MembershipTierConfig.find_by(id: job.company_membership_tier_config_id).blank?
       next if issues.empty?
 
@@ -56,6 +70,18 @@ namespace :payments do
         puts "#{klass.name} ##{profile.id} user=#{profile.user&.email} tier=#{profile.membership_level} missing subscription"
       end
     end
+  end
+
+  desc "Read-only preflight. Proposed charge: COMPANY_EMAIL=a@b.com LABOR_CENTS=1000 TECHNICIAN_EMAIL=c@d.com rails payments:preflight. Audit a job: JOB_ID=123 rails payments:preflight"
+  task preflight: :environment do
+    checker = PaymentsPreflight.new(
+      job_id: ENV["JOB_ID"],
+      company_email: ENV["COMPANY_EMAIL"],
+      technician_email: ENV["TECHNICIAN_EMAIL"],
+      labor_cents: ENV["LABOR_CENTS"]
+    )
+    checker.run
+    puts checker.to_s
   end
 
   desc "Add funds to available balance (test mode only)"

@@ -7,7 +7,38 @@ class MembershipPolicyTest < ActiveSupport::TestCase
     owner.update_column(:company_profile_id, profile.id)
 
     assert_equal 100_000, MembershipPolicy.company_monthly_fee_cents(profile)
-    assert_equal 0, MembershipPolicy.company_commission_percent(profile)
+    assert_equal 10.0, MembershipPolicy.company_commission_percent(profile)
+  end
+
+  test "zero company commission override uses the chart rate" do
+    owner = User.create!(email: "company-zero-override@example.com", password: "password123", password_confirmation: "password123", role: :company)
+    profile = CompanyProfile.create!(user: owner, membership_level: "premium", commission_override_percent: 0)
+    owner.update_column(:company_profile_id, profile.id)
+
+    assert_equal 10.0, MembershipPolicy.company_commission_percent(profile)
+  end
+
+  test "company premium commission follows the Admin chart not a hardcoded 10 percent" do
+    tier = MembershipTierConfig.find_by!(audience: "company", slug: "premium")
+    tier.update!(commission_percent: 8.0)
+    MembershipPolicy.invalidate_cache!
+
+    owner = User.create!(email: "company-chart-source@example.com", password: "password123", password_confirmation: "password123", role: :company)
+    profile = CompanyProfile.create!(user: owner, membership_level: "premium", commission_override_percent: nil)
+    owner.update_column(:company_profile_id, profile.id)
+
+    assert_equal 8.0, MembershipPolicy.company_commission_percent(profile)
+  ensure
+    MembershipTierConfig.where(audience: "company", slug: "premium").update_all(commission_percent: 10.0)
+    MembershipPolicy.invalidate_cache!
+  end
+
+  test "positive company commission override wins over the chart rate" do
+    owner = User.create!(email: "company-custom-override@example.com", password: "password123", password_confirmation: "password123", role: :company)
+    profile = CompanyProfile.create!(user: owner, membership_level: "premium", commission_override_percent: 7.5)
+    owner.update_column(:company_profile_id, profile.id)
+
+    assert_equal 7.5, MembershipPolicy.company_commission_percent(profile)
   end
 
   test "fee waiver makes monthly fee zero but keeps tier commission" do

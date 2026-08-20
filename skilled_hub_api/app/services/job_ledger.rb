@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 class JobLedger
+  MissingCommissionSnapshotError = Class.new(StandardError)
+
   Summary = Struct.new(
     :labor_cents,
     :company_required_cents,
@@ -15,6 +17,9 @@ class JobLedger
     :amount_refundable_cents,
     :transferred_cents,
     :fully_funded,
+    :company_commission_percent,
+    :technician_commission_percent,
+    :technician_snapshot_present,
     keyword_init: true
   )
 
@@ -28,16 +33,16 @@ class JobLedger
 
   def summary
     labor = current_labor_cents
-    company_pct = @job.company_commission_percent_snapshot || 0
-    tech_pct = @job.technician_commission_percent_snapshot || 0
+    company_pct = company_commission_percent!
+    tech_pct = technician_commission_percent_or_nil
     required = JobMoney.company_charge_cents(labor, company_pct)
     collected = sum_types(%w[initial_job_charge counteroffer_top_up final_hours_top_up])
     refunded = sum_types(%w[counteroffer_refund final_hours_refund refund])
     net = collected - refunded
     transferred = sum_types(%w[technician_transfer]) - sum_types(%w[transfer_reversal])
     company_commission = JobMoney.percent_of(labor, company_pct)
-    tech_commission = JobMoney.percent_of(labor, tech_pct)
-    tech_net = JobMoney.technician_payout_cents(labor, tech_pct)
+    tech_commission = tech_pct.nil? ? nil : JobMoney.percent_of(labor, tech_pct)
+    tech_net = tech_pct.nil? ? nil : JobMoney.technician_payout_cents(labor, tech_pct)
     due = [required - net, 0].max
     refundable = [net - required, 0].max
 
@@ -54,7 +59,10 @@ class JobLedger
       amount_due_cents: due,
       amount_refundable_cents: refundable,
       transferred_cents: transferred,
-      fully_funded: due.zero?
+      fully_funded: due.zero?,
+      company_commission_percent: company_pct,
+      technician_commission_percent: tech_pct,
+      technician_snapshot_present: !tech_pct.nil?
     )
   end
 
@@ -76,7 +84,40 @@ class JobLedger
       .to_i
   end
 
+  def company_commission_percent!
+    unless @job.company_commission_percent_snapshot.nil?
+      return @job.company_commission_percent_snapshot.to_d
+    end
+
+    recovered = latest_revision_percent(:company_commission_percent)
+    return recovered unless recovered.nil?
+
+    raise MissingCommissionSnapshotError,
+          "Job #{@job.id} is missing a company commission snapshot. Refusing to invent a 0% fee."
+  end
+
+  def technician_commission_percent_or_nil
+    unless @job.technician_commission_percent_snapshot.nil?
+      return @job.technician_commission_percent_snapshot.to_d
+    end
+
+    latest_revision_percent(:technician_commission_percent)
+  end
+
+  def technician_commission_percent!
+    pct = technician_commission_percent_or_nil
+    return pct unless pct.nil?
+
+    raise MissingCommissionSnapshotError,
+          "Job #{@job.id} is missing a technician commission snapshot. Refusing to invent a 0% fee."
+  end
+
   private
+
+  def latest_revision_percent(column)
+    value = @job.job_financial_revisions.where.not(column => nil).order(revision_number: :desc, id: :desc).limit(1).pick(column)
+    value.nil? ? nil : value.to_d
+  end
 
   def sum_types(types)
     rel = @job.job_payment_transactions.status_succeeded.where(transaction_type: types)

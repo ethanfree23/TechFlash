@@ -15,7 +15,8 @@ module Api
         company_profile = CompanyProfile.create!(
           user: company_user,
           membership_level: "premium",
-          membership_fee_waived: true
+          membership_fee_waived: true,
+          job_funding_waived: true
         )
         company_user.update_column(:company_profile_id, company_profile.id)
         job = Job.create!(
@@ -31,6 +32,8 @@ module Api
           hours_per_day: 8,
           days: 5
         )
+        JobFundingService.snapshot_company!(job)
+        job.update!(funding_status: :funded)
         [company_user, company_profile, job]
       end
 

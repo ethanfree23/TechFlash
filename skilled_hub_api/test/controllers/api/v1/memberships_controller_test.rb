@@ -16,7 +16,7 @@ module Api
         body = JSON.parse(response.body)
         assert_equal "premium", body["membership_level"]
         assert_equal 0, body["monthly_fee_cents"]
-        assert_equal 0.0, body["commission_percent"].to_f
+        assert_in_delta 10.0, body["commission_percent"].to_f, 0.001
       end
 
       test "update with basic clears subscription details" do

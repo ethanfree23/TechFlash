@@ -9,7 +9,7 @@ import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
 import { TRADE_OPTIONS } from '../constants/trades';
 import { isTechnicianClass, technicianClassSelectOptions, technicianClassLabel, technicianClassSlug } from '../constants/technicianClass';
 import { auth } from '../auth';
-import { companyChargeFromJobAmount, formatPlatformFeePercent } from '../utils/companyPlatformFee';
+import { companyChargeFromJobAmount, formatPlatformFeePercent, parseLoadedCommissionPercent } from '../utils/companyPlatformFee';
 import { confirmStripeCardPayment } from '../utils/confirmStripePayment';
 import { trackCompanyJobPosted } from '../utils/metaPixel';
 import {
@@ -395,8 +395,7 @@ const CreateJob = () => {
       try {
         const profile = await profilesAPI.getCompanyProfile();
         setCompanyProfileId(profile.id);
-        const pct = profile.effective_commission_percent;
-        setPlatformFeePercent(pct != null ? Number(pct) : 0);
+        setPlatformFeePercent(parseLoadedCommissionPercent(profile.effective_commission_percent));
         const trades = normalizedCompanyTrades(profile);
         setCompanyServiceTrades(trades);
         if (trades.length === 1) setTradeType((prev) => prev || trades[0]);
@@ -419,8 +418,7 @@ const CreateJob = () => {
       try {
         const profile = await profilesAPI.getCompanyById(companyProfileId);
         if (!cancelled) {
-          const pct = profile?.effective_commission_percent;
-          setPlatformFeePercent(pct != null ? Number(pct) : 0);
+          setPlatformFeePercent(parseLoadedCommissionPercent(profile?.effective_commission_percent));
           const trades = normalizedCompanyTrades(profile);
           setCompanyServiceTrades(trades);
           if (trades.length === 1) setTradeType((prev) => prev || trades[0]);
@@ -485,7 +483,7 @@ const CreateJob = () => {
   const hpd = parseInt(hoursPerDay, 10) || 8;
   const d = parseInt(days, 10) || 0;
   const jobAmount = hr * hpd * d;
-  const feeReady = platformFeePercent !== null && (!isAdmin || companyProfileId);
+  const feeReady = Number.isFinite(platformFeePercent) && (!isAdmin || companyProfileId);
   const companyCharge = feeReady && jobAmount > 0
     ? companyChargeFromJobAmount(jobAmount, platformFeePercent)
     : null;

@@ -53,11 +53,6 @@ class MembershipPolicy
     effective_commission_percent(profile: technician_profile, base_commission_percent: rule[:commission_percent])
   end
 
-  # A single admin toggle to keep tier benefits while exempting billing.
-  def self.billing_exempt?(profile)
-    profile&.membership_fee_waived?
-  end
-
   def self.job_visible_to_technician?(job:, technician_profile:)
     return true if technician_profile.blank?
     return false unless technician_trade_match?(job: job, technician_profile: technician_profile)
@@ -202,7 +197,14 @@ class MembershipPolicy
 
   def self.effective_commission_percent(profile:, base_commission_percent:)
     override = profile&.commission_override_percent
-    value = override.nil? ? base_commission_percent.to_f : override.to_f
+    # 0 was leftover from the old company Premium = 0% job-fee model. Blank in admin
+    # already means "use the chart"; treat a stored 0 the same way.
+    value =
+      if override.nil? || override.to_f.zero?
+        base_commission_percent.to_f
+      else
+        override.to_f
+      end
     return 0.0 if value.negative?
 
     CouponApplicationService.apply_commission_discount(base_commission_percent: value, user: profile&.user)

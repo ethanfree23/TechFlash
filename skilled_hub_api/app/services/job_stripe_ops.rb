@@ -30,6 +30,8 @@ class JobStripeOps
     if demo? || Rails.env.test?
       return Result.new(status: "succeeded", stripe_id: "pi_test_#{SecureRandom.hex(8)}", simulated: true)
     end
+    mode_error = StripeModeGuard.error_message
+    return Result.new(status: "failed", error: mode_error) if mode_error
     return Result.new(status: "failed", error: "Stripe not configured") if Stripe.api_key.blank?
 
     params = {
@@ -61,6 +63,8 @@ class JobStripeOps
     if demo? || Rails.env.test?
       return Result.new(status: "succeeded", stripe_id: "re_test_#{SecureRandom.hex(8)}", simulated: true)
     end
+    mode_error = StripeModeGuard.error_message
+    return Result.new(status: "failed", error: mode_error) if mode_error
     return Result.new(status: "failed", error: "Stripe not configured") if Stripe.api_key.blank?
 
     refund = Stripe::Refund.create(
@@ -76,6 +80,8 @@ class JobStripeOps
     if demo? || Rails.env.test?
       return Result.new(status: "succeeded", stripe_id: "tr_test_#{SecureRandom.hex(8)}", simulated: true)
     end
+    mode_error = StripeModeGuard.error_message
+    return Result.new(status: "failed", error: mode_error) if mode_error
     return Result.new(status: "failed", error: "Stripe not configured") if Stripe.api_key.blank?
 
     transfer = Stripe::Transfer.create(

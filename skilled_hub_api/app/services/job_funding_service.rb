@@ -47,6 +47,8 @@ class JobFundingService
   end
 
   def self.record_revision!(job, source:, transaction: nil)
+    company_pct = job.company_commission_percent_snapshot
+    tech_pct = job.technician_commission_percent_snapshot
     JobFinancialRevision.create!(
       job: job,
       revision_number: job.financial_revision,
@@ -54,10 +56,10 @@ class JobFundingService
       hourly_rate_cents: job.agreed_hourly_rate_cents,
       estimated_hours: job.estimated_hours,
       labor_cents: job.agreed_labor_cents.to_i,
-      company_required_cents: JobMoney.company_charge_cents(job.agreed_labor_cents.to_i, job.company_commission_percent),
-      technician_payout_cents: JobMoney.technician_payout_cents(job.agreed_labor_cents.to_i, job.technician_commission_percent),
-      company_commission_percent: job.company_commission_percent_snapshot,
-      technician_commission_percent: job.technician_commission_percent_snapshot,
+      company_required_cents: company_pct.nil? ? 0 : JobMoney.company_charge_cents(job.agreed_labor_cents.to_i, company_pct),
+      technician_payout_cents: tech_pct.nil? ? 0 : JobMoney.technician_payout_cents(job.agreed_labor_cents.to_i, tech_pct),
+      company_commission_percent: company_pct,
+      technician_commission_percent: tech_pct,
       job_payment_transaction: transaction
     )
   rescue ActiveRecord::RecordNotUnique
@@ -69,22 +71,29 @@ class JobFundingService
     job.financial_revision = 1 if job.financial_revision.to_i < 1
     job.save!
 
-    if !job.priced? || job.billing_exempt?
+    if job.company_commission_percent_snapshot.nil?
+      job.update!(status: :pending_funding, funding_status: :funding_failed)
+      return { success: false, error: "Company commission snapshot is missing; refusing to charge." }
+    end
+
+    if !job.priced? || job.job_funding_waived?
       job.update!(status: :open, funding_status: :funded, go_live_at: Time.current)
       record_revision!(job, source: "posting")
-      return { success: true, job: job, waived: true }
+      return { success: true, job: job, waived: job.job_funding_waived? }
     end
 
     charge = collect!(
       job: job,
-      amount_cents: JobMoney.company_charge_cents(job.agreed_labor_cents.to_i, job.company_commission_percent),
+      amount_cents: JobMoney.company_charge_cents(job.agreed_labor_cents.to_i, job.company_commission_percent_snapshot),
       transaction_type: :initial_job_charge,
       revision: job.financial_revision
     )
     if charge[:success]
       publish!(job)
       record_revision!(job, source: "posting", transaction: charge[:transaction])
-      MailDelivery.safe_deliver { UserMailer.payment_confirmation_email(job, charge[:transaction].amount_cents).deliver_now }
+      if charge[:transaction]
+        MailDelivery.safe_deliver { UserMailer.payment_confirmation_email(job, charge[:transaction].amount_cents).deliver_now }
+      end
       { success: true, job: job, transaction: charge[:transaction] }
     elsif charge[:requires_action]
       job.update!(status: :pending_funding, funding_status: :adjustment_required)
@@ -126,15 +135,44 @@ class JobFundingService
     amount = amount_cents.to_i
     return { success: true } if amount <= 0
 
-    payment = ensure_header!(job)
+    if job.company_commission_percent_snapshot.nil? && !recoverable_company_percent?(job)
+      return { error: "Company commission snapshot is missing; refusing to charge." }
+    end
+
     key = "tf_job_#{job.id}_txn_#{transaction_type}_r#{revision}_#{amount}"
-    existing = JobPaymentTransaction.find_by(idempotency_key: key)
-    if existing&.status_succeeded?
-      return { success: true, transaction: existing }
+    payment = nil
+    txn = nil
+    early = nil
+
+    Job.transaction do
+      locked_job = Job.lock.find(job.id)
+      payment = ensure_header!(locked_job)
+      existing = JobPaymentTransaction.lock.find_by(idempotency_key: key)
+      if existing&.status_succeeded?
+        early = { success: true, transaction: existing }
+      elsif existing&.status_requires_action?
+        early = {
+          success: false,
+          requires_action: true,
+          client_secret: existing.metadata_json.to_h["client_secret"],
+          transaction: existing
+        }
+      else
+        txn = existing || JobPaymentTransaction.create!(
+          payment: payment,
+          job: locked_job,
+          transaction_type: transaction_type,
+          direction: :inbound,
+          amount_cents: amount,
+          currency: "usd",
+          status: :pending,
+          idempotency_key: key,
+          revision: revision,
+          metadata_json: {}
+        )
+      end
     end
-    if existing&.status_requires_action?
-      return { success: false, requires_action: true, client_secret: existing.metadata_json.to_h["client_secret"], transaction: existing }
-    end
+    return early if early
 
     user = job.company_profile.user
     skip_live_customer = JobStripeOps.demo? || Rails.env.test?
@@ -143,19 +181,6 @@ class JobFundingService
 
     pm_id = default_payment_method_id(customer_id) unless skip_live_customer
     return { error: "Company has no payment method on file. Add a card in Settings." } if pm_id.blank? && !skip_live_customer
-
-    txn = existing || JobPaymentTransaction.create!(
-      payment: payment,
-      job: job,
-      transaction_type: transaction_type,
-      direction: :inbound,
-      amount_cents: amount,
-      currency: "usd",
-      status: :pending,
-      idempotency_key: key,
-      revision: revision,
-      metadata_json: {}
-    )
 
     result = JobStripeOps.create_payment_intent!(
       amount_cents: amount,
@@ -166,62 +191,36 @@ class JobFundingService
       idempotency_key: key
     )
 
-    if result.succeeded?
-      mark_txn_succeeded!(txn, stripe_id: result.stripe_id, charge_id: result.charge_id)
-      payment.update!(status: "held", stripe_payment_intent_id: result.stripe_id, held_at: Time.current) if payment.stripe_payment_intent_id.blank?
-      { success: true, transaction: txn.reload }
-    elsif result.requires_action?
-      txn.update!(
-        status: :requires_action,
-        stripe_payment_intent_id: result.stripe_id,
-        metadata_json: txn.metadata_json.to_h.merge("client_secret" => result.client_secret)
-      )
-      { success: false, requires_action: true, client_secret: result.client_secret, transaction: txn }
-    else
-      txn.update!(status: :failed, error_message: result.error, stripe_payment_intent_id: result.stripe_id)
-      payment.update!(status: "failed") if payment.status == "pending"
-      { error: result.error || "Payment failed", transaction: txn }
-    end
+    finalize_collection!(job: job, payment: payment, txn: txn, result: result)
   end
 
   def self.refund_delta!(job:, amount_cents:, transaction_type:, revision:)
     amount = amount_cents.to_i
     return { success: true } if amount <= 0
 
-    payment = ensure_header!(job)
-    key = "tf_job_#{job.id}_txn_#{transaction_type}_r#{revision}_#{amount}"
-    existing = JobPaymentTransaction.find_by(idempotency_key: key)
-    return { success: true, transaction: existing } if existing&.status_succeeded?
-
-    source_pi = refundable_payment_intent_id(job)
-    return { error: "No collected payment available to refund" } if source_pi.blank? && !(defined?(DemoMode) && DemoMode.enabled?)
-
-    txn = existing || JobPaymentTransaction.create!(
-      payment: payment,
-      job: job,
-      transaction_type: transaction_type,
-      direction: :outbound,
-      amount_cents: amount,
-      currency: "usd",
-      status: :pending,
-      idempotency_key: key,
-      revision: revision,
-      metadata_json: {}
-    )
-
-    result = JobStripeOps.refund!(
-      amount_cents: amount,
-      payment_intent_id: source_pi || "pi_demo",
-      metadata: stripe_metadata(job, txn),
-      idempotency_key: key
-    )
-    if result.succeeded?
-      txn.update!(status: :succeeded, stripe_refund_id: result.stripe_id, stripe_payment_intent_id: source_pi, succeeded_at: Time.current)
-      { success: true, transaction: txn.reload }
-    else
-      txn.update!(status: :failed, error_message: result.error)
-      { error: result.error || "Refund failed", transaction: txn }
+    if job.company_commission_percent_snapshot.nil? && !recoverable_company_percent?(job)
+      return { error: "Company commission snapshot is missing; refusing to refund with an invented rate." }
     end
+
+    allocation = JobRefundAllocator.allocate(job: job, amount_cents: amount)
+    unless allocation.success
+      return { error: allocation.error || "Could not allocate refund across collected payments." }
+    end
+
+    last_txn = nil
+    allocation.slices.each do |slice|
+      result = refund_slice!(
+        job: job,
+        amount_cents: slice.amount_cents,
+        payment_intent_id: slice.payment_intent_id,
+        transaction_type: transaction_type,
+        revision: revision
+      )
+      return result unless result[:success]
+
+      last_txn = result[:transaction]
+    end
+    { success: true, transaction: last_txn }
   end
 
   def self.publish!(job)
@@ -257,7 +256,93 @@ class JobFundingService
     nil
   end
 
-  def self.refundable_payment_intent_id(job)
-    job.job_payment_transactions.status_succeeded.company_collections.order(:id).filter_map(&:stripe_payment_intent_id).reverse.find(&:present?)
+  def self.recoverable_company_percent?(job)
+    job.job_financial_revisions.where.not(company_commission_percent: nil).exists?
+  end
+
+  def self.finalize_collection!(job:, payment:, txn:, result:)
+    Job.transaction do
+      locked_txn = JobPaymentTransaction.lock.find(txn.id)
+      locked_payment = Payment.lock.find(payment.id)
+      if locked_txn.status_succeeded?
+        return { success: true, transaction: locked_txn }
+      end
+
+      if result.succeeded?
+        mark_txn_succeeded!(locked_txn, stripe_id: result.stripe_id, charge_id: result.charge_id)
+        if locked_payment.stripe_payment_intent_id.blank?
+          locked_payment.update!(status: "held", stripe_payment_intent_id: result.stripe_id, held_at: Time.current)
+        end
+        { success: true, transaction: locked_txn.reload }
+      elsif result.requires_action?
+        locked_txn.update!(
+          status: :requires_action,
+          stripe_payment_intent_id: result.stripe_id,
+          metadata_json: locked_txn.metadata_json.to_h.merge("client_secret" => result.client_secret)
+        )
+        { success: false, requires_action: true, client_secret: result.client_secret, transaction: locked_txn }
+      else
+        locked_txn.update!(status: :failed, error_message: result.error, stripe_payment_intent_id: result.stripe_id)
+        locked_payment.update!(status: "failed") if locked_payment.status == "pending"
+        { error: result.error || "Payment failed", transaction: locked_txn }
+      end
+    end
+  end
+
+  def self.refund_slice!(job:, amount_cents:, payment_intent_id:, transaction_type:, revision:)
+    key = "tf_job_#{job.id}_txn_#{transaction_type}_r#{revision}_#{payment_intent_id}_#{amount_cents}"
+    payment = nil
+    txn = nil
+    early = nil
+
+    Job.transaction do
+      locked_job = Job.lock.find(job.id)
+      payment = ensure_header!(locked_job)
+      existing = JobPaymentTransaction.lock.find_by(idempotency_key: key)
+      if existing&.status_succeeded?
+        early = { success: true, transaction: existing }
+      else
+        txn = existing || JobPaymentTransaction.create!(
+          payment: payment,
+          job: locked_job,
+          transaction_type: transaction_type,
+          direction: :outbound,
+          amount_cents: amount_cents,
+          currency: "usd",
+          status: :pending,
+          idempotency_key: key,
+          revision: revision,
+          metadata_json: { "payment_intent_id" => payment_intent_id }
+        )
+      end
+    end
+    return early if early
+
+    result = JobStripeOps.refund!(
+      amount_cents: amount_cents,
+      payment_intent_id: payment_intent_id,
+      metadata: stripe_metadata(job, txn),
+      idempotency_key: key
+    )
+
+    Job.transaction do
+      locked_txn = JobPaymentTransaction.lock.find(txn.id)
+      if locked_txn.status_succeeded?
+        return { success: true, transaction: locked_txn }
+      end
+
+      if result.succeeded?
+        locked_txn.update!(
+          status: :succeeded,
+          stripe_refund_id: result.stripe_id,
+          stripe_payment_intent_id: payment_intent_id,
+          succeeded_at: Time.current
+        )
+        { success: true, transaction: locked_txn.reload }
+      else
+        locked_txn.update!(status: :failed, error_message: result.error)
+        { error: result.error || "Refund failed", transaction: locked_txn }
+      end
+    end
   end
 end

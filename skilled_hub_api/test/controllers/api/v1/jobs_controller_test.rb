@@ -208,7 +208,7 @@ module Api
         assert_response :unprocessable_entity
       end
 
-      test "company with waived membership fee can create job without saved card" do
+      test "company with waived membership fee can create unpriced job without saved card" do
         user = User.create!(
           email: "company-waived-posting@example.com",
           password: "password123",
@@ -224,8 +224,8 @@ module Api
 
         post "/api/v1/jobs",
              params: {
-               title: "Billing exempt posting",
-               description: "Can post without saved card",
+               title: "Unpriced monthly-waived posting",
+               description: "Can post without saved card because labor is zero",
                status: "open",
                company_profile_id: profile.id,
                skill_class: "Journeyman"
@@ -234,6 +234,72 @@ module Api
              as: :json
 
         assert_response :created
+      end
+
+      test "waived monthly membership does not skip priced job card requirement" do
+        user = User.create!(
+          email: "company-monthly-waived-priced@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "premium",
+          membership_fee_waived: true
+        )
+        user.update_column(:company_profile_id, profile.id)
+
+        post "/api/v1/jobs",
+             params: {
+               title: "Priced monthly-waived posting",
+               description: "Must still fund",
+               status: "open",
+               company_profile_id: profile.id,
+               skill_class: "Journeyman",
+               hourly_rate_cents: 5000,
+               hours_per_day: 8,
+               days: 1
+             },
+             headers: auth_header_for(user),
+             as: :json
+
+        assert_response :unprocessable_entity
+        assert_match(/credit or debit card/i, JSON.parse(response.body)["error"].to_s)
+      end
+
+      test "job funding waived company can create priced job without saved card" do
+        user = User.create!(
+          email: "company-job-funding-waived@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "basic",
+          job_funding_waived: true
+        )
+        user.update_column(:company_profile_id, profile.id)
+
+        post "/api/v1/jobs",
+             params: {
+               title: "Job-funding waived posting",
+               description: "Admin waived job charges",
+               status: "open",
+               company_profile_id: profile.id,
+               skill_class: "Journeyman",
+               hourly_rate_cents: 5000,
+               hours_per_day: 8,
+               days: 1
+             },
+             headers: auth_header_for(user),
+             as: :json
+
+        assert_response :created
+        created_job = Job.order(:id).last
+        assert created_job.funding_funded?
+        assert_equal 0, created_job.job_payment_transactions.company_collections.status_succeeded.count
       end
 
       test "company create defaults status to open when omitted" do
@@ -246,7 +312,8 @@ module Api
         profile = CompanyProfile.create!(
           user: user,
           membership_level: "premium",
-          membership_fee_waived: true
+          membership_fee_waived: true,
+          job_funding_waived: true
         )
         user.update_column(:company_profile_id, profile.id)
 
@@ -276,7 +343,8 @@ module Api
         company_profile = CompanyProfile.create!(
           user: company_user,
           membership_level: "premium",
-          membership_fee_waived: true
+          membership_fee_waived: true,
+          job_funding_waived: true
         )
         company_user.update_column(:company_profile_id, company_profile.id)
 
@@ -370,7 +438,8 @@ module Api
         company_profile = CompanyProfile.create!(
           user: company_user,
           membership_level: "premium",
-          membership_fee_waived: true
+          membership_fee_waived: true,
+          job_funding_waived: true
         )
         company_user.update_column(:company_profile_id, company_profile.id)
 
@@ -424,6 +493,7 @@ module Api
           user: user,
           membership_level: "premium",
           membership_fee_waived: true,
+          job_funding_waived: true,
           industry: "Electrician",
           service_trades: ["Electrician"]
         )
@@ -455,6 +525,7 @@ module Api
           user: user,
           membership_level: "premium",
           membership_fee_waived: true,
+          job_funding_waived: true,
           industry: "Electrician",
           service_trades: ["Electrician", "Plumber"]
         )
@@ -485,6 +556,7 @@ module Api
           user: user,
           membership_level: "premium",
           membership_fee_waived: true,
+          job_funding_waived: true,
           industry: "Electrician",
           service_trades: ["Electrician"]
         )
@@ -514,6 +586,7 @@ module Api
           user: user,
           membership_level: "premium",
           membership_fee_waived: true,
+          job_funding_waived: true,
           industry: "Electrician",
           service_trades: ["Electrician"]
         )
@@ -543,7 +616,8 @@ module Api
         profile = CompanyProfile.create!(
           user: user,
           membership_level: "premium",
-          membership_fee_waived: true
+          membership_fee_waived: true,
+          job_funding_waived: true
         )
         user.update_column(:company_profile_id, profile.id)
 
@@ -574,7 +648,8 @@ module Api
           profile = CompanyProfile.create!(
             user: user,
             membership_level: "premium",
-            membership_fee_waived: true
+            membership_fee_waived: true,
+            job_funding_waived: true
           )
           user.update_column(:company_profile_id, profile.id)
 
@@ -603,7 +678,8 @@ module Api
         profile = CompanyProfile.create!(
           user: user,
           membership_level: "premium",
-          membership_fee_waived: true
+          membership_fee_waived: true,
+          job_funding_waived: true
         )
         user.update_column(:company_profile_id, profile.id)
         job = Job.create!(
@@ -632,7 +708,8 @@ module Api
         profile = CompanyProfile.create!(
           user: user,
           membership_level: "premium",
-          membership_fee_waived: true
+          membership_fee_waived: true,
+          job_funding_waived: true
         )
         user.update_column(:company_profile_id, profile.id)
         job = Job.create!(
@@ -662,7 +739,8 @@ module Api
         profile = CompanyProfile.create!(
           user: user,
           membership_level: "premium",
-          membership_fee_waived: true
+          membership_fee_waived: true,
+          job_funding_waived: true
         )
         user.update_column(:company_profile_id, profile.id)
         job = Job.create!(
@@ -687,7 +765,7 @@ module Api
         reset_technician_tier_rules!
 
         company_user = User.create!(email: "company-rolling-days@example.com", password: "password123", password_confirmation: "password123", role: :company)
-        company_profile = CompanyProfile.create!(user: company_user, membership_level: "premium", membership_fee_waived: true)
+        company_profile = CompanyProfile.create!(user: company_user, membership_level: "premium", membership_fee_waived: true, job_funding_waived: true)
         company_user.update_column(:company_profile_id, company_profile.id)
         technician_user = User.create!(email: "tech-rolling-days@example.com", password: "password123", password_confirmation: "password123", role: :technician)
         TechnicianProfile.create!(user: technician_user, trade_type: "General", availability: "Full-time", membership_level: "basic")
@@ -710,7 +788,7 @@ module Api
         reset_technician_tier_rules!
 
         company_user = User.create!(email: "company-rolling-weekday@example.com", password: "password123", password_confirmation: "password123", role: :company)
-        company_profile = CompanyProfile.create!(user: company_user, membership_level: "premium", membership_fee_waived: true)
+        company_profile = CompanyProfile.create!(user: company_user, membership_level: "premium", membership_fee_waived: true, job_funding_waived: true)
         company_user.update_column(:company_profile_id, company_profile.id)
         technician_user = User.create!(email: "tech-rolling-weekday@example.com", password: "password123", password_confirmation: "password123", role: :technician)
         TechnicianProfile.create!(user: technician_user, trade_type: "General", availability: "Full-time", membership_level: "basic")
@@ -733,7 +811,7 @@ module Api
         reset_technician_tier_rules!
 
         company_user = User.create!(email: "company-rolling-late-hour@example.com", password: "password123", password_confirmation: "password123", role: :company)
-        company_profile = CompanyProfile.create!(user: company_user, membership_level: "premium", membership_fee_waived: true)
+        company_profile = CompanyProfile.create!(user: company_user, membership_level: "premium", membership_fee_waived: true, job_funding_waived: true)
         company_user.update_column(:company_profile_id, company_profile.id)
         technician_user = User.create!(email: "tech-rolling-late-hour@example.com", password: "password123", password_confirmation: "password123", role: :technician)
         TechnicianProfile.create!(user: technician_user, trade_type: "General", availability: "Full-time", membership_level: "basic")
@@ -775,7 +853,8 @@ module Api
         profile = CompanyProfile.create!(
           user: user,
           membership_level: "premium",
-          membership_fee_waived: true
+          membership_fee_waived: true,
+          job_funding_waived: true
         )
         user.update_column(:company_profile_id, profile.id)
 
@@ -808,7 +887,8 @@ module Api
         profile = CompanyProfile.create!(
           user: user,
           membership_level: "premium",
-          membership_fee_waived: true
+          membership_fee_waived: true,
+          job_funding_waived: true
         )
         user.update_column(:company_profile_id, profile.id)
 
@@ -842,7 +922,8 @@ module Api
         profile = CompanyProfile.create!(
           user: user,
           membership_level: "premium",
-          membership_fee_waived: true
+          membership_fee_waived: true,
+          job_funding_waived: true
         )
         user.update_column(:company_profile_id, profile.id)
 
@@ -894,7 +975,8 @@ module Api
         profile = CompanyProfile.create!(
           user: user,
           membership_level: "premium",
-          membership_fee_waived: true
+          membership_fee_waived: true,
+          job_funding_waived: true
         )
         user.update_column(:company_profile_id, profile.id)
 
@@ -931,7 +1013,8 @@ module Api
         company_profile = CompanyProfile.create!(
           user: company_user,
           membership_level: "premium",
-          membership_fee_waived: true
+          membership_fee_waived: true,
+          job_funding_waived: true
         )
         company_user.update_column(:company_profile_id, company_profile.id)
 
@@ -1191,7 +1274,8 @@ module Api
         company_profile = CompanyProfile.create!(
           user: company_user,
           membership_level: "premium",
-          membership_fee_waived: true
+          membership_fee_waived: true,
+          job_funding_waived: true
         )
         company_user.update_column(:company_profile_id, company_profile.id)
 

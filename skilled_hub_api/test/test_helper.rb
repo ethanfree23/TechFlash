@@ -44,7 +44,7 @@ class ActiveSupport::TestCase
         [
           { audience: "company", slug: "basic", display_name: "Basic", monthly_fee_cents: 0, commission_percent: 10.0, early_access_delay_hours: nil, sort_order: 0, stripe_price_id: nil },
           { audience: "company", slug: "pro", display_name: "Pro", monthly_fee_cents: 25_000, commission_percent: 5.0, early_access_delay_hours: nil, sort_order: 1, stripe_price_id: nil },
-          { audience: "company", slug: "premium", display_name: "Premium", monthly_fee_cents: 100_000, commission_percent: 0.0, early_access_delay_hours: nil, sort_order: 2, stripe_price_id: nil }
+          { audience: "company", slug: "premium", display_name: "Premium", monthly_fee_cents: 100_000, commission_percent: 10.0, early_access_delay_hours: nil, sort_order: 2, stripe_price_id: nil }
         ]
       end
     # Idempotent under transactional tests and safe if two connections race (unique index on audience + slug).
@@ -53,6 +53,7 @@ class ActiveSupport::TestCase
       unique_by: %i[audience slug]
     )
     MembershipTierConfig.where(audience: "technician", slug: "premium").update_all(waives_background_check_fee: true)
+    MembershipTierConfig.where(audience: "company", slug: "premium").update_all(commission_percent: 10.0)
   end
 
   def fund_job!(job)

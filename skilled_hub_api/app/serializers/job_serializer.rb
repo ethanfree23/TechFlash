@@ -62,13 +62,20 @@ class JobSerializer < ActiveModel::Serializer
       transferred_cents: ledger.transferred_cents,
       fully_funded: ledger.fully_funded,
       tech_payout_cents: object.tech_payout_cents,
-      company_charge_cents: object.company_charge_cents
+      company_charge_cents: object.company_charge_cents,
+      company_commission_percent: ledger.company_commission_percent,
+      technician_commission_percent: ledger.technician_commission_percent
+    }
+  rescue JobLedger::MissingCommissionSnapshotError
+    {
+      state: object.try(:funding_status),
+      settlement_status: object.try(:settlement_status),
+      snapshot_missing: true
     }
   rescue StandardError
     {
       state: object.try(:funding_status),
-      tech_payout_cents: object.tech_payout_cents,
-      company_charge_cents: object.company_charge_cents
+      snapshot_missing: true
     }
   end
 

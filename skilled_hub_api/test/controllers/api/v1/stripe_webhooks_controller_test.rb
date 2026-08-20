@@ -159,6 +159,56 @@ module Api
         assert_equal 2000, JobPaymentTransaction.find_by(stripe_refund_id: "re_wh_1").amount_cents
       end
 
+      test "payment_intent.succeeded is a no-op when the ledger row already succeeded" do
+        company_user = User.create!(email: "wh-pi-co-#{SecureRandom.hex(3)}@example.com", password: "password123", password_confirmation: "password123", role: :company)
+        company_profile = CompanyProfile.create!(user: company_user, membership_level: "basic")
+        company_user.update_column(:company_profile_id, company_profile.id)
+        job = Job.create!(
+          company_profile: company_profile,
+          title: "Already succeeded PI job",
+          description: "desc",
+          status: :open,
+          hourly_rate_cents: 5000,
+          hours_per_day: 1,
+          days: 1
+        )
+        payment = job.payments.create!(amount_cents: 5500, status: "held", transfer_group: job.transfer_group, currency: "usd")
+        JobPaymentTransaction.create!(
+          payment: payment,
+          job: job,
+          transaction_type: :initial_job_charge,
+          direction: :inbound,
+          amount_cents: 5500,
+          currency: "usd",
+          status: :succeeded,
+          stripe_payment_intent_id: "pi_already_succeeded",
+          stripe_charge_id: "ch_already_succeeded",
+          idempotency_key: "tf_wh_#{job.id}_already",
+          revision: 1,
+          succeeded_at: Time.current
+        )
+
+        intent = OpenStruct.new(
+          id: "pi_already_succeeded",
+          status: "succeeded",
+          latest_charge: "ch_already_succeeded"
+        )
+        event = OpenStruct.new(id: "evt_pi_succeeded_1", type: "payment_intent.succeeded", data: OpenStruct.new(object: intent))
+        payload = { id: "evt_pi_succeeded_1", type: "payment_intent.succeeded" }.to_json
+
+        with_stubbed_stripe_webhook(event) do
+          post "/api/v1/stripe/webhook",
+               params: payload,
+               headers: { "Content-Type" => "application/json", "HTTP_STRIPE_SIGNATURE" => "test" }
+        end
+
+        assert_response :ok
+        assert_equal 1, JobPaymentTransaction.where(stripe_payment_intent_id: "pi_already_succeeded").count
+        txn = JobPaymentTransaction.find_by(stripe_payment_intent_id: "pi_already_succeeded")
+        assert txn.status_succeeded?
+        assert_equal 5500, txn.amount_cents
+      end
+
       private
 
       def with_stubbed_stripe_webhook(event, launch_counter: nil)

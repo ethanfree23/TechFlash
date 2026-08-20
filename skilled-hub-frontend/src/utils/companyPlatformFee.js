@@ -28,7 +28,19 @@ export function technicianTakeHomeCents(jobAmountCents, effectiveCommissionPerce
   return Math.round(cents * mult);
 }
 
-/** Display string for percent (e.g. 10, 4.5) */
+/**
+ * Parse a loaded commission percent. Missing/invalid values stay null so the UI
+ * does not invent a 0% fee before the company profile responds.
+ * A real 0 from the API is still a loaded 0%.
+ */
+export function parseLoadedCommissionPercent(raw) {
+  if (raw == null || raw === '') return null;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
+}
+
+/** Display string for percent (e.g. 10, 4.5). Call only after a finite percent is loaded. */
 export function formatPlatformFeePercent(effectiveCommissionPercent) {
   const n = Number(effectiveCommissionPercent);
   if (!Number.isFinite(n)) return '0';

@@ -52,7 +52,7 @@ module Jobs
           return { error: funding[:error] || "Could not fund the accepted counteroffer." }
         end
       else
-        unless @job.funding_funded? || !@job.priced? || @job.billing_exempt?
+        unless @job.funding_funded? || !@job.priced? || @job.job_funding_waived?
           return { error: "This job is not funded yet and cannot be claimed." }
         end
       end
