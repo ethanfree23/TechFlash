@@ -33,3 +33,31 @@ export const TRADE_OPTIONS = [
 ];
 
 export const TRADE_OTHER_SENTINEL = '__other__';
+
+/** Company-facing labels for the same catalog trades (routing stays on TRADE_OPTIONS). */
+export const COMPANY_INDUSTRY_LABELS = {
+  'Automobile Technician': 'Auto Shop',
+};
+
+export function companyIndustryLabel(trade) {
+  const key = TRADE_OPTIONS.find((opt) => opt.toLowerCase() === String(trade || '').toLowerCase());
+  if (key && COMPANY_INDUSTRY_LABELS[key]) return COMPANY_INDUSTRY_LABELS[key];
+  const byLabel = Object.values(COMPANY_INDUSTRY_LABELS).find(
+    (label) => label.toLowerCase() === String(trade || '').toLowerCase()
+  );
+  return byLabel || key || String(trade || '').trim();
+}
+
+export const COMPANY_INDUSTRY_OPTIONS = TRADE_OPTIONS.map((trade) => ({
+  trade,
+  label: companyIndustryLabel(trade),
+}));
+
+export function companyIndustrySelectValue(industry) {
+  const raw = String(industry || '').trim();
+  if (!raw) return '';
+  const match = COMPANY_INDUSTRY_OPTIONS.find(
+    (opt) => opt.trade.toLowerCase() === raw.toLowerCase() || opt.label.toLowerCase() === raw.toLowerCase()
+  );
+  return match ? match.label : raw;
+}

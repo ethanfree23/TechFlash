@@ -376,4 +376,47 @@ class MembershipPolicyTest < ActiveSupport::TestCase
     assert_not MembershipPolicy.job_visible_to_technician?(job: job, technician_profile: hvac_profile)
     assert MembershipPolicy.job_visible_to_technician?(job: job, technician_profile: electrician_profile)
   end
+
+  test "auto shop job trade matches automobile technicians" do
+    company_owner = User.create!(email: "company-auto-shop-match@example.com", password: "password123", password_confirmation: "password123", role: :company)
+    company_profile = CompanyProfile.create!(user: company_owner, membership_level: "basic")
+    company_owner.update_column(:company_profile_id, company_profile.id)
+
+    job = Job.create!(
+      company_profile: company_profile,
+      title: "Diesel diagnosis",
+      description: "desc",
+      status: :open,
+      trade_type: "Automobile Technician",
+      go_live_at: 3.days.ago
+    )
+    job.update_column(:trade_type, "Auto Shop")
+
+    auto_user = User.create!(email: "auto-tech-match@example.com", password: "password123", password_confirmation: "password123", role: :technician)
+    auto_profile = TechnicianProfile.create!(
+      user: auto_user,
+      trade_type: "Automobile Technician",
+      availability: "Full-time",
+      membership_level: "basic",
+      experience_years: 12
+    )
+    plumber_user = User.create!(email: "plumber-auto-mismatch@example.com", password: "password123", password_confirmation: "password123", role: :technician)
+    plumber_profile = TechnicianProfile.create!(
+      user: plumber_user,
+      trade_type: "Plumber",
+      availability: "Full-time",
+      membership_level: "basic",
+      experience_years: 12
+    )
+
+    assert MembershipPolicy.technician_trade_match?(job: job, technician_profile: auto_profile)
+    assert_not MembershipPolicy.technician_trade_match?(job: job, technician_profile: plumber_profile)
+    assert MembershipPolicy.job_visible_to_technician?(job: job, technician_profile: auto_profile)
+    assert_not MembershipPolicy.job_visible_to_technician?(job: job, technician_profile: plumber_profile)
+
+    scoped = MembershipPolicy.apply_technician_visibility_scope(Job.where(id: job.id), auto_profile)
+    assert_includes scoped.pluck(:id), job.id
+    hidden = MembershipPolicy.apply_technician_visibility_scope(Job.where(id: job.id), plumber_profile)
+    assert_equal [], hidden.pluck(:id)
+  end
 end

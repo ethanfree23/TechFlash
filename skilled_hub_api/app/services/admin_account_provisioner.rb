@@ -42,6 +42,7 @@ module AdminAccountProvisioner
     trades = normalize_trades(service_trades)
     industry_trade = TradeCatalog.normalized_label(industry)
     trades = [industry_trade] if trades.blank? && industry_trade.present?
+    industry_display = TradeCatalog.company_industry_label(industry_trade) || industry.to_s.strip.presence
     pw, send_reset = resolve_initial_password!(
       email: email,
       password: password,
@@ -66,7 +67,7 @@ module AdminAccountProvisioner
         user: user,
         membership_level: "basic",
         company_name: company_name_clean,
-        industry: industry_trade || industry.to_s.strip.presence,
+        industry: industry_display,
         service_trades: trades,
         state: state_clean,
         electrical_license_number: electrical_license_number.to_s.strip.presence,

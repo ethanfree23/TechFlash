@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_08_20_190000) do
+ActiveRecord::Schema[7.1].define(version: 2026_08_21_120000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -156,7 +156,6 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_20_190000) do
     t.integer "membership_fee_override_cents"
     t.decimal "commission_override_percent", precision: 5, scale: 2
     t.boolean "membership_fee_waived", default: false, null: false
-    t.boolean "job_funding_waived", default: false, null: false
     t.string "stripe_membership_subscription_id"
     t.string "membership_status"
     t.datetime "membership_current_period_end_at"
@@ -165,6 +164,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_20_190000) do
     t.string "primary_hiring_need"
     t.json "service_trades", default: [], null: false
     t.string "pending_membership_level"
+    t.boolean "job_funding_waived", default: false, null: false
     t.index ["membership_level"], name: "index_company_profiles_on_membership_level"
     t.index ["state"], name: "index_company_profiles_on_state"
     t.index ["stripe_membership_subscription_id"], name: "index_company_profiles_on_stripe_membership_subscription_id", unique: true

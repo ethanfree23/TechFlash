@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Alert, Linking, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Alert, Linking, Modal, Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import { colors, space, typography } from '../theme';
 import { Card } from '../components/ui/Card';
@@ -21,6 +21,7 @@ import { geocodeAddress } from '../utils/geocode';
 import { formatUsPhone, phoneDigits } from '../utils/phone';
 import * as Location from 'expo-location';
 import { canInitiateMembershipPurchase } from '../release/iosMembershipPurchaseGuard';
+import { COMPANY_INDUSTRY_OPTIONS, companyIndustrySelectValue } from '../constants/trades';
 
 type MeApply = (res: { user?: User } | null | undefined) => Promise<void>;
 
@@ -183,6 +184,7 @@ export function SettingsProfilePanel({
   const [saving, setSaving] = useState(false);
   const [geoBusy, setGeoBusy] = useState(false);
   const [licenseStates, setLicenseStates] = useState<string[]>([]);
+  const [industryPickerOpen, setIndustryPickerOpen] = useState(false);
 
   useEffect(() => {
     getLicensingSettings()
@@ -288,7 +290,52 @@ export function SettingsProfilePanel({
         <TextField label="Last name" value={form.last_name || ''} onChangeText={(v) => handleChange('last_name', v)} />
         <TextField label="Phone" value={form.phone || ''} onChangeText={(v) => handleChange('phone', v)} keyboardType="phone-pad" />
         <TextField label="Company name" value={form.company_name || ''} onChangeText={(v) => handleChange('company_name', v)} />
-        <TextField label="Industry" value={form.industry || ''} onChangeText={(v) => handleChange('industry', v)} />
+        <Text style={styles.rangeLabel}>Industry</Text>
+        <Pressable style={styles.industryBtn} onPress={() => setIndustryPickerOpen(true)}>
+          <Text style={form.industry ? styles.industryBtnText : styles.industryBtnPlaceholder}>
+            {companyIndustrySelectValue(form.industry) || 'Select company type'}
+          </Text>
+        </Pressable>
+        <Modal
+          visible={industryPickerOpen}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setIndustryPickerOpen(false)}
+        >
+          <View style={styles.industryModalBackdrop}>
+            <View style={styles.industryModalCard}>
+              <Text style={typography.heading}>Company type</Text>
+              <ScrollView style={styles.industryList} keyboardShouldPersistTaps="handled">
+                {form.industry &&
+                !COMPANY_INDUSTRY_OPTIONS.some(
+                  (opt) => opt.label === companyIndustrySelectValue(form.industry)
+                ) ? (
+                  <Pressable
+                    style={styles.industryRow}
+                    onPress={() => {
+                      setIndustryPickerOpen(false);
+                    }}
+                  >
+                    <Text style={styles.industryRowText}>{form.industry}</Text>
+                  </Pressable>
+                ) : null}
+                {COMPANY_INDUSTRY_OPTIONS.map((opt) => (
+                  <Pressable
+                    key={opt.trade}
+                    style={styles.industryRow}
+                    onPress={() => {
+                      handleChange('industry', opt.label);
+                      setIndustryPickerOpen(false);
+                    }}
+                  >
+                    <Text style={styles.industryRowText}>{opt.label}</Text>
+                  </Pressable>
+                ))}
+              </ScrollView>
+              <GhostButton label="Cancel" onPress={() => setIndustryPickerOpen(false)} />
+            </View>
+          </View>
+        </Modal>
         <TextField label="State (2-letter)" value={form.state || ''} onChangeText={(v) => handleChange('state', v)} autoCapitalize="characters" />
         <TextField
           label="Electrical license # (if required)"
@@ -739,4 +786,34 @@ const styles = StyleSheet.create({
   tierChipOn: { borderColor: colors.tabActive, backgroundColor: colors.primaryBlueMuted },
   tierChipText: { ...typography.caption, color: colors.muted },
   tierChipTextOn: { color: colors.tabActive },
+  industryBtn: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginBottom: 10,
+    backgroundColor: colors.white,
+  },
+  industryBtnText: { ...typography.body, color: colors.text },
+  industryBtnPlaceholder: { ...typography.body, color: colors.muted },
+  industryModalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.35)',
+    justifyContent: 'flex-end',
+  },
+  industryModalCard: {
+    backgroundColor: colors.white,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
+    padding: 16,
+    maxHeight: '70%',
+  },
+  industryList: { marginVertical: 12 },
+  industryRow: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
+  },
+  industryRowText: { ...typography.body, color: colors.text },
 });

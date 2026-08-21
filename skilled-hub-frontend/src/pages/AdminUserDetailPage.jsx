@@ -16,7 +16,8 @@ import AlertModal from '../components/AlertModal';
 import { auth } from '../auth';
 import { FaEye, FaUserPlus } from 'react-icons/fa';
 import { formatPhoneInput } from '../utils/phone';
-import { TRADE_OPTIONS } from '../constants/trades';
+import { TRADE_OPTIONS, COMPANY_INDUSTRY_OPTIONS } from '../constants/trades';
+import { CANONICAL_INDUSTRIES } from '../components/admin/adminUserIndustries';
 import { withDemoPath } from '../utils/demoMode';
 
 const PERIODS = [
@@ -400,6 +401,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
         account_phone: u?.phone || '',
         company_name: profile.company_name || '',
         industry: profile.industry || '',
+        service_trades: Array.isArray(profile.service_trades) ? [...profile.service_trades] : [],
         location: profile.location || '',
         bio: profile.bio || '',
         phone: profile.phone || '',
@@ -442,6 +444,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               account_phone: formatPhoneInput((profileDraft.account_phone || '').trim()),
               company_name: profileDraft.company_name?.trim(),
               industry: profileDraft.industry?.trim(),
+              service_trades: Array.isArray(profileDraft.service_trades) ? profileDraft.service_trades : [],
               location: profileDraft.location?.trim(),
               bio: profileDraft.bio?.trim(),
               phone: profileDraft.phone?.trim(),
@@ -764,6 +767,12 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                         <dt className="text-gray-500">Industry</dt>
                         <dd className="font-medium text-gray-900">{profile.industry || '—'}</dd>
                       </div>
+                      {Array.isArray(profile.service_trades) && profile.service_trades.length > 0 && (
+                        <div className="sm:col-span-2">
+                          <dt className="text-gray-500">Service trades</dt>
+                          <dd className="font-medium text-gray-900">{profile.service_trades.join(', ')}</dd>
+                        </div>
+                      )}
                       <div>
                         <dt className="text-gray-500">Company profile phone</dt>
                         <dd className="font-medium text-gray-900">{profile.phone || '—'}</dd>
@@ -912,12 +921,57 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                     </label>
                     <label className="block sm:col-span-2">
                       <span className="text-xs font-medium text-gray-500 uppercase">Industry</span>
-                      <input
+                      <select
                         className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                         value={profileDraft.industry || ''}
                         onChange={(e) => setProfileDraft((d) => ({ ...d, industry: e.target.value }))}
-                      />
+                      >
+                        <option value="">Select industry</option>
+                        {Array.from(
+                          new Set([
+                            ...CANONICAL_INDUSTRIES,
+                            ...COMPANY_INDUSTRY_OPTIONS.map((opt) => opt.label),
+                            ...(profileDraft.industry ? [profileDraft.industry] : []),
+                          ])
+                        ).map((label) => (
+                          <option key={label} value={label}>
+                            {label}
+                          </option>
+                        ))}
+                      </select>
                     </label>
+                    <div className="sm:col-span-2">
+                      <span className="text-xs font-medium text-gray-500 uppercase">Service trades</span>
+                      <p className="text-xs text-gray-500 mt-0.5 mb-1">
+                        Routes which technicians see this company&apos;s jobs. Pick Automobile Technician for auto shops.
+                      </p>
+                      <div className="mt-1 grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-52 overflow-auto rounded-lg border border-gray-200 p-2 bg-white">
+                        {TRADE_OPTIONS.map((trade) => {
+                          const checked = (profileDraft.service_trades || []).includes(trade);
+                          return (
+                            <label key={trade} className="inline-flex items-center gap-2 text-sm text-gray-800">
+                              <input
+                                type="checkbox"
+                                className="rounded border-gray-300"
+                                checked={checked}
+                                onChange={() =>
+                                  setProfileDraft((d) => {
+                                    const current = Array.isArray(d.service_trades) ? d.service_trades : [];
+                                    return {
+                                      ...d,
+                                      service_trades: checked
+                                        ? current.filter((t) => t !== trade)
+                                        : [...current, trade],
+                                    };
+                                  })
+                                }
+                              />
+                              <span>{trade}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    </div>
                     <label className="block">
                       <span className="text-xs font-medium text-gray-500 uppercase">Company profile phone</span>
                       <input

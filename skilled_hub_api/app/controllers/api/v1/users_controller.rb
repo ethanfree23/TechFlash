@@ -171,7 +171,8 @@ module Api
           unless normalized_industry.present?
             return render json: { error: "industry must be selected from the trade list" }, status: :unprocessable_entity
           end
-          industry = normalized_industry
+          industry = TradeCatalog.company_industry_label(normalized_industry)
+          service_trades = [normalized_industry]
         end
 
         membership_level = MembershipPolicy.normalized_level(params[:membership_tier] || params[:membership_level], audience: permitted_role)
@@ -194,7 +195,7 @@ module Api
               membership_level: assigned_level,
               phone: phone.presence,
               state: state.presence,
-              service_trades: industry.present? ? [industry] : [],
+              service_trades: service_trades,
               service_cities: city.present? ? [city] : [],
               location: [
                 address.presence,

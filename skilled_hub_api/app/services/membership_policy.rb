@@ -142,11 +142,13 @@ class MembershipPolicy
     trade_labels = technician_trade_labels(technician_profile)
     return jobs.none if trade_labels.blank?
 
+    matchable_trades = TradeCatalog.matchable_labels_for(trade_labels)
+
     scoped = jobs
       .where("COALESCE(jobs.minimum_years_experience, 0) <= ?", tech_years)
       .where(
         "COALESCE(jobs.trade_type, '') = '' OR LOWER(jobs.trade_type) IN (?)",
-        trade_labels.map(&:downcase)
+        matchable_trades
       )
 
     delay_hours = rule[:early_access_delay_hours].to_i

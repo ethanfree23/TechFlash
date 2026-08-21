@@ -1,7 +1,7 @@
 import React from 'react';
 import { FaEnvelope, FaMapMarkerAlt, FaPhone, FaUser } from 'react-icons/fa';
 import { US_STATES } from '../../data/statesByCountry';
-import { TRADE_OPTIONS } from '../../constants/trades';
+import { COMPANY_INDUSTRY_OPTIONS, companyIndustrySelectValue } from '../../constants/trades';
 import { requiresElectricalLicenseForState } from '../../utils/licensingRules';
 
 const inputWrap =
@@ -107,14 +107,14 @@ export function CompanyInfoFields({ registerData, setRegisterData, idPrefix, ema
             Company type / Trade focus
             <select
               id={`${idPrefix}-industry`}
-              value={registerData.industry}
+              value={companyIndustrySelectValue(registerData.industry)}
               onChange={(e) => set({ industry: e.target.value })}
               className={`${inputWrap} cursor-pointer`}
             >
               <option value="">Select focus</option>
-              {TRADE_OPTIONS.map((t) => (
-                <option key={t} value={t}>
-                  {t}
+              {COMPANY_INDUSTRY_OPTIONS.map((opt) => (
+                <option key={opt.trade} value={opt.label}>
+                  {opt.label}
                 </option>
               ))}
             </select>

@@ -25,7 +25,7 @@ import SystemControlsPricing from '../components/admin/SystemControlsPricing';
 import { needsTechnicianMapSetup } from '../utils/technicianMap';
 import { requiresElectricalLicenseForState, setLocalOnlyLicenseStates } from '../utils/licensingRules';
 import { formatPhoneInput } from '../utils/phone';
-import { TRADE_OPTIONS, TRADE_OTHER_SENTINEL } from '../constants/trades';
+import { TRADE_OPTIONS, TRADE_OTHER_SENTINEL, COMPANY_INDUSTRY_OPTIONS, companyIndustrySelectValue } from '../constants/trades';
 import { isTechnicianClass, technicianClassSelectOptions, technicianClassLabel, technicianClassSlug } from '../constants/technicianClass';
 import { getNotificationCategories } from '../config/notificationPreferenceCatalog';
 import { isDemoMode, demoSimulatedMessage, withDemoPath } from '../utils/demoMode';
@@ -2565,7 +2565,26 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Industry</label>
-                  <input name="industry" value={form.industry} onChange={handleChange} className="w-full border rounded-lg px-3 py-2" placeholder="e.g. Construction, HVAC" />
+                  <select
+                    name="industry"
+                    value={companyIndustrySelectValue(form.industry)}
+                    onChange={handleChange}
+                    className="w-full border rounded-lg px-3 py-2"
+                  >
+                    <option value="">Select company type</option>
+                    {form.industry &&
+                      !COMPANY_INDUSTRY_OPTIONS.some(
+                        (opt) =>
+                          opt.label === companyIndustrySelectValue(form.industry)
+                      ) && (
+                        <option value={form.industry}>{form.industry}</option>
+                      )}
+                    {COMPANY_INDUSTRY_OPTIONS.map((opt) => (
+                      <option key={opt.trade} value={opt.label}>
+                        {opt.label}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">Location</label>

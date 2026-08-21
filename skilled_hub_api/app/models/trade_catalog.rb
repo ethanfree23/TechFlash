@@ -25,6 +25,10 @@ class TradeCatalog
     "General Laborer / Helper"
   ].freeze
 
+  COMPANY_INDUSTRY_LABELS = {
+    "Automobile Technician" => "Auto Shop"
+  }.freeze
+
   LEGACY_SKILL_MAP = {
     "hvac" => "HVAC Technician",
     "heating ventilation air conditioning" => "HVAC Technician",
@@ -35,7 +39,14 @@ class TradeCatalog
     "plumber" => "Plumber",
     "refrigeration" => "Refrigeration Technician",
     "sheet metal" => "Sheet Metal Worker",
-    "general labor" => "General Laborer / Helper"
+    "general labor" => "General Laborer / Helper",
+    "auto shop" => "Automobile Technician",
+    "automotive" => "Automobile Technician",
+    "automobile" => "Automobile Technician",
+    "auto tech" => "Automobile Technician",
+    "auto technician" => "Automobile Technician",
+    "mechanic" => "Automobile Technician",
+    "diesel" => "Automobile Technician"
   }.freeze
 
   def self.normalized_label(raw_value)
@@ -54,5 +65,25 @@ class TradeCatalog
 
   def self.valid_label?(raw_value)
     normalized_label(raw_value).present?
+  end
+
+  def self.company_industry_label(raw_value)
+    normalized = normalized_label(raw_value)
+    return nil if normalized.blank?
+
+    COMPANY_INDUSTRY_LABELS[normalized] || normalized
+  end
+
+  def self.matchable_labels_for(labels)
+    Array(labels).flat_map do |label|
+      canonical = normalized_label(label)
+      next [label.to_s.strip] if canonical.blank?
+
+      [
+        canonical,
+        COMPANY_INDUSTRY_LABELS[canonical],
+        *LEGACY_SKILL_MAP.filter_map { |slug, trade| slug if trade == canonical }
+      ]
+    end.map { |value| value.to_s.strip.downcase }.reject(&:blank?).uniq
   end
 end

@@ -29,3 +29,30 @@ export const TRADE_OPTIONS = [
   'Equipment Operator',
   'General Laborer / Helper',
 ] as const;
+
+export const COMPANY_INDUSTRY_LABELS: Record<string, string> = {
+  'Automobile Technician': 'Auto Shop',
+};
+
+export function companyIndustryLabel(trade: string | null | undefined): string {
+  const key = TRADE_OPTIONS.find((opt) => opt.toLowerCase() === String(trade || '').toLowerCase());
+  if (key && COMPANY_INDUSTRY_LABELS[key]) return COMPANY_INDUSTRY_LABELS[key];
+  const byLabel = Object.values(COMPANY_INDUSTRY_LABELS).find(
+    (label) => label.toLowerCase() === String(trade || '').toLowerCase()
+  );
+  return byLabel || key || String(trade || '').trim();
+}
+
+export const COMPANY_INDUSTRY_OPTIONS = TRADE_OPTIONS.map((trade) => ({
+  trade,
+  label: companyIndustryLabel(trade),
+}));
+
+export function companyIndustrySelectValue(industry: string | null | undefined): string {
+  const raw = String(industry || '').trim();
+  if (!raw) return '';
+  const match = COMPANY_INDUSTRY_OPTIONS.find(
+    (opt) => opt.trade.toLowerCase() === raw.toLowerCase() || opt.label.toLowerCase() === raw.toLowerCase()
+  );
+  return match ? match.label : raw;
+}

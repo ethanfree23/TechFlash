@@ -117,6 +117,7 @@ class AdminUserDetail
         id: cp.id,
         company_name: cp.company_name,
         industry: cp.industry,
+        service_trades: Array(cp.service_trades),
         location: cp.location,
         bio: cp.bio,
         phone: cp.phone,

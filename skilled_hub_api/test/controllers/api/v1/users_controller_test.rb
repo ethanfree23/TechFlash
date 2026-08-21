@@ -196,11 +196,32 @@ module Api
         assert_not_nil profile
         assert_equal "Acme Test Company", profile.company_name
         assert_equal "Electrician", profile.industry
+        assert_equal ["Electrician"], profile.service_trades
         assert_equal "713-333-1122", profile.phone
         assert_equal "Texas", profile.state
         assert_equal ["Houston"], profile.service_cities
         assert_match(/Houston/i, profile.location.to_s)
         assert_match(/77007/i, profile.location.to_s)
+      end
+
+      test "company signup stores Auto Shop industry and Automobile Technician service trades" do
+        post "/api/v1/users",
+             params: base_signup_params(
+               {
+                 email: "autoshop-signup@example.com",
+                 role: "company",
+                 phone: "254-555-0100",
+                 city: "Waco",
+                 state: "Texas",
+                 zip_code: "76701"
+               }.merge(company_profile_params).merge(industry: "Auto Shop")
+             ),
+             as: :json
+
+        assert_response :created
+        profile = User.find_by!(email: "autoshop-signup@example.com").company_profile
+        assert_equal "Auto Shop", profile.industry
+        assert_equal ["Automobile Technician"], profile.service_trades
       end
 
       test "company signup allows missing electrical license number in statewide-license state" do

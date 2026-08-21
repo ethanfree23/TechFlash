@@ -3,6 +3,7 @@ export const CANONICAL_INDUSTRIES = [
   'HVAC',
   'Plumbing',
   'Electrical',
+  'Auto Shop',
   'General Contracting',
   'Construction',
   'Commercial',
