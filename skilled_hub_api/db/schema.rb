@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_08_21_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_08_25_143000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -324,6 +324,22 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_21_120000) do
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
     t.index ["user_id"], name: "index_feedback_submissions_on_user_id"
+  end
+
+  create_table "ghl_webhook_events", force: :cascade do |t|
+    t.string "idempotency_key", null: false
+    t.string "ghl_contact_id"
+    t.string "event_type", default: "technician_onboarding"
+    t.json "payload"
+    t.integer "user_id"
+    t.datetime "processed_at"
+    t.text "processing_error"
+    t.integer "attempt_count", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["ghl_contact_id"], name: "index_ghl_webhook_events_on_ghl_contact_id"
+    t.index ["idempotency_key"], name: "index_ghl_webhook_events_on_idempotency_key", unique: true
+    t.index ["user_id"], name: "index_ghl_webhook_events_on_user_id"
   end
 
   create_table "job_alert_preferences", force: :cascade do |t|
@@ -843,9 +859,18 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_21_120000) do
     t.boolean "job_alert_notifications_enabled", default: true, null: false
     t.text "email_notification_preferences", default: "{\"messages\":true,\"job_lifecycle\":true,\"reviews\":true,\"membership_updates\":true}", null: false
     t.json "ui_preferences", default: {}, null: false
+    t.string "ghl_contact_id"
+    t.string "ghl_location_id"
+    t.string "ghl_conversation_id"
+    t.datetime "ghl_onboarded_at"
+    t.string "phone_normalized"
+    t.text "ghl_intake_contact_info"
+    t.text "ghl_intake_references"
     t.index ["company_profile_id"], name: "index_users_on_company_profile_id"
+    t.index ["ghl_contact_id"], name: "index_users_on_ghl_contact_id", unique: true
     t.index ["password_reset_token"], name: "index_users_on_password_reset_token", unique: true
     t.index ["password_set_by"], name: "index_users_on_password_set_by"
+    t.index ["phone_normalized"], name: "index_users_on_phone_normalized"
   end
 
   create_table "verification_audit_logs", force: :cascade do |t|
@@ -900,10 +925,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_21_120000) do
   create_table "verification_references", force: :cascade do |t|
     t.integer "technician_user_id", null: false
     t.string "full_name", null: false
-    t.string "email", null: false
+    t.string "email"
     t.string "phone"
     t.string "company_name"
-    t.string "relationship", null: false
+    t.string "relationship"
     t.integer "status", default: 0, null: false
     t.string "request_token", null: false
     t.datetime "requested_at"
@@ -973,6 +998,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_08_21_120000) do
   add_foreign_key "favorite_technicians", "company_profiles"
   add_foreign_key "favorite_technicians", "technician_profiles"
   add_foreign_key "feedback_submissions", "users"
+  add_foreign_key "ghl_webhook_events", "users"
   add_foreign_key "job_alert_preferences", "users"
   add_foreign_key "job_applications", "jobs"
   add_foreign_key "job_applications", "technician_profiles"

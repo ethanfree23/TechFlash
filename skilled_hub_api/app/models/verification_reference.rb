@@ -9,7 +9,8 @@ class VerificationReference < ApplicationRecord
     rejected: 3
   }, default: :requested
 
-  validates :full_name, :email, :relationship, presence: true
+  validates :full_name, presence: true
+  validates :email, :relationship, presence: true, unless: :phone_first_pending?
   validates :request_token, presence: true, uniqueness: true
   validate :email_unique_for_technician
   validate :phone_unique_for_technician, if: :phone_normalized_present?
@@ -21,9 +22,13 @@ class VerificationReference < ApplicationRecord
 
   private
 
+  def phone_first_pending?
+    email.to_s.strip.blank? && phone.to_s.strip.present?
+  end
+
   def normalize_contact_fields
     self.email_normalized = email.to_s.strip.downcase.presence
-    self.phone_normalized = normalized_digits(phone).presence
+    self.phone_normalized = GhlPhoneNormalizer.normalize(phone)
   end
 
   def phone_normalized_present?
@@ -50,10 +55,6 @@ class VerificationReference < ApplicationRecord
       .exists?
 
     errors.add(:phone, "has already been used for another reference") if existing
-  end
-
-  def normalized_digits(value)
-    value.to_s.gsub(/\D/, "")
   end
 
   def ensure_request_token

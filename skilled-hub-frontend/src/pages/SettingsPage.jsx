@@ -2075,7 +2075,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                     return (
                       <div key={ref.id} className="rounded-lg border border-gray-200 bg-white px-2 py-1.5">
                         <div className="text-xs text-gray-700 flex items-center justify-between gap-3">
-                          <span>{ref.full_name} ({ref.relationship})</span>
+                          <span>{ref.full_name}{ref.relationship ? ` (${ref.relationship})` : ''}</span>
                           <div className="flex items-center gap-2">
                             <span className="font-semibold text-gray-500">
                               {referenceStatusLabel(ref.status)}

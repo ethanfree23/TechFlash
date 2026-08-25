@@ -7,6 +7,8 @@ class User < ApplicationRecord
 
   validates :email, presence: true, uniqueness: { case_sensitive: false }
   validates :phone, presence: true, if: :admin?, on: :update
+  validates :ghl_contact_id, uniqueness: true, allow_nil: true, allow_blank: true
+  before_validation :normalize_stored_phone
   before_save :stamp_password_metadata, if: :will_save_change_to_password_digest?
 
   enum role: { technician: 0, company: 1, admin: 2 }
@@ -57,6 +59,7 @@ class User < ApplicationRecord
   has_one :job_alert_preference, dependent: :destroy
   has_many :app_notifications, dependent: :destroy
   has_many :sms_delivery_logs, dependent: :destroy
+  has_many :ghl_webhook_events, dependent: :nullify
   has_many :sent_referrals, class_name: "ReferralSubmission", foreign_key: :referrer_user_id, dependent: :destroy, inverse_of: :referrer_user
   has_many :received_referrals, class_name: "ReferralSubmission", foreign_key: :referred_user_id, dependent: :nullify, inverse_of: :referred_user
 
@@ -138,8 +141,13 @@ class User < ApplicationRecord
 
   def stamp_password_metadata
     actor = password_set_actor.to_s.presence
-    actor = "user" unless %w[admin user].include?(actor)
+    actor = "user" unless %w[admin user system].include?(actor)
     self.password_set_by = actor
     self.password_set_at = Time.current
+  end
+
+  def normalize_stored_phone
+    self.ghl_contact_id = ghl_contact_id.to_s.strip.presence if has_attribute?(:ghl_contact_id)
+    self.phone_normalized = GhlPhoneNormalizer.normalize(phone)
   end
 end

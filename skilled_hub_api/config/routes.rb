@@ -109,6 +109,7 @@ Rails.application.routes.draw do
       post "internal/payments/release_eligible", to: "internal_payments#release_eligible"
       post 'checkr/webhook', to: 'checkr_webhooks#create'
       post 'webhooks/checkr', to: 'checkr_webhooks#create'
+      post 'webhooks/ghl/technician_onboarding', to: 'ghl_webhooks#create'
       resource :verification, only: [:show], controller: :verifications do
         post :start_background_check
         post :create_background_check_checkout

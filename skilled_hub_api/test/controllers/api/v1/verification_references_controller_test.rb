@@ -142,6 +142,34 @@ module Api
         assert_response :unprocessable_entity
         assert_includes JSON.parse(response.body)["errors"], "Phone has already been used for another reference"
       end
+
+      test "technician create still requires email and relationship" do
+        tech_user = User.create!(
+          email: "reference-tech-required@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        TechnicianProfile.create!(
+          user: tech_user,
+          trade_type: "HVAC",
+          availability: "Full-time",
+          membership_level: "basic"
+        )
+
+        post "/api/v1/verification_references",
+             params: {
+               full_name: "Sam Boss",
+               phone: "7135551111"
+             },
+             headers: auth_header_for(tech_user),
+             as: :json
+
+        assert_response :unprocessable_entity
+        errors = JSON.parse(response.body)["errors"]
+        assert_includes errors, "email is required"
+        assert_includes errors, "relationship is required"
+      end
     end
   end
 end

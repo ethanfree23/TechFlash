@@ -10,6 +10,14 @@ module Api
       end
 
       def create
+        missing = []
+        missing << "email is required" if params[:email].to_s.strip.blank?
+        missing << "relationship is required" if params[:relationship].to_s.strip.blank?
+        missing << "full_name is required" if params[:full_name].to_s.strip.blank?
+        if missing.any?
+          return render json: { errors: missing }, status: :unprocessable_entity
+        end
+
         ref = VerificationReference.new(reference_params)
         ref.technician_user_id = @current_user.id
         ref.status = :requested
