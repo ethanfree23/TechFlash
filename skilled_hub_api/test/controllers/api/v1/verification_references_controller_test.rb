@@ -143,7 +143,7 @@ module Api
         assert_includes JSON.parse(response.body)["errors"], "Phone has already been used for another reference"
       end
 
-      test "technician create still requires email and relationship" do
+      test "technician create requires email or phone plus relationship" do
         tech_user = User.create!(
           email: "reference-tech-required@example.com",
           password: "password123",
@@ -167,8 +167,47 @@ module Api
 
         assert_response :unprocessable_entity
         errors = JSON.parse(response.body)["errors"]
-        assert_includes errors, "email is required"
         assert_includes errors, "relationship is required"
+        refute_includes errors, "email is required"
+
+        post "/api/v1/verification_references",
+             params: {
+               full_name: "Sam Boss",
+               relationship: "Supervisor"
+             },
+             headers: auth_header_for(tech_user),
+             as: :json
+
+        assert_response :unprocessable_entity
+        assert_includes JSON.parse(response.body)["errors"], "email or phone is required"
+
+        post "/api/v1/verification_references",
+             params: {
+               full_name: "Sam Boss",
+               phone: "7135551111",
+               relationship: "Supervisor"
+             },
+             headers: auth_header_for(tech_user),
+             as: :json
+
+        assert_response :created
+        ref = VerificationReference.order(:id).last
+        assert_equal "7135551111", ref.phone
+        assert_nil ref.email.presence
+
+        post "/api/v1/verification_references",
+             params: {
+               full_name: "Pat Manager",
+               email: "pat.manager@example.com",
+               relationship: "Manager"
+             },
+             headers: auth_header_for(tech_user),
+             as: :json
+
+        assert_response :created
+        email_only = VerificationReference.order(:id).last
+        assert_equal "pat.manager@example.com", email_only.email
+        assert_nil email_only.phone.presence
       end
     end
   end

@@ -1816,7 +1816,17 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
     const nextEmail = normalizeReferenceEmail(newReference.email);
     const nextPhone = normalizeReferencePhone(newReference.phone);
-    const duplicateEmail = verificationReferences.some(
+    if (!nextEmail && !nextPhone) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Contact required',
+        message: 'Please provide an email or a phone number for this reference.',
+        variant: 'error',
+      });
+      return;
+    }
+
+    const duplicateEmail = nextEmail && verificationReferences.some(
       (ref) => normalizeReferenceEmail(ref.email) === nextEmail
     );
     const duplicatePhone = nextPhone && verificationReferences.some(
@@ -2142,7 +2152,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   placeholder="Email"
                   value={newReference.email}
                   onChange={handleReferenceFieldChange}
-                  required
+                  required={!String(newReference.phone || '').trim()}
                 />
                 <input
                   className="border rounded px-2 py-1 text-xs"
@@ -2150,7 +2160,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   placeholder="Phone"
                   value={newReference.phone}
                   onChange={handleReferenceFieldChange}
+                  required={!String(newReference.email || '').trim()}
                 />
+                <p className="sm:col-span-2 text-[11px] text-gray-500">
+                  Email or phone is required (at least one).
+                </p>
                 <input
                   className="border rounded px-2 py-1 text-xs sm:col-span-2"
                   name="company_name"

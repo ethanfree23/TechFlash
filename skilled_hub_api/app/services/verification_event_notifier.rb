@@ -2,13 +2,15 @@ class VerificationEventNotifier
   class << self
     def reference_request_created(reference)
       response_url = "#{frontend_base_url}/references/respond/#{reference.request_token}"
-      MailDelivery.safe_deliver do
-        UserMailer.reference_request_email(
-          to_email: reference.email,
-          reference_name: reference.full_name,
-          technician_name: technician_name(reference.technician_user),
-          response_url: response_url
-        ).deliver_now
+      if reference.email.to_s.strip.present?
+        MailDelivery.safe_deliver do
+          UserMailer.reference_request_email(
+            to_email: reference.email,
+            reference_name: reference.full_name,
+            technician_name: technician_name(reference.technician_user),
+            response_url: response_url
+          ).deliver_now
+        end
       end
 
       if reference.phone.present?
