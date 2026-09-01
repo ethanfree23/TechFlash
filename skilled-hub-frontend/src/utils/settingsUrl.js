@@ -1,5 +1,6 @@
 const VALID_TABS = new Set([
   'profile',
+  'verification',
   'notifications',
   'payment',
   'membership',

@@ -1,5 +1,4 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import { auth } from '../auth';
 import { isDemoMode, withDemoPath } from '../utils/demoMode';
 
@@ -15,8 +14,6 @@ function masqueradeDisplayUser() {
  * Shown while an admin is masquerading as another user; restores admin JWT from sessionStorage on exit.
  */
 export default function MasqueradeBanner() {
-  const navigate = useNavigate();
-
   if (!auth.isMasquerading()) return null;
 
   const user = masqueradeDisplayUser();
@@ -41,15 +38,6 @@ export default function MasqueradeBanner() {
           ) : null}
         </p>
         <div className="flex flex-wrap items-center gap-2">
-          {isDemoMode() && (
-            <button
-              type="button"
-              onClick={() => navigate('/settings?tab=account')}
-              className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-white/15 hover:bg-white/25 border border-white/30"
-            >
-              Account role
-            </button>
-          )}
           <button
             type="button"
             onClick={exit}

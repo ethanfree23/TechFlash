@@ -96,11 +96,11 @@ class BackgroundCheckStartService
   end
 
   def checkout_success_path
-    "#{settings_base_path}?tab=profile&background_check=paid"
+    "#{settings_base_path}?tab=verification&background_check=paid"
   end
 
   def checkout_cancel_path
-    "#{settings_base_path}?tab=profile&background_check=cancel"
+    "#{settings_base_path}?tab=verification&background_check=cancel"
   end
 
   def settings_base_path

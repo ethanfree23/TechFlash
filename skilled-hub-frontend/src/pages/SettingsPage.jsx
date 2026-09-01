@@ -304,7 +304,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [submittingReference, setSubmittingReference] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [avatarBroken, setAvatarBroken] = useState(false);
-  const [verificationRailCollapsed, setVerificationRailCollapsed] = useState(false);
   const [newReference, setNewReference] = useState({
     full_name: '',
     email: '',
@@ -431,9 +430,14 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const mainTabs = useMemo(() => {
     const base = [
       { id: 'profile', label: 'Profile' },
+    ];
+    if (isTechnician) {
+      base.push({ id: 'verification', label: 'Verification' });
+    }
+    base.push(
       { id: 'notifications', label: 'Notifications' },
       { id: 'payment', label: 'Billing' },
-    ];
+    );
     if (isTechnician || isCompany) {
       base.push({ id: 'membership', label: 'Membership and access' });
       base.push({ id: 'legal', label: 'Legal and support' });
@@ -452,7 +456,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       return 'Manage your company profile, billing, notifications, job preferences, and account security.';
     }
     if (isTechnician) {
-      return 'Manage your profile, job alerts, notifications, membership, payment preferences, and account security.';
+      return 'Manage your profile, verification, job alerts, notifications, membership, payment preferences, and account security.';
     }
     return 'Manage your TechFlash account.';
   }, [isAdmin, isCompany, isTechnician]);
@@ -497,28 +501,28 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
 
     if (isTechnician) {
-      requiredItems.push(
-        'Trade type',
-        'Class',
-        'Bio',
-        'Full address for maps',
-        'Identity verification',
-        'Background check',
-        'Reference verification'
-      );
+      requiredItems.push('Trade type', 'Class', 'Bio', 'Full address for maps');
       if (!(form.trade_type || '').trim()) missing.push('Trade type');
       if (!isTechnicianClass(form.skill_class)) missing.push('Class');
       if (!(form.bio || '').trim()) missing.push('Bio');
       if (needsMapSetup) missing.push('Full address for maps');
-      if (!verificationChecklistStatus.identityComplete) missing.push('Identity verification');
-      if (!verificationChecklistStatus.backgroundComplete) missing.push('Background check');
-      if (!verificationChecklistStatus.referencesComplete) missing.push('Reference verification');
     }
 
     const total = requiredItems.length;
     const pct = Math.round(((total - missing.length) / total) * 100);
     return { pct: Math.min(100, Math.max(0, pct)), missing };
-  }, [profile, isAdmin, isCompany, isTechnician, form, needsMapSetup, verificationChecklistStatus]);
+  }, [profile, isAdmin, isCompany, isTechnician, form, needsMapSetup]);
+
+  const verificationCompletion = useMemo(() => {
+    if (!isTechnician) return { items: [], missing: [], allComplete: true };
+    const items = [
+      { label: 'Identity verification', complete: verificationChecklistStatus.identityComplete },
+      { label: 'Background check', complete: verificationChecklistStatus.backgroundComplete },
+      { label: 'Reference verification', complete: verificationChecklistStatus.referencesComplete },
+    ];
+    const missing = items.filter((item) => !item.complete).map((item) => item.label);
+    return { items, missing, allComplete: missing.length === 0 };
+  }, [isTechnician, verificationChecklistStatus]);
 
   const notificationCategories = useMemo(() => {
     const r = user?.role;
@@ -898,7 +902,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       return;
     }
     if (backgroundCheckParam === 'paid' || backgroundCheckParam === 'cancel') {
-      setSettingsTab('profile');
+      setSettingsTab('verification');
       removeSettingsQueryParams(['background_check']);
       if (backgroundCheckParam === 'paid') {
         verificationAPI.getCenter()
@@ -937,7 +941,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       return;
     }
     if (checkrDemoParam === 'invitation') {
-      setSettingsTab('profile');
+      setSettingsTab('verification');
       removeSettingsQueryParams(['checkr_demo']);
       setAlertModal({
         isOpen: true,
@@ -1072,38 +1076,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           ...techPayload,
           experience_years: form.experience_years === '' ? null : parseInt(form.experience_years, 10),
         });
-
-        const incompleteLicenseItems = licenseLineItems.filter((item) => (
-          (String(item.title || '').trim() || String(item.reference || '').trim()) && !item.file
-        ));
-        if (incompleteLicenseItems.length > 0) {
-          failProfileSave('Attach an image for each license line item before saving.');
-          return;
-        }
-
-        const pendingLicenseUploads = licenseLineItems.filter((item) => item.file);
-        const invalidLicenseFile = pendingLicenseUploads.find((item) => !isAllowedLicenseImageFile(item.file));
-        if (invalidLicenseFile) {
-          failProfileSave('License images must be JPG, JPEG, or PNG files.');
-          return;
-        }
-        if (pendingLicenseUploads.length > 0) {
-          setUploadingCert(true);
-          for (const item of pendingLicenseUploads) {
-            const fd = new FormData();
-            fd.append('file', item.file);
-            fd.append('uploadable_type', 'TechnicianProfile');
-            fd.append('uploadable_id', profile.id);
-            fd.append('doc_type', 'certificate');
-            if (String(item.title || '').trim()) fd.append('issuer', String(item.title || '').trim());
-            if (String(item.reference || '').trim()) fd.append('document_number', String(item.reference || '').trim());
-            await documentsAPI.upload(fd);
-          }
-          const docsPayload = await documentsAPI.getAll();
-          setCertificates(extractDocumentsList(docsPayload).filter((d) => isTechnicianCertificateDocument(d, profile.id)));
-          setCertificatePreviewErrors({});
-          setLicenseLineItems([makeLicenseLineItem()]);
-        }
       }
       await fetchProfile();
       setAlertModal({ isOpen: true, title: 'Profile saved!', message: 'Your profile has been updated.', variant: 'success' });
@@ -1118,8 +1090,76 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         variant: 'error',
       });
     } finally {
-      setUploadingCert(false);
       setSaving(false);
+    }
+  };
+
+  const handleLicenseSubmit = async (e) => {
+    e.preventDefault();
+    const failLicenseSave = (message) => {
+      setError(message);
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not save',
+        message,
+        variant: 'error',
+      });
+    };
+    if (!isTechnician || !profile?.id) {
+      failLicenseSave('Profile is still loading. Please wait a moment and try again.');
+      return;
+    }
+    const incompleteLicenseItems = licenseLineItems.filter((item) => (
+      (String(item.title || '').trim() || String(item.reference || '').trim()) && !item.file
+    ));
+    if (incompleteLicenseItems.length > 0) {
+      failLicenseSave('Attach an image for each license line item before saving.');
+      return;
+    }
+    const pendingLicenseUploads = licenseLineItems.filter((item) => item.file);
+    if (pendingLicenseUploads.length === 0) {
+      failLicenseSave('Attach at least one license image before saving.');
+      return;
+    }
+    const invalidLicenseFile = pendingLicenseUploads.find((item) => !isAllowedLicenseImageFile(item.file));
+    if (invalidLicenseFile) {
+      failLicenseSave('License images must be JPG, JPEG, or PNG files.');
+      return;
+    }
+    setUploadingCert(true);
+    setError(null);
+    try {
+      for (const item of pendingLicenseUploads) {
+        const fd = new FormData();
+        fd.append('file', item.file);
+        fd.append('uploadable_type', 'TechnicianProfile');
+        fd.append('uploadable_id', profile.id);
+        fd.append('doc_type', 'certificate');
+        if (String(item.title || '').trim()) fd.append('issuer', String(item.title || '').trim());
+        if (String(item.reference || '').trim()) fd.append('document_number', String(item.reference || '').trim());
+        await documentsAPI.upload(fd);
+      }
+      const docsPayload = await documentsAPI.getAll();
+      setCertificates(extractDocumentsList(docsPayload).filter((d) => isTechnicianCertificateDocument(d, profile.id)));
+      setCertificatePreviewErrors({});
+      setLicenseLineItems([makeLicenseLineItem()]);
+      setAlertModal({
+        isOpen: true,
+        title: 'Licenses saved',
+        message: 'Your license documents have been uploaded.',
+        variant: 'success',
+      });
+    } catch (err) {
+      const message = err.message || 'Failed to save licenses';
+      setError(message);
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not save',
+        message,
+        variant: 'error',
+      });
+    } finally {
+      setUploadingCert(false);
     }
   };
 
@@ -1705,7 +1745,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     setStartingBackgroundCheck(true);
     try {
       if (effectiveCheckrDemoBypass) {
-        const demoInvitationPath = withDemoPath('/settings?tab=profile&checkr_demo=invitation');
+        const demoInvitationPath = withDemoPath('/settings?tab=verification&checkr_demo=invitation');
         const demoInvitationUrl = `${window.location.origin}${demoInvitationPath}`;
         setVerificationCenter((prev) => ({
           ...(prev || {}),
@@ -2203,7 +2243,175 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       ) : (
         <p className="mt-2 text-sm text-emerald-800">Great — no obvious gaps from this checklist.</p>
       )}
+      {isTechnician && !verificationCompletion.allComplete && (
+        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
+          <p className="text-sm text-amber-900">
+            Identity, background check, and references are on the Verification tab.
+          </p>
+          <button
+            type="button"
+            onClick={() => setSettingsTab('verification')}
+            className="mt-2 inline-flex items-center rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+          >
+            Finish verification
+          </button>
+        </div>
+      )}
     </SettingsCard>
+  );
+
+  const renderVerificationChecklistCard = () => (
+    <SettingsCard
+      title="What you need to do"
+      description="Complete these steps so companies can trust and hire you."
+    >
+      <ul className="text-sm text-gray-700 space-y-2">
+        {verificationCompletion.items.map((item) => (
+          <li
+            key={item.label}
+            className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 ${
+              item.complete ? 'bg-emerald-50' : 'bg-amber-50'
+            }`}
+          >
+            <span>{item.label}</span>
+            <span
+              className={`text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 border ${
+                item.complete
+                  ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
+                  : 'bg-amber-100 text-amber-800 border-amber-200'
+              }`}
+            >
+              {item.complete ? 'Complete' : 'Needs action'}
+            </span>
+          </li>
+        ))}
+      </ul>
+      {verificationCompletion.allComplete ? (
+        <p className="mt-3 text-sm text-emerald-800">All required verification steps are complete.</p>
+      ) : (
+        <p className="mt-3 text-sm text-gray-600">
+          Use the sections below to finish identity, background check, and professional references.
+        </p>
+      )}
+    </SettingsCard>
+  );
+
+  const renderLicensesAndCertificates = () => (
+    <form onSubmit={handleLicenseSubmit} className="space-y-4" noValidate>
+      <p className="text-sm text-gray-600">
+        Upload images of your certifications (e.g. OSHA, EPA, trade licenses). Companies will verify these match their job requirements.
+      </p>
+      <div className="space-y-3">
+        {licenseLineItems.map((lineItem, index) => (
+          <div key={lineItem.id} className="rounded-lg border border-gray-200 p-3">
+            <div className="mb-3 flex items-center justify-between">
+              <p className="text-sm font-semibold text-gray-800">License item {index + 1}</p>
+              <button
+                type="button"
+                onClick={() => removeLicenseLineItem(lineItem.id)}
+                className="text-xs font-medium text-red-600 hover:text-red-700"
+              >
+                Remove
+              </button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Document title</label>
+                <input
+                  type="text"
+                  value={lineItem.title}
+                  onChange={(e) => updateLicenseLineItem(lineItem.id, { title: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2"
+                  placeholder="e.g. ASE Master Technician"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Reference / license number</label>
+                <input
+                  type="text"
+                  value={lineItem.reference}
+                  onChange={(e) => updateLicenseLineItem(lineItem.id, { reference: e.target.value })}
+                  className="w-full border rounded-lg px-3 py-2"
+                  placeholder="Enter reference or license #"
+                />
+              </div>
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <label className="inline-flex cursor-pointer items-center rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                <input
+                  type="file"
+                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
+                  className="hidden"
+                  onChange={(e) => handleLicenseLineItemFileSelect(lineItem.id, e)}
+                  disabled={uploadingCert}
+                />
+                {lineItem.file ? 'Change image' : 'Attach image'}
+              </label>
+              <span className="text-xs text-gray-500">
+                {lineItem.file ? `Selected: ${lineItem.file.name}` : 'Will upload when you click Save licenses.'}
+              </span>
+            </div>
+          </div>
+        ))}
+        <button
+          type="button"
+          onClick={addLicenseLineItem}
+          className="inline-flex items-center rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+        >
+          + Add another line item
+        </button>
+      </div>
+      <div className="flex flex-wrap gap-4">
+        {certificates.map((doc) => {
+          const documentUrl = resolveMediaUrl(doc.file_url);
+          const hasPreviewError = certificatePreviewErrors[doc.id] === true;
+          return (
+            <div key={doc.id} className="relative group border rounded-lg overflow-hidden bg-gray-50 w-32 min-h-32">
+              {documentUrl && !hasPreviewError ? (
+                <img
+                  src={documentUrl}
+                  alt={doc.issuer || 'Certificate'}
+                  className="w-full h-24 object-cover"
+                  onError={() => setCertificatePreviewErrors((prev) => ({ ...prev, [doc.id]: true }))}
+                />
+              ) : (
+                <div className="flex h-24 items-center justify-center bg-gray-100 px-2 text-center text-[10px] text-gray-500">
+                  Preview unavailable
+                </div>
+              )}
+              <div className="p-1.5">
+                {doc.issuer ? <p className="truncate text-[10px] font-medium text-gray-700">{doc.issuer}</p> : null}
+                {doc.document_number ? <p className="truncate text-[10px] text-gray-500">{doc.document_number}</p> : null}
+                {documentUrl ? (
+                  <a
+                    href={documentUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-1 inline-block text-[10px] font-medium text-blue-600 hover:text-blue-700"
+                  >
+                    View document
+                  </a>
+                ) : (
+                  <p className="mt-1 text-[10px] text-gray-500">Document unavailable</p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => handleCertificateDelete(doc.id)}
+                disabled={deletingCertId === doc.id}
+                className="absolute top-1 right-1 bg-red-600 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
+                title="Remove"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+              </button>
+            </div>
+          );
+        })}
+      </div>
+      <button type="submit" disabled={uploadingCert} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+        {uploadingCert ? 'Saving...' : 'Save licenses'}
+      </button>
+    </form>
   );
 
   if (loading) {
@@ -2254,11 +2462,8 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
             </div>
           )}
           {isTechnician && (
-            <div className="mb-6 space-y-4 xl:hidden">
+            <div className="mb-6">
               {renderProfileCompletionCard()}
-              <SettingsCard title="Trust and verification">
-                {renderTrustAndVerificationContent()}
-              </SettingsCard>
             </div>
           )}
           {isAdmin ? (
@@ -2304,8 +2509,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               </button>
             </form>
           ) : (
-          <div className={isTechnician ? 'xl:grid xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)] xl:items-start xl:gap-5' : ''}>
-          <form onSubmit={handleProfileSubmit} className={`space-y-4 ${isTechnician ? 'min-w-0' : ''}`} noValidate>
+          <form onSubmit={handleProfileSubmit} className="space-y-4" noValidate>
             <div className="flex items-center gap-6">
               <div className="relative">
                 {profileAvatarUrl ? (
@@ -2564,122 +2768,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                     </p>
                   )}
                 </div>
-
-                <div className="border-t border-gray-200 pt-4 mt-4">
-                  <h4 className="font-medium text-gray-900 mb-2">Licenses and certificates</h4>
-                  <p className="text-sm text-gray-600 mb-3">
-                    Upload images of your certifications (e.g. OSHA, EPA, trade licenses). Companies will verify these match their job requirements.
-                  </p>
-                  <div className="space-y-3 mb-4">
-                    {licenseLineItems.map((lineItem, index) => {
-                      return (
-                        <div key={lineItem.id} className="rounded-lg border border-gray-200 p-3">
-                          <div className="mb-3 flex items-center justify-between">
-                            <p className="text-sm font-semibold text-gray-800">License item {index + 1}</p>
-                            <button
-                              type="button"
-                              onClick={() => removeLicenseLineItem(lineItem.id)}
-                              className="text-xs font-medium text-red-600 hover:text-red-700"
-                            >
-                              Remove
-                            </button>
-                          </div>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Document title</label>
-                              <input
-                                type="text"
-                                value={lineItem.title}
-                                onChange={(e) => updateLicenseLineItem(lineItem.id, { title: e.target.value })}
-                                className="w-full border rounded-lg px-3 py-2"
-                                placeholder="e.g. ASE Master Technician"
-                              />
-                            </div>
-                            <div>
-                              <label className="block text-sm font-medium text-gray-700 mb-1">Reference / license number</label>
-                              <input
-                                type="text"
-                                value={lineItem.reference}
-                                onChange={(e) => updateLicenseLineItem(lineItem.id, { reference: e.target.value })}
-                                className="w-full border rounded-lg px-3 py-2"
-                                placeholder="Enter reference or license #"
-                              />
-                            </div>
-                          </div>
-                          <div className="mt-3 flex items-center gap-2">
-                            <label className="inline-flex cursor-pointer items-center rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                              <input
-                                type="file"
-                                accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-                                className="hidden"
-                                onChange={(e) => handleLicenseLineItemFileSelect(lineItem.id, e)}
-                                disabled={uploadingCert}
-                              />
-                              {lineItem.file ? 'Change image' : 'Attach image'}
-                            </label>
-                            <span className="text-xs text-gray-500">
-                              {lineItem.file ? `Selected: ${lineItem.file.name}` : 'Will upload when you click Save Changes.'}
-                            </span>
-                          </div>
-                        </div>
-                      );
-                    })}
-                    <button
-                      type="button"
-                      onClick={addLicenseLineItem}
-                      className="inline-flex items-center rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                    >
-                      + Add another line item
-                    </button>
-                  </div>
-                  <div className="flex flex-wrap gap-4 mb-4">
-                    {certificates.map((doc) => {
-                      const documentUrl = resolveMediaUrl(doc.file_url);
-                      const hasPreviewError = certificatePreviewErrors[doc.id] === true;
-                      return (
-                      <div key={doc.id} className="relative group border rounded-lg overflow-hidden bg-gray-50 w-32 min-h-32">
-                        {documentUrl && !hasPreviewError ? (
-                          <img
-                            src={documentUrl}
-                            alt={doc.issuer || 'Certificate'}
-                            className="w-full h-24 object-cover"
-                            onError={() => setCertificatePreviewErrors((prev) => ({ ...prev, [doc.id]: true }))}
-                          />
-                        ) : (
-                          <div className="flex h-24 items-center justify-center bg-gray-100 px-2 text-center text-[10px] text-gray-500">
-                            Preview unavailable
-                          </div>
-                        )}
-                        <div className="p-1.5">
-                          {doc.issuer ? <p className="truncate text-[10px] font-medium text-gray-700">{doc.issuer}</p> : null}
-                          {doc.document_number ? <p className="truncate text-[10px] text-gray-500">{doc.document_number}</p> : null}
-                          {documentUrl ? (
-                            <a
-                              href={documentUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="mt-1 inline-block text-[10px] font-medium text-blue-600 hover:text-blue-700"
-                            >
-                              View document
-                            </a>
-                          ) : (
-                            <p className="mt-1 text-[10px] text-gray-500">Document unavailable</p>
-                          )}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => handleCertificateDelete(doc.id)}
-                          disabled={deletingCertId === doc.id}
-                          className="absolute top-1 right-1 bg-red-600 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
-                          title="Remove"
-                        >
-                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-                        </button>
-                      </div>
-                    );
-                    })}
-                  </div>
-                </div>
               </>
             )}
 
@@ -2701,71 +2789,32 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               {saving ? 'Saving...' : 'Save Changes'}
             </button>
           </form>
-          {isTechnician && (
-            <div className="hidden xl:block">
-              <div className="flex items-start justify-end">
-                {!verificationRailCollapsed && (
-                  <div className="w-full space-y-4">
-                    {renderProfileCompletionCard()}
-                    <SettingsCard title="Trust and verification">
-                      {renderTrustAndVerificationContent()}
-                    </SettingsCard>
-                  </div>
-                )}
-                <button
-                  type="button"
-                  onClick={() => setVerificationRailCollapsed((collapsed) => !collapsed)}
-                  aria-label={verificationRailCollapsed ? 'Expand trust and verification panel' : 'Collapse trust and verification panel'}
-                  aria-expanded={!verificationRailCollapsed}
-                  className={`mt-2 inline-flex h-10 w-8 items-center justify-center border border-gray-200 bg-white text-gray-600 hover:bg-gray-50 ${
-                    verificationRailCollapsed ? 'rounded-xl' : 'rounded-r-xl rounded-l-none border-l-0'
-                  }`}
-                >
-                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    {verificationRailCollapsed ? (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 5l-7 7 7 7" />
-                    ) : (
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                    )}
-                  </svg>
-                </button>
-              </div>
-            </div>
-          )}
-          </div>
           )}
                 <div
                   id="settings-account"
-                  className="mt-8 space-y-5 sm:space-y-6 border-t border-gray-200 pt-8"
+                  className="mt-8 space-y-4 border-t border-gray-200 pt-6"
                 >
-                <SettingsSection
-                  title="Sign-in and email"
-                  description="Your email is your username. Security-critical messages always stay on."
-                />
-                <SettingsCard
-                  title="Account role"
-                  collapsible
-                  defaultOpen={isDemoMode() || auth.isMasquerading()}
-                  description={
-                    isDemoMode() || auth.isMasquerading()
-                      ? 'Expand to switch demo roles or return to admin.'
-                      : isAdmin
-                        ? 'Expand to open the demo environment.'
-                        : undefined
-                  }
-                >
-                  <SettingsRow
-                    title="Role"
-                    description="Determines marketplace permissions and available settings tabs."
-                    control={<span className="text-sm font-semibold text-gray-800">{roleBadgeLabel}</span>}
-                  />
-                  <AccountRolePanel roleLabel={roleBadgeLabel} />
-                </SettingsCard>
+                {isAdmin && (
+                  <SettingsCard
+                    title="Account role"
+                    collapsible
+                    defaultOpen={isDemoMode() || auth.isMasquerading()}
+                    description={
+                      isDemoMode() || auth.isMasquerading()
+                        ? 'Expand to switch demo roles or return to admin.'
+                        : 'Expand to open the demo environment.'
+                    }
+                  >
+                    <SettingsRow
+                      title="Role"
+                      description="Determines marketplace permissions and available settings tabs."
+                      control={<span className="text-sm font-semibold text-gray-800">{roleBadgeLabel}</span>}
+                    />
+                    <AccountRolePanel roleLabel={roleBadgeLabel} />
+                  </SettingsCard>
+                )}
 
-                <SettingsCard
-                  title="Account credentials"
-                  description="Manage your sign-in email and password for this account."
-                >
+                <SettingsCard title="Email and password">
                   {accountError && (
                     <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm font-medium text-red-800">
                       {accountError}
@@ -2915,6 +2964,18 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   </button>
                 </SettingsDangerZone>
                 </div>
+              </div>
+            )}
+
+            {isTechnician && settingsTab === 'verification' && (
+              <div id="settings-panel-verification" role="tabpanel" aria-labelledby="settings-tab-verification" className="space-y-6">
+                {renderVerificationChecklistCard()}
+                <SettingsCard title="Trust and verification">
+                  {renderTrustAndVerificationContent()}
+                </SettingsCard>
+                <SettingsCard title="Licenses and certificates">
+                  {renderLicensesAndCertificates()}
+                </SettingsCard>
               </div>
             )}
 

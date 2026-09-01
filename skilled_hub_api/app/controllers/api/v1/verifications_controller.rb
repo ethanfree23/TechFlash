@@ -414,7 +414,7 @@ module Api
       end
 
       def demo_checkr_invitation_url
-        "#{ENV.fetch('FRONTEND_URL', 'http://localhost:5173').to_s.chomp('/')}#{settings_profile_path(query: 'tab=profile&checkr_demo=invitation')}"
+        "#{ENV.fetch('FRONTEND_URL', 'http://localhost:5173').to_s.chomp('/')}#{settings_profile_path(query: 'tab=verification&checkr_demo=invitation')}"
       end
 
       def settings_profile_path(query:)
