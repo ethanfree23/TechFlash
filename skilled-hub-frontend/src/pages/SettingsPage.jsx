@@ -271,7 +271,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [uploadingIdentityDocument, setUploadingIdentityDocument] = useState(false);
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'success' });
   const [confirmCertId, setConfirmCertId] = useState(null);
-  const [settingsTab, setSettingsTab] = useState('account');
+  const [settingsTab, setSettingsTab] = useState('profile');
   const [adminSystemSubTab, setAdminSystemSubTab] = useState('pricing');
   const [modalNotificationItem, setModalNotificationItem] = useState(null);
   const [localAdvancedById, setLocalAdvancedById] = useState({});
@@ -430,7 +430,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
   const mainTabs = useMemo(() => {
     const base = [
-      { id: 'account', label: 'Account' },
       { id: 'profile', label: 'Profile' },
       { id: 'notifications', label: 'Notifications' },
       { id: 'payment', label: 'Billing' },
@@ -960,7 +959,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   }, [settingsTab, adminSystemSubTab, isAdmin]);
 
   useEffect(() => {
-    if (settingsTab !== 'account') return;
+    if (settingsTab !== 'profile') return;
     loadLoginHistory();
   }, [settingsTab, loadLoginHistory]);
 
@@ -2239,192 +2238,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           <SettingsTabs tabs={mainTabs} activeId={settingsTab} onChange={setSettingsTab} />
 
           <div className="p-4 sm:p-6">
-            {settingsTab === 'account' && (
-              <div
-                id="settings-panel-account"
-                role="tabpanel"
-                aria-labelledby="settings-tab-account"
-                className="space-y-5 sm:space-y-6"
-              >
-                <SettingsSection
-                  title="Sign-in and email"
-                  description="Your email is your username. Security-critical messages always stay on."
-                />
-                <SettingsCard
-                  title="Account role"
-                  collapsible
-                  defaultOpen={isDemoMode() || auth.isMasquerading()}
-                  description={
-                    isDemoMode() || auth.isMasquerading()
-                      ? 'Expand to switch demo roles or return to admin.'
-                      : isAdmin
-                        ? 'Expand to open the demo environment.'
-                        : undefined
-                  }
-                >
-                  <SettingsRow
-                    title="Role"
-                    description="Determines marketplace permissions and available settings tabs."
-                    control={<span className="text-sm font-semibold text-gray-800">{roleBadgeLabel}</span>}
-                  />
-                  <AccountRolePanel roleLabel={roleBadgeLabel} />
-                </SettingsCard>
-
-                <SettingsCard
-                  title="Account credentials"
-                  description="Manage your sign-in email and password for this account."
-                >
-                  {accountError && (
-                    <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm font-medium text-red-800">
-                      {accountError}
-                    </div>
-                  )}
-                  <form onSubmit={handleAccountSubmit} className="space-y-5">
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                        Email (username)
-                      </label>
-                      <SettingsInput
-                        type="email"
-                        value={accountEmail}
-                        onChange={(e) => setAccountEmail(e.target.value)}
-                        placeholder="you@example.com"
-                        required
-                      />
-                    </div>
-
-                    {!showPasswordFields ? (
-                      <button
-                        type="button"
-                        className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                        onClick={() => setShowPasswordFields(true)}
-                      >
-                        Change password
-                      </button>
-                    ) : (
-                      <div className="space-y-4 rounded-xl border border-gray-200 bg-gray-50/60 p-4 sm:p-5">
-                        <div className="space-y-1.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                              New password
-                            </label>
-                            <button
-                              type="button"
-                              className="text-xs font-semibold text-blue-700 transition-colors hover:text-blue-800 hover:underline"
-                              onClick={() => setShowPassword((s) => !s)}
-                            >
-                              {showPassword ? 'Hide' : 'Show'}
-                            </button>
-                          </div>
-                          <SettingsInput
-                            type={showPassword ? 'text' : 'password'}
-                            value={accountPassword}
-                            onChange={(e) => setAccountPassword(e.target.value)}
-                            autoComplete="new-password"
-                            placeholder="Enter new password"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                              Confirm new password
-                            </label>
-                            <button
-                              type="button"
-                              className="text-xs font-semibold text-blue-700 transition-colors hover:text-blue-800 hover:underline"
-                              onClick={() => setShowPasswordConfirm((s) => !s)}
-                            >
-                              {showPasswordConfirm ? 'Hide' : 'Show'}
-                            </button>
-                          </div>
-                          <SettingsInput
-                            type={showPasswordConfirm ? 'text' : 'password'}
-                            value={accountPasswordConfirm}
-                            onChange={(e) => setAccountPasswordConfirm(e.target.value)}
-                            autoComplete="new-password"
-                            placeholder="Confirm new password"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          className="text-xs font-semibold text-gray-600 transition-colors hover:text-gray-800 hover:underline"
-                          onClick={() => {
-                            setShowPasswordFields(false);
-                            setShowPassword(false);
-                            setShowPasswordConfirm(false);
-                            setAccountPassword('');
-                            setAccountPasswordConfirm('');
-                          }}
-                        >
-                          Cancel password change
-                        </button>
-                      </div>
-                    )}
-
-                    <div className="flex justify-end border-t border-gray-100 pt-4">
-                      <button
-                        type="submit"
-                        disabled={savingAccount}
-                        className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {savingAccount ? 'Saving...' : 'Update account'}
-                      </button>
-                    </div>
-                  </form>
-                </SettingsCard>
-
-                <SettingsCard title="Login history" collapsible defaultOpen={false}>
-                  <div className="space-y-3.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm text-gray-600">Recent successful sign-ins for this account.</p>
-                      <button
-                        type="button"
-                        onClick={loadLoginHistory}
-                        disabled={loadingLoginHistory}
-                        className="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {loadingLoginHistory ? 'Refreshing...' : 'Refresh'}
-                      </button>
-                    </div>
-                    {loadingLoginHistory ? (
-                      <p className="text-sm text-gray-500">Loading login history...</p>
-                    ) : loginHistoryError ? (
-                      <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                        {loginHistoryError}
-                      </p>
-                    ) : loginHistory.length === 0 ? (
-                      <p className="text-sm text-gray-500">No recent login activity yet.</p>
-                    ) : (
-                      <ul className="space-y-2">
-                        {loginHistory.map((event) => (
-                          <li
-                            key={event.id}
-                            className="rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2 text-sm text-gray-700"
-                          >
-                            <span className="font-medium text-gray-900">Signed in</span>{' '}
-                            <span>on {new Date(event.logged_in_at).toLocaleString()}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </SettingsCard>
-
-                <SettingsDangerZone
-                  title="Delete account"
-                  description="This permanently removes your account and cannot be undone."
-                >
-                  <button
-                    type="button"
-                    className="inline-flex items-center rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
-                    onClick={() => setConfirmDeleteAccount(true)}
-                  >
-                    Delete account permanently
-                  </button>
-                </SettingsDangerZone>
-              </div>
-            )}
-
             {settingsTab === 'profile' && (
               <div id="settings-panel-profile" role="tabpanel" aria-labelledby="settings-tab-profile">
           {needsMapSetup && (
@@ -2921,6 +2734,187 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           )}
           </div>
           )}
+                <div
+                  id="settings-account"
+                  className="mt-8 space-y-5 sm:space-y-6 border-t border-gray-200 pt-8"
+                >
+                <SettingsSection
+                  title="Sign-in and email"
+                  description="Your email is your username. Security-critical messages always stay on."
+                />
+                <SettingsCard
+                  title="Account role"
+                  collapsible
+                  defaultOpen={isDemoMode() || auth.isMasquerading()}
+                  description={
+                    isDemoMode() || auth.isMasquerading()
+                      ? 'Expand to switch demo roles or return to admin.'
+                      : isAdmin
+                        ? 'Expand to open the demo environment.'
+                        : undefined
+                  }
+                >
+                  <SettingsRow
+                    title="Role"
+                    description="Determines marketplace permissions and available settings tabs."
+                    control={<span className="text-sm font-semibold text-gray-800">{roleBadgeLabel}</span>}
+                  />
+                  <AccountRolePanel roleLabel={roleBadgeLabel} />
+                </SettingsCard>
+
+                <SettingsCard
+                  title="Account credentials"
+                  description="Manage your sign-in email and password for this account."
+                >
+                  {accountError && (
+                    <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm font-medium text-red-800">
+                      {accountError}
+                    </div>
+                  )}
+                  <form onSubmit={handleAccountSubmit} className="space-y-5">
+                    <div className="space-y-1.5">
+                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                        Email (username)
+                      </label>
+                      <SettingsInput
+                        type="email"
+                        value={accountEmail}
+                        onChange={(e) => setAccountEmail(e.target.value)}
+                        placeholder="you@example.com"
+                        required
+                      />
+                    </div>
+
+                    {!showPasswordFields ? (
+                      <button
+                        type="button"
+                        className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                        onClick={() => setShowPasswordFields(true)}
+                      >
+                        Change password
+                      </button>
+                    ) : (
+                      <div className="space-y-4 rounded-xl border border-gray-200 bg-gray-50/60 p-4 sm:p-5">
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                              New password
+                            </label>
+                            <button
+                              type="button"
+                              className="text-xs font-semibold text-blue-700 transition-colors hover:text-blue-800 hover:underline"
+                              onClick={() => setShowPassword((s) => !s)}
+                            >
+                              {showPassword ? 'Hide' : 'Show'}
+                            </button>
+                          </div>
+                          <SettingsInput
+                            type={showPassword ? 'text' : 'password'}
+                            value={accountPassword}
+                            onChange={(e) => setAccountPassword(e.target.value)}
+                            autoComplete="new-password"
+                            placeholder="Enter new password"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600">
+                              Confirm new password
+                            </label>
+                            <button
+                              type="button"
+                              className="text-xs font-semibold text-blue-700 transition-colors hover:text-blue-800 hover:underline"
+                              onClick={() => setShowPasswordConfirm((s) => !s)}
+                            >
+                              {showPasswordConfirm ? 'Hide' : 'Show'}
+                            </button>
+                          </div>
+                          <SettingsInput
+                            type={showPasswordConfirm ? 'text' : 'password'}
+                            value={accountPasswordConfirm}
+                            onChange={(e) => setAccountPasswordConfirm(e.target.value)}
+                            autoComplete="new-password"
+                            placeholder="Confirm new password"
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className="text-xs font-semibold text-gray-600 transition-colors hover:text-gray-800 hover:underline"
+                          onClick={() => {
+                            setShowPasswordFields(false);
+                            setShowPassword(false);
+                            setShowPasswordConfirm(false);
+                            setAccountPassword('');
+                            setAccountPasswordConfirm('');
+                          }}
+                        >
+                          Cancel password change
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="flex justify-end border-t border-gray-100 pt-4">
+                      <button
+                        type="submit"
+                        disabled={savingAccount}
+                        className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {savingAccount ? 'Saving...' : 'Update account'}
+                      </button>
+                    </div>
+                  </form>
+                </SettingsCard>
+
+                <SettingsCard title="Login history" collapsible defaultOpen={false}>
+                  <div className="space-y-3.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <p className="text-sm text-gray-600">Recent successful sign-ins for this account.</p>
+                      <button
+                        type="button"
+                        onClick={loadLoginHistory}
+                        disabled={loadingLoginHistory}
+                        className="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {loadingLoginHistory ? 'Refreshing...' : 'Refresh'}
+                      </button>
+                    </div>
+                    {loadingLoginHistory ? (
+                      <p className="text-sm text-gray-500">Loading login history...</p>
+                    ) : loginHistoryError ? (
+                      <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                        {loginHistoryError}
+                      </p>
+                    ) : loginHistory.length === 0 ? (
+                      <p className="text-sm text-gray-500">No recent login activity yet.</p>
+                    ) : (
+                      <ul className="space-y-2">
+                        {loginHistory.map((event) => (
+                          <li
+                            key={event.id}
+                            className="rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2 text-sm text-gray-700"
+                          >
+                            <span className="font-medium text-gray-900">Signed in</span>{' '}
+                            <span>on {new Date(event.logged_in_at).toLocaleString()}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </SettingsCard>
+
+                <SettingsDangerZone
+                  title="Delete account"
+                  description="This permanently removes your account and cannot be undone."
+                >
+                  <button
+                    type="button"
+                    className="inline-flex items-center rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
+                    onClick={() => setConfirmDeleteAccount(true)}
+                  >
+                    Delete account permanently
+                  </button>
+                </SettingsDangerZone>
+                </div>
               </div>
             )}
 

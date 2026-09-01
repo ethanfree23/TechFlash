@@ -30,7 +30,7 @@ export default function SettingsScreen() {
 
   const isAdmin = user?.role === 'admin';
   const sectionIds = useMemo(
-    () => ['account', 'profile', 'notifications', 'payment', ...(isAdmin ? ['system_controls', 'job_access'] : [])],
+    () => ['profile', 'account', 'notifications', 'payment', ...(isAdmin ? ['system_controls', 'job_access'] : [])],
     [isAdmin]
   );
 
@@ -170,19 +170,19 @@ export default function SettingsScreen() {
       </View>
 
       <SettingSection
-        title="Account"
-        expanded={!!expanded.account}
-        onToggle={() => setExpanded((prev) => ({ ...prev, account: !prev.account }))}
-      >
-        <SettingsAccountPanel user={user} onApplied={onApplied} notice={notice} onDeleted={logout} />
-      </SettingSection>
-
-      <SettingSection
         title="Profile"
         expanded={!!expanded.profile}
         onToggle={() => setExpanded((prev) => ({ ...prev, profile: !prev.profile }))}
       >
         <SettingsProfilePanel user={user} profile={profile} form={form} setForm={setForm} onSaved={load} />
+      </SettingSection>
+
+      <SettingSection
+        title="Account"
+        expanded={!!expanded.account}
+        onToggle={() => setExpanded((prev) => ({ ...prev, account: !prev.account }))}
+      >
+        <SettingsAccountPanel user={user} onApplied={onApplied} notice={notice} onDeleted={logout} />
       </SettingSection>
 
       <SettingSection

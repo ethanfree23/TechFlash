@@ -1,5 +1,4 @@
 const VALID_TABS = new Set([
-  'account',
   'profile',
   'notifications',
   'payment',
@@ -24,14 +23,15 @@ const VALID_SUBS = new Set([
 ]);
 
 export function parseSettingsUrl() {
-  if (typeof window === 'undefined') return { tab: 'account', sub: null };
+  if (typeof window === 'undefined') return { tab: 'profile', sub: null };
   const params = new URLSearchParams(window.location.search);
-  let tab = params.get('tab') || 'account';
+  let tab = params.get('tab') || 'profile';
   if (tab === 'billing') tab = 'payment';
+  if (tab === 'account') tab = 'profile';
   if (tab === 'job_access') {
     return { tab: 'system_controls', sub: 'job_access' };
   }
-  if (!VALID_TABS.has(tab)) tab = 'account';
+  if (!VALID_TABS.has(tab)) tab = 'profile';
   const rawSub = params.get('sub');
   const sub = rawSub && VALID_SUBS.has(rawSub) ? rawSub : null;
   return { tab, sub };
@@ -42,7 +42,7 @@ export function replaceSettingsUrl(tab, sub) {
   const path = window.location.pathname || '/settings';
   const p = new URLSearchParams();
   const tabForUrl = tab === 'payment' ? 'billing' : tab;
-  if (tabForUrl && tabForUrl !== 'account') p.set('tab', tabForUrl);
+  if (tabForUrl && tabForUrl !== 'profile' && tabForUrl !== 'account') p.set('tab', tabForUrl);
   if (tab === 'system_controls' && sub && sub !== 'pricing') p.set('sub', sub);
   const qs = p.toString();
   window.history.replaceState({}, '', qs ? `${path}?${qs}` : path);
