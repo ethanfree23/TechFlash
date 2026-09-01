@@ -78,6 +78,33 @@ function testNeedsTechnicianMapSetup() {
 
   assert.strictEqual(
     needsTechnicianMapSetup({
+      address: '',
+      city: '',
+      state: 'Texas',
+      zip_code: '77306',
+      country: 'United States',
+      latitude: 30.3113,
+      longitude: -95.456,
+    }),
+    false,
+    'ZIP centroid with valid coordinates is map-ready'
+  );
+
+  assert.strictEqual(
+    needsTechnicianMapSetup({
+      address: '',
+      city: '',
+      zip_code: '77306',
+      country: 'United States',
+      latitude: null,
+      longitude: null,
+    }),
+    true,
+    'ZIP without coordinates is not map-ready'
+  );
+
+  assert.strictEqual(
+    needsTechnicianMapSetup({
       address: '100 Main St',
       city: 'Houston',
       state: 'Texas',
@@ -136,6 +163,19 @@ function testNeedsExactStreetAddress() {
       country: 'United States',
     }),
     false
+  );
+
+  assert.strictEqual(
+    needsExactStreetAddress({
+      address: '',
+      city: '',
+      zip_code: '77306',
+      country: 'United States',
+      latitude: 30.3113,
+      longitude: -95.456,
+    }),
+    true,
+    'ZIP-only with coords still prompts for an exact street'
   );
 }
 

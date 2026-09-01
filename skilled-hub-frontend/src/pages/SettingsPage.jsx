@@ -2435,12 +2435,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           {needsMapSetup && (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
               <p className="text-sm font-semibold text-amber-900">
-                {profile?.address || profile?.city ? "We couldn't place your address on the map" : 'Complete map setup'}
+                {profile?.address || profile?.city || profile?.zip_code ? "We couldn't place your address on the map" : 'Complete map setup'}
               </p>
               <p className="text-sm text-amber-800 mt-1">
-                {profile?.address || profile?.city
+                {profile?.address || profile?.city || profile?.zip_code
                   ? 'Please confirm it below so nearby jobs and your home pin stay in the right place.'
-                  : 'Add your full address so job maps can center correctly and show accurate nearby jobs.'}
+                  : 'Add a ZIP or address so job maps can center correctly and show accurate nearby jobs.'}
               </p>
             </div>
           )}
@@ -2668,7 +2668,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   />
                   {profile?.geocode_status === 'failed' && (
                     <p className="mt-2 text-xs text-amber-800">
-                      We couldn't place this address on the map. Select it from the suggestions or confirm the street, city, and ZIP.
+                      We couldn't place this address on the map. A ZIP is enough, or add a street and city.
                     </p>
                   )}
                   {needsMapSetup && (

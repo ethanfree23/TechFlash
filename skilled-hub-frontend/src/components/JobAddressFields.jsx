@@ -3,7 +3,7 @@ import CountryStateSelect from './CountryStateSelect';
 import { addressesAPI } from '../api/api';
 
 /**
- * Search by street address or broader area (city/state), pick a Google Maps / Places
+ * Search by street, city, or ZIP, pick a Google Maps / Places
  * match (when API key is configured) or OpenStreetMap suggestions, or expand to manual fields.
  */
 const JobAddressFields = ({
