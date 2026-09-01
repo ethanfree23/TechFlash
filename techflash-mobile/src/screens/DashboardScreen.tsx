@@ -18,7 +18,7 @@ import { colors, radii, typography } from '../theme';
 import { Card } from '../components/ui/Card';
 import { MapJobsPreview, type MapMarker } from '../components/MapJobsPreview';
 import type { AppStackParamList } from '../navigation/RootNavigator';
-import { geocodeAddress } from '../utils/geocode';
+import { parseCoordinatePair } from '../utils/coordinates';
 import { listConversations, type Conversation } from '../api/conversationsApi';
 import * as Location from 'expo-location';
 import { formatJobAddress } from '../utils/address';
@@ -90,8 +90,7 @@ export default function DashboardScreen() {
             gpsCenter = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
           }
         } catch (_) {}
-        const plat = Number(profile?.latitude);
-        const plng = Number(profile?.longitude);
+        const profilePair = parseCoordinatePair(profile?.latitude, profile?.longitude);
         if (gpsCenter) {
           markers.push({
             id: 'me',
@@ -100,11 +99,11 @@ export default function DashboardScreen() {
             title: 'You',
             description: 'Current device location',
           });
-        } else if (Number.isFinite(plat) && Number.isFinite(plng)) {
+        } else if (profilePair) {
           markers.push({
             id: 'me',
-            latitude: plat,
-            longitude: plng,
+            latitude: profilePair.latitude,
+            longitude: profilePair.longitude,
             title: 'You',
             description: 'Saved profile location',
           });
@@ -113,18 +112,16 @@ export default function DashboardScreen() {
         const jobs = Array.isArray(openJobs) ? openJobs : [];
         for (const job of jobs) {
           const j = job as Record<string, unknown>;
-          let lat = Number(j.latitude);
-          let lng = Number(j.longitude);
-          if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+          let pair = parseCoordinatePair(j.latitude, j.longitude);
+          if (!pair) {
             const geo = await geocodeAddress(String(j.location || j.address || '').trim());
-            lat = Number(geo?.latitude);
-            lng = Number(geo?.longitude);
+            pair = parseCoordinatePair(geo?.latitude, geo?.longitude);
           }
-          if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+          if (!pair) continue;
           markers.push({
             id: `job-${j.id}`,
-            latitude: lat,
-            longitude: lng,
+            latitude: pair.latitude,
+            longitude: pair.longitude,
             title: typeof j.title === 'string' ? j.title : `Job #${j.id}`,
             description: formatJobAddress(j),
           });

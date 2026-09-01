@@ -234,7 +234,15 @@ module Api
             tp = user.technician_profile
             return render json: { errors: ["Technician profile not found"] }, status: :not_found unless tp
 
-            attrs = technician_profile_admin_params
+            attrs = technician_profile_admin_params.to_h.with_indifferent_access
+            country = attrs[:country].presence || tp.country
+            if CoordinateValidator.valid?(attrs[:latitude], attrs[:longitude], country: country)
+              tp.client_coordinates_provided = true
+            else
+              tp.client_coordinates_provided = false
+              attrs.delete(:latitude)
+              attrs.delete(:longitude)
+            end
             unless tp.update(attrs)
               return render json: { errors: tp.errors.full_messages }, status: :unprocessable_entity
             end
@@ -396,6 +404,9 @@ module Api
             :state,
             :zip_code,
             :country,
+            :latitude,
+            :longitude,
+            :place_id,
             :background_verified
           )
           if p.key?(:experience_years)

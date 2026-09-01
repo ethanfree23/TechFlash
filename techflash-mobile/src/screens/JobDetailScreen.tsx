@@ -10,6 +10,7 @@ import { useAuth } from '../auth/AuthContext';
 import type { AppStackParamList } from '../navigation/RootNavigator';
 import { Card } from '../components/ui/Card';
 import { geocodeAddress } from '../utils/geocode';
+import { parseCoordinatePair } from '../utils/coordinates';
 import { formatJobAddress } from '../utils/address';
 import { technicianClassLabel } from '../constants/technicianClass';
 
@@ -37,15 +38,12 @@ export default function JobDetailScreen() {
       const data = await getJobById(jobId);
       const nextJob = (data || {}) as Record<string, unknown>;
       setJob(nextJob);
-      let lat = Number(nextJob.latitude);
-      let lng = Number(nextJob.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      let pair = parseCoordinatePair(nextJob.latitude, nextJob.longitude);
+      if (!pair) {
         const geo = await geocodeAddress(formatJobAddress(nextJob));
-        lat = Number(geo?.latitude);
-        lng = Number(geo?.longitude);
+        pair = parseCoordinatePair(geo?.latitude, geo?.longitude);
       }
-      if (Number.isFinite(lat) && Number.isFinite(lng)) setMapMarker({ latitude: lat, longitude: lng });
-      else setMapMarker(null);
+      setMapMarker(pair);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load job');
     } finally {

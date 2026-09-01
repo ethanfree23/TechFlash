@@ -13,6 +13,7 @@ const testFiles = [
   'data.test.mjs',
   'api.test.mjs',
   'technicianMap.test.mjs',
+  'coordinates.test.mjs',
   'jobAccessSettings.test.mjs',
   'demoRouting.test.mjs',
   'payBasis.test.mjs',

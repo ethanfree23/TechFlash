@@ -179,7 +179,8 @@ class Job < ApplicationRecord
 
   def geocode_address
     return unless address.present? || city.present?
-    return unless latitude.blank? || longitude.blank? || new_record? || address_changed? || city_changed? || state_changed? || zip_code_changed? || country_changed?
+    coords_valid = CoordinateValidator.valid?(latitude, longitude, country: country)
+    return unless !coords_valid || new_record? || address_changed? || city_changed? || state_changed? || zip_code_changed? || country_changed?
     coords = GeocodingService.geocode(
       address: address,
       city: city,
@@ -187,8 +188,14 @@ class Job < ApplicationRecord
       zip_code: zip_code,
       country: country
     )
-    self.latitude = coords[0] if coords
-    self.longitude = coords[1] if coords
+    pair = coords && CoordinateValidator.pair(coords[0], coords[1], country: country)
+    if pair&.valid?
+      self.latitude = pair.latitude
+      self.longitude = pair.longitude
+    elsif !coords_valid
+      self.latitude = nil
+      self.longitude = nil
+    end
   rescue StandardError => e
     Rails.logger.warn("Job geocoding failed: #{e.message}")
   end

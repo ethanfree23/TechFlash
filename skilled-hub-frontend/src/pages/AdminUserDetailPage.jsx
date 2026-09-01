@@ -423,6 +423,9 @@ export default function AdminUserDetailPage({ user, onLogout }) {
         state: profile.state || 'Texas',
         zip_code: profile.zip_code || '',
         country: profile.country || 'United States',
+        latitude: profile.latitude ?? null,
+        longitude: profile.longitude ?? null,
+        place_id: profile.place_id || '',
         experience_years: profile.experience_years != null ? String(profile.experience_years) : '',
         availability: profile.availability || '',
         bio: profile.bio || '',
@@ -467,6 +470,9 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               state: profileDraft.state?.trim(),
               zip_code: profileDraft.zip_code?.trim(),
               country: profileDraft.country?.trim(),
+              latitude: profileDraft.latitude ?? null,
+              longitude: profileDraft.longitude ?? null,
+              place_id: profileDraft.place_id || null,
               phone: profileDraft.phone?.trim(),
               availability: profileDraft.availability?.trim(),
               bio: profileDraft.bio?.trim(),
@@ -1109,14 +1115,24 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                         zipCode={profileDraft.zip_code || ''}
                         country={profileDraft.country || 'United States'}
                         onChange={(patch) =>
-                          setProfileDraft((d) => ({
-                            ...d,
-                            ...(patch.address !== undefined ? { address: patch.address } : {}),
-                            ...(patch.city !== undefined ? { city: patch.city } : {}),
-                            ...(patch.state !== undefined ? { state: patch.state } : {}),
-                            ...(patch.zip_code !== undefined ? { zip_code: patch.zip_code } : {}),
-                            ...(patch.country !== undefined ? { country: patch.country } : {}),
-                          }))
+                          setProfileDraft((d) => {
+                            const next = { ...d };
+                            if (patch.address !== undefined) next.address = patch.address;
+                            if (patch.city !== undefined) next.city = patch.city;
+                            if (patch.state !== undefined) next.state = patch.state;
+                            if (patch.zip_code !== undefined) next.zip_code = patch.zip_code;
+                            if (patch.country !== undefined) next.country = patch.country;
+                            if ('latitude' in patch || 'longitude' in patch || 'place_id' in patch) {
+                              next.latitude = patch.latitude ?? null;
+                              next.longitude = patch.longitude ?? null;
+                              next.place_id = patch.place_id ?? null;
+                            } else {
+                              next.latitude = null;
+                              next.longitude = null;
+                              next.place_id = null;
+                            }
+                            return next;
+                          })
                         }
                       />
                     </div>

@@ -23,7 +23,10 @@ module Api
       end
 
       def create
-        technician = TechnicianProfile.new(technician_params)
+        attrs = technician_params.to_h.with_indifferent_access
+        technician = TechnicianProfile.new
+        apply_client_coordinates!(technician, attrs)
+        technician.assign_attributes(attrs)
         if technician.save
           render json: technician, serializer: TechnicianProfileSerializer, status: :created
         else
@@ -35,7 +38,8 @@ module Api
         technician = TechnicianProfile.find(params[:id])
         return render json: { error: 'Access denied' }, status: :forbidden unless technician.user_id == @current_user.id
 
-        attrs = technician_params.to_h
+        attrs = technician_params.to_h.with_indifferent_access
+        apply_client_coordinates!(technician, attrs)
         avatar_changed = attach_profile_avatar!(technician)
         technician.assign_attributes(attrs.except(:avatar))
         technician.updated_at = Time.current if avatar_changed
@@ -121,7 +125,18 @@ module Api
 
       def technician_params
         params.permit(:trade_type, :skill_class, :experience_years, :availability, :bio, :phone, :location, :user_id,
-                     :address, :city, :state, :zip_code, :country, specialties: [])
+                     :address, :city, :state, :zip_code, :country, :latitude, :longitude, :place_id, specialties: [])
+      end
+
+      def apply_client_coordinates!(technician, attrs)
+        country = attrs[:country].presence || technician.country
+        if CoordinateValidator.valid?(attrs[:latitude], attrs[:longitude], country: country)
+          technician.client_coordinates_provided = true
+        else
+          technician.client_coordinates_provided = false
+          attrs.delete(:latitude)
+          attrs.delete(:longitude)
+        end
       end
 
       def attach_profile_avatar!(record)

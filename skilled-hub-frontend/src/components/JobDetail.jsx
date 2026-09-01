@@ -24,7 +24,7 @@ import { FormattedJobDescription } from '../utils/formattedJobText';
 import JobStatusBadge from './jobs/JobStatusBadge';
 import JobTimeEntriesPanel from './jobs/JobTimeEntriesPanel';
 import { confirmStripeCardPayment } from '../utils/confirmStripePayment';
-import { formatWorkingDays, formatWeekendPolicySummary, formatOvertimeSummary, canTechnicianClaim } from '../utils/jobDisplayUtils';
+import { parseCoordinatePair } from '../utils/coordinates';
 
 const toDatetimeLocal = (d) => {
   if (!d) return '';
@@ -101,10 +101,9 @@ const rollingRuleSummary = (job) => {
 };
 
 const buildMapEmbedUrl = (job) => {
-  const lat = Number(job?.latitude);
-  const lng = Number(job?.longitude);
-  if (Number.isFinite(lat) && Number.isFinite(lng)) {
-    return `https://www.google.com/maps?q=${lat},${lng}&z=13&output=embed`;
+  const pair = parseCoordinatePair(job?.latitude, job?.longitude);
+  if (pair) {
+    return `https://www.google.com/maps?q=${pair.lat},${pair.lng}&z=13&output=embed`;
   }
   const query = [job?.address, job?.city, job?.state, job?.zip_code, job?.country, job?.location]
     .filter(Boolean)

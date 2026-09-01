@@ -4,7 +4,9 @@ module Api
       before_action :authenticate_user
 
       def index
-        technicians = TechnicianProfile.includes(:user).where.not(latitude: nil, longitude: nil)
+        technicians = TechnicianProfile.includes(:user).to_a.select do |profile|
+          CoordinateValidator.valid?(profile.latitude, profile.longitude, country: profile.country)
+        end
         real_markers = technicians.map { |profile| serialize_real_marker(profile) }
         simulated = SimulatedTechnicianMarker.where(active: true).map { |marker| serialize_simulated_marker(marker) }
         render json: { markers: real_markers + simulated }, status: :ok

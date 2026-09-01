@@ -9,6 +9,11 @@ import {
   formatDistanceMi,
   haversineMiles,
   needsExactStreetAddress,
+  needsMapPlacement,
+  parseCoordinatePair,
+  resolveTechnicianMapCenter,
+  technicianHomeLatLng,
+  US_DEFAULT_MAP_CENTER,
   zoomForMapWidthMiles,
 } from '../utils/technicianMap';
 import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen, FaBuilding } from 'react-icons/fa';
@@ -542,9 +547,9 @@ function displayPositionsForJobMarkers(jobs, homeLatLng) {
   if (!jobs?.length) return [];
   const clusterMi = 0.18;
   return jobs.map((job, idx) => {
-    const lat = Number(job.latitude);
-    const lng = Number(job.longitude);
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { lat, lng };
+    const pair = parseCoordinatePair(job.latitude, job.longitude);
+    if (!pair) return null;
+    const { lat, lng } = pair;
     if (!homeLatLng) return { lat, lng };
     const mi = haversineMiles(homeLatLng.lat, homeLatLng.lng, lat, lng);
     if (mi > clusterMi) return { lat, lng };
@@ -556,7 +561,7 @@ function displayPositionsForJobMarkers(jobs, homeLatLng) {
       lat: lat + rDeg * Math.cos(theta),
       lng: lng + (rDeg * Math.sin(theta)) / Math.cos((lat * Math.PI) / 180),
     };
-  });
+  }).filter(Boolean);
 }
 
 const TechnicianOpenJobsMap = ({
@@ -580,12 +585,9 @@ const TechnicianOpenJobsMap = ({
   const [fallbackCoordsByJobId, setFallbackCoordsByJobId] = useState({});
   const [presenceMarkers, setPresenceMarkers] = useState([]);
 
-  const technicianLat = Number(technicianProfile?.latitude);
-  const technicianLng = Number(technicianProfile?.longitude);
-  const hasTechnicianCoords = Number.isFinite(technicianLat) && Number.isFinite(technicianLng);
   const homeLatLng = useMemo(
-    () => (hasTechnicianCoords ? { lat: technicianLat, lng: technicianLng } : null),
-    [hasTechnicianCoords, technicianLat, technicianLng]
+    () => technicianHomeLatLng(technicianProfile),
+    [technicianProfile?.latitude, technicianProfile?.longitude, technicianProfile?.country]
   );
   homeLatLngRef.current = homeLatLng;
 
@@ -613,15 +615,11 @@ const TechnicianOpenJobsMap = ({
     () =>
       (jobs || [])
         .map((job) => {
-          const lat = Number(job?.latitude);
-          const lng = Number(job?.longitude);
-          const fallbackCoords = fallbackCoordsByJobId[job?.id];
-          const fallbackLat = Number(fallbackCoords?.lat);
-          const fallbackLng = Number(fallbackCoords?.lng);
-          const resolvedLat = Number.isFinite(lat) ? lat : fallbackLat;
-          const resolvedLng = Number.isFinite(lng) ? lng : fallbackLng;
-          if (!Number.isFinite(resolvedLat) || !Number.isFinite(resolvedLng)) return null;
-          return { ...job, latitude: resolvedLat, longitude: resolvedLng };
+          const pair =
+            parseCoordinatePair(job?.latitude, job?.longitude) ||
+            parseCoordinatePair(fallbackCoordsByJobId[job?.id]?.lat, fallbackCoordsByJobId[job?.id]?.lng);
+          if (!pair) return null;
+          return { ...job, latitude: pair.lat, longitude: pair.lng };
         })
         .filter(Boolean),
     [jobs, fallbackCoordsByJobId]
@@ -632,13 +630,13 @@ const TechnicianOpenJobsMap = ({
     [normalizedJobs, selectedMapJobId]
   );
 
-  const selectedLatLng = useMemo(() => {
-    if (!Number.isFinite(selectedMapJob?.latitude) || !Number.isFinite(selectedMapJob?.longitude)) return null;
-    return { lat: selectedMapJob.latitude, lng: selectedMapJob.longitude };
-  }, [selectedMapJob?.latitude, selectedMapJob?.longitude]);
+  const selectedLatLng = useMemo(
+    () => parseCoordinatePair(selectedMapJob?.latitude, selectedMapJob?.longitude),
+    [selectedMapJob?.latitude, selectedMapJob?.longitude]
+  );
 
-  const fallbackQuery = hasTechnicianCoords
-    ? `${technicianLat},${technicianLng}`
+  const fallbackQuery = homeLatLng
+    ? `${homeLatLng.lat},${homeLatLng.lng}`
     : (homeAddressQuery || selectedMapJob?.location || normalizedJobs[0]?.location || 'United States');
   const fallbackEmbedUrl = `https://www.google.com/maps?q=${encodeURIComponent(fallbackQuery)}&z=${HOME_MAP_ZOOM}&output=embed`;
 
@@ -681,8 +679,8 @@ const TechnicianOpenJobsMap = ({
   useEffect(() => {
     if (!mapsReady || !window.google?.maps?.Geocoder) return;
     const needsResolution = (jobs || []).filter((job) => {
-      const hasCoords = Number.isFinite(Number(job?.latitude)) && Number.isFinite(Number(job?.longitude));
-      const hasFallback = Number.isFinite(Number(fallbackCoordsByJobId[job?.id]?.lat)) && Number.isFinite(Number(fallbackCoordsByJobId[job?.id]?.lng));
+      const hasCoords = parseCoordinatePair(job?.latitude, job?.longitude);
+      const hasFallback = parseCoordinatePair(fallbackCoordsByJobId[job?.id]?.lat, fallbackCoordsByJobId[job?.id]?.lng);
       return !hasCoords && !hasFallback;
     });
     if (!needsResolution.length) return;
@@ -712,8 +710,12 @@ const TechnicianOpenJobsMap = ({
           return;
         }
         const loc = results[0].geometry.location;
-        const coords = { lat: loc.lat(), lng: loc.lng() };
+        const coords = parseCoordinatePair(loc.lat(), loc.lng());
         geocodeCacheRef.current.set(query, coords);
+        if (!coords) {
+          geocodeInFlightRef.current.delete(query);
+          return;
+        }
         geocodeInFlightRef.current.delete(query);
         setFallbackCoordsByJobId((prev) => ({
           ...prev,
@@ -730,7 +732,17 @@ const TechnicianOpenJobsMap = ({
     if (!mapsReady || !mapContainerRef.current || !window.google?.maps) return;
 
     const maps = window.google.maps;
-    const defaultCenter = homeLatLng || selectedLatLng || { lat: 39.5, lng: -98.35 };
+    const presencePositions = (presenceMarkers || [])
+      .map((m) => parseCoordinatePair(m.latitude, m.longitude))
+      .filter(Boolean);
+    const view = resolveTechnicianMapCenter({
+      homeLatLng,
+      selectedLatLng,
+      jobPositions: normalizedJobs,
+      presencePositions,
+      usDefault: US_DEFAULT_MAP_CENTER,
+    });
+    const defaultCenter = view.center || selectedLatLng || US_DEFAULT_MAP_CENTER;
     if (!mapRef.current) {
       mapRef.current = new maps.Map(mapContainerRef.current, {
         center: defaultCenter,
@@ -772,9 +784,9 @@ const TechnicianOpenJobsMap = ({
     }
 
     (presenceMarkers || []).forEach((m) => {
-      const lat = Number(m.latitude);
-      const lng = Number(m.longitude);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
+      const pair = parseCoordinatePair(m.latitude, m.longitude);
+      if (!pair) return;
+      const { lat, lng } = pair;
       const fill =
         m.color ||
         (m.marker_type === 'simulated' ? '#64748b' : '#3b82f6');
@@ -821,7 +833,11 @@ const TechnicianOpenJobsMap = ({
       markersRef.current.push(marker);
     });
 
-    const homeKey = homeLatLng ? `${homeLatLng.lat.toFixed(5)},${homeLatLng.lng.toFixed(5)}` : '';
+    const homeKey = homeLatLng
+      ? `home:${homeLatLng.lat.toFixed(5)},${homeLatLng.lng.toFixed(5)}`
+      : selectedLatLng
+        ? `sel:${selectedLatLng.lat.toFixed(5)},${selectedLatLng.lng.toFixed(5)}`
+        : `fit:${normalizedJobs.length}:${presenceMarkers.length}`;
     const shouldApplyDefaultCamera = appliedHomeCameraKeyRef.current !== homeKey;
     const applyDefaultCamera = () => {
       if (homeLatLng) {
@@ -836,9 +852,8 @@ const TechnicianOpenJobsMap = ({
           markerDisplayPositions.forEach((pos) => bounds.extend(pos));
         }
         presenceMarkers.forEach((m) => {
-          const lat = Number(m.latitude);
-          const lng = Number(m.longitude);
-          if (Number.isFinite(lat) && Number.isFinite(lng)) bounds.extend({ lat, lng });
+          const pair = parseCoordinatePair(m.latitude, m.longitude);
+          if (pair) bounds.extend(pair);
         });
         if (!bounds.isEmpty()) {
           mapRef.current.fitBounds(bounds, 90);
@@ -1131,18 +1146,17 @@ const TechnicianDashboardContent = ({
   /** Incremented when the user explicitly focuses a job so the map pans/zooms (fitBounds alone is often invisible). */
   const [mapPanNonce, setMapPanNonce] = useState(0);
   const searchRadiusMiles = 100;
-  const technicianLat = Number(technicianProfile?.latitude);
-  const technicianLng = Number(technicianProfile?.longitude);
+  const technicianHome = technicianHomeLatLng(technicianProfile);
 
   const nearbyOpenJobs = useMemo(
-    () => filterJobsWithinRadius(openJobs, technicianLat, technicianLng, searchRadiusMiles),
-    [openJobs, technicianLat, technicianLng]
+    () => filterJobsWithinRadius(openJobs, technicianHome?.lat, technicianHome?.lng, searchRadiusMiles),
+    [openJobs, technicianHome]
   );
 
   const mapDisplayJobs = useMemo(() => {
     if (nearbyOpenJobs.length > 0) return nearbyOpenJobs;
-    return filterJobsWithinRadius(openJobs, technicianLat, technicianLng, Number.POSITIVE_INFINITY);
-  }, [nearbyOpenJobs, openJobs, technicianLat, technicianLng]);
+    return filterJobsWithinRadius(openJobs, technicianHome?.lat, technicianHome?.lng, Number.POSITIVE_INFINITY);
+  }, [nearbyOpenJobs, openJobs, technicianHome]);
 
   useEffect(() => {
     if (!mapDisplayJobs.length) {
@@ -1191,6 +1205,7 @@ const TechnicianDashboardContent = ({
 
   const nearbyPreviewDistance = mapDisplayJobs.find((job) => job.id === nearbyJobPreviewId)?.distanceMiles;
   const needsExactAddressPrompt = needsExactStreetAddress(technicianProfile);
+  const needsPlacementPrompt = needsMapPlacement(technicianProfile);
 
   const openNearbyJobPreview = (jobId) => {
     setSelectedMapJobId(jobId);
@@ -1209,7 +1224,21 @@ const TechnicianDashboardContent = ({
         onClose={() => setNearbyJobPreviewId(null)}
         navigate={navigate}
       />
-      {needsExactAddressPrompt && (
+      {needsPlacementPrompt && (
+        <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-950 shadow-sm">
+          <p className="font-semibold text-sm sm:text-base mb-1">We couldn't place your address on the map</p>
+          <p className="text-sm text-amber-900/90 mb-3">
+            Please confirm it in Settings so nearby jobs and your home pin stay in the right place.
+          </p>
+          <Link
+            to="/settings"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700"
+          >
+            Confirm address in Settings
+          </Link>
+        </div>
+      )}
+      {needsExactAddressPrompt && !needsPlacementPrompt && (
         <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-950 shadow-sm">
           <p className="font-semibold text-sm sm:text-base mb-1">Add your exact address for better map matching</p>
           <p className="text-sm text-amber-900/90 mb-3">

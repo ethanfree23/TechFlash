@@ -1,3 +1,19 @@
+import {
+  parseCoordinatePair,
+  technicianHomeLatLng as technicianHomeFromProfile,
+} from './coordinates.js';
+
+export {
+  isValidCoordinatePair,
+  isValidUSTechnicianCoordinates,
+  parseCoordinatePair,
+  parseCoordinate,
+  technicianHomeLatLng,
+  resolveTechnicianMapCenter,
+  needsMapPlacement,
+  US_DEFAULT_MAP_CENTER,
+} from './coordinates.js';
+
 /** Web Mercator meters-per-pixel at zoom 0 on the equator (Google Maps). */
 const GOOGLE_MAPS_ZOOM0_MPP = 156543.03392;
 
@@ -23,10 +39,11 @@ export const zoomForMapWidthMiles = (lat, widthPx, diameterMiles) => {
 
 /** Axis-aligned bounding box (SW / NE corners) approximating a circle of radiusMiles around center. Good for map fitBounds. */
 export const boundingBoxForRadiusMiles = (centerLat, centerLng, radiusMiles) => {
-  const lat = Number(centerLat);
-  const lng = Number(centerLng);
+  const pair = parseCoordinatePair(centerLat, centerLng);
   const r = Number(radiusMiles);
-  if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(r) || r <= 0) return null;
+  if (!pair || !Number.isFinite(r) || r <= 0) return null;
+  const lat = pair.lat;
+  const lng = pair.lng;
   const latRad = (lat * Math.PI) / 180;
   const dLat = r / 69.0;
   const cosLat = Math.cos(latRad);
@@ -52,19 +69,22 @@ export const haversineMiles = (lat1, lon1, lat2, lon2) => {
 };
 
 export const filterJobsWithinRadius = (jobs, centerLat, centerLng, radiusMiles) => {
-  const normalizedCenterLat = Number(centerLat);
-  const normalizedCenterLng = Number(centerLng);
-  const hasCenterCoords = Number.isFinite(normalizedCenterLat) && Number.isFinite(normalizedCenterLng);
+  const center = parseCoordinatePair(centerLat, centerLng);
+  const hasCenterCoords = center != null;
+  const normalizedCenterLat = center?.lat;
+  const normalizedCenterLng = center?.lng;
   return (jobs || [])
     .map((job) => {
-      const jobLat = Number(job?.latitude);
-      const jobLng = Number(job?.longitude);
-      const hasJobCoords = Number.isFinite(jobLat) && Number.isFinite(jobLng);
+      const jobPair = parseCoordinatePair(job?.latitude, job?.longitude);
+      const jobLat = jobPair?.lat;
+      const jobLng = jobPair?.lng;
       return {
         ...job,
-        latitude: hasJobCoords ? jobLat : job?.latitude,
-        longitude: hasJobCoords ? jobLng : job?.longitude,
-        distanceMiles: haversineMiles(normalizedCenterLat, normalizedCenterLng, jobLat, jobLng),
+        latitude: jobPair ? jobLat : job?.latitude,
+        longitude: jobPair ? jobLng : job?.longitude,
+        distanceMiles: hasCenterCoords && jobPair
+          ? haversineMiles(normalizedCenterLat, normalizedCenterLng, jobLat, jobLng)
+          : Infinity,
       };
     })
     .filter((job) => {
@@ -87,11 +107,13 @@ export const formatDistanceMi = (miles) => {
   return `${Math.round(miles)} mi`;
 };
 
-export const needsTechnicianMapSetup = (profile) => (
-  !String(profile?.city || '').trim() ||
-  !String(profile?.state || '').trim() ||
-  !String(profile?.country || '').trim()
-);
+export const needsTechnicianMapSetup = (profile) => {
+  const missingRegion =
+    !String(profile?.city || '').trim() ||
+    !String(profile?.state || '').trim() ||
+    !String(profile?.country || '').trim();
+  return missingRegion || !technicianHomeFromProfile(profile);
+};
 
 export const needsExactStreetAddress = (profile) => (
   !needsTechnicianMapSetup(profile) &&

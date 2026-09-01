@@ -127,6 +127,173 @@ module Api
         assert_equal "Houston, Texas, United States", profile.location
         assert_in_delta 29.7604, profile.latitude.to_f, 0.0001
         assert_in_delta(-95.3698, profile.longitude.to_f, 0.0001)
+        assert_equal "success", profile.geocode_status
+      end
+
+      test "places coordinates are stored without a second geocode request" do
+        user = User.create!(
+          email: "tech-places-coords@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        profile = TechnicianProfile.create!(
+          user: user,
+          trade_type: "General",
+          experience_years: 2,
+          availability: "Full-time",
+          phone: "713-555-0400"
+        )
+        geocode_calls = 0
+        GeocodingService.stub(:geocode, ->(**_) { geocode_calls += 1; [1.0, 1.0] }) do
+          patch "/api/v1/technicians/#{profile.id}",
+                params: {
+                  address: "100 Main St",
+                  city: "Houston",
+                  state: "Texas",
+                  zip_code: "77002",
+                  country: "United States",
+                  latitude: 29.7604,
+                  longitude: -95.3698,
+                  place_id: "ChIJtestplace"
+                },
+                headers: auth_header_for(user),
+                as: :json
+        end
+
+        assert_response :ok
+        profile.reload
+        assert_equal 0, geocode_calls
+        assert_in_delta 29.7604, profile.latitude.to_f, 0.0001
+        assert_in_delta(-95.3698, profile.longitude.to_f, 0.0001)
+        assert_equal "ChIJtestplace", profile.place_id
+        assert_equal "success", profile.geocode_status
+        assert profile.map_ready?
+      end
+
+      test "manual address without client coordinates invokes server geocoding" do
+        user = User.create!(
+          email: "tech-manual-geocode@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        profile = TechnicianProfile.create!(
+          user: user,
+          trade_type: "General",
+          experience_years: 2,
+          availability: "Full-time",
+          phone: "713-555-0401"
+        )
+        geocode_calls = 0
+        GeocodingService.stub(:geocode, ->(**_) { geocode_calls += 1; [30.3113, -95.456] }) do
+          patch "/api/v1/technicians/#{profile.id}",
+                params: {
+                  address: "1 Test St",
+                  city: "Conroe",
+                  state: "Texas",
+                  zip_code: "77301",
+                  country: "United States"
+                },
+                headers: auth_header_for(user),
+                as: :json
+        end
+
+        assert_response :ok
+        profile.reload
+        assert_equal 1, geocode_calls
+        assert_in_delta 30.3113, profile.latitude.to_f, 0.0001
+        assert_in_delta(-95.456, profile.longitude.to_f, 0.0001)
+      end
+
+      test "address change plus geocode failure clears stale coordinates" do
+        user = User.create!(
+          email: "tech-stale-coords@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        profile = TechnicianProfile.create!(
+          user: user,
+          trade_type: "General",
+          experience_years: 2,
+          availability: "Full-time",
+          phone: "713-555-0402"
+        )
+        profile.update_columns(
+          address: "Old Houston St",
+          city: "Houston",
+          state: "Texas",
+          zip_code: "77002",
+          country: "United States",
+          latitude: 29.7604,
+          longitude: -95.3698,
+          geocode_status: "success"
+        )
+
+        with_stubbed_geocode(nil) do
+          patch "/api/v1/technicians/#{profile.id}",
+                params: {
+                  address: "1 Conroe St",
+                  city: "Conroe",
+                  state: "Texas",
+                  zip_code: "77301",
+                  country: "United States"
+                },
+                headers: auth_header_for(user),
+                as: :json
+        end
+
+        assert_response :ok
+        profile.reload
+        assert_equal "Conroe", profile.city
+        assert_nil profile.latitude
+        assert_nil profile.longitude
+        assert_equal "failed", profile.geocode_status
+        refute profile.map_ready?
+        body = JSON.parse(response.body)
+        assert_equal "failed", body["geocode_status"]
+        assert_nil body["latitude"]
+        assert_nil body["longitude"]
+      end
+
+      test "client 0,0 coordinates are rejected and not stored" do
+        user = User.create!(
+          email: "tech-zero-coords@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        profile = TechnicianProfile.create!(
+          user: user,
+          trade_type: "General",
+          experience_years: 2,
+          availability: "Full-time",
+          phone: "713-555-0403"
+        )
+        profile.update_columns(latitude: 29.7604, longitude: -95.3698, geocode_status: "success", city: "Houston", state: "Texas", country: "United States")
+
+        with_stubbed_geocode(nil) do
+          patch "/api/v1/technicians/#{profile.id}",
+                params: {
+                  address: "1 Conroe St",
+                  city: "Conroe",
+                  state: "Texas",
+                  zip_code: "77301",
+                  country: "United States",
+                  latitude: 0,
+                  longitude: 0
+                },
+                headers: auth_header_for(user),
+                as: :json
+        end
+
+        assert_response :ok
+        profile.reload
+        assert_nil profile.latitude
+        assert_nil profile.longitude
+        assert_equal "failed", profile.geocode_status
+        refute profile.map_ready?
       end
 
       test "technician can save multiple trade types as specialties" do
@@ -295,8 +462,7 @@ module Api
               insurance_verified: true,
               certification: "osha 10"
             },
-            headers: auth_header_for(company_user),
-            as: :json
+            headers: auth_header_for(company_user)
 
         assert_response :ok
         ids = JSON.parse(response.body).map { |row| row["id"] }

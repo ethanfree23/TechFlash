@@ -48,6 +48,7 @@ const JobAddressFields = ({
         country: row.country ?? 'United States',
         latitude: row.latitude ?? null,
         longitude: row.longitude ?? null,
+        place_id: row.place_id || null,
       });
       setPickedLabel(row.formatted || row.label || [row.address, row.city, row.state].filter(Boolean).join(', '));
       setSearchQuery('');
@@ -106,7 +107,7 @@ const JobAddressFields = ({
       setLoading(true);
       try {
         const row = await addressesAPI.resolve(item.place_id);
-        applyResolved({ ...row, label: item.label });
+        applyResolved({ ...row, label: item.label, place_id: item.place_id });
       } catch {
         setManualExpanded(true);
         setPickedLabel('');
@@ -149,7 +150,7 @@ const JobAddressFields = ({
 
   const clearSelection = () => {
     setPickedLabel('');
-    onChange({ address: '', city: '', state: 'Texas', zip_code: '', country: 'United States', latitude: null, longitude: null });
+    onChange({ address: '', city: '', state: 'Texas', zip_code: '', country: 'United States', latitude: null, longitude: null, place_id: null });
     setSearchQuery('');
     setSuggestions([]);
     setManualExpanded(false);

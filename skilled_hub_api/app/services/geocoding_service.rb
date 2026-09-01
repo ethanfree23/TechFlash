@@ -61,17 +61,23 @@ class GeocodingService
     return nil if parts.empty?
 
     query = parts.join(", ")
-    cache_key = "geocode:v2:#{Digest::SHA256.hexdigest(query.downcase)}"
+    cache_key = "geocode:v3:#{Digest::SHA256.hexdigest(query.downcase)}"
     cached = Rails.cache.read(cache_key)
-    return cached if cached.present?
+    cached_pair = validated_pair(cached&.[](0), cached&.[](1)) if cached.is_a?(Array) && cached.size == 2
+    return [cached_pair.latitude, cached_pair.longitude] if cached_pair&.valid?
+
+    Rails.cache.delete(cache_key) if cached.present?
 
     coords =
       if google_maps_api_key.present?
         google_geocode(address: address, city: city, state: state, zip_code: zip_code, country: country)
       end
     coords ||= nominatim_geocode(address: address, city: city, state: state, zip_code: zip_code, country: country)
-    Rails.cache.write(cache_key, coords, expires_in: GEOCODE_CACHE_TTL) if coords.present?
-    coords
+    pair = validated_pair(coords&.[](0), coords&.[](1), country: country)
+    return nil unless pair&.valid?
+
+    Rails.cache.write(cache_key, [pair.latitude, pair.longitude], expires_in: GEOCODE_CACHE_TTL)
+    [pair.latitude, pair.longitude]
   rescue StandardError => e
     Rails.logger.warn("Geocoding failed: #{e.message}")
     nil
@@ -236,10 +242,14 @@ class GeocodingService
     return nil unless result.is_a?(Hash)
 
     parsed = parse_google_address_components(result["address_components"] || [], result["formatted_address"])
+    return nil if parsed.blank?
+
+    parsed["place_id"] = place_id.to_s
     location = result.dig("geometry", "location") || {}
-    if parsed.present? && location["lat"].present? && location["lng"].present?
-      parsed["latitude"] = location["lat"].to_f
-      parsed["longitude"] = location["lng"].to_f
+    pair = validated_pair(location["lat"], location["lng"], country: parsed["country"])
+    if pair&.valid?
+      parsed["latitude"] = pair.latitude
+      parsed["longitude"] = pair.longitude
     end
     parsed
   rescue StandardError => e
@@ -382,11 +392,15 @@ class GeocodingService
   def self.google_geocode(address:, city:, state:, zip_code:, country:)
     query = [address, city, state, zip_code, country].compact.reject(&:blank?).join(", ")
     uri = URI("https://maps.googleapis.com/maps/api/geocode/json")
-    components = []
-    components << "country:US"
-    components << "administrative_area:#{state}" if state.present?
-    components << "postal_code:#{zip_code}" if zip_code.present?
-    uri.query = URI.encode_www_form(address: query, key: google_maps_api_key, components: components.join("|"))
+    iso = iso_country_code(country).presence || "US"
+    # Full address string is the search query. Only restrict country — extra
+    # administrative_area/postal_code component filters AND with the query and
+    # were causing ZERO_RESULTS on valid newer subdivision streets.
+    uri.query = URI.encode_www_form(
+      address: query,
+      key: google_maps_api_key,
+      components: "country:#{iso}"
+    )
 
     with_retry(MAX_GEOCODE_ATTEMPTS) do
       http = Net::HTTP.new(uri.host, uri.port)
@@ -404,10 +418,9 @@ class GeocodingService
         %w[ROOFTOP RANGE_INTERPOLATED].include?(loc_type)
       end || body["results"]&.first
 
-      loc = candidate.dig("geometry", "location")
-      return nil if loc.blank?
-
-      [loc["lat"].to_f, loc["lng"].to_f]
+      loc = candidate.is_a?(Hash) ? candidate.dig("geometry", "location") : nil
+      pair = validated_pair(loc && loc["lat"], loc && loc["lng"], country: country)
+      pair&.valid? ? [pair.latitude, pair.longitude] : nil
     end
   end
 
@@ -436,9 +449,10 @@ class GeocodingService
       return nil unless rows.is_a?(Array)
 
       candidate = rows.find { |row| geocode_candidate_matches?(row, state: state, zip_code: zip_code) } || rows.first
-      lat = candidate["lat"]&.to_f
-      lon = candidate["lon"]&.to_f
-      lat && lon ? [lat, lon] : nil
+      return nil unless candidate.is_a?(Hash)
+
+      pair = validated_pair(candidate["lat"], candidate["lon"] || candidate["lng"], country: country)
+      pair&.valid? ? [pair.latitude, pair.longitude] : nil
     end
   end
 
@@ -469,5 +483,9 @@ class GeocodingService
       sleep(0.15 * attempts)
       retry
     end
+  end
+
+  def self.validated_pair(lat, lng, country: nil)
+    CoordinateValidator.pair(lat, lng, country: country)
   end
 end

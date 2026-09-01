@@ -31,6 +31,7 @@ import { getNotificationCategories } from '../config/notificationPreferenceCatal
 import { isDemoMode, demoSimulatedMessage, withDemoPath } from '../utils/demoMode';
 import { mediaUrlWithCacheBust, resolveMediaUrl } from '../utils/mediaUrl';
 import AccountRolePanel from '../components/settings/AccountRolePanel';
+import AccountActionsCard from '../components/settings/AccountActionsCard';
 import { parseSettingsUrl, replaceSettingsUrl } from '../utils/settingsUrl';
 import { trackMembershipSubscribe } from '../utils/metaPixel';
 import SettingsPageShell from '../components/settings/SettingsPageShell';
@@ -41,7 +42,6 @@ import SettingsCard from '../components/settings/SettingsCard';
 import SettingsRow from '../components/settings/SettingsRow';
 import SettingsToggle from '../components/settings/SettingsToggle';
 import SettingsInput from '../components/settings/SettingsInput';
-import SettingsDangerZone from '../components/settings/SettingsDangerZone';
 import SettingsBadge from '../components/settings/SettingsBadge';
 import NotificationPreferenceCard from '../components/settings/NotificationPreferenceCard';
 import NotificationAdvancedModal from '../components/settings/NotificationAdvancedModal';
@@ -229,13 +229,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [billingHistory, setBillingHistory] = useState([]);
   const [billingHistoryLoading, setBillingHistoryLoading] = useState(false);
   const [accountEmail, setAccountEmail] = useState('');
-  const [accountPassword, setAccountPassword] = useState('');
-  const [accountPasswordConfirm, setAccountPasswordConfirm] = useState('');
   const [savingAccount, setSavingAccount] = useState(false);
-  const [accountError, setAccountError] = useState(null);
-  const [loginHistory, setLoginHistory] = useState([]);
-  const [loadingLoginHistory, setLoadingLoginHistory] = useState(false);
-  const [loginHistoryError, setLoginHistoryError] = useState('');
   const [notificationPrefs, setNotificationPrefs] = useState({
     email_notifications_enabled: true,
     job_alert_notifications_enabled: true,
@@ -275,9 +269,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [adminSystemSubTab, setAdminSystemSubTab] = useState('pricing');
   const [modalNotificationItem, setModalNotificationItem] = useState(null);
   const [localAdvancedById, setLocalAdvancedById] = useState({});
-  const [showPasswordFields, setShowPasswordFields] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [confirmDeleteAccount, setConfirmDeleteAccount] = useState(false);
   const [membershipTierDetailList, setMembershipTierDetailList] = useState([]);
   const [membershipTierConfigsLoading, setMembershipTierConfigsLoading] = useState(false);
@@ -594,6 +585,9 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           state: p?.state || 'Texas',
           zip_code: p?.zip_code || '',
           country: p?.country || 'United States',
+          latitude: p?.latitude ?? null,
+          longitude: p?.longitude ?? null,
+          place_id: p?.place_id || '',
         });
         return p;
       }
@@ -606,20 +600,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       if (!quiet) setLoading(false);
     }
   }, [isCompany, isTechnician, user?.first_name, user?.last_name, user?.phone]);
-
-  const loadLoginHistory = useCallback(async () => {
-    setLoadingLoginHistory(true);
-    setLoginHistoryError('');
-    try {
-      const res = await authAPI.getLoginHistory(20);
-      setLoginHistory(Array.isArray(res?.login_history) ? res.login_history : []);
-    } catch (err) {
-      setLoginHistory([]);
-      setLoginHistoryError(err?.message || 'Failed to load login history');
-    } finally {
-      setLoadingLoginHistory(false);
-    }
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -963,11 +943,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   }, [settingsTab, adminSystemSubTab, isAdmin]);
 
   useEffect(() => {
-    if (settingsTab !== 'profile') return;
-    loadLoginHistory();
-  }, [settingsTab, loadLoginHistory]);
-
-  useEffect(() => {
     if (settingsTab !== 'membership' || (!isTechnician && !isCompany)) return undefined;
     let cancelled = false;
     setMembershipTierConfigsLoading(true);
@@ -995,14 +970,24 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   };
 
   const patchAddress = (patch) => {
-    setForm((prev) => ({
-      ...prev,
-      ...(patch.address !== undefined ? { address: patch.address } : {}),
-      ...(patch.city !== undefined ? { city: patch.city } : {}),
-      ...(patch.state !== undefined ? { state: patch.state } : {}),
-      ...(patch.zip_code !== undefined ? { zip_code: patch.zip_code } : {}),
-      ...(patch.country !== undefined ? { country: patch.country } : {}),
-    }));
+    setForm((prev) => {
+      const next = { ...prev };
+      if (patch.address !== undefined) next.address = patch.address;
+      if (patch.city !== undefined) next.city = patch.city;
+      if (patch.state !== undefined) next.state = patch.state;
+      if (patch.zip_code !== undefined) next.zip_code = patch.zip_code;
+      if (patch.country !== undefined) next.country = patch.country;
+      if ('latitude' in patch || 'longitude' in patch || 'place_id' in patch) {
+        next.latitude = patch.latitude ?? null;
+        next.longitude = patch.longitude ?? null;
+        next.place_id = patch.place_id ?? null;
+      } else {
+        next.latitude = null;
+        next.longitude = null;
+        next.place_id = null;
+      }
+      return next;
+    });
   };
 
   const handleProfileSubmit = async (e) => {
@@ -1010,7 +995,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     console.info('[Settings] Profile save started');
     const firstName = (form.first_name || '').trim();
     const lastName = (form.last_name || '').trim();
-    const emailTrim = String(accountEmail || '').trim();
     const phoneDigits = String(form.phone || '').replace(/\D/g, '');
     const failProfileSave = (message) => {
       setError(message);
@@ -1023,10 +1007,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     };
     if (!firstName || !lastName) {
       failProfileSave('First name and last name are required.');
-      return;
-    }
-    if (!emailTrim) {
-      failProfileSave('Email is required.');
       return;
     }
     if (!phoneDigits || phoneDigits.length < 10) {
@@ -1049,12 +1029,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       const accountRes = await authAPI.updateMe({
         first_name: firstName,
         last_name: lastName,
-        email: emailTrim,
         phone: phoneTrim,
       });
       auth.setUser(accountRes.user);
       onUserUpdate?.(accountRes.user);
-      setAccountEmail(accountRes.user?.email || emailTrim);
+      if (accountRes.user?.email) setAccountEmail(accountRes.user.email);
 
       if (isCompany) {
         const companyState = (form.state || '').trim();
@@ -1163,38 +1142,47 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
-  const handleAccountSubmit = async (e) => {
-    e.preventDefault();
-    const email = accountEmail.trim();
-    if (!email) return;
-    if (accountPassword && accountPassword !== accountPasswordConfirm) {
-      setAccountError('Passwords do not match');
-      return;
-    }
+  const handleUpdateUsername = async (email) => {
+    const nextEmail = String(email || '').trim();
+    if (!nextEmail) throw new Error('Email is required.');
     setSavingAccount(true);
-    setAccountError(null);
     try {
-      const payload = { email };
-      if (showPasswordFields && accountPassword) {
-        payload.password = accountPassword;
-        payload.password_confirmation = accountPasswordConfirm;
-      }
-      const res = await authAPI.updateMe(payload);
+      const previousEmail = user?.email || auth.getUser()?.email || accountEmail;
+      const res = await authAPI.updateMe({ email: nextEmail });
       auth.setUser(res.user);
       onUserUpdate?.(res.user);
-      setAccountPassword('');
-      setAccountPasswordConfirm('');
-      setShowPasswordFields(false);
-      setShowPassword(false);
-      setShowPasswordConfirm(false);
+      setAccountEmail(res.user?.email || nextEmail);
       setAlertModal({
         isOpen: true,
-        title: 'Account updated',
-        message: email !== (user?.email || auth.getUser()?.email) ? 'Email updated. Use your new email to log in next time.' : 'Your account has been updated.',
+        title: 'Username updated',
+        message:
+          nextEmail !== previousEmail
+            ? 'Email updated. Use your new email to log in next time.'
+            : 'Your username is already up to date.',
         variant: 'success',
       });
-    } catch (err) {
-      setAccountError(err.message || 'Failed to update account');
+    } finally {
+      setSavingAccount(false);
+    }
+  };
+
+  const handleUpdatePassword = async (password, passwordConfirmation) => {
+    if (!password) throw new Error('Enter a new password.');
+    if (password !== passwordConfirmation) throw new Error('Passwords do not match.');
+    setSavingAccount(true);
+    try {
+      const res = await authAPI.updateMe({
+        password,
+        password_confirmation: passwordConfirmation,
+      });
+      auth.setUser(res.user);
+      onUserUpdate?.(res.user);
+      setAlertModal({
+        isOpen: true,
+        title: 'Password updated',
+        message: 'Your password has been updated.',
+        variant: 'success',
+      });
     } finally {
       setSavingAccount(false);
     }
@@ -2450,9 +2438,13 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               <div id="settings-panel-profile" role="tabpanel" aria-labelledby="settings-tab-profile">
           {needsMapSetup && (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
-              <p className="text-sm font-semibold text-amber-900">Complete map setup</p>
+              <p className="text-sm font-semibold text-amber-900">
+                {profile?.address || profile?.city ? "We couldn't place your address on the map" : 'Complete map setup'}
+              </p>
               <p className="text-sm text-amber-800 mt-1">
-                Add your full address so job maps can center correctly and show accurate nearby jobs.
+                {profile?.address || profile?.city
+                  ? 'Please confirm it below so nearby jobs and your home pin stay in the right place.'
+                  : 'Add your full address so job maps can center correctly and show accurate nearby jobs.'}
               </p>
             </div>
           )}
@@ -2558,34 +2550,19 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Phone number</label>
-                <input
-                  type="tel"
-                  name="phone"
-                  autoComplete="tel"
-                  value={form.phone || ''}
-                  onChange={(e) => setForm((prev) => ({ ...prev, phone: formatPhoneInput(e.target.value) }))}
-                  className="w-full border rounded-lg px-3 py-2"
-                  placeholder="+1 (555) 555-0100"
-                  required
-                />
-                <p className="mt-1 text-xs text-gray-500">Required. Used for job-related contact and your public profile.</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                <input
-                  type="email"
-                  name="profile_email"
-                  autoComplete="email"
-                  value={accountEmail}
-                  onChange={(e) => setAccountEmail(e.target.value)}
-                  className="w-full border rounded-lg px-3 py-2"
-                  placeholder="you@example.com"
-                  required
-                />
-              </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">Phone number</label>
+              <input
+                type="tel"
+                name="phone"
+                autoComplete="tel"
+                value={form.phone || ''}
+                onChange={(e) => setForm((prev) => ({ ...prev, phone: formatPhoneInput(e.target.value) }))}
+                className="w-full border rounded-lg px-3 py-2"
+                placeholder="+1 (555) 555-0100"
+                required
+              />
+              <p className="mt-1 text-xs text-gray-500">Required. Used for job-related contact and your public profile.</p>
             </div>
 
             {isCompany && (
@@ -2762,6 +2739,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                     country={form.country}
                     onChange={patchAddress}
                   />
+                  {profile?.geocode_status === 'failed' && (
+                    <p className="mt-2 text-xs text-amber-800">
+                      We couldn't place this address on the map. Select it from the suggestions or confirm the street, city, and ZIP.
+                    </p>
+                  )}
                   {needsMapSetup && (
                     <p className="mt-2 text-xs text-amber-800">
                       Required to enable accurate map radius and distance sorting on your dashboard.
@@ -2814,155 +2796,13 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   </SettingsCard>
                 )}
 
-                <SettingsCard title="Email and password">
-                  {accountError && (
-                    <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-sm font-medium text-red-800">
-                      {accountError}
-                    </div>
-                  )}
-                  <form onSubmit={handleAccountSubmit} className="space-y-5">
-                    <div className="space-y-1.5">
-                      <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                        Email (username)
-                      </label>
-                      <SettingsInput
-                        type="email"
-                        value={accountEmail}
-                        onChange={(e) => setAccountEmail(e.target.value)}
-                        placeholder="you@example.com"
-                        required
-                      />
-                    </div>
-
-                    {!showPasswordFields ? (
-                      <button
-                        type="button"
-                        className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-semibold text-gray-700 shadow-sm transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
-                        onClick={() => setShowPasswordFields(true)}
-                      >
-                        Change password
-                      </button>
-                    ) : (
-                      <div className="space-y-4 rounded-xl border border-gray-200 bg-gray-50/60 p-4 sm:p-5">
-                        <div className="space-y-1.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                              New password
-                            </label>
-                            <button
-                              type="button"
-                              className="text-xs font-semibold text-blue-700 transition-colors hover:text-blue-800 hover:underline"
-                              onClick={() => setShowPassword((s) => !s)}
-                            >
-                              {showPassword ? 'Hide' : 'Show'}
-                            </button>
-                          </div>
-                          <SettingsInput
-                            type={showPassword ? 'text' : 'password'}
-                            value={accountPassword}
-                            onChange={(e) => setAccountPassword(e.target.value)}
-                            autoComplete="new-password"
-                            placeholder="Enter new password"
-                          />
-                        </div>
-                        <div className="space-y-1.5">
-                          <div className="flex items-center justify-between gap-2">
-                            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600">
-                              Confirm new password
-                            </label>
-                            <button
-                              type="button"
-                              className="text-xs font-semibold text-blue-700 transition-colors hover:text-blue-800 hover:underline"
-                              onClick={() => setShowPasswordConfirm((s) => !s)}
-                            >
-                              {showPasswordConfirm ? 'Hide' : 'Show'}
-                            </button>
-                          </div>
-                          <SettingsInput
-                            type={showPasswordConfirm ? 'text' : 'password'}
-                            value={accountPasswordConfirm}
-                            onChange={(e) => setAccountPasswordConfirm(e.target.value)}
-                            autoComplete="new-password"
-                            placeholder="Confirm new password"
-                          />
-                        </div>
-                        <button
-                          type="button"
-                          className="text-xs font-semibold text-gray-600 transition-colors hover:text-gray-800 hover:underline"
-                          onClick={() => {
-                            setShowPasswordFields(false);
-                            setShowPassword(false);
-                            setShowPasswordConfirm(false);
-                            setAccountPassword('');
-                            setAccountPasswordConfirm('');
-                          }}
-                        >
-                          Cancel password change
-                        </button>
-                      </div>
-                    )}
-
-                    <div className="flex justify-end border-t border-gray-100 pt-4">
-                      <button
-                        type="submit"
-                        disabled={savingAccount}
-                        className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        {savingAccount ? 'Saving...' : 'Update account'}
-                      </button>
-                    </div>
-                  </form>
-                </SettingsCard>
-
-                <SettingsCard title="Login history" collapsible defaultOpen={false}>
-                  <div className="space-y-3.5">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm text-gray-600">Recent successful sign-ins for this account.</p>
-                      <button
-                        type="button"
-                        onClick={loadLoginHistory}
-                        disabled={loadingLoginHistory}
-                        className="inline-flex items-center rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs font-semibold text-gray-700 transition-colors hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        {loadingLoginHistory ? 'Refreshing...' : 'Refresh'}
-                      </button>
-                    </div>
-                    {loadingLoginHistory ? (
-                      <p className="text-sm text-gray-500">Loading login history...</p>
-                    ) : loginHistoryError ? (
-                      <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-                        {loginHistoryError}
-                      </p>
-                    ) : loginHistory.length === 0 ? (
-                      <p className="text-sm text-gray-500">No recent login activity yet.</p>
-                    ) : (
-                      <ul className="space-y-2">
-                        {loginHistory.map((event) => (
-                          <li
-                            key={event.id}
-                            className="rounded-lg border border-gray-200 bg-gray-50/50 px-3 py-2 text-sm text-gray-700"
-                          >
-                            <span className="font-medium text-gray-900">Signed in</span>{' '}
-                            <span>on {new Date(event.logged_in_at).toLocaleString()}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </div>
-                </SettingsCard>
-
-                <SettingsDangerZone
-                  title="Delete account"
-                  description="This permanently removes your account and cannot be undone."
-                >
-                  <button
-                    type="button"
-                    className="inline-flex items-center rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-red-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2"
-                    onClick={() => setConfirmDeleteAccount(true)}
-                  >
-                    Delete account permanently
-                  </button>
-                </SettingsDangerZone>
+                <AccountActionsCard
+                  currentEmail={accountEmail}
+                  saving={savingAccount}
+                  onUpdateUsername={handleUpdateUsername}
+                  onUpdatePassword={handleUpdatePassword}
+                  onDeleteAccount={() => setConfirmDeleteAccount(true)}
+                />
                 </div>
               </div>
             )}

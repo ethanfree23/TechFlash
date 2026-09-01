@@ -6,7 +6,7 @@ class MapPrivacyService
   DEFAULT_MAX_RADIUS_MILES = 2.2
 
   def self.blurred_coordinates(latitude:, longitude:, seed_key:)
-    return [latitude, longitude] if latitude.blank? || longitude.blank?
+    return [nil, nil] unless CoordinateValidator.valid?(latitude, longitude)
 
     seed = OpenSSL::HMAC.hexdigest("SHA256", Rails.application.secret_key_base, seed_key.to_s)
     angle = seed[0, 8].to_i(16) / 0xFFFFFFFF.to_f * 2.0 * Math::PI
