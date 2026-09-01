@@ -125,7 +125,8 @@ module Api
 
       def technician_params
         params.permit(:trade_type, :skill_class, :experience_years, :availability, :bio, :phone, :location, :user_id,
-                     :address, :city, :state, :zip_code, :country, :latitude, :longitude, :place_id, specialties: [])
+                     :address, :city, :state, :zip_code, :country, :latitude, :longitude, :place_id, specialties: [],
+                     trade_qualifications: [:trade_type, :skill_class, :experience_years])
       end
 
       def apply_client_coordinates!(technician, attrs)

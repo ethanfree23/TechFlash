@@ -9,6 +9,7 @@ class TechnicianProfile < ApplicationRecord
   before_save :apply_geocoding
   before_validation :normalize_membership_level
   before_validation :normalize_skill_class
+  before_validation :sync_trade_qualifications
 
   belongs_to :user
   has_many :job_applications, dependent: :destroy
@@ -41,6 +42,18 @@ class TechnicianProfile < ApplicationRecord
     CoordinateValidator.valid?(latitude, longitude, country: country)
   end
 
+  def effective_trade_qualifications
+    stored = TradeQualificationNormalizer.normalize_list(trade_qualifications)
+    return stored if stored.any?
+
+    TradeQualificationNormalizer.from_scalars(
+      trade_type: trade_type,
+      skill_class: skill_class,
+      experience_years: experience_years,
+      specialties: specialties
+    )
+  end
+
   private
 
   def sync_location_from_address
@@ -66,7 +79,7 @@ class TechnicianProfile < ApplicationRecord
       return
     end
 
-    unless address.present? || city.present?
+    unless address.present? || city.present? || zip_code.present?
       reject_invalid_stored_coordinates!
       return
     end
@@ -130,6 +143,28 @@ class TechnicianProfile < ApplicationRecord
   def normalize_skill_class
     normalized = TechnicianClassCatalog.normalized_label(skill_class)
     self.skill_class = normalized.presence || skill_class.to_s.strip.presence
+  end
+
+  def sync_trade_qualifications
+    return unless has_attribute?(:trade_qualifications)
+
+    assigned = TradeQualificationNormalizer.normalize_list(trade_qualifications)
+    if will_save_change_to_trade_qualifications? && assigned.any?
+      TradeQualificationNormalizer.apply_to_profile!(self, assigned)
+      return
+    end
+
+    previous = TradeQualificationNormalizer.normalize_list(attribute_in_database("trade_qualifications"))
+    rebuilt = TradeQualificationNormalizer.from_scalars(
+      trade_type: trade_type,
+      skill_class: skill_class,
+      experience_years: experience_years,
+      specialties: specialties,
+      previous: previous.presence || assigned
+    )
+    return if rebuilt.empty? && assigned.empty?
+
+    TradeQualificationNormalizer.apply_to_profile!(self, rebuilt)
   end
 
   def skill_class_must_be_catalog_value

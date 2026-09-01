@@ -116,8 +116,13 @@ module Api
         zip_code = params[:zip_code].to_s.strip
         address = params[:address].to_s.strip
         country = params[:country].to_s.strip.presence || "United States"
+        qualifications = TradeQualificationNormalizer.normalize_list(params[:trade_qualifications])
         trade_type = params[:trade_type].to_s.strip
         skill_class = params[:skill_class].to_s.strip
+        if qualifications.any?
+          trade_type = qualifications.first[:trade_type].to_s if qualifications.first[:trade_type].present?
+          skill_class = qualifications.first[:skill_class].to_s if qualifications.first[:skill_class].present?
+        end
 
         if blocked_signup_email?(email) || params[:honeypot].to_s.present?
           block_marketing_email!(email)
@@ -212,24 +217,29 @@ module Api
             sync_company_user_to_crm_contacts(user, company_profile: profile)
           elsif user.technician?
             specialties =
-              case params[:specialties]
-              when Array
-                params[:specialties].map { |s| s.to_s.strip }.reject(&:blank?)
-              when String
-                begin
-                  parsed = JSON.parse(params[:specialties])
-                  parsed.is_a?(Array) ? parsed.map { |s| s.to_s.strip }.reject(&:blank?) : []
-                rescue JSON::ParserError
+              if qualifications.any?
+                qualifications.map { |qual| qual[:trade_type] }
+              else
+                case params[:specialties]
+                when Array
+                  params[:specialties].map { |s| s.to_s.strip }.reject(&:blank?)
+                when String
+                  begin
+                    parsed = JSON.parse(params[:specialties])
+                    parsed.is_a?(Array) ? parsed.map { |s| s.to_s.strip }.reject(&:blank?) : []
+                  rescue JSON::ParserError
+                    []
+                  end
+                else
                   []
                 end
-              else
-                []
               end
+            experience_years = qualifications.first&.[](:experience_years)
             profile = TechnicianProfile.new(
               user: user,
               trade_type: trade_type,
               skill_class: skill_class,
-              experience_years: 0,
+              experience_years: experience_years || 0,
               availability: 'Full-time',
               phone: phone,
               address: address.presence,
@@ -238,7 +248,8 @@ module Api
               zip_code: zip_code,
               country: country,
               membership_level: assigned_level,
-              specialties: specialties
+              specialties: specialties,
+              trade_qualifications: qualifications.as_json
             )
             unless profile.save
               user.destroy

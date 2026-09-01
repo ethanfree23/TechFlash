@@ -329,6 +329,50 @@ module Api
         assert_equal ["Electrician", "HVAC Technician", "Plumber"], body["specialties"]
       end
 
+      test "technician can save trade qualifications with class and years per trade" do
+        user = User.create!(
+          email: "tech-qualifications-update@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        profile = TechnicianProfile.create!(
+          user: user,
+          trade_type: "Electrician",
+          skill_class: "apprentice",
+          specialties: ["Electrician"],
+          experience_years: 1,
+          availability: "Full-time",
+          phone: "713-555-0389",
+          city: "Austin"
+        )
+
+        patch "/api/v1/technicians/#{profile.id}",
+              params: {
+                trade_qualifications: [
+                  { trade_type: "Electrician", skill_class: "apprentice", experience_years: 1 },
+                  { trade_type: "HVAC Technician", skill_class: "journeyman", experience_years: 5 }
+                ]
+              },
+              headers: auth_header_for(user),
+              as: :json
+
+        assert_response :ok
+        profile.reload
+        assert_equal "Electrician", profile.trade_type
+        assert_equal "apprentice", profile.skill_class
+        assert_equal 1, profile.experience_years
+        assert_equal ["Electrician", "HVAC Technician"], profile.specialties
+        assert_equal "HVAC Technician", profile.trade_qualifications[1]["trade_type"]
+        assert_equal "journeyman", profile.trade_qualifications[1]["skill_class"]
+        assert_equal 5, profile.trade_qualifications[1]["experience_years"]
+
+        body = JSON.parse(response.body)
+        assert_equal 2, body["trade_qualifications"].length
+        assert_equal "HVAC Technician", body["trade_qualifications"][1]["trade_type"]
+        assert_equal "journeyman", body["trade_qualifications"][1]["skill_class"]
+      end
+
       test "technician settings stores canonical skill_class slug" do
         user = User.create!(
           email: "tech-class-update@example.com",

@@ -19,6 +19,7 @@ import { auth } from '../auth';
 import CardPaymentForm from '../components/CardPaymentForm';
 import { getStripePublishableKey, isValidStripePublishableKey } from '../stripeConfig';
 import JobAddressFields from '../components/JobAddressFields';
+import TechnicianTradeLines from '../components/TechnicianTradeLines';
 import AlertModal from '../components/AlertModal';
 import ConfirmModal from '../components/ConfirmModal';
 import SystemControlsPricing from '../components/admin/SystemControlsPricing';
@@ -26,7 +27,8 @@ import { needsTechnicianMapSetup } from '../utils/technicianMap';
 import { requiresElectricalLicenseForState, setLocalOnlyLicenseStates } from '../utils/licensingRules';
 import { formatPhoneInput } from '../utils/phone';
 import { TRADE_OPTIONS, TRADE_OTHER_SENTINEL, COMPANY_INDUSTRY_OPTIONS, companyIndustrySelectValue } from '../constants/trades';
-import { isTechnicianClass, technicianClassSelectOptions, technicianClassLabel, technicianClassSlug } from '../constants/technicianClass';
+import { isTechnicianClass } from '../constants/technicianClass';
+import { payloadFromTradeLines, tradeLineValidationMessage, tradeLinesFromProfile } from '../utils/tradeQualifications';
 import { getNotificationCategories } from '../config/notificationPreferenceCatalog';
 import { isDemoMode, demoSimulatedMessage, withDemoPath } from '../utils/demoMode';
 import { mediaUrlWithCacheBust, resolveMediaUrl } from '../utils/mediaUrl';
@@ -82,13 +84,6 @@ const durationSummary = (minWeeks, maxWeeks) => {
 
 const normalizeReferenceEmail = (value) => String(value || '').trim().toLowerCase();
 const normalizeReferencePhone = (value) => String(value || '').replace(/\D/g, '');
-const normalizeTradeSelections = (tradeType, specialties) => {
-  const set = new Set(Array.isArray(specialties) ? specialties : []);
-  const primary = String(tradeType || '').trim();
-  if (primary) set.add(primary);
-  return Array.from(set).filter((trade) => TRADE_OPTIONS.includes(trade));
-};
-
 const makeLicenseLineItem = () => ({
   id: `license-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
   title: '',
@@ -492,11 +487,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
 
     if (isTechnician) {
-      requiredItems.push('Trade type', 'Class', 'Bio', 'Full address for maps');
-      if (!(form.trade_type || '').trim()) missing.push('Trade type');
-      if (!isTechnicianClass(form.skill_class)) missing.push('Class');
+      requiredItems.push('Trade type', 'Class', 'Bio', 'ZIP or address for maps');
+      const primaryTrade = (form.trade_lines && form.trade_lines[0]) || {};
+      if (!(primaryTrade.trade_type || '').trim()) missing.push('Trade type');
+      if (!isTechnicianClass(primaryTrade.skill_class)) missing.push('Class');
       if (!(form.bio || '').trim()) missing.push('Bio');
-      if (needsMapSetup) missing.push('Full address for maps');
+      if (needsMapSetup) missing.push('ZIP or address for maps');
     }
 
     const total = requiredItems.length;
@@ -573,10 +569,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         setForm({
           ...nameFields(),
           phone: p?.phone ?? phoneFromUser(),
-          trade_type: p?.trade_type || '',
-          skill_class: technicianClassSlug(p?.skill_class),
-          specialties: normalizeTradeSelections(p?.trade_type, p?.specialties),
-          experience_years: p?.experience_years ?? '',
+          trade_lines: tradeLinesFromProfile(p),
           availability: p?.availability || '',
           bio: p?.bio || '',
           location: p?.location || '',
@@ -1013,9 +1006,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       failProfileSave('A valid phone number is required (10 digits).');
       return;
     }
-    if (isTechnician && !isTechnicianClass(form.skill_class)) {
-      failProfileSave('Select a class (Apprentice, Journeyman, or Master).');
-      return;
+    if (isTechnician) {
+      const tradeError = tradeLineValidationMessage(form.trade_lines);
+      if (tradeError) {
+        failProfileSave(tradeError);
+        return;
+      }
     }
 
     if (!isAdmin && !profile?.id) {
@@ -1049,11 +1045,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           electrical_license_number: (form.electrical_license_number || '').trim(),
         });
       } else if (isTechnician) {
-        const { first_name: _fn2, last_name: _ln2, ...techPayload } = form;
-        techPayload.specialties = normalizeTradeSelections(techPayload.trade_type, techPayload.specialties);
+        const { first_name: _fn2, last_name: _ln2, trade_lines: _tradeLines, ...techPayload } = form;
+        const tradePayload = payloadFromTradeLines(form.trade_lines);
         await profilesAPI.updateTechnicianProfile(profile.id, {
           ...techPayload,
-          experience_years: form.experience_years === '' ? null : parseInt(form.experience_years, 10),
+          ...tradePayload,
         });
       }
       await fetchProfile();
@@ -2626,87 +2622,18 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
             {isTechnician && (
               <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Trade type</label>
-                    <select
-                      name="trade_type"
-                      value={form.trade_type || ''}
-                      onChange={(e) => {
-                        const nextTrade = e.target.value;
-                        setForm((prev) => ({
-                          ...prev,
-                          trade_type: nextTrade,
-                          specialties: normalizeTradeSelections(nextTrade, prev.specialties),
-                        }));
-                      }}
-                      className="w-full border rounded-lg px-3 py-2 bg-white"
-                      required
-                    >
-                      <option value="">Select trade type</option>
-                      {TRADE_OPTIONS.map((trade) => (
-                        <option key={trade} value={trade}>
-                          {trade}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Class</label>
-                    <select
-                      name="skill_class"
-                      value={form.skill_class || ''}
-                      onChange={handleChange}
-                      className="w-full border rounded-lg px-3 py-2 bg-white"
-                      required
-                    >
-                      <option value="">Select class</option>
-                      {technicianClassSelectOptions(form.skill_class).map((value) => (
-                        <option key={value} value={value} disabled={!isTechnicianClass(value)}>
-                          {technicianClassLabel(value)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Years of experience</label>
-                    <input type="number" min="0" name="experience_years" value={form.experience_years} onChange={handleChange} className="w-full border rounded-lg px-3 py-2" />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Availability</label>
-                    <input name="availability" value={form.availability} onChange={handleChange} className="w-full border rounded-lg px-3 py-2" placeholder="e.g. Full-time, Part-time" />
-                  </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Trades</label>
+                  <p className="mb-2 text-xs text-gray-500">Add each trade you perform, with class and years of experience.</p>
+                  <TechnicianTradeLines
+                    lines={form.trade_lines}
+                    onChange={(trade_lines) => setForm((prev) => ({ ...prev, trade_lines }))}
+                    idPrefix="settings-trade"
+                  />
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Additional trade types</label>
-                  <p className="mb-2 text-xs text-gray-500">Select any additional trades you can perform.</p>
-                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                    {TRADE_OPTIONS.filter((trade) => trade !== form.trade_type).map((trade) => {
-                      const selected = Array.isArray(form.specialties) && form.specialties.includes(trade);
-                      return (
-                        <label key={trade} className="flex items-center gap-2 text-sm text-gray-700">
-                          <input
-                            type="checkbox"
-                            checked={selected}
-                            onChange={(e) => {
-                              setForm((prev) => {
-                                const current = normalizeTradeSelections(prev.trade_type, prev.specialties);
-                                const next = e.target.checked
-                                  ? [...current, trade]
-                                  : current.filter((item) => item !== trade);
-                                return {
-                                  ...prev,
-                                  specialties: normalizeTradeSelections(prev.trade_type, next),
-                                };
-                              });
-                            }}
-                            className="h-4 w-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
-                          />
-                          <span>{trade}</span>
-                        </label>
-                      );
-                    })}
-                  </div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Availability</label>
+                  <input name="availability" value={form.availability || ''} onChange={handleChange} className="w-full border rounded-lg px-3 py-2" placeholder="e.g. Full-time, Part-time" />
                 </div>
 
                 <div>

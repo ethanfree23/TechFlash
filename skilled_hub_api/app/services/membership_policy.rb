@@ -269,7 +269,10 @@ class MembershipPolicy
   end
 
   def self.technician_trade_labels(technician_profile)
-    values = [technician_profile.trade_type] + Array(technician_profile.specialties)
+    qualification_trades = TradeQualificationNormalizer.normalize_list(
+      technician_profile.try(:trade_qualifications)
+    ).map { |qual| qual[:trade_type] }
+    values = [technician_profile.trade_type] + Array(technician_profile.specialties) + qualification_trades
     values
       .map do |label|
         normalized = TradeCatalog.normalized_label(label)

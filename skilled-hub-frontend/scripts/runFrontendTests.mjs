@@ -19,6 +19,7 @@ const testFiles = [
   'payBasis.test.mjs',
   'jobStatus.test.mjs',
   'technicianClass.test.mjs',
+  'tradeQualifications.test.mjs',
   'metaPixel.test.mjs',
 ];
 

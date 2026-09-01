@@ -115,6 +115,33 @@ class TechnicianProfileGeocodingTest < ActiveSupport::TestCase
     assert profile.map_ready?
   end
 
+  test "zip only without city or street invokes server geocoding" do
+    geocode_calls = 0
+    GeocodingService.stub(:geocode, ->(**kwargs) {
+      geocode_calls += 1
+      assert_equal "77306", kwargs[:zip_code]
+      assert kwargs[:address].blank?
+      assert kwargs[:city].blank?
+      [30.3113, -95.456]
+    }) do
+      profile = TechnicianProfile.new(
+        user: @user,
+        phone: "7135550100",
+        address: "",
+        city: "",
+        state: "Texas",
+        zip_code: "77306",
+        country: "United States"
+      )
+      profile.save!
+      assert_equal 1, geocode_calls
+      assert_in_delta 30.3113, profile.latitude, 0.0001
+      assert_in_delta(-95.456, profile.longitude, 0.0001)
+      assert_equal "success", profile.geocode_status
+      assert profile.map_ready?
+    end
+  end
+
   test "zero zero coordinates are never persisted" do
     profile = TechnicianProfile.new(
       user: @user,

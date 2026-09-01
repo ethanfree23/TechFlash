@@ -3,7 +3,7 @@ class TechnicianProfileSerializer < ActiveModel::Serializer
 
   attributes :id, :trade_type, :skill_class, :experience_years, :availability, :bio, :phone, :location, :avatar_url, :stripe_connected, :stripe_payout_ready, :user_id, :average_rating, :created_at, :updated_at,
              :address, :city, :state, :zip_code, :country, :latitude, :longitude, :place_id,
-             :geocode_status, :geocoded_at, :specialties,
+             :geocode_status, :geocoded_at, :specialties, :trade_qualifications,
              :membership_level, :membership_fee_override_cents, :commission_override_percent, :membership_fee_waived,
              :membership_status, :membership_current_period_end_at, :effective_membership_fee_cents, :effective_commission_percent,
              :background_verified, :review_summary, :verification_badges
@@ -30,5 +30,9 @@ class TechnicianProfileSerializer < ActiveModel::Serializer
 
   def effective_commission_percent
     MembershipPolicy.technician_commission_percent(object)
+  end
+
+  def trade_qualifications
+    object.effective_trade_qualifications.as_json
   end
 end 

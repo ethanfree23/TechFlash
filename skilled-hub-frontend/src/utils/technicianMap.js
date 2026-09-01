@@ -107,13 +107,7 @@ export const formatDistanceMi = (miles) => {
   return `${Math.round(miles)} mi`;
 };
 
-export const needsTechnicianMapSetup = (profile) => {
-  const missingRegion =
-    !String(profile?.city || '').trim() ||
-    !String(profile?.state || '').trim() ||
-    !String(profile?.country || '').trim();
-  return missingRegion || !technicianHomeFromProfile(profile);
-};
+export const needsTechnicianMapSetup = (profile) => !technicianHomeFromProfile(profile);
 
 export const needsExactStreetAddress = (profile) => (
   !needsTechnicianMapSetup(profile) &&

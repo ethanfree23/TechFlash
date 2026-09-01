@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_09_01_160000) do
+ActiveRecord::Schema[7.1].define(version: 2026_09_01_210000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -782,6 +782,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_01_160000) do
     t.string "geocode_status"
     t.datetime "geocoded_at"
     t.string "place_id"
+    t.json "trade_qualifications", default: [], null: false
     t.index ["geocode_status"], name: "index_technician_profiles_on_geocode_status"
     t.index ["membership_level"], name: "index_technician_profiles_on_membership_level"
     t.index ["stripe_membership_subscription_id"], name: "index_technician_profiles_on_stripe_membership_subscription_id", unique: true

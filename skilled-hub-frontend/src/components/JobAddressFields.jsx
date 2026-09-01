@@ -182,7 +182,7 @@ const JobAddressFields = ({
             <>
               <label className="block font-medium mb-1 text-sm">Search address</label>
               <p className="text-xs text-gray-500">
-                Enter a street address or just city/state, then choose a match below.
+                Enter a street address, city, or ZIP, then choose a match below.
                 {provider === 'google'
                   ? ' Suggestions use Google Places.'
                   : ' Suggestions use OpenStreetMap (enable GOOGLE_MAPS_API_KEY on the server for Google Maps results).'}
@@ -201,7 +201,7 @@ const JobAddressFields = ({
                     if (suggestions.length) setOpen(true);
                   }}
                   onKeyDown={onSearchKeyDown}
-                  placeholder="e.g. Houston, TX or 1600 Amphitheatre Parkway, Mountain View, CA 94043"
+                  placeholder="e.g. 77306, Houston, TX, or 1600 Amphitheatre Parkway"
                 />
                 {loading && (
                   <span className="absolute right-3 top-2.5 text-xs text-gray-400">Searching…</span>
@@ -274,13 +274,12 @@ const JobAddressFields = ({
             />
           </div>
           <div>
-            <label className="block font-medium mb-1 text-sm">City</label>
+            <label className="block font-medium mb-1 text-sm">City (optional)</label>
             <input
               className={inputClass}
               value={city}
               onChange={(e) => onChange({ city: e.target.value })}
               placeholder="e.g. Houston"
-              required
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -298,7 +297,7 @@ const JobAddressFields = ({
               className={inputClass}
               value={zipCode}
               onChange={(e) => onChange({ zip_code: e.target.value })}
-              placeholder="e.g. 77007"
+              placeholder="e.g. 77007 — ZIP alone is enough for the map"
             />
           </div>
         </div>

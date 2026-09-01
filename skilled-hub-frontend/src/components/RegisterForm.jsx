@@ -11,6 +11,7 @@ import { SignupTrustPanel } from './signup/SignupTrustPanel';
 import { SignupWizardShell } from './signup/SignupWizardShell';
 import { TechnicianInfoFields } from './signup/TechnicianInfoFields';
 import { technicianClassLabel } from '../constants/technicianClass';
+import { makeTradeLine, payloadFromTradeLines, tradeLineValidationMessage } from '../utils/tradeQualifications';
 import { RoleSelector } from './signup/RoleSelector';
 import { requiresElectricalLicenseForState, setLocalOnlyLicenseStates } from '../utils/licensingRules';
 import { adaptMembershipTierList } from '../utils/membershipTierAdapter';
@@ -67,10 +68,13 @@ const RegisterForm = ({
     electrical_license_number: '',
     trade_type: '',
     skill_class: '',
+    experience_years: '',
     company_name: '',
     industry: '',
     primary_hiring_need: '',
     specialties: [],
+    trade_lines: [makeTradeLine()],
+    trade_qualifications: [],
     role: initialRole,
     membership_tier: 'basic',
     role_view: initialRoleView,
@@ -207,12 +211,9 @@ const RegisterForm = ({
         setError('City, state, and ZIP are required.');
         return false;
       }
-      if (!registerData.trade_type.trim()) {
-        setError('Select a primary trade.');
-        return false;
-      }
-      if (!registerData.skill_class.trim()) {
-        setError('Select a class (Apprentice, Journeyman, or Master).');
+      const tradeError = tradeLineValidationMessage(registerData.trade_lines);
+      if (tradeError) {
+        setError(tradeError);
         return false;
       }
     } else {
@@ -312,7 +313,13 @@ const RegisterForm = ({
         cancel_url: `${origin}/settings?tab=membership&membership=cancel`,
       };
       if (registerData.role === 'technician') {
-        payload.specialties = Array.isArray(registerData.specialties) ? registerData.specialties : [];
+        const tradePayload = payloadFromTradeLines(registerData.trade_lines);
+        payload.trade_type = tradePayload.trade_type;
+        payload.skill_class = tradePayload.skill_class;
+        payload.experience_years = tradePayload.experience_years;
+        payload.specialties = tradePayload.specialties;
+        payload.trade_qualifications = tradePayload.trade_qualifications;
+        delete payload.trade_lines;
         delete payload.company_name;
         delete payload.industry;
         delete payload.primary_hiring_need;
@@ -329,7 +336,10 @@ const RegisterForm = ({
         payload.zip_code = registerData.business_zip_code.trim();
         delete payload.trade_type;
         delete payload.skill_class;
+        delete payload.experience_years;
         delete payload.specialties;
+        delete payload.trade_lines;
+        delete payload.trade_qualifications;
       }
       const response = await authAPI.register(payload);
       if (!response?.token || !response?.user) {
@@ -624,18 +634,26 @@ const RegisterForm = ({
                       </div>
                       {registerData.role === 'technician' ? (
                         <>
-                          <div>
-                            <dt className="text-xs font-semibold uppercase text-gray-500">Primary trade</dt>
-                            <dd>{registerData.trade_type}</dd>
-                          </div>
-                          <div>
-                            <dt className="text-xs font-semibold uppercase text-gray-500">Class</dt>
-                            <dd>{technicianClassLabel(registerData.skill_class)}</dd>
-                          </div>
-                          <div className="sm:col-span-2">
-                            <dt className="text-xs font-semibold uppercase text-gray-500">Specialties</dt>
-                            <dd>{(registerData.specialties || []).join(', ') || '—'}</dd>
-                          </div>
+                          {(registerData.trade_lines || [])
+                            .filter((line) => String(line.trade_type || '').trim())
+                            .map((line, index) => (
+                              <div key={line.id || index} className="sm:col-span-2 grid gap-4 sm:grid-cols-3">
+                                <div>
+                                  <dt className="text-xs font-semibold uppercase text-gray-500">
+                                    {index === 0 ? 'Trade' : `Trade ${index + 1}`}
+                                  </dt>
+                                  <dd>{line.trade_type}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs font-semibold uppercase text-gray-500">Class</dt>
+                                  <dd>{technicianClassLabel(line.skill_class) || '—'}</dd>
+                                </div>
+                                <div>
+                                  <dt className="text-xs font-semibold uppercase text-gray-500">Years</dt>
+                                  <dd>{line.experience_years === '' || line.experience_years == null ? '—' : line.experience_years}</dd>
+                                </div>
+                              </div>
+                            ))}
                         </>
                       ) : (
                         <>
