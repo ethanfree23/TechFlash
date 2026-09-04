@@ -343,11 +343,18 @@ export const adminUsersAPI = {
         company_profile_id: companyProfileId,
       }),
     }),
-  updateProfile: (id, payload) =>
-    apiRequest(`/admin/users/${id}/profile`, {
+  updateProfile: (id, payload) => {
+    if (payload instanceof FormData) {
+      return apiRequest(`/admin/users/${id}/profile`, {
+        method: 'PATCH',
+        body: payload,
+      });
+    }
+    return apiRequest(`/admin/users/${id}/profile`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
-    }),
+    });
+  },
   updateMembershipPricing: (id, payload) =>
     apiRequest(`/admin/users/${id}/membership_pricing`, {
       method: 'PATCH',

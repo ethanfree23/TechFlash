@@ -386,6 +386,7 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
           onDelete={(u) => setDeleteTarget(u)}
           onPlaceholderAction={setPlaceholderAction}
           masqueradeBusyId={masqueradeBusyId}
+          onProfileSaved={() => loadUsers()}
         />
       )}
 

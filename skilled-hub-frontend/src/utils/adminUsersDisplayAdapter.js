@@ -186,13 +186,15 @@ export function computeProfileCompleteness(row, detail) {
   ];
 
   if (row.role === 'technician') {
+    const licenses = profile?.trade_licenses || [];
+    const hasLicense = licenses.some((doc) => doc?.file_url || doc?.document_number);
     items.push(
       { key: 'trade', label: 'Trade specialty', done: !!(profile?.trade_type || row.label?.trim()) },
-      { key: 'location', label: 'Location', done: !!(profile?.city || profile?.location) },
-      { key: 'license', label: 'License', done: false },
+      { key: 'location', label: 'Location', done: !!(profile?.city || profile?.location || profile?.zip_code) },
+      { key: 'license', label: 'License', done: hasLicense },
       { key: 'insurance', label: 'Insurance', done: false },
       { key: 'payment', label: 'Payment setup', done: !!profile?.stripe_account_id },
-      { key: 'photo', label: 'Profile photo', done: false }
+      { key: 'photo', label: 'Profile photo', done: !!profile?.avatar_url }
     );
   } else if (row.role === 'company') {
     items.push(

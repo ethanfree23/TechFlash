@@ -2,6 +2,10 @@
 
 # Per-user analytics for the admin Users UI (time window via +period+ like platform insights).
 class AdminUserDetail
+  include ActiveStorageUrlHelper
+
+  TRADE_LICENSE_DOC_TYPES = %w[license certificate cert].freeze
+
   def self.call(user_id:, period: "7d")
     new(user_id: user_id, period: period).to_h
   end
@@ -13,7 +17,7 @@ class AdminUserDetail
   end
 
   def to_h
-    user = User.includes(:technician_profile, :company_profile).find_by(id: @user_id)
+    user = User.includes(:technician_profile, :company_profile, :job_alert_preference, :verification_references_as_technician).find_by(id: @user_id)
     return { error: "User not found" } unless user
     return { error: "User is an admin account" } if user.admin?
 
@@ -83,11 +87,15 @@ class AdminUserDetail
       tp = user.technician_profile
       return nil unless tp
 
+      pref = user.job_alert_preference
       {
         type: "technician",
         id: tp.id,
         trade_type: tp.trade_type,
-        job_alert_trade_label: user.job_alert_preference&.trade_label,
+        skill_class: tp.skill_class,
+        job_alert_trade_label: pref&.trade_label,
+        min_hourly_rate_cents: pref&.min_hourly_rate_cents,
+        max_distance_miles: pref&.max_distance_miles,
         location: tp.location,
         address: tp.address,
         city: tp.city,
@@ -98,6 +106,8 @@ class AdminUserDetail
         availability: tp.availability,
         bio: tp.bio,
         phone: tp.phone,
+        avatar_url: absolute_blob_url(tp.avatar),
+        updated_at: tp.updated_at&.iso8601,
         stripe_account_id: tp.stripe_account_id,
         membership_level: MembershipPolicy.normalized_level(tp.membership_level, audience: :technician),
         membership_fee_waived: tp.membership_fee_waived,
@@ -106,7 +116,9 @@ class AdminUserDetail
         effective_membership_fee_cents: MembershipPolicy.technician_monthly_fee_cents(tp),
         effective_commission_percent: MembershipPolicy.technician_commission_percent(tp),
         membership_status: tp.membership_status,
-        membership_current_period_end_at: tp.membership_current_period_end_at&.iso8601
+        membership_current_period_end_at: tp.membership_current_period_end_at&.iso8601,
+        trade_licenses: trade_license_payloads(tp),
+        references: reference_payloads(user)
       }
     elsif user.company?
       cp = user.company_profile
@@ -136,6 +148,36 @@ class AdminUserDetail
         effective_commission_percent: MembershipPolicy.company_commission_percent(cp),
         membership_status: cp.membership_status,
         membership_current_period_end_at: cp.membership_current_period_end_at&.iso8601
+      }
+    end
+  end
+
+  def trade_license_payloads(technician_profile)
+    technician_profile.documents
+      .where(doc_type: TRADE_LICENSE_DOC_TYPES)
+      .order(created_at: :desc, id: :desc)
+      .map do |doc|
+        {
+          id: doc.id,
+          doc_type: doc.doc_type,
+          issuer: doc.issuer,
+          document_number: doc.document_number,
+          file_url: absolute_blob_url(doc.file),
+          created_at: doc.created_at&.iso8601
+        }
+      end
+  end
+
+  def reference_payloads(user)
+    user.verification_references_as_technician.order(:created_at, :id).map do |ref|
+      {
+        id: ref.id,
+        full_name: ref.full_name,
+        email: ref.email,
+        phone: ref.phone,
+        company_name: ref.company_name,
+        relationship: ref.relationship,
+        status: ref.status
       }
     end
   end

@@ -211,19 +211,21 @@ module Api
 
           p_user = user_admin_params
           user_attrs = {}
-          %i[first_name last_name].each do |k|
+          %i[first_name last_name email].each do |k|
             next unless p_user.key?(k)
 
             v = p_user[k]
-            user_attrs[k] = v.is_a?(String) ? v.strip.presence : v
+            cleaned = v.is_a?(String) ? v.strip.presence : v
+            cleaned = cleaned.downcase if k == :email && cleaned.is_a?(String)
+            user_attrs[k] = cleaned
           end
           if p_user.key?(:account_phone)
             v = p_user[:account_phone]
             user_attrs[:phone] = v.is_a?(String) ? v.strip.presence : v
           end
-          user.update!(user_attrs) if user_attrs.any?
 
           if user.company?
+            user.update!(user_attrs) if user_attrs.any?
             cp = user.company_profile
             return render json: { errors: ["Company profile not found"] }, status: :not_found unless cp
 
@@ -231,33 +233,24 @@ module Api
               return render json: { errors: cp.errors.full_messages }, status: :unprocessable_entity
             end
           elsif user.technician?
-            tp = user.technician_profile
-            return render json: { errors: ["Technician profile not found"] }, status: :not_found unless tp
-
-            attrs = technician_profile_admin_params.to_h.with_indifferent_access
-            country = attrs[:country].presence || tp.country
-            if CoordinateValidator.valid?(attrs[:latitude], attrs[:longitude], country: country)
-              tp.client_coordinates_provided = true
-            else
-              tp.client_coordinates_provided = false
-              attrs.delete(:latitude)
-              attrs.delete(:longitude)
-            end
-            unless tp.update(attrs)
-              return render json: { errors: tp.errors.full_messages }, status: :unprocessable_entity
+            result = AdminTechnicianProfileUpdater.call(user: user, params: params, user_attrs: user_attrs)
+            unless result[:ok]
+              return render json: { errors: result[:errors] }, status: :unprocessable_entity
             end
           else
+            user.update!(user_attrs) if user_attrs.any?
             return render json: { errors: ["This account has no editable profile"] }, status: :unprocessable_entity
           end
 
-          if params.key?(:job_alert_trade_label)
+          if user.company? && params.key?(:job_alert_trade_label)
             label = params.permit(:job_alert_trade_label)[:job_alert_trade_label].to_s.strip
             pref = user.job_alert_preference || JobAlertDispatcher.default_preference_for(user)
             pref.update!(trade_label: label.presence)
           end
 
           sync_company_user_to_crm_contacts(user) if user.company?
-          render json: { message: "Profile updated" }, status: :ok
+          detail = AdminUserDetail.call(user_id: user.id, period: params[:period].presence || "30d")
+          render json: detail.merge(message: "Profile updated"), status: :ok
         rescue ActiveRecord::RecordInvalid => e
           render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
         end
@@ -387,7 +380,7 @@ module Api
         def user_admin_params
           # job_alert_trade_label is persisted on job_alert_preferences, not users (see update_profile).
           # account_phone maps to users.phone (see update_profile); distinct from company_profile :phone.
-          params.permit(:first_name, :last_name, :account_phone)
+          params.permit(:first_name, :last_name, :email, :account_phone)
         end
 
         def technician_profile_admin_params

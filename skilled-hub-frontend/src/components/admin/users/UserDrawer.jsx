@@ -6,7 +6,9 @@ import UserTypeBadge from './UserTypeBadge';
 import UserStatusBadge from './UserStatusBadge';
 import UserVerificationBadge from './UserVerificationBadge';
 import UserRowActionsMenu from './UserRowActionsMenu';
+import EditTechnicianProfileModal from './EditTechnicianProfileModal';
 import { DrawerSkeleton } from './UsersSkeleton';
+import { mediaUrlWithCacheBust } from '../../../utils/mediaUrl';
 import {
   enrichUserRow,
   buildActivityTimeline,
@@ -103,12 +105,14 @@ export default function UserDrawer({
   onDelete,
   onPlaceholderAction,
   masqueradeBusyId,
+  onProfileSaved,
 }) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
   const [notes, setNotes] = useState([]);
   const [noteText, setNoteText] = useState('');
+  const [editProfileOpen, setEditProfileOpen] = useState(false);
 
   const loadDetail = useCallback(async () => {
     if (!userId) return;
@@ -145,10 +149,22 @@ export default function UserDrawer({
 
   if (!userId) return null;
 
+  const detailUser = detail?.user;
   const row = listRow
-    ? enrichUserRow(listRow, detail)
-    : detail?.user
-      ? enrichUserRow({ ...detail.user, logins_last_30_days: detail.logins?.total_in_period }, detail)
+    ? enrichUserRow({
+        ...listRow,
+        ...(detailUser
+          ? {
+              first_name: detailUser.first_name,
+              last_name: detailUser.last_name,
+              email: detailUser.email,
+              phone: detailUser.phone,
+              label: detailUser.profile?.trade_type || listRow.label,
+            }
+          : {}),
+      }, detail)
+    : detailUser
+      ? enrichUserRow({ ...detailUser, logins_last_30_days: detail.logins?.total_in_period }, detail)
       : null;
 
   const completeness = row ? computeProfileCompleteness(row, detail) : null;
@@ -165,8 +181,22 @@ export default function UserDrawer({
     setNoteText('');
   };
 
+  const isTechnician = row?.role === 'technician';
+
   return (
     <>
+      {editProfileOpen && isTechnician && (
+        <EditTechnicianProfileModal
+          isOpen={editProfileOpen}
+          userId={userId}
+          detail={detail}
+          onClose={() => setEditProfileOpen(false)}
+          onSaved={(res) => {
+            setDetail(res);
+            onProfileSaved?.(res);
+          }}
+        />
+      )}
       <button type="button" className="fixed inset-0 z-40 bg-slate-900/25 backdrop-blur-[2px]" aria-label="Close" onClick={onClose} />
       <aside
         className="fixed inset-0 sm:inset-y-0 sm:left-auto sm:right-0 z-50 w-full sm:max-w-md bg-white sm:border-l border-slate-200 shadow-2xl flex flex-col"
@@ -198,9 +228,23 @@ export default function UserDrawer({
               {/* Identity header */}
               <div className="pb-3 border-b border-slate-100">
                 <div className="flex items-start gap-3">
-                  <div className="h-11 w-11 shrink-0 rounded-full bg-gradient-to-br from-slate-100 to-slate-50 border border-slate-200 flex items-center justify-center text-sm font-bold text-slate-600">
-                    {row.initials}
-                  </div>
+                  {(() => {
+                    const avatarUrl = detail?.user?.profile?.avatar_url;
+                    const resolved = avatarUrl
+                      ? mediaUrlWithCacheBust(avatarUrl, detail?.user?.profile?.updated_at)
+                      : null;
+                    return resolved ? (
+                      <img
+                        src={resolved}
+                        alt={row.displayName}
+                        className="h-11 w-11 shrink-0 rounded-full object-cover border border-slate-200"
+                      />
+                    ) : (
+                      <div className="h-11 w-11 shrink-0 rounded-full bg-gradient-to-br from-slate-100 to-slate-50 border border-slate-200 flex items-center justify-center text-sm font-bold text-slate-600">
+                        {row.initials}
+                      </div>
+                    );
+                  })()}
                   <div className="min-w-0 flex-1">
                     <h3 className="text-base font-semibold text-slate-900 leading-tight truncate">{row.displayName}</h3>
                     <p className="text-xs text-slate-500 truncate mt-0.5">{row.email}</p>
@@ -229,6 +273,15 @@ export default function UserDrawer({
                   >
                     View profile
                   </Link>
+                  {row.role === 'technician' && (
+                    <button
+                      type="button"
+                      onClick={() => setEditProfileOpen(true)}
+                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700"
+                    >
+                      Edit profile
+                    </button>
+                  )}
                   {(row.role === 'company' || row.role === 'technician') && (
                     <button
                       type="button"
