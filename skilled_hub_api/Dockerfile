@@ -13,13 +13,28 @@ ENV RAILS_ENV="production" \
     BUNDLE_PATH="/usr/local/bundle" \
     BUNDLE_WITHOUT="development"
 
+# ruby:3.0.2-slim is Debian 11 (bullseye). Regular support and LTS ended 2026-08-31,
+# so deb.debian.org / security.debian.org 404 and Docker image builds fail at apt-get.
+# Point apt at the archive mirrors and ignore expired Release dates.
+RUN set -eux; \
+    if [ -f /etc/apt/sources.list ]; then \
+      sed -i \
+        -e 's|http://deb.debian.org/debian|http://archive.debian.org/debian|g' \
+        -e 's|https://deb.debian.org/debian|http://archive.debian.org/debian|g' \
+        -e 's|http://security.debian.org[^ ]*|http://archive.debian.org/debian-security|g' \
+        -e 's|https://security.debian.org[^ ]*|http://archive.debian.org/debian-security|g' \
+        /etc/apt/sources.list; \
+      sed -i '/bullseye-updates/d' /etc/apt/sources.list; \
+    fi; \
+    printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99no-check-valid-until
+
 
 # Throw-away build stage to reduce size of final image
 FROM base as build
 
 # Install packages needed to build gems (libpq-dev for pg gem)
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential git libvips pkg-config libpq-dev
+    apt-get install --no-install-recommends -y build-essential git libvips42 pkg-config libpq-dev
 
 # Install application gems
 COPY Gemfile Gemfile.lock ./
@@ -41,7 +56,7 @@ FROM base
 
 # Install packages needed for deployment (libpq5 for pg gem at runtime)
 RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y curl libsqlite3-0 libvips libpq5 && \
+    apt-get install --no-install-recommends -y curl libsqlite3-0 libvips42 libpq5 && \
     rm -rf /var/lib/apt/lists /var/cache/apt/archives
 
 # Copy built artifacts: gems, application
