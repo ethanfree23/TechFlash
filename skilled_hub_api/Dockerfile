@@ -13,19 +13,14 @@ ENV RAILS_ENV="production" \
     BUNDLE_PATH="/usr/local/bundle" \
     BUNDLE_WITHOUT="development"
 
-# ruby:3.0.2-slim is Debian 11 (bullseye). Regular support and LTS ended 2026-08-31,
-# so deb.debian.org / security.debian.org 404 and Docker image builds fail at apt-get.
-# Point apt at the archive mirrors and ignore expired Release dates.
+# ruby:3.0.2-slim is Debian 11 (bullseye). Regular + LTS support ended 2026-08-31.
+# archive.debian.org has the main bullseye dist; debian-security/bullseye-security
+# has no Release file there, so keep only the main archive.
 RUN set -eux; \
-    if [ -f /etc/apt/sources.list ]; then \
-      sed -i \
-        -e 's|http://deb.debian.org/debian|http://archive.debian.org/debian|g' \
-        -e 's|https://deb.debian.org/debian|http://archive.debian.org/debian|g' \
-        -e 's|http://security.debian.org[^ ]*|http://archive.debian.org/debian-security|g' \
-        -e 's|https://security.debian.org[^ ]*|http://archive.debian.org/debian-security|g' \
-        /etc/apt/sources.list; \
-      sed -i '/bullseye-updates/d' /etc/apt/sources.list; \
-    fi; \
+    printf '%s\n' \
+      'deb http://archive.debian.org/debian bullseye main' \
+      > /etc/apt/sources.list; \
+    rm -f /etc/apt/sources.list.d/*; \
     printf 'Acquire::Check-Valid-Until "false";\n' > /etc/apt/apt.conf.d/99no-check-valid-until
 
 
