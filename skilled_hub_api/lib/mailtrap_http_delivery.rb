@@ -67,7 +67,9 @@ class MailtrapHttpDelivery
     payload[:html] = html if html.present?
     payload[:cc] = normalized_addresses(mail.cc) if Array(mail.cc).compact.any?
     payload[:bcc] = normalized_addresses(mail.bcc) if Array(mail.bcc).compact.any?
-    payload[:reply_to] = normalized_addresses(mail.reply_to) if Array(mail.reply_to).compact.any?
+    # Mailtrap Sending API requires reply_to as a single object, not an array.
+    reply_to = normalized_addresses(mail.reply_to).first
+    payload[:reply_to] = reply_to if reply_to.present?
 
     forwarded_headers = extract_forwarded_headers(mail)
     payload[:headers] = forwarded_headers if forwarded_headers.present?

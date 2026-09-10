@@ -27,7 +27,7 @@ class MailtrapHttpDeliveryTest < ActiveSupport::TestCase
 
     assert_equal([{ email: "cc@example.com" }], payload[:cc])
     assert_equal([{ email: "bcc@example.com" }], payload[:bcc])
-    assert_equal([{ email: "reply@example.com" }], payload[:reply_to])
+    assert_equal({ email: "reply@example.com" }, payload[:reply_to])
     assert_equal "list", payload.dig(:headers, "Precedence")
     assert_equal "All", payload.dig(:headers, "X-Auto-Response-Suppress")
     assert_match(/settings\?tab=notifications/, payload.dig(:headers, "List-Unsubscribe"))

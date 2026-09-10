@@ -88,7 +88,6 @@ module PasswordSetup
       end
 
       code = PasswordSetupChallenge.generate_code
-      challenge = build_or_rotate_challenge!(user, challenge, code)
 
       delivery_result = MailDelivery.safe_deliver_result do
         UserMailer.password_setup_verification_code(user, code).deliver_now
@@ -98,12 +97,14 @@ module PasswordSetup
         Rails.logger.error(
           "[password_setup_mail_failed] user_id=#{user.id} code=#{delivery_result[:code]} message=#{delivery_result[:error]}"
         )
+        PasswordSetupChallenge.active.where(user_id: user.id, last_sent_at: nil).delete_all
         return Result.new(
           http_status: :service_unavailable,
           body: { status: "mail_failed", error: MAIL_FAILED_MESSAGE }
         )
       end
 
+      challenge = build_or_rotate_challenge!(user, challenge, code)
       challenge.update!(last_sent_at: Time.current, request_ip: @ip)
       code_sent_result(user, challenge.reload)
     end

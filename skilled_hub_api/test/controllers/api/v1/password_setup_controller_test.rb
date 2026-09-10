@@ -243,6 +243,38 @@ module Api
         assert_equal "rate_limited", JSON.parse(response.body)["status"]
       end
 
+      test "mail failure returns 503 and does not leave an unpublished challenge" do
+        MailDelivery.stub(
+          :safe_deliver_result,
+          ->(&_) { { success: false, error: "Mailtrap API HTTP 400", code: "delivery_exception" } }
+        ) do
+          assert_no_difference -> { PasswordSetupChallenge.count } do
+            start!(@user.email)
+          end
+        end
+
+        assert_response :service_unavailable
+        body = JSON.parse(response.body)
+        assert_equal "mail_failed", body["status"]
+        assert_equal 0, PasswordSetupChallenge.where(user_id: @user.id).count
+      end
+
+      test "mail failure deletes a leftover unpublished challenge" do
+        leftover = PasswordSetupChallenge.new(user: @user, request_ip: "1.1.1.1")
+        leftover.assign_code!("654321")
+        leftover.save!
+
+        MailDelivery.stub(
+          :safe_deliver_result,
+          ->(&_) { { success: false, error: "Mailtrap API HTTP 400", code: "delivery_exception" } }
+        ) do
+          start!(@user.email)
+        end
+
+        assert_response :service_unavailable
+        assert_equal 0, PasswordSetupChallenge.where(user_id: @user.id).count
+      end
+
       test "company accounts are not eligible" do
         company = User.create!(
           email: "company-setup@example.com",
