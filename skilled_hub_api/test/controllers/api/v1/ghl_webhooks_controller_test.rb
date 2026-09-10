@@ -421,6 +421,9 @@ module Api
         profile.reload
         assert profile.avatar.attached?
         assert_equal "image/png", profile.avatar.content_type
+        blob = profile.avatar.blob
+        assert blob.service.exist?(blob.key)
+        assert_equal MINI_PNG, blob.service.download(blob.key)
         assert_equal digest, user.reload.password_digest
         assert_equal "77002", profile.zip_code
       end
