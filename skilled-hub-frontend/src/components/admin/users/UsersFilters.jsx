@@ -110,9 +110,19 @@ export default function UsersFilters({
             type="search"
             value={searchQ}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Search name, email, phone, company, trade..."
-            className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200/90 bg-white text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-tf-blue/20 focus:border-tf-blue/40 shadow-sm"
+            placeholder="Search name, email, phone, company, trade, ZIP..."
+            className="w-full pl-8 pr-8 py-1.5 rounded-lg border border-slate-200/90 bg-white text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-tf-blue/20 focus:border-tf-blue/40 shadow-sm [&::-webkit-search-cancel-button]:hidden"
           />
+          {searchQ.trim() && (
+            <button
+              type="button"
+              onClick={() => onSearchChange('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              aria-label="Clear search"
+            >
+              <FaTimes className="w-3 h-3" />
+            </button>
+          )}
         </div>
         <button
           type="button"

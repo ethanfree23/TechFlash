@@ -17,7 +17,7 @@ const VARIANTS = {
   search: {
     icon: FaSearch,
     title: 'No results for your search',
-    description: 'Try a different name, email, company, or trade keyword.',
+    description: 'Try a different name, email, phone, company, trade, or ZIP.',
     actionLabel: 'Clear search',
   },
   filtered: {

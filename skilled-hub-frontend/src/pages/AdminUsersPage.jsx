@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import AppFooter from '../components/layout/AppFooter';
@@ -39,7 +39,8 @@ const COLUMN_STORAGE_KEY = 'admin-users-table-columns-v3';
 function useDebouncedValue(value, delay = 300) {
   const [debounced, setDebounced] = useState(value);
   useEffect(() => {
-    const t = setTimeout(() => setDebounced(value), delay);
+    const wait = String(value || '').trim() === '' ? 0 : delay;
+    const t = setTimeout(() => setDebounced(value), wait);
     return () => clearTimeout(t);
   }, [value, delay]);
   return debounced;
@@ -89,21 +90,31 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   });
 
   const apiRole = getApiRoleForTab(activeTab);
+  const loadSeqRef = useRef(0);
+  const abortRef = useRef(null);
 
   const loadUsers = useCallback(async () => {
+    const seq = ++loadSeqRef.current;
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLoading(true);
     setLoadError(null);
     try {
       const res = await adminUsersAPI.list({
         role: apiRole === null ? 'all' : apiRole,
         q: debouncedSearch.trim() || undefined,
+        signal: controller.signal,
       });
+      if (seq !== loadSeqRef.current) return;
       setList(res.users || []);
     } catch (e) {
+      if (e?.name === 'AbortError') return;
+      if (seq !== loadSeqRef.current) return;
       setLoadError(e.message || 'Failed to load users');
       setList([]);
     } finally {
-      setLoading(false);
+      if (seq === loadSeqRef.current) setLoading(false);
     }
   }, [apiRole, debouncedSearch]);
 
@@ -128,9 +139,14 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const filteredRows = useMemo(() => {
     let rows = applyTabFilter(enriched, activeTab);
     rows = applyAdvancedFilters(rows, filters);
-    rows = applyClientSearch(rows, searchQ);
+    const typed = searchQ.trim();
+    const sent = debouncedSearch.trim();
+    // Server already filtered for `sent`. Only client-filter while the next debounce is pending.
+    if (typed && typed !== sent) {
+      rows = applyClientSearch(rows, searchQ);
+    }
     return rows;
-  }, [enriched, activeTab, filters, searchQ]);
+  }, [enriched, activeTab, filters, searchQ, debouncedSearch]);
 
   const kpis = useMemo(() => computeKpis(enriched, techInsights), [enriched, techInsights]);
   const tabCounts = useMemo(() => computeTabCounts(enriched), [enriched]);
@@ -187,7 +203,11 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const handleEmptyAction = () => {
     if (emptyVariant === 'error') loadUsers();
     else if (emptyVariant === 'no_users') setCreateModalOpen(true);
-    else if (emptyVariant === 'search' || emptyVariant === 'filtered') clearAllFilters();
+    else if (emptyVariant === 'search') setSearchQ('');
+    else if (emptyVariant === 'filtered') {
+      setFilters({});
+      setSelectedIds(new Set());
+    }
     else {
       setActiveTab('all');
       setActiveViewId('all');

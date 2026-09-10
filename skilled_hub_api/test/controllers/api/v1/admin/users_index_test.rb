@@ -141,6 +141,214 @@ module Api
           assert_equal "basic", rows.fetch(technician.id).fetch("membership_level")
           assert_equal "trialing", rows.fetch(technician.id).fetch("membership_status")
         end
+
+        test "index search matches phones regardless of formatting including area code 832" do
+          admin = create_admin_user!("admin-index-search-phone@example.com")
+          formatted = create_technician!(
+            email: "tech-832-formatted@example.com",
+            first_name: "Area",
+            last_name: "CodeFmt",
+            phone: "+1 (832) 555-1212",
+            trade_type: "Electrician"
+          )
+          dashed = create_technician!(
+            email: "tech-832-dashed@example.com",
+            first_name: "Area",
+            last_name: "CodeDash",
+            phone: "832-555-3434",
+            trade_type: "Electrician"
+          )
+          e164 = create_technician!(
+            email: "tech-832-e164@example.com",
+            first_name: "Area",
+            last_name: "CodeE164",
+            phone: "+18325555678",
+            trade_type: "Electrician"
+          )
+          other = create_technician!(
+            email: "tech-713-other@example.com",
+            first_name: "Other",
+            last_name: "Area",
+            phone: "713-555-9999",
+            trade_type: "Electrician"
+          )
+
+          ids_for("832", admin: admin).tap do |ids|
+            assert_includes ids, formatted.id
+            assert_includes ids, dashed.id
+            assert_includes ids, e164.id
+            refute_includes ids, other.id
+          end
+
+          [
+            "832555",
+            "8325551212",
+            "(832) 555-1212",
+            "832-555-1212",
+            "+1 832 555 1212",
+            "+18325551212"
+          ].each do |query|
+            ids = ids_for(query, admin: admin)
+            assert_includes ids, formatted.id, "expected formatted 832 user for #{query.inspect}"
+            refute_includes ids, other.id, "did not expect 713 user for #{query.inspect}"
+          end
+
+          assert_includes ids_for("5551212", admin: admin), formatted.id
+          assert_includes ids_for("8325553434", admin: admin), dashed.id
+        end
+
+        test "index search matches name email company trade zip and ignores misses" do
+          admin = create_admin_user!("admin-index-search-fields@example.com")
+
+          ethan = create_technician!(
+            email: "ethan.search@example.com",
+            first_name: "Ethan",
+            last_name: "Freeman",
+            phone: "281-555-0100",
+            trade_type: "HVAC Technician",
+            zip_code: "77002"
+          )
+          plumber = create_technician!(
+            email: "trade-plumbing@example.com",
+            first_name: "Pat",
+            last_name: "Pipe",
+            phone: "281-555-0101",
+            trade_type: "Plumber",
+            zip_code: "77301"
+          )
+          auto = create_technician!(
+            email: "trade-auto@example.com",
+            first_name: "Alex",
+            last_name: "Motor",
+            phone: "281-555-0102",
+            trade_type: "Automobile Technician"
+          )
+          company = create_company_user!(
+            email: "ops@fixit-search.co",
+            first_name: "Casey",
+            last_name: "Office",
+            phone: "281-555-0103",
+            company_name: "FixIt Search Co"
+          )
+
+          electrician = create_technician!(
+            email: "trade-elec@example.com",
+            first_name: "Eli",
+            last_name: "Wire",
+            phone: "281-555-0104",
+            trade_type: "Electrician"
+          )
+
+          assert_includes ids_for("Ethan"), ethan.id
+          assert_includes ids_for("Freeman"), ethan.id
+          assert_includes ids_for("Ethan Freeman"), ethan.id
+          assert_includes ids_for("ethan"), ethan.id
+          assert_includes ids_for("@example.com"), ethan.id
+          assert_includes ids_for("ethan.search"), ethan.id
+
+          assert_includes ids_for("HVAC"), ethan.id
+          assert_includes ids_for("electrician"), electrician.id
+          assert_includes ids_for("plumbing"), plumber.id
+          assert_includes ids_for("auto"), auto.id
+
+          assert_includes ids_for("77002"), ethan.id
+          assert_includes ids_for("770"), ethan.id
+          refute_includes ids_for("770"), plumber.id
+
+          assert_includes ids_for("FixIt Search Co"), company.id
+          assert_includes ids_for("fixit"), company.id
+
+          miss = ids_for("zzqx-no-such-admin-user")
+          refute_includes miss, ethan.id
+          refute_includes miss, plumber.id
+          refute_includes miss, company.id
+        end
+
+        test "index search narrows the current role filter" do
+          admin = create_admin_user!("admin-index-search-role@example.com")
+          tech = create_technician!(
+            email: "role-search-tech@example.com",
+            first_name: "Riley",
+            last_name: "Tech",
+            phone: "832-555-8888",
+            trade_type: "HVAC Technician"
+          )
+          company = create_company_user!(
+            email: "role-search-co@example.com",
+            first_name: "Cora",
+            last_name: "Company",
+            phone: "832-555-8889",
+            company_name: "Role Search LLC"
+          )
+
+          tech_ids = ids_for("832", role: "technician", admin: admin)
+          assert_includes tech_ids, tech.id
+          refute_includes tech_ids, company.id
+
+          company_ids = ids_for("832", role: "company", admin: admin)
+          assert_includes company_ids, company.id
+          refute_includes company_ids, tech.id
+        end
+
+        private
+
+        def create_admin_user!(email)
+          User.create!(
+            email: email,
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin,
+            phone: "713-555-0500"
+          )
+        end
+
+        def create_technician!(email:, first_name:, last_name:, phone:, trade_type:, zip_code: nil)
+          user = User.create!(
+            email: email,
+            password: "password123",
+            password_confirmation: "password123",
+            role: :technician,
+            first_name: first_name,
+            last_name: last_name,
+            phone: phone
+          )
+          profile = TechnicianProfile.create!(
+            user: user,
+            trade_type: trade_type,
+            availability: "Full-time",
+            phone: phone
+          )
+          profile.update_columns(zip_code: zip_code) if zip_code.present?
+          user
+        end
+
+        def create_company_user!(email:, first_name:, last_name:, phone:, company_name:)
+          user = User.create!(
+            email: email,
+            password: "password123",
+            password_confirmation: "password123",
+            role: :company,
+            first_name: first_name,
+            last_name: last_name,
+            phone: phone
+          )
+          CompanyProfile.create!(
+            user: user,
+            company_name: company_name,
+            phone: phone,
+            bio: "Search fixture"
+          )
+          user
+        end
+
+        def ids_for(query, role: nil, admin: nil)
+          actor = admin || User.find_by(role: :admin) || create_admin_user!("admin-index-search-fallback@example.com")
+          params = { q: query }
+          params[:role] = role if role
+          get "/api/v1/admin/users", params: params, headers: auth_header_for(actor)
+          assert_response :ok
+          JSON.parse(response.body).fetch("users").map { |row| row.fetch("id") }
+        end
       end
     end
   end

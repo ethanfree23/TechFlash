@@ -22,6 +22,7 @@ const testFiles = [
   'tradeQualifications.test.mjs',
   'metaPixel.test.mjs',
   'adminUsersCompleteness.test.mjs',
+  'adminUsersSearch.test.mjs',
 ];
 
 let successful = 0;

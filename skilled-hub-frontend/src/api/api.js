@@ -331,12 +331,12 @@ export const adminUsersAPI = {
       method: 'POST',
       body: JSON.stringify({ target_user_id: targetUserId }),
     }),
-  list: ({ q, role } = {}) => {
+  list: ({ q, role, signal } = {}) => {
     const params = new URLSearchParams();
     if (q) params.set('q', q);
     if (role && role !== 'all') params.set('role', role);
     const qs = params.toString();
-    return apiRequest(`/admin/users${qs ? `?${qs}` : ''}`);
+    return apiRequest(`/admin/users${qs ? `?${qs}` : ''}`, signal ? { signal } : {});
   },
   get: (id, period = '7d') =>
     apiRequest(`/admin/users/${id}?period=${encodeURIComponent(period)}`),

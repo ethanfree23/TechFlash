@@ -502,25 +502,7 @@ module Api
         end
 
         def filter_by_search(scope)
-          q = params[:q].to_s.strip
-          return scope if q.blank?
-
-          like = "%#{ActiveRecord::Base.sanitize_sql_like(q.downcase)}%"
-          scope.left_joins(:company_profile, :technician_profile).where(
-            <<~SQL.squish,
-              LOWER(users.email) LIKE :like
-              OR LOWER(COALESCE(users.first_name, '')) LIKE :like
-              OR LOWER(COALESCE(users.last_name, '')) LIKE :like
-              OR LOWER(COALESCE(company_profiles.company_name, '')) LIKE :like
-              OR LOWER(COALESCE(technician_profiles.trade_type, '')) LIKE :like
-              OR EXISTS (
-                SELECT 1 FROM company_profiles shared_co
-                WHERE shared_co.id = users.company_profile_id
-                  AND LOWER(shared_co.company_name) LIKE :like
-              )
-            SQL
-            like: like
-          )
+          AdminUserSearch.apply(scope, params[:q])
         end
 
         def list_item(user)
@@ -533,6 +515,7 @@ module Api
             first_name: user.first_name,
             last_name: user.last_name,
             phone: user.phone,
+            zip_code: user.technician_profile&.zip_code,
             user_name: user_name.presence,
             role: user.role,
             created_at: user.created_at&.iso8601,

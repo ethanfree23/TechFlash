@@ -390,23 +390,43 @@ export function applyAdvancedFilters(rows, filters = {}) {
   return result;
 }
 
+function searchDigitVariants(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (!digits) return [];
+  const variants = [digits];
+  if (digits.length >= 11 && digits.startsWith('1')) variants.push(digits.slice(1));
+  if (digits.length === 10) variants.push(`1${digits}`);
+  return [...new Set(variants.filter(Boolean))];
+}
+
 export function applyClientSearch(rows, searchQ) {
   const q = (searchQ || '').trim().toLowerCase();
   if (!q) return rows;
+  const phoneVariants = searchDigitVariants(searchQ);
   return rows.filter((u) => {
     const hay = [
       u.displayName,
+      u.first_name,
+      u.last_name,
       u.email,
       u.phone,
       u.company_name,
       u.label,
+      u.zip_code,
+      u.locationLabel,
       u.role,
       String(u.id),
     ]
       .filter(Boolean)
       .join(' ')
       .toLowerCase();
-    return hay.includes(q);
+    if (hay.includes(q)) return true;
+    if (!phoneVariants.length) return false;
+    const storedDigits = [u.phone, u.zip_code]
+      .filter(Boolean)
+      .map((value) => String(value).replace(/\D/g, ''))
+      .join(' ');
+    return phoneVariants.some((variant) => storedDigits.includes(variant));
   });
 }
 

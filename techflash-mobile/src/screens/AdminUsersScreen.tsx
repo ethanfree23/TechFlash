@@ -73,7 +73,7 @@ export default function AdminUsersScreen() {
         <TextInput
           value={query}
           onChangeText={setQuery}
-          placeholder="Search email or name"
+          placeholder="Search name, email, phone, company, trade, ZIP"
           placeholderTextColor={colors.muted}
           style={styles.search}
           autoCapitalize="none"
