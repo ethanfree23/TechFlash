@@ -33,7 +33,7 @@ class GhlTechnicianOnboardingService
       end
     end
     result
-  rescue GhlTechnicianProvisioner::Error, GhlRemoteImageFetcher::Error, GhlProfilePhotoAttacher::Error => e
+  rescue GhlTechnicianProvisioner::Error, GhlRemoteImageFetcher::Error, GhlProfilePhotoAttacher::Error, GhlDocumentFileAttacher::Error => e
     persist_unprocessed_event(e.message)
     failure(:unprocessable_entity, e.message)
   rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid => e
@@ -106,6 +106,9 @@ class GhlTechnicianOnboardingService
       ),
       skill_class: @payload["technician_level"].presence || @payload["skill_class"],
       has_trade_credential: GhlIntakeParser.parse_boolean(@payload["has_trade_credential"]),
+      trade_license_title: @payload["trade_license_title"],
+      trade_license_number: @payload["trade_license_number"],
+      trade_license_image: fetch_trade_license_image,
       min_hourly_rate_cents: parse_hourly_rate_cents,
       max_distance_miles: GhlIntakeParser.parse_miles(
         @payload["travel_distance"].presence || @payload["max_distance_miles"]
@@ -177,6 +180,13 @@ class GhlTechnicianOnboardingService
 
   def idempotency_key
     @payload["idempotency_key"].to_s.strip
+  end
+
+  def fetch_trade_license_image
+    url = @payload["trade_license_photo_url"].to_s.strip
+    return nil if url.blank?
+
+    GhlRemoteImageFetcher.fetch(url)
   end
 
   def parse_hourly_rate_cents

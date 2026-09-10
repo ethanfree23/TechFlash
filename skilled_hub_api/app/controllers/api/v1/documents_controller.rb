@@ -63,7 +63,9 @@ module Api
         # Handle file attachment with better error handling
         if params[:file].present?
           begin
-            document.file.attach(params[:file])
+            attach_uploaded_file!(document, params[:file])
+          rescue LicenseImageRejected => e
+            return render json: { error: e.message }, status: :unprocessable_entity
           rescue => e
             return render json: { error: "File attachment failed: #{e.message}" }, status: :unprocessable_entity
           end
@@ -111,6 +113,49 @@ module Api
       end
 
       private
+
+      LICENSE_DOC_TYPES = %w[license certificate cert].freeze
+
+      class LicenseImageRejected < StandardError; end
+
+      def attach_uploaded_file!(document, upload)
+        if license_image_document?(document)
+          inspection = RasterImageInspector.inspect_upload(upload)
+          unless inspection.accepted?
+            raise LicenseImageRejected, inspection.error_message
+          end
+
+          tempfile = upload.respond_to?(:tempfile) ? upload.tempfile : upload
+          tempfile.binmode if tempfile.respond_to?(:binmode)
+          tempfile.rewind if tempfile.respond_to?(:rewind)
+          document.file.attach(
+            io: tempfile,
+            filename: license_upload_filename(upload, inspection.content_type),
+            content_type: inspection.content_type,
+            identify: false
+          )
+        else
+          document.file.attach(upload)
+        end
+      end
+
+      def license_image_document?(document)
+        LICENSE_DOC_TYPES.include?(document.doc_type.to_s)
+      end
+
+      def license_upload_filename(upload, content_type)
+        original = upload.respond_to?(:original_filename) ? upload.original_filename.to_s : ""
+        base = File.basename(original, ".*").presence
+        base = "license" unless base.to_s.match?(/\A[a-zA-Z0-9._-]{1,80}\z/)
+        ext = {
+          "image/jpeg" => "jpg",
+          "image/png" => "png",
+          "image/gif" => "gif",
+          "image/webp" => "webp",
+          "image/bmp" => "bmp"
+        }.fetch(content_type, "jpg")
+        "#{base}.#{ext}"
+      end
 
       def document_params
         params.permit(:uploadable_id, :uploadable_type, :doc_type, :issuer, :document_number, :issued_on, :valid_until, metadata: {})

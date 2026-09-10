@@ -5,6 +5,8 @@ require "test_helper"
 module Api
   module V1
     class GhlWebhooksControllerTest < ActionDispatch::IntegrationTest
+      include AuthTestHelper
+
       SECRET = "ghl-test-secret"
 
       setup do
@@ -145,6 +147,11 @@ module Api
         assert_equal 8, profile.experience_years
         assert_equal "HVAC Technician", user.job_alert_preference.trade_label
         assert_equal 1, profile.documents.where(doc_type: %w[license certificate cert]).count
+        license = profile.documents.where(doc_type: %w[license certificate cert]).first
+        assert_equal "Trade license", license.issuer
+        assert_nil license.document_number
+        assert license.pending_review?
+        refute license.file.attached?
         assert_equal digest, user.password_digest
 
         post_ghl(
@@ -549,6 +556,135 @@ module Api
 
         assert_response :unprocessable_entity
         assert_match(/technician not found/i, JSON.parse(response.body)["error"])
+      end
+
+      test "trade license webhook stores title number and image url on the canonical document" do
+        post_ghl(meta_lead_payload)
+        user = User.find(JSON.parse(response.body)["user_id"])
+        digest = user.password_digest
+
+        stub_ghl_image_fetch(filename: "trade-license.png") do
+          post_ghl(
+            identity_payload.merge(
+              idempotency_key: "contact-lead-trade-license",
+              event: "trade_license",
+              has_trade_credential: "Yes",
+              trade_license_title: "Texas Journeyman Electrician",
+              trade_license_number: "123456",
+              trade_license_photo_url: "https://services.msgsndr.com/mms/trade-license.png"
+            )
+          )
+        end
+
+        assert_response :accepted
+        profile = user.technician_profile
+        docs = profile.documents.where(doc_type: %w[license certificate cert])
+        assert_equal 1, docs.count
+        doc = docs.first
+        assert_equal "Texas Journeyman Electrician", doc.issuer
+        assert_equal "123456", doc.document_number
+        assert doc.pending_review?
+        refute doc.approved?
+        assert doc.file.attached?
+        assert_equal "image/png", doc.file.content_type
+        assert_equal "trade-license.png", doc.file.filename.to_s
+        assert_equal MINI_PNG, doc.file.blob.service.download(doc.file.blob.key)
+        assert_equal "ghl_intake", doc.metadata["source"]
+        assert_equal digest, user.reload.password_digest
+
+        get "/api/v1/documents", headers: auth_header_for(user)
+        assert_response :ok
+        listed = JSON.parse(response.body)
+        listed = listed["documents"] if listed.is_a?(Hash)
+        match = listed.find { |row| row["id"] == doc.id }
+        assert match.present?
+        assert match["file_url"].present?
+        assert_includes match["file_url"], "/rails/active_storage/"
+        assert_equal "Texas Journeyman Electrician", match["issuer"]
+        assert_equal "123456", match["document_number"]
+        assert_equal "pending_review", match["status"]
+      end
+
+      test "later trade license photo updates the ghl placeholder without duplicating" do
+        post_ghl(meta_lead_payload)
+        post_ghl(
+          identity_payload.merge(
+            idempotency_key: "contact-lead-trade",
+            event: "trade",
+            has_trade_credential: "Yes"
+          )
+        )
+        profile = User.find_by!(email: "lead@example.com").technician_profile
+        placeholder = profile.documents.where(doc_type: %w[license certificate cert]).first
+        assert placeholder.present?
+        refute placeholder.file.attached?
+
+        stub_ghl_image_fetch(filename: "trade-license.png") do
+          post_ghl(
+            identity_payload.merge(
+              idempotency_key: "contact-lead-trade-license-photo",
+              event: "trade_license",
+              trade_license_title: "Texas Journeyman Electrician",
+              trade_license_number: "123456",
+              trade_license_photo_url: "https://services.msgsndr.com/mms/trade-license.png"
+            )
+          )
+        end
+
+        assert_response :accepted
+        docs = profile.reload.documents.where(doc_type: %w[license certificate cert])
+        assert_equal 1, docs.count
+        doc = docs.first
+        assert_equal placeholder.id, doc.id
+        assert_equal "Texas Journeyman Electrician", doc.issuer
+        assert_equal "123456", doc.document_number
+        assert doc.file.attached?
+        assert doc.pending_review?
+      end
+
+      test "failed trade license photo does not destroy an existing attached license or avatar" do
+        post_ghl(meta_lead_payload)
+        stub_ghl_image_fetch(filename: "avatar.png") do
+          post_ghl(profile_photo_payload)
+        end
+        stub_ghl_image_fetch(filename: "trade-license.png") do
+          post_ghl(
+            identity_payload.merge(
+              idempotency_key: "contact-lead-trade-license",
+              event: "trade_license",
+              trade_license_title: "Texas Journeyman Electrician",
+              trade_license_number: "123456",
+              trade_license_photo_url: "https://services.msgsndr.com/mms/trade-license.png"
+            )
+          )
+        end
+        profile = User.find_by!(email: "lead@example.com").technician_profile
+        avatar_blob_id = profile.avatar.blob.id
+        license = profile.documents.where(doc_type: %w[license certificate cert]).first
+        license_blob_id = license.file.blob.id
+
+        GhlRemoteImageFetcher.stub(
+          :fetch,
+          ->(*) { raise GhlRemoteImageFetcher::Error, "file is not an allowed image type" }
+        ) do
+          post_ghl(
+            identity_payload.merge(
+              idempotency_key: "contact-lead-trade-license-bad",
+              event: "trade_license",
+              trade_license_title: "Should not replace",
+              trade_license_number: "000",
+              trade_license_photo_url: "https://services.msgsndr.com/mms/bad.bin"
+            )
+          )
+        end
+
+        assert_response :unprocessable_entity
+        profile.reload
+        assert_equal avatar_blob_id, profile.avatar.blob.id
+        license.reload
+        assert_equal license_blob_id, license.file.blob.id
+        assert_equal "Texas Journeyman Electrician", license.issuer
+        assert_equal "123456", license.document_number
       end
 
       private

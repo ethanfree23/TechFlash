@@ -18,6 +18,16 @@ class GhlRemoteImageFetcherTest < ActiveSupport::TestCase
     end
   end
 
+  test "downloads a webp even when content-type is wrong" do
+    webp = "RIFF".b + "\x08\x00\x00\x00".b + "WEBP".b + "xxxx".b
+    with_public_dns do
+      stub_http_response(body: webp, content_type: "application/octet-stream") do
+        result = GhlRemoteImageFetcher.fetch("https://cdn.example.com/photo.webp")
+        assert_equal "image/webp", result.content_type
+      end
+    end
+  end
+
   test "rejects html even if content-type claims image" do
     with_public_dns do
       stub_http_response(body: "<html><body>nope</body></html>", content_type: "image/jpeg") do

@@ -26,6 +26,9 @@ class GhlTechnicianProvisioner
     @experience_years = attrs[:experience_years]
     @skill_class = TechnicianClassCatalog.normalized_slug(attrs[:skill_class])
     @has_trade_credential = attrs[:has_trade_credential]
+    @trade_license_title = attrs[:trade_license_title].to_s.strip.presence
+    @trade_license_number = attrs[:trade_license_number].to_s.strip.presence
+    @trade_license_image = attrs[:trade_license_image]
     @min_hourly_rate_cents = attrs[:min_hourly_rate_cents]
     @max_distance_miles = attrs[:max_distance_miles]
     @intake_contact_info = attrs[:tf_intake_contact_info]
@@ -108,19 +111,76 @@ class GhlTechnicianProvisioner
     pref.save!
   end
 
+  PLACEHOLDER_ISSUERS = [
+    "self-reported via ghl intake",
+    "trade license"
+  ].freeze
+  PLACEHOLDER_NUMBERS = %w[ghl_self_reported].freeze
+
   def persist_trade_credential!(profile)
-    return unless @has_trade_credential == true
+    return unless persist_trade_credential?
 
-    existing = profile.documents.where(doc_type: TRADE_LICENSE_DOC_TYPES)
-    return if existing.any?
+    docs = profile.documents.where(doc_type: TRADE_LICENSE_DOC_TYPES).order(:created_at, :id)
+    ghl_doc = docs.find { |doc| ghl_sourced?(doc) }
 
-    profile.documents.create!(
+    if ghl_doc
+      update_ghl_license!(ghl_doc)
+      return
+    end
+
+    return if docs.any? && !license_details_present?
+
+    doc = profile.documents.create!(
       doc_type: DEFAULT_LICENSE_DOC_TYPE,
       status: :pending_review,
-      issuer: "Self-reported via GHL intake",
-      document_number: "GHL_SELF_REPORTED",
+      issuer: @trade_license_title.presence || "Trade license",
+      document_number: @trade_license_number,
       metadata: { "source" => GHL_CREDENTIAL_SOURCE, "has_trade_credential" => true }
     )
+    attach_license_image!(doc)
+  end
+
+  def persist_trade_credential?
+    @has_trade_credential == true || license_details_present?
+  end
+
+  def license_details_present?
+    @trade_license_title.present? || @trade_license_number.present? || @trade_license_image.present?
+  end
+
+  def ghl_sourced?(doc)
+    doc.metadata.to_h.stringify_keys["source"].to_s == GHL_CREDENTIAL_SOURCE
+  end
+
+  def update_ghl_license!(doc)
+    attrs = {}
+    if @trade_license_title.present? && (doc.issuer.blank? || placeholder_issuer?(doc.issuer))
+      attrs[:issuer] = @trade_license_title
+    elsif @trade_license_title.present?
+      attrs[:issuer] = @trade_license_title
+    end
+    if @trade_license_number.present? && (doc.document_number.blank? || placeholder_number?(doc.document_number))
+      attrs[:document_number] = @trade_license_number
+    elsif @trade_license_number.present?
+      attrs[:document_number] = @trade_license_number
+    end
+    doc.update!(attrs) if attrs.any?
+    attach_license_image!(doc)
+  end
+
+  def attach_license_image!(doc)
+    return if @trade_license_image.blank?
+    return if doc.file.attached?
+
+    GhlDocumentFileAttacher.attach!(doc, @trade_license_image)
+  end
+
+  def placeholder_issuer?(value)
+    PLACEHOLDER_ISSUERS.include?(value.to_s.strip.downcase)
+  end
+
+  def placeholder_number?(value)
+    PLACEHOLDER_NUMBERS.include?(value.to_s.strip.downcase)
   end
 
   def persist_references!(user)

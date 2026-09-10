@@ -16,10 +16,12 @@ class GhlRemoteImageFetcher
   MAX_REDIRECTS = 3
   USER_AGENT = "TechFlash-GHL-ProfilePhoto/1.0"
 
-  MAGIC = {
-    "image/jpeg" => [+"\xFF\xD8\xFF".b],
-    "image/png" => [+"\x89PNG\r\n\x1A\n".b],
-    "image/gif" => [+"GIF87a".b, +"GIF89a".b]
+  EXT_FOR = {
+    "image/jpeg" => "jpg",
+    "image/png" => "png",
+    "image/gif" => "gif",
+    "image/webp" => "webp",
+    "image/bmp" => "bmp"
   }.freeze
 
   BLOCKED_RANGES = [
@@ -85,7 +87,7 @@ class GhlRemoteImageFetcher
 
     req = Net::HTTP::Get.new(uri.request_uri.presence || "/")
     req["User-Agent"] = USER_AGENT
-    req["Accept"] = "image/jpeg,image/png,image/gif,image/webp,image/*;q=0.8"
+    req["Accept"] = "image/jpeg,image/png,image/gif,image/webp,image/bmp,image/*;q=0.8"
 
     res = http.request(req)
     case res
@@ -137,22 +139,14 @@ class GhlRemoteImageFetcher
   end
 
   def detect_image_type!(bytes)
-    head = bytes.byteslice(0, 16).to_s
-    return "image/jpeg" if MAGIC["image/jpeg"].any? { |sig| head.start_with?(sig) }
-    return "image/png" if MAGIC["image/png"].any? { |sig| head.start_with?(sig) }
-    return "image/gif" if MAGIC["image/gif"].any? { |sig| head.start_with?(sig) }
-    return "image/webp" if head.start_with?("RIFF".b) && bytes.byteslice(8, 4) == "WEBP".b
+    inspection = RasterImageInspector.inspect(bytes)
+    return inspection.content_type if inspection.accepted?
 
     raise Error, "file is not an allowed image type"
   end
 
   def filename_for(uri, content_type)
-    ext = {
-      "image/jpeg" => "jpg",
-      "image/png" => "png",
-      "image/gif" => "gif",
-      "image/webp" => "webp"
-    }.fetch(content_type, "jpg")
+    ext = EXT_FOR.fetch(content_type, "jpg")
     base = File.basename(uri.path.to_s).to_s.sub(/\.[a-z0-9]+\z/i, "")
     base = "ghl-profile-photo" unless base.match?(/\A[a-zA-Z0-9._-]{1,80}\z/)
     "#{base}.#{ext}"

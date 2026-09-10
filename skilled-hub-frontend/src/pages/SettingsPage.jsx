@@ -47,6 +47,11 @@ import SettingsInput from '../components/settings/SettingsInput';
 import SettingsBadge from '../components/settings/SettingsBadge';
 import NotificationPreferenceCard from '../components/settings/NotificationPreferenceCard';
 import NotificationAdvancedModal from '../components/settings/NotificationAdvancedModal';
+import LicenseCredentialsSection from '../components/settings/LicenseCredentialsSection';
+import {
+  extractDocumentsList,
+  isTechnicianCertificateDocument,
+} from '../utils/licenseCredentials';
 
 const formatMembershipTier = (tier) => {
   const raw = String(tier || '').trim();
@@ -84,34 +89,6 @@ const durationSummary = (minWeeks, maxWeeks) => {
 
 const normalizeReferenceEmail = (value) => String(value || '').trim().toLowerCase();
 const normalizeReferencePhone = (value) => String(value || '').replace(/\D/g, '');
-const makeLicenseLineItem = () => ({
-  id: `license-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
-  title: '',
-  reference: '',
-  file: null,
-});
-
-const CERTIFICATE_DOC_TYPES = new Set(['certificate', 'cert', 'license']);
-const LICENSE_IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png']);
-
-const isAllowedLicenseImageFile = (file) => {
-  if (!file) return false;
-  const mime = String(file.type || '').toLowerCase();
-  if (LICENSE_IMAGE_MIME_TYPES.has(mime)) return true;
-  return /\.(jpe?g|png)$/i.test(String(file.name || '').trim());
-};
-
-const isTechnicianCertificateDocument = (doc, technicianProfileId) => (
-  CERTIFICATE_DOC_TYPES.has(String(doc?.doc_type || '').toLowerCase())
-  && String(doc?.uploadable_type || '') === 'TechnicianProfile'
-  && Number(doc?.uploadable_id) === Number(technicianProfileId)
-);
-
-const extractDocumentsList = (payload) => {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.documents)) return payload.documents;
-  return [];
-};
 
 const buildBackgroundCheckOptionsErrorMessage = (error) => {
   const message = String(error?.message || '').trim();
@@ -172,46 +149,40 @@ const isVerificationCompleteStatus = (status) => {
   return ['verified', 'completed', 'approved', 'clear'].includes(key);
 };
 
-const verificationStatusTone = (status) => {
+const findVerificationSection = (sections, keyword) => (
+  (sections || []).find((section) => {
+    const key = String(section?.key || '').toLowerCase();
+    const title = String(section?.title || '').toLowerCase();
+    return key.includes(keyword) || title.includes(keyword);
+  })
+);
+
+const verificationProgressChip = (status) => {
   const key = normalizeVerificationStatus(status);
   if (isVerificationCompleteStatus(key)) {
-    return {
-      row: 'bg-emerald-50',
-      chip: 'bg-emerald-100 text-emerald-800 border border-emerald-200',
-    };
+    return { variant: 'success', label: 'Complete' };
   }
-  if (['not_started', 'rejected', 'failed', 'denied'].includes(key)) {
-    return {
-      row: 'bg-red-50',
-      chip: 'bg-red-100 text-red-800 border border-red-200',
-    };
+  if (['pending', 'invitation_sent', 'invited', 'processing', 'consider', 'report_pending', 'in_progress'].includes(key)) {
+    return { variant: 'warning', label: 'In progress' };
   }
-  return {
-    row: 'bg-amber-50',
-    chip: 'bg-amber-100 text-amber-800 border border-amber-200',
-  };
+  if (['rejected', 'failed', 'denied'].includes(key)) {
+    return { variant: 'danger', label: 'Needs review' };
+  }
+  return { variant: 'danger', label: 'Incomplete' };
 };
 
-const isIdentityVerificationSection = (section) => {
-  const key = String(section?.key || '').toLowerCase();
-  const title = String(section?.title || '').toLowerCase();
-  return key.includes('identity') || title.includes('identity');
+const referenceProgressChip = (count) => {
+  if (count >= 3) return { variant: 'success', label: 'Complete' };
+  if (count === 2) return { variant: 'warning', label: '2 of 3' };
+  if (count === 1) return { variant: 'orange', label: '1 of 3' };
+  return { variant: 'danger', label: 'Incomplete' };
 };
 
-const isLicenseVerificationSection = (section) => {
-  const fields = [
-    section?.key,
-    section?.title,
-    section?.name,
-    section?.slug,
-    section?.description,
-  ];
-  const haystack = fields
-    .map((v) => String(v || '').toLowerCase())
-    .join(' ');
-  // Match broad stems so variants like "licenses", "licensing", "certifications", etc. are covered.
-  return haystack.includes('licens') || haystack.includes('certif') || haystack.includes('cert');
-};
+const licenseProgressChip = (count) => (
+  count > 0
+    ? { variant: 'success', label: `${count} on file` }
+    : { variant: 'danger', label: 'Incomplete' }
+);
 
 const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [profile, setProfile] = useState(null);
@@ -250,7 +221,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [couponCode, setCouponCode] = useState('');
   const [couponBusy, setCouponBusy] = useState(false);
   const [certificates, setCertificates] = useState([]);
-  const [licenseLineItems, setLicenseLineItems] = useState([makeLicenseLineItem()]);
   const [uploadingCert, setUploadingCert] = useState(false);
   const [certificatePreviewErrors, setCertificatePreviewErrors] = useState({});
   const [deletingCertId, setDeletingCertId] = useState(null);
@@ -360,13 +330,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     selectedPackageName,
   ]);
   const canUndoDemoBackgroundCheck = demoMode && isTechnician && hasInProgressBackgroundCheck(verificationCenter?.background_check);
-  const displayBackgroundCheckPackageName = useMemo(
-    () => verificationCenter?.background_check?.package_name
-      || backgroundCheckOptions?.configured_package_name
-      || selectedPackageName
-      || '',
-    [verificationCenter?.background_check?.package_name, backgroundCheckOptions?.configured_package_name, selectedPackageName]
-  );
   const completedReferenceCount = useMemo(
     () => verificationReferences.filter((ref) => {
       const key = String(ref?.status || '').toLowerCase();
@@ -376,17 +339,8 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   );
   const verificationChecklistStatus = useMemo(() => {
     const sections = verificationCenter?.sections || [];
-    const findStatusByKeyword = (keyword) => {
-      const hit = sections.find((section) => {
-        const key = String(section?.key || '').toLowerCase();
-        const title = String(section?.title || '').toLowerCase();
-        return key.includes(keyword) || title.includes(keyword);
-      });
-      return hit?.status;
-    };
-
-    const identityStatus = findStatusByKeyword('identity');
-    const backgroundStatus = findStatusByKeyword('background');
+    const identityStatus = findVerificationSection(sections, 'identity')?.status;
+    const backgroundStatus = findVerificationSection(sections, 'background')?.status;
 
     return {
       identityComplete: identityStatus
@@ -398,6 +352,22 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       referencesComplete: completedReferenceCount >= 3,
     };
   }, [verificationCenter?.sections, completedReferenceCount, profile?.identity_verified, profile?.background_verified]);
+
+  const licensesStatusChip = useMemo(
+    () => licenseProgressChip(certificates.length),
+    [certificates.length]
+  );
+  const referencesStatusChip = useMemo(
+    () => referenceProgressChip(verificationReferences.length),
+    [verificationReferences.length]
+  );
+  const backgroundStatusChip = useMemo(() => {
+    const sectionStatus = findVerificationSection(verificationCenter?.sections, 'background')?.status;
+    if (sectionStatus) return verificationProgressChip(sectionStatus);
+    if (profile?.background_verified) return verificationProgressChip('verified');
+    if (hasInProgressBackgroundCheck(verificationCenter?.background_check)) return verificationProgressChip('pending');
+    return verificationProgressChip('not_started');
+  }, [verificationCenter?.sections, verificationCenter?.background_check, profile?.background_verified]);
 
   const profileAvatarUrl = useMemo(() => {
     if (avatarPreview) return avatarPreview;
@@ -501,14 +471,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   }, [profile, isAdmin, isCompany, isTechnician, form, needsMapSetup]);
 
   const verificationCompletion = useMemo(() => {
-    if (!isTechnician) return { items: [], missing: [], allComplete: true };
-    const items = [
-      { label: 'Identity verification', complete: verificationChecklistStatus.identityComplete },
-      { label: 'Background check', complete: verificationChecklistStatus.backgroundComplete },
-      { label: 'Reference verification', complete: verificationChecklistStatus.referencesComplete },
-    ];
-    const missing = items.filter((item) => !item.complete).map((item) => item.label);
-    return { items, missing, allComplete: missing.length === 0 };
+    if (!isTechnician) return { allComplete: true };
+    const allComplete = verificationChecklistStatus.identityComplete
+      && verificationChecklistStatus.backgroundComplete
+      && verificationChecklistStatus.referencesComplete;
+    return { allComplete };
   }, [isTechnician, verificationChecklistStatus]);
 
   const notificationCategories = useMemo(() => {
@@ -1069,8 +1036,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
-  const handleLicenseSubmit = async (e) => {
-    e.preventDefault();
+  const handleLicenseUpload = async ({ title, reference, file }) => {
     const failLicenseSave = (message) => {
       setError(message);
       setAlertModal({
@@ -1079,60 +1045,38 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         message,
         variant: 'error',
       });
+      return false;
     };
     if (!isTechnician || !profile?.id) {
-      failLicenseSave('Profile is still loading. Please wait a moment and try again.');
-      return;
+      return failLicenseSave('Profile is still loading. Please wait a moment and try again.');
     }
-    const incompleteLicenseItems = licenseLineItems.filter((item) => (
-      (String(item.title || '').trim() || String(item.reference || '').trim()) && !item.file
-    ));
-    if (incompleteLicenseItems.length > 0) {
-      failLicenseSave('Attach an image for each license line item before saving.');
-      return;
-    }
-    const pendingLicenseUploads = licenseLineItems.filter((item) => item.file);
-    if (pendingLicenseUploads.length === 0) {
-      failLicenseSave('Attach at least one license image before saving.');
-      return;
-    }
-    const invalidLicenseFile = pendingLicenseUploads.find((item) => !isAllowedLicenseImageFile(item.file));
-    if (invalidLicenseFile) {
-      failLicenseSave('License images must be JPG, JPEG, or PNG files.');
-      return;
+    if (!file) {
+      return failLicenseSave('Attach an image before saving.');
     }
     setUploadingCert(true);
     setError(null);
     try {
-      for (const item of pendingLicenseUploads) {
-        const fd = new FormData();
-        fd.append('file', item.file);
-        fd.append('uploadable_type', 'TechnicianProfile');
-        fd.append('uploadable_id', profile.id);
-        fd.append('doc_type', 'certificate');
-        if (String(item.title || '').trim()) fd.append('issuer', String(item.title || '').trim());
-        if (String(item.reference || '').trim()) fd.append('document_number', String(item.reference || '').trim());
-        await documentsAPI.upload(fd);
-      }
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('uploadable_type', 'TechnicianProfile');
+      fd.append('uploadable_id', profile.id);
+      fd.append('doc_type', 'certificate');
+      if (title) fd.append('issuer', title);
+      if (reference) fd.append('document_number', reference);
+      await documentsAPI.upload(fd);
       const docsPayload = await documentsAPI.getAll();
       setCertificates(extractDocumentsList(docsPayload).filter((d) => isTechnicianCertificateDocument(d, profile.id)));
       setCertificatePreviewErrors({});
-      setLicenseLineItems([makeLicenseLineItem()]);
       setAlertModal({
         isOpen: true,
-        title: 'Licenses saved',
-        message: 'Your license documents have been uploaded.',
+        title: 'License saved',
+        message: 'Your license has been uploaded.',
         variant: 'success',
       });
+      return true;
     } catch (err) {
-      const message = err.message || 'Failed to save licenses';
-      setError(message);
-      setAlertModal({
-        isOpen: true,
-        title: 'Could not save',
-        message,
-        variant: 'error',
-      });
+      failLicenseSave(err.message || 'Failed to save license');
+      return false;
     } finally {
       setUploadingCert(false);
     }
@@ -1438,43 +1382,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     } finally {
       setCouponBusy(false);
     }
-  };
-
-  const handleLicenseLineItemFileSelect = (lineItemId, e) => {
-    const file = e.target.files?.[0];
-    if (file && !isAllowedLicenseImageFile(file)) {
-      setAlertModal({
-        isOpen: true,
-        title: 'Invalid file type',
-        message: 'License images must be JPG, JPEG, or PNG files.',
-        variant: 'error',
-      });
-      e.target.value = '';
-      return;
-    }
-    setLicenseLineItems((prev) => prev.map((item) => (
-      item.id === lineItemId ? { ...item, file: file || null } : item
-    )));
-    e.target.value = '';
-  };
-
-  const addLicenseLineItem = () => {
-    setLicenseLineItems((prev) => [...prev, makeLicenseLineItem()]);
-  };
-
-  const updateLicenseLineItem = (lineItemId, patch) => {
-    setLicenseLineItems((prev) => prev.map((item) => (
-      item.id === lineItemId ? { ...item, ...patch } : item
-    )));
-  };
-
-  const removeLicenseLineItem = (lineItemId) => {
-    setLicenseLineItems((prev) => {
-      if (prev.length <= 1) {
-        return [{ ...prev[0], title: '', reference: '', file: null }];
-      }
-      return prev.filter((item) => item.id !== lineItemId);
-    });
   };
 
   const handleCertificateDelete = (docId) => {
@@ -1898,154 +1805,202 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
-  const renderTrustAndVerificationContent = () => {
-    if (loadingVerificationCenter) {
-      return <p className="text-sm text-gray-500">Loading verification center...</p>;
+  const renderReferencesContent = () => {
+    if (loadingReferences) {
+      return <p className="text-sm text-gray-500">Loading references...</p>;
     }
     return (
       <>
-        <ul className="text-sm text-gray-700 space-y-2">
-          {(verificationCenter?.sections || []).map((section) => {
-            const status = section?.status || 'not_started';
-            const shouldOverrideLicenseStatus = isLicenseVerificationSection(section) && certificates.length > 0;
-            const displayStatus = shouldOverrideLicenseStatus ? 'verified' : status;
-            const tone = verificationStatusTone(displayStatus);
-            const identitySection = isIdentityVerificationSection(section);
-            const canUploadIdentityDoc = identitySection && !isVerificationCompleteStatus(displayStatus);
-            return (
-              <li
-                key={section.key}
-                className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 ${tone.row}`}
-              >
-                <span>{section.title}</span>
-                {canUploadIdentityDoc ? (
-                  <button
-                    type="button"
-                    onClick={handleOpenIdentityUploadModal}
-                    className={`text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 transition-colors ${tone.chip} hover:brightness-95`}
-                  >
-                    {String(displayStatus).replaceAll('_', ' ')}
-                  </button>
-                ) : (
-                  <span className={`text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 ${tone.chip}`}>
-                    {String(displayStatus).replaceAll('_', ' ')}
-                  </span>
-                )}
-              </li>
-            );
-          })}
-          <li>Certificates on file: {certificates.length}</li>
-          <li
-            className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 ${
-              needsMapSetup ? 'bg-red-50' : 'bg-emerald-50'
-            }`}
-          >
-            <span>Map address</span>
-            <span
-              className={`text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 border ${
-                needsMapSetup
-                  ? 'bg-red-100 text-red-800 border-red-200'
-                  : 'bg-emerald-100 text-emerald-800 border-emerald-200'
-              }`}
-            >
-              {needsMapSetup ? 'Incomplete' : 'Looks good'}
-            </span>
-          </li>
-        </ul>
-        <div className="mt-3 space-y-3">
-          <div className="grid grid-cols-1 gap-2">
-            <div className="text-xs text-gray-600">
-              <span className="font-semibold text-gray-800">Technician:</span>{' '}
-              {user?.first_name || ''} {user?.last_name || ''} ({user?.email || 'No email'})
-            </div>
-            <div className="text-xs text-gray-600">
-              <span className="font-semibold text-gray-800">Work location:</span>{' '}
-              {verificationCenter?.background_check?.work_location_city || profile?.city || 'Houston'},{' '}
-              {verificationCenter?.background_check?.work_location_state || profile?.state || 'TX'},{' '}
-              {verificationCenter?.background_check?.work_location_country || profile?.country || 'US'}
-            </div>
-          </div>
-          {loadingBackgroundCheckOptions ? (
-            <p className="text-xs text-gray-500">Loading background check options...</p>
-          ) : (backgroundCheckOptionsError && !effectiveCheckrDemoBypass) ? (
-            <div className="rounded-lg border border-rose-200 bg-rose-50 p-2">
-              <p className="text-xs text-rose-800">{backgroundCheckOptionsError}</p>
-              <button
-                type="button"
-                onClick={loadBackgroundCheckOptions}
-                className="mt-1 inline-flex rounded border border-rose-300 bg-white px-2 py-0.5 text-xs font-medium text-rose-800 hover:bg-rose-100"
-              >
-                Retry
-              </button>
-            </div>
+        <div className="space-y-1 mb-3">
+          {verificationReferences.length === 0 ? (
+            <p className="text-sm text-gray-500">No references added yet.</p>
           ) : (
-            <p className="text-xs text-gray-600">
-              Background check package is preset by TechFlash and managed by backend configuration.
-            </p>
-          )}
-          {effectiveCheckrDemoBypass && (
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-xs text-amber-700">
-                Demo bypass is active. Start flow is simulated for walkthrough recording.
-              </p>
-            </div>
-          )}
-          {demoMode && (
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-xs text-amber-700">
-                {localCheckrDemoBypass
-                  ? 'Local demo bypass is currently on for this browser.'
-                  : 'Local demo bypass is currently off for this browser.'}
-              </p>
-              <button
-                type="button"
-                onClick={localCheckrDemoBypass ? handleDisableLocalCheckrDemoBypass : handleEnableLocalCheckrDemoBypass}
-                className="inline-flex rounded border border-amber-300 bg-white px-2 py-0.5 text-xs font-medium text-amber-800 hover:bg-amber-50"
-              >
-                {localCheckrDemoBypass ? 'Disable demo bypass' : 'Enable demo bypass'}
-              </button>
-            </div>
-          )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs text-gray-600">
-            <p><span className="font-semibold text-gray-800">Associated job:</span> {verificationCenter?.background_check?.job_id ? `Job #${verificationCenter.background_check.job_id}` : 'Not linked'}</p>
-            <p><span className="font-semibold text-gray-800">Invitation status:</span> {verificationCenter?.background_check?.normalized_status || verificationCenter?.background_check?.status || 'not_started'}</p>
-            <p><span className="font-semibold text-gray-800">Report status:</span> {verificationCenter?.background_check?.provider_status || 'pending'}</p>
-            <p><span className="font-semibold text-gray-800">ETA:</span> {verificationCenter?.background_check?.report_eta_at ? new Date(verificationCenter.background_check.report_eta_at).toLocaleString() : 'Not provided'}</p>
-            <p><span className="font-semibold text-gray-800">Package:</span> {displayBackgroundCheckPackageName || 'Not configured'}</p>
-          </div>
-          {(verificationCenter?.background_check?.dashboard_url || verificationCenter?.background_check?.report_url) && (
-            <a
-              href={verificationCenter?.background_check?.dashboard_url || verificationCenter?.background_check?.report_url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex text-xs font-medium text-blue-700 hover:text-blue-800"
-            >
-              Open Checkr dashboard/report
-            </a>
-          )}
-          {verificationCenter?.background_check?.invitation_url && (
-            <a
-              href={verificationCenter.background_check.invitation_url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex text-xs font-medium text-blue-700 hover:text-blue-800"
-            >
-              Resume hosted invitation flow
-            </a>
+            verificationReferences.slice(0, 5).map((ref) => {
+              const isExpanded = Boolean(expandedReferenceRows[ref.id]);
+              return (
+                <div key={ref.id} className="rounded-lg border border-gray-200 bg-white px-2 py-1.5">
+                  <div className="text-xs text-gray-700 flex items-center justify-between gap-3">
+                    <span>{ref.full_name}{ref.relationship ? ` (${ref.relationship})` : ''}</span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-gray-500">
+                        {referenceStatusLabel(ref.status)}
+                        {ref.responded_at ? ` (${new Date(ref.responded_at).toLocaleDateString()})` : ''}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => toggleReferenceDetails(ref.id)}
+                        className="px-2 py-0.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
+                      >
+                        More info
+                      </button>
+                    </div>
+                  </div>
+                  {isExpanded && (
+                    <div className="mt-2 border-t border-gray-200 pt-2 text-xs text-gray-600 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                      <p><span className="font-semibold text-gray-800">Email:</span> {ref.email || 'Not provided'}</p>
+                      <p><span className="font-semibold text-gray-800">Phone:</span> {ref.phone || 'Not provided'}</p>
+                      <p><span className="font-semibold text-gray-800">Company:</span> {ref.company_name || 'Not provided'}</p>
+                      <p><span className="font-semibold text-gray-800">Relationship:</span> {ref.relationship || 'Not provided'}</p>
+                      <p>
+                        <span className="font-semibold text-gray-800">Requested date:</span>{' '}
+                        {ref.requested_at
+                          ? new Date(ref.requested_at).toLocaleDateString()
+                          : ref.created_at
+                            ? new Date(ref.created_at).toLocaleDateString()
+                            : 'Not available'}
+                      </p>
+                      <p>
+                        <span className="font-semibold text-gray-800">Responded date:</span>{' '}
+                        {ref.responded_at ? new Date(ref.responded_at).toLocaleDateString() : 'Not yet'}
+                      </p>
+                      <p className="sm:col-span-2">
+                        <span className="font-semibold text-gray-800">Current status:</span> {referenceStatusLabel(ref.status)}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
-        <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
-          <p className="text-xs font-semibold text-amber-900">Background check disclosure and authorization</p>
-          <p className="mt-1 text-xs text-amber-800">
-            TechFlash uses Checkr to process background reports. Before we submit your check request, review these notices and provide authorization.
+        <form onSubmit={handleAddReference} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input
+            className="border rounded px-2 py-1 text-xs"
+            name="full_name"
+            placeholder="Full name"
+            value={newReference.full_name}
+            onChange={handleReferenceFieldChange}
+            required
+          />
+          <input
+            className="border rounded px-2 py-1 text-xs"
+            name="relationship"
+            placeholder="Relationship"
+            value={newReference.relationship}
+            onChange={handleReferenceFieldChange}
+            required
+          />
+          <input
+            className="border rounded px-2 py-1 text-xs"
+            name="email"
+            type="email"
+            placeholder="Email"
+            value={newReference.email}
+            onChange={handleReferenceFieldChange}
+            required={!String(newReference.phone || '').trim()}
+          />
+          <input
+            className="border rounded px-2 py-1 text-xs"
+            name="phone"
+            placeholder="Phone"
+            value={newReference.phone}
+            onChange={handleReferenceFieldChange}
+            required={!String(newReference.email || '').trim()}
+          />
+          <p className="sm:col-span-2 text-[11px] text-gray-500">
+            Email or phone is required (at least one).
           </p>
-          <div className="mt-2 space-y-2 text-xs text-amber-900">
+          <input
+            className="border rounded px-2 py-1 text-xs sm:col-span-2"
+            name="company_name"
+            placeholder="Company (optional)"
+            value={newReference.company_name}
+            onChange={handleReferenceFieldChange}
+          />
+          <div className="sm:col-span-2">
+            <button
+              type="submit"
+              disabled={submittingReference}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50"
+            >
+              {submittingReference ? 'Saving...' : 'Add reference'}
+            </button>
+          </div>
+        </form>
+      </>
+    );
+  };
+
+  const renderBackgroundCheckContent = () => {
+    if (loadingVerificationCenter) {
+      return <p className="text-sm text-gray-500">Loading background check...</p>;
+    }
+
+    const identityStatus = findVerificationSection(verificationCenter?.sections, 'identity')?.status
+      || (profile?.identity_verified ? 'verified' : 'not_started');
+    const identityChip = verificationProgressChip(identityStatus);
+    const canUploadIdentityDoc = !isVerificationCompleteStatus(identityStatus);
+    const backgroundCheck = verificationCenter?.background_check;
+    const checkrLink = backgroundCheck?.dashboard_url || backgroundCheck?.report_url;
+    const invitationUrl = backgroundCheck?.invitation_url;
+
+    return (
+      <div className="space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <p className="text-sm font-medium text-gray-900">Identity document</p>
+            <SettingsBadge variant={identityChip.variant}>{identityChip.label}</SettingsBadge>
+          </div>
+          {canUploadIdentityDoc && (
+            <button
+              type="button"
+              onClick={handleOpenIdentityUploadModal}
+              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
+            >
+              Upload document
+            </button>
+          )}
+        </div>
+
+        {loadingBackgroundCheckOptions ? (
+          <p className="text-xs text-gray-500">Loading background check options...</p>
+        ) : (backgroundCheckOptionsError && !effectiveCheckrDemoBypass) ? (
+          <div className="rounded-lg border border-gray-200 p-2">
+            <p className="text-xs text-gray-700">{backgroundCheckOptionsError}</p>
+            <button
+              type="button"
+              onClick={loadBackgroundCheckOptions}
+              className="mt-1 inline-flex rounded border border-gray-300 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              Retry
+            </button>
+          </div>
+        ) : null}
+
+        {effectiveCheckrDemoBypass && (
+          <p className="text-xs text-gray-600">
+            Demo bypass is active. Start flow is simulated for walkthrough recording.
+          </p>
+        )}
+        {demoMode && (
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-xs text-gray-600">
+              {localCheckrDemoBypass
+                ? 'Local demo bypass is currently on for this browser.'
+                : 'Local demo bypass is currently off for this browser.'}
+            </p>
+            <button
+              type="button"
+              onClick={localCheckrDemoBypass ? handleDisableLocalCheckrDemoBypass : handleEnableLocalCheckrDemoBypass}
+              className="inline-flex rounded border border-gray-300 bg-white px-2 py-0.5 text-xs font-medium text-gray-700 hover:bg-gray-50"
+            >
+              {localCheckrDemoBypass ? 'Disable demo bypass' : 'Enable demo bypass'}
+            </button>
+          </div>
+        )}
+
+        <div className="rounded-lg border border-gray-200 p-3">
+          <p className="text-sm font-medium text-gray-900">Disclosure and authorization</p>
+          <p className="mt-1 text-xs text-gray-600">
+            TechFlash uses Checkr to process background reports. Review these notices and authorize the check before starting.
+          </p>
+          <div className="mt-2 space-y-2 text-xs text-gray-800">
             <label className="flex items-start gap-2">
               <input
                 type="checkbox"
                 checked={backgroundDisclosureAccepted}
                 onChange={handleDisclosureAcceptedChange}
-                className="mt-0.5 h-3.5 w-3.5 rounded border-amber-300 text-amber-700 focus:ring-amber-500"
+                className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <span>
                 I acknowledge I received the disclosure that a consumer report may be obtained for background screening.
@@ -2056,7 +2011,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 type="checkbox"
                 checked={backgroundAuthorizationAccepted}
                 onChange={handleAuthorizationAcceptedChange}
-                className="mt-0.5 h-3.5 w-3.5 rounded border-amber-300 text-amber-700 focus:ring-amber-500"
+                className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
               <span>
                 I authorize TechFlash and Checkr to obtain and process my background report for verification and job eligibility.
@@ -2064,14 +2019,15 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
             </label>
           </div>
           {(backgroundDisclosureAcceptedAt || backgroundAuthorizationAcceptedAt) && (
-            <p className="mt-2 text-[11px] text-amber-800">
+            <p className="mt-2 text-[11px] text-gray-500">
               Consent captured:
               {backgroundDisclosureAcceptedAt ? ` disclosure ${new Date(backgroundDisclosureAcceptedAt).toLocaleString()}` : ''}
               {backgroundAuthorizationAcceptedAt ? `, authorization ${new Date(backgroundAuthorizationAcceptedAt).toLocaleString()}` : ''}
             </p>
           )}
         </div>
-        <div className="mt-3 flex flex-wrap gap-2">
+
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={handleStartBackgroundCheck}
@@ -2085,130 +2041,33 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               type="button"
               onClick={handleUndoDemoBackgroundCheck}
               disabled={!canUndoDemoBackgroundCheck || resettingDemoBackgroundCheck}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-amber-300 bg-white text-amber-900 hover:bg-amber-50 disabled:opacity-50"
+              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 bg-white text-gray-700 hover:bg-gray-50 disabled:opacity-50"
             >
               {resettingDemoBackgroundCheck ? 'Undoing...' : 'Undo demo attempt'}
             </button>
           )}
-        </div>
-        <div className="mt-4 border-t border-gray-200 pt-3">
-          <h5 className="text-sm font-semibold text-gray-900 mb-2">
-            Professional References ({completedReferenceCount}/3)
-          </h5>
-          {loadingReferences ? (
-            <p className="text-xs text-gray-500 mb-2">Loading references...</p>
-          ) : (
-            <>
-              <div className="space-y-1 mb-3">
-                {verificationReferences.length === 0 ? (
-                  <p className="text-xs text-gray-500">No references added yet.</p>
-                ) : (
-                  verificationReferences.slice(0, 5).map((ref) => {
-                    const isExpanded = Boolean(expandedReferenceRows[ref.id]);
-                    return (
-                      <div key={ref.id} className="rounded-lg border border-gray-200 bg-white px-2 py-1.5">
-                        <div className="text-xs text-gray-700 flex items-center justify-between gap-3">
-                          <span>{ref.full_name}{ref.relationship ? ` (${ref.relationship})` : ''}</span>
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-gray-500">
-                              {referenceStatusLabel(ref.status)}
-                              {ref.responded_at ? ` (${new Date(ref.responded_at).toLocaleDateString()})` : ''}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => toggleReferenceDetails(ref.id)}
-                              className="px-2 py-0.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
-                            >
-                              More info
-                            </button>
-                          </div>
-                        </div>
-                        {isExpanded && (
-                          <div className="mt-2 border-t border-gray-200 pt-2 text-xs text-gray-600 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                            <p><span className="font-semibold text-gray-800">Email:</span> {ref.email || 'Not provided'}</p>
-                            <p><span className="font-semibold text-gray-800">Phone:</span> {ref.phone || 'Not provided'}</p>
-                            <p><span className="font-semibold text-gray-800">Company:</span> {ref.company_name || 'Not provided'}</p>
-                            <p><span className="font-semibold text-gray-800">Relationship:</span> {ref.relationship || 'Not provided'}</p>
-                            <p>
-                              <span className="font-semibold text-gray-800">Requested date:</span>{' '}
-                              {ref.requested_at
-                                ? new Date(ref.requested_at).toLocaleDateString()
-                                : ref.created_at
-                                  ? new Date(ref.created_at).toLocaleDateString()
-                                  : 'Not available'}
-                            </p>
-                            <p>
-                              <span className="font-semibold text-gray-800">Responded date:</span>{' '}
-                              {ref.responded_at ? new Date(ref.responded_at).toLocaleDateString() : 'Not yet'}
-                            </p>
-                            <p className="sm:col-span-2">
-                              <span className="font-semibold text-gray-800">Current status:</span> {referenceStatusLabel(ref.status)}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-              <form onSubmit={handleAddReference} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                <input
-                  className="border rounded px-2 py-1 text-xs"
-                  name="full_name"
-                  placeholder="Full name"
-                  value={newReference.full_name}
-                  onChange={handleReferenceFieldChange}
-                  required
-                />
-                <input
-                  className="border rounded px-2 py-1 text-xs"
-                  name="relationship"
-                  placeholder="Relationship"
-                  value={newReference.relationship}
-                  onChange={handleReferenceFieldChange}
-                  required
-                />
-                <input
-                  className="border rounded px-2 py-1 text-xs"
-                  name="email"
-                  type="email"
-                  placeholder="Email"
-                  value={newReference.email}
-                  onChange={handleReferenceFieldChange}
-                  required={!String(newReference.phone || '').trim()}
-                />
-                <input
-                  className="border rounded px-2 py-1 text-xs"
-                  name="phone"
-                  placeholder="Phone"
-                  value={newReference.phone}
-                  onChange={handleReferenceFieldChange}
-                  required={!String(newReference.email || '').trim()}
-                />
-                <p className="sm:col-span-2 text-[11px] text-gray-500">
-                  Email or phone is required (at least one).
-                </p>
-                <input
-                  className="border rounded px-2 py-1 text-xs sm:col-span-2"
-                  name="company_name"
-                  placeholder="Company (optional)"
-                  value={newReference.company_name}
-                  onChange={handleReferenceFieldChange}
-                />
-                <div className="sm:col-span-2">
-                  <button
-                    type="submit"
-                    disabled={submittingReference}
-                    className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50"
-                  >
-                    {submittingReference ? 'Saving...' : 'Add reference'}
-                  </button>
-                </div>
-              </form>
-            </>
+          {checkrLink && (
+            <a
+              href={checkrLink}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex text-xs font-medium text-blue-700 hover:text-blue-800"
+            >
+              Open Checkr report
+            </a>
+          )}
+          {invitationUrl && (
+            <a
+              href={invitationUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex text-xs font-medium text-blue-700 hover:text-blue-800"
+            >
+              Continue Checkr invitation
+            </a>
           )}
         </div>
-      </>
+      </div>
     );
   };
 
@@ -2244,158 +2103,16 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     </SettingsCard>
   );
 
-  const renderVerificationChecklistCard = () => (
-    <SettingsCard
-      title="What you need to do"
-      description="Complete these steps so companies can trust and hire you."
-    >
-      <ul className="text-sm text-gray-700 space-y-2">
-        {verificationCompletion.items.map((item) => (
-          <li
-            key={item.label}
-            className={`flex items-center justify-between gap-3 rounded-lg px-2 py-1.5 ${
-              item.complete ? 'bg-emerald-50' : 'bg-amber-50'
-            }`}
-          >
-            <span>{item.label}</span>
-            <span
-              className={`text-xs font-semibold uppercase tracking-wide rounded-full px-2 py-0.5 border ${
-                item.complete
-                  ? 'bg-emerald-100 text-emerald-800 border-emerald-200'
-                  : 'bg-amber-100 text-amber-800 border-amber-200'
-              }`}
-            >
-              {item.complete ? 'Complete' : 'Needs action'}
-            </span>
-          </li>
-        ))}
-      </ul>
-      {verificationCompletion.allComplete ? (
-        <p className="mt-3 text-sm text-emerald-800">All required verification steps are complete.</p>
-      ) : (
-        <p className="mt-3 text-sm text-gray-600">
-          Use the sections below to finish identity, background check, and professional references.
-        </p>
-      )}
-    </SettingsCard>
-  );
-
   const renderLicensesAndCertificates = () => (
-    <form onSubmit={handleLicenseSubmit} className="space-y-4" noValidate>
-      <p className="text-sm text-gray-600">
-        Upload images of your certifications (e.g. OSHA, EPA, trade licenses). Companies will verify these match their job requirements.
-      </p>
-      <div className="space-y-3">
-        {licenseLineItems.map((lineItem, index) => (
-          <div key={lineItem.id} className="rounded-lg border border-gray-200 p-3">
-            <div className="mb-3 flex items-center justify-between">
-              <p className="text-sm font-semibold text-gray-800">License item {index + 1}</p>
-              <button
-                type="button"
-                onClick={() => removeLicenseLineItem(lineItem.id)}
-                className="text-xs font-medium text-red-600 hover:text-red-700"
-              >
-                Remove
-              </button>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Document title</label>
-                <input
-                  type="text"
-                  value={lineItem.title}
-                  onChange={(e) => updateLicenseLineItem(lineItem.id, { title: e.target.value })}
-                  className="w-full border rounded-lg px-3 py-2"
-                  placeholder="e.g. ASE Master Technician"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Reference / license number</label>
-                <input
-                  type="text"
-                  value={lineItem.reference}
-                  onChange={(e) => updateLicenseLineItem(lineItem.id, { reference: e.target.value })}
-                  className="w-full border rounded-lg px-3 py-2"
-                  placeholder="Enter reference or license #"
-                />
-              </div>
-            </div>
-            <div className="mt-3 flex items-center gap-2">
-              <label className="inline-flex cursor-pointer items-center rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
-                <input
-                  type="file"
-                  accept=".jpg,.jpeg,.png,image/jpeg,image/png"
-                  className="hidden"
-                  onChange={(e) => handleLicenseLineItemFileSelect(lineItem.id, e)}
-                  disabled={uploadingCert}
-                />
-                {lineItem.file ? 'Change image' : 'Attach image'}
-              </label>
-              <span className="text-xs text-gray-500">
-                {lineItem.file ? `Selected: ${lineItem.file.name}` : 'Will upload when you click Save licenses.'}
-              </span>
-            </div>
-          </div>
-        ))}
-        <button
-          type="button"
-          onClick={addLicenseLineItem}
-          className="inline-flex items-center rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
-        >
-          + Add another line item
-        </button>
-      </div>
-      <div className="flex flex-wrap gap-4">
-        {certificates.map((doc) => {
-          const documentUrl = resolveMediaUrl(doc.file_url);
-          const hasPreviewError = certificatePreviewErrors[doc.id] === true;
-          return (
-            <div key={doc.id} className="relative group border rounded-lg overflow-hidden bg-gray-50 w-32 min-h-32">
-              {documentUrl && !hasPreviewError ? (
-                <img
-                  src={documentUrl}
-                  alt={doc.issuer || 'Certificate'}
-                  className="w-full h-24 object-cover"
-                  onError={() => setCertificatePreviewErrors((prev) => ({ ...prev, [doc.id]: true }))}
-                />
-              ) : (
-                <div className="flex h-24 items-center justify-center bg-gray-100 px-2 text-center text-[10px] text-gray-500">
-                  Preview unavailable
-                </div>
-              )}
-              <div className="p-1.5">
-                {doc.issuer ? <p className="truncate text-[10px] font-medium text-gray-700">{doc.issuer}</p> : null}
-                {doc.document_number ? <p className="truncate text-[10px] text-gray-500">{doc.document_number}</p> : null}
-                {documentUrl ? (
-                  <a
-                    href={documentUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="mt-1 inline-block text-[10px] font-medium text-blue-600 hover:text-blue-700"
-                  >
-                    View document
-                  </a>
-                ) : (
-                  <p className="mt-1 text-[10px] text-gray-500">Document unavailable</p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={() => handleCertificateDelete(doc.id)}
-                disabled={deletingCertId === doc.id}
-                className="absolute top-1 right-1 bg-red-600 text-white rounded p-1 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
-                title="Remove"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
-              </button>
-            </div>
-          );
-        })}
-      </div>
-      <button type="submit" disabled={uploadingCert} className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
-        {uploadingCert ? 'Saving...' : 'Save licenses'}
-      </button>
-    </form>
+    <LicenseCredentialsSection
+      certificates={certificates}
+      uploading={uploadingCert}
+      deletingId={deletingCertId}
+      previewErrors={certificatePreviewErrors}
+      onPreviewError={(id) => setCertificatePreviewErrors((prev) => ({ ...prev, [id]: true }))}
+      onDelete={handleCertificateDelete}
+      onUpload={handleLicenseUpload}
+    />
   );
 
   if (loading) {
@@ -2736,12 +2453,26 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
             {isTechnician && settingsTab === 'verification' && (
               <div id="settings-panel-verification" role="tabpanel" aria-labelledby="settings-tab-verification" className="space-y-6">
-                {renderVerificationChecklistCard()}
-                <SettingsCard title="Trust and verification">
-                  {renderTrustAndVerificationContent()}
-                </SettingsCard>
-                <SettingsCard title="Licenses and certificates">
+                <SettingsCard
+                  title="Licenses and certificates"
+                  description="Upload license and certification images so companies can match you to jobs."
+                  headerRight={<SettingsBadge variant={licensesStatusChip.variant}>{licensesStatusChip.label}</SettingsBadge>}
+                >
                   {renderLicensesAndCertificates()}
+                </SettingsCard>
+                <SettingsCard
+                  title="Professional references"
+                  description="Add three professional references."
+                  headerRight={<SettingsBadge variant={referencesStatusChip.variant}>{referencesStatusChip.label}</SettingsBadge>}
+                >
+                  {renderReferencesContent()}
+                </SettingsCard>
+                <SettingsCard
+                  title="Background check"
+                  description="Authorize the check, then start or continue the Checkr flow."
+                  headerRight={<SettingsBadge variant={backgroundStatusChip.variant}>{backgroundStatusChip.label}</SettingsBadge>}
+                >
+                  {renderBackgroundCheckContent()}
                 </SettingsCard>
               </div>
             )}
