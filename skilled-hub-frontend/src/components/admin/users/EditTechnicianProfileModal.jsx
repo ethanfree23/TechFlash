@@ -11,6 +11,111 @@ import { formatPhoneInput } from '../../../utils/phone';
 import { mediaUrlWithCacheBust, resolveMediaUrl } from '../../../utils/mediaUrl';
 
 const EMPTY_REFERENCE = { id: null, full_name: '', email: '', phone: '', company_name: '' };
+const MAX_LICENSES = 10;
+
+function emptyLicense() {
+  return {
+    id: null,
+    document_number: '',
+    issuer: '',
+    file_url: null,
+    has_file: false,
+    file: null,
+    previewBroken: false,
+    clientKey: `lic-new-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+  };
+}
+
+function mapLicenses(docs) {
+  const rows = (Array.isArray(docs) ? docs : []).map((doc) => ({
+    id: doc.id || null,
+    document_number: doc.document_number || '',
+    issuer: doc.issuer || '',
+    file_url: doc.has_file === false ? null : (doc.file_url || null),
+    has_file: doc.has_file !== false && Boolean(doc.file_url),
+    file: null,
+    previewBroken: false,
+    clientKey: `lic-${doc.id || Math.random().toString(36).slice(2, 7)}`,
+  }));
+  return rows.length ? rows : [emptyLicense()];
+}
+
+function LicensePhotoPreview({ url, alt, onBroken }) {
+  const [broken, setBroken] = useState(false);
+  useEffect(() => {
+    setBroken(false);
+  }, [url]);
+  if (!url || broken) {
+    return (
+      <div className="flex h-24 w-full items-center justify-center rounded-md border border-dashed border-slate-200 bg-slate-50 px-2 text-center text-[11px] text-slate-500">
+        No image on file
+      </div>
+    );
+  }
+  return (
+    <img
+      src={url}
+      alt={alt}
+      className="h-24 w-full rounded-md border border-slate-200 bg-slate-50 object-cover"
+      onError={() => {
+        setBroken(true);
+        onBroken?.();
+      }}
+    />
+  );
+}
+
+function LicenseFilePicker({ license, index, onFile }) {
+  const [localUrl, setLocalUrl] = useState(null);
+  useEffect(() => {
+    if (!license.file) {
+      setLocalUrl(null);
+      return undefined;
+    }
+    const url = URL.createObjectURL(license.file);
+    setLocalUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [license.file]);
+
+  const remoteUrl = license.has_file && license.file_url && !license.previewBroken
+    ? resolveMediaUrl(license.file_url)
+    : null;
+  const previewUrl = localUrl || remoteUrl;
+  const label = license.file || remoteUrl ? 'Replace photo' : 'Add photo';
+
+  return (
+    <div className="space-y-2">
+      <LicensePhotoPreview
+        url={previewUrl}
+        alt={license.issuer || `License ${index + 1}`}
+        onBroken={() => {
+          if (!license.file) onFile({ previewBroken: true });
+        }}
+      />
+      <div className="flex items-center gap-2 flex-wrap">
+        <label className="inline-flex cursor-pointer items-center rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
+          <input
+            type="file"
+            accept="image/jpeg,image/png,.jpg,.jpeg,.png,application/pdf,.pdf"
+            className="hidden"
+            onChange={(e) => onFile({ file: e.target.files?.[0] || null, previewBroken: false })}
+          />
+          {label}
+        </label>
+        {license.file ? (
+          <button
+            type="button"
+            onClick={() => onFile({ file: null })}
+            className="text-[11px] font-semibold text-slate-500 hover:underline"
+          >
+            Clear selected file
+          </button>
+        ) : null}
+      </div>
+      {license.file ? <p className="text-[11px] text-slate-500 truncate">{license.file.name}</p> : null}
+    </div>
+  );
+}
 
 function padReferences(list) {
   const rows = Array.isArray(list) ? list.slice(0, 3).map((ref) => ({
@@ -70,7 +175,6 @@ export default function EditTechnicianProfileModal({
   const [form, setForm] = useState(null);
   const [avatarFile, setAvatarFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
-  const [licenseFile, setLicenseFile] = useState(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -79,12 +183,10 @@ export default function EditTechnicianProfileModal({
     if (!isOpen || !user) {
       setForm(null);
       setAvatarFile(null);
-      setLicenseFile(null);
       setError('');
       setSuccess('');
       return undefined;
     }
-    const latestLicense = (profile?.trade_licenses || [])[0] || {};
     setForm({
       first_name: user.first_name || '',
       last_name: user.last_name || '',
@@ -94,14 +196,12 @@ export default function EditTechnicianProfileModal({
       trade_type: profile?.trade_type || '',
       skill_class: technicianClassSlug(profile?.skill_class || ''),
       experience_years: profile?.experience_years != null ? String(profile.experience_years) : '',
-      license_document_number: latestLicense.document_number || '',
-      license_issuer: latestLicense.issuer || '',
+      licenses: mapLicenses(profile?.trade_licenses),
       min_hourly_rate_dollars: dollarsFromCents(profile?.min_hourly_rate_cents),
       max_distance_miles: profile?.max_distance_miles != null ? String(profile.max_distance_miles) : '200',
       references: padReferences(profile?.references),
     });
     setAvatarFile(null);
-    setLicenseFile(null);
     return undefined;
   }, [isOpen, user, profile]);
 
@@ -118,7 +218,10 @@ export default function EditTechnicianProfileModal({
   useEffect(() => {
     if (!isOpen) return undefined;
     const onKey = (e) => {
-      if (e.key === 'Escape' && !saving) onClose?.();
+      if (e.key === 'Escape' && !saving) {
+        e.stopPropagation();
+        onClose?.();
+      }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
@@ -130,8 +233,6 @@ export default function EditTechnicianProfileModal({
     return mediaUrlWithCacheBust(profile.avatar_url, profile.updated_at);
   }, [avatarPreview, profile?.avatar_url, profile?.updated_at]);
 
-  const currentLicense = (profile?.trade_licenses || [])[0] || null;
-  const currentLicenseUrl = currentLicense?.file_url ? resolveMediaUrl(currentLicense.file_url) : null;
   const tradeOptions = useMemo(() => {
     const current = String(form?.trade_type || '').trim();
     if (current && !TRADE_OPTIONS.some((opt) => opt.toLowerCase() === current.toLowerCase())) {
@@ -149,6 +250,28 @@ export default function EditTechnicianProfileModal({
       const next = [...prev.references];
       next[index] = { ...next[index], ...patch };
       return { ...prev, references: next };
+    });
+  };
+
+  const setLicense = (index, patch) => {
+    setForm((prev) => {
+      const next = [...prev.licenses];
+      next[index] = { ...next[index], ...patch };
+      return { ...prev, licenses: next };
+    });
+  };
+
+  const addLicense = () => {
+    setForm((prev) => {
+      if (prev.licenses.length >= MAX_LICENSES) return prev;
+      return { ...prev, licenses: [...prev.licenses, emptyLicense()] };
+    });
+  };
+
+  const removeLicense = (index) => {
+    setForm((prev) => {
+      const next = prev.licenses.filter((_, i) => i !== index);
+      return { ...prev, licenses: next.length ? next : [emptyLicense()] };
     });
   };
 
@@ -178,8 +301,6 @@ export default function EditTechnicianProfileModal({
       );
       payload.append('min_hourly_rate_cents', String(centsFromDollars(form.min_hourly_rate_dollars)));
       payload.append('max_distance_miles', String(Math.round(miles)));
-      payload.append('license_document_number', form.license_document_number.trim());
-      payload.append('license_issuer', form.license_issuer.trim());
       payload.append(
         'references',
         JSON.stringify(
@@ -193,13 +314,16 @@ export default function EditTechnicianProfileModal({
         )
       );
       if (avatarFile) payload.append('avatar', avatarFile);
-      if (licenseFile) payload.append('license_file', licenseFile);
+      (form.licenses || []).forEach((lic, index) => {
+        if (lic.id) payload.append(`licenses[${index}][id]`, String(lic.id));
+        payload.append(`licenses[${index}][document_number]`, (lic.document_number || '').trim());
+        payload.append(`licenses[${index}][issuer]`, (lic.issuer || '').trim());
+        if (lic.file) payload.append(`licenses[${index}][file]`, lic.file);
+      });
 
       const res = await adminUsersAPI.updateProfile(userId, payload);
-      setSuccess('Profile saved. Technician-facing settings now show these values.');
-      setAvatarFile(null);
-      setLicenseFile(null);
       onSaved?.(res);
+      onClose?.();
     } catch (err) {
       const details = Array.isArray(err?.details?.errors) ? err.details.errors.join(' ') : '';
       setError(details || err.message || 'Could not save profile.');
@@ -309,67 +433,86 @@ export default function EditTechnicianProfileModal({
               </Section>
 
               <Section title="Verification & photo">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Profile photo</p>
-                    <div className="flex items-center gap-3">
-                      <div className="h-14 w-14 rounded-full overflow-hidden border border-slate-200 bg-slate-100 shrink-0">
-                        {currentAvatarUrl ? (
-                          <img src={currentAvatarUrl} alt="Profile" className="h-full w-full object-cover" />
-                        ) : (
-                          <div className="h-full w-full flex items-center justify-center text-[10px] text-slate-400">None</div>
-                        )}
-                      </div>
-                      <label className="inline-flex cursor-pointer items-center rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
-                        <input
-                          type="file"
-                          accept="image/jpeg,image/png,.jpg,.jpeg,.png"
-                          className="hidden"
-                          onChange={(e) => setAvatarFile(e.target.files?.[0] || null)}
-                        />
-                        {avatarFile ? 'Change photo' : 'Upload / replace'}
-                      </label>
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Profile photo</p>
+                  <div className="flex items-center gap-3">
+                    <div className="h-14 w-14 rounded-full overflow-hidden border border-slate-200 bg-slate-100 shrink-0">
+                      {currentAvatarUrl ? (
+                        <img src={currentAvatarUrl} alt="Profile" className="h-full w-full object-cover" />
+                      ) : (
+                        <div className="h-full w-full flex items-center justify-center text-[10px] text-slate-400">None</div>
+                      )}
                     </div>
-                    {avatarFile && <p className="text-[11px] text-slate-500 mt-1 truncate">{avatarFile.name}</p>}
+                    <label className="inline-flex cursor-pointer items-center rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+                        className="hidden"
+                        onChange={(e) => setAvatarFile(e.target.files?.[0] || null)}
+                      />
+                      {avatarFile ? 'Change photo' : 'Upload / replace'}
+                    </label>
                   </div>
-                  <div>
-                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1.5">Trade license</p>
-                    <div className="grid grid-cols-1 gap-2">
-                      <input
-                        className={inputClass()}
-                        placeholder="License / credential number"
-                        value={form.license_document_number}
-                        onChange={(e) => set({ license_document_number: e.target.value })}
-                      />
-                      <input
-                        className={inputClass()}
-                        placeholder="Issuer / document title"
-                        value={form.license_issuer}
-                        onChange={(e) => set({ license_issuer: e.target.value })}
-                      />
-                      <div className="flex items-center gap-2">
-                        {currentLicenseUrl && !licenseFile && (
-                          <a
-                            href={currentLicenseUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-[11px] font-semibold text-tf-blue hover:underline"
-                          >
-                            View current file
-                          </a>
-                        )}
-                        <label className="inline-flex cursor-pointer items-center rounded-md border border-slate-200 px-2.5 py-1.5 text-xs font-medium text-slate-700 hover:bg-slate-50">
-                          <input
-                            type="file"
-                            accept="image/jpeg,image/png,.jpg,.jpeg,.png,application/pdf,.pdf"
-                            className="hidden"
-                            onChange={(e) => setLicenseFile(e.target.files?.[0] || null)}
-                          />
-                          {licenseFile || currentLicenseUrl ? 'Replace file' : 'Upload file'}
-                        </label>
-                      </div>
-                      {licenseFile && <p className="text-[11px] text-slate-500 truncate">{licenseFile.name}</p>}
-                    </div>
+                  {avatarFile && <p className="text-[11px] text-slate-500 mt-1 truncate">{avatarFile.name}</p>}
+                </div>
+
+                <div className="mt-3">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Licenses & credentials</p>
+                    <button
+                      type="button"
+                      onClick={addLicense}
+                      disabled={(form.licenses || []).length >= MAX_LICENSES}
+                      className="text-[11px] font-semibold text-tf-blue hover:underline disabled:text-slate-400 disabled:no-underline"
+                    >
+                      Add license
+                    </button>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mb-2">
+                    Every license and certificate on this profile is listed here. Add a row for each credential, and use Add photo if one is missing.
+                  </p>
+                  <div className="space-y-2">
+                    {(form.licenses || []).map((lic, index) => {
+                      const canRemove = (form.licenses || []).length > 1 || !!(lic.id || lic.document_number || lic.issuer || lic.file || lic.file_url);
+                      const heading = (lic.issuer || '').trim() || `License ${index + 1}`;
+                      return (
+                        <div key={lic.clientKey || lic.id || `license-${index}`} className="rounded-md border border-slate-200 bg-white p-2.5">
+                          <div className="flex items-center justify-between gap-2 mb-1.5">
+                            <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">
+                              {heading}
+                            </p>
+                            {canRemove && (
+                              <button
+                                type="button"
+                                onClick={() => removeLicense(index)}
+                                className="text-[11px] font-semibold text-red-600 hover:underline"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
+                          <div className="grid grid-cols-1 gap-2">
+                            <input
+                              className={inputClass()}
+                              placeholder="License / credential number"
+                              value={lic.document_number}
+                              onChange={(e) => setLicense(index, { document_number: e.target.value })}
+                            />
+                            <input
+                              className={inputClass()}
+                              placeholder="Issuer / document title"
+                              value={lic.issuer}
+                              onChange={(e) => setLicense(index, { issuer: e.target.value })}
+                            />
+                            <LicenseFilePicker
+                              license={lic}
+                              index={index}
+                              onFile={(patch) => setLicense(index, patch)}
+                            />
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               </Section>

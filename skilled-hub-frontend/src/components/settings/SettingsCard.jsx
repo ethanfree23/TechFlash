@@ -12,7 +12,7 @@ export default function SettingsCard({
   collapsible = false,
   defaultOpen = true,
 }) {
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(() => defaultOpen);
   const panelId = useId();
   const buttonId = useId();
 

@@ -160,7 +160,7 @@ function renderCell(col, row) {
     case 'risk':
       return (
         <div className="min-w-0 overflow-hidden">
-          <UserRiskBadge level={row.riskLevel || 'Low'} />
+          <UserRiskBadge level={row.riskLevel || 'Low'} reasons={row.flagReasons} />
         </div>
       );
     default:

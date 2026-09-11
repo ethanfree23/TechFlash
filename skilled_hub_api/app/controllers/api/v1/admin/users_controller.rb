@@ -508,25 +508,31 @@ module Api
         def list_item(user)
           company_name = user.company_profile&.company_name
           membership_profile = user.company? ? user.company_profile : user.technician_profile
+          tech_profile = user.technician_profile
+          company_profile = user.company_profile
           user_name = [user.first_name, user.last_name].map(&:to_s).map(&:strip).reject(&:blank?).join(" ")
           {
             id: user.id,
             email: user.email,
             first_name: user.first_name,
             last_name: user.last_name,
-            phone: user.phone,
-            zip_code: user.technician_profile&.zip_code,
+            phone: user.phone.presence || tech_profile&.phone.presence || company_profile&.phone,
+            zip_code: tech_profile&.zip_code,
+            city: tech_profile&.city,
+            state: tech_profile&.state.presence || company_profile&.state,
+            location: tech_profile&.location.presence || company_profile&.location,
+            service_cities: user.company? ? Array(company_profile&.service_cities) : nil,
             user_name: user_name.presence,
             role: user.role,
             created_at: user.created_at&.iso8601,
             label: user_list_label(user),
             company_name: company_name,
-            technician_profile_id: user.technician_profile&.id,
-            company_profile_id: user.company_profile&.id,
+            technician_profile_id: tech_profile&.id,
+            company_profile_id: company_profile&.id,
             membership_level: membership_profile&.membership_level,
             membership_status: membership_profile&.membership_status,
-            skill_class: user.technician_profile&.skill_class,
-            experience_years: user.technician_profile&.experience_years
+            skill_class: tech_profile&.skill_class,
+            experience_years: tech_profile&.experience_years
           }
         end
 

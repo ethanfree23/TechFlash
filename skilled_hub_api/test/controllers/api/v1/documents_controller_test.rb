@@ -128,7 +128,86 @@ module Api
         assert kept.file.attached?
       end
 
-      test "index file urls still resolve after a second fetch" do
+        test "technician can add or replace a photo on an existing license" do
+          post "/api/v1/documents",
+               params: {
+                 file: uploaded(MINI_PNG, "original.png", "image/png"),
+                 uploadable_type: "TechnicianProfile",
+                 uploadable_id: @profile.id,
+                 doc_type: "certificate",
+                 issuer: "TDLR",
+                 document_number: "148640"
+               },
+               headers: auth_header_for(@user)
+          assert_response :created
+          created = JSON.parse(response.body)
+          created = created["document"] if created["document"]
+          doc_id = created["id"]
+          original_blob_id = Document.find(doc_id).file.blob.id
+
+          patch "/api/v1/documents/#{doc_id}",
+                params: {
+                  file: uploaded(MINI_JPEG, "replacement.jpg", "image/jpeg"),
+                  issuer: "TDLR",
+                  document_number: "148640"
+                },
+                headers: auth_header_for(@user)
+
+          assert_response :ok, response.body
+          body = JSON.parse(response.body)
+          body = body["document"] if body["document"]
+          assert_equal true, body["has_file"]
+          assert body["file_url"].present?
+          assert_equal "pending_review", body["status"]
+          replaced = Document.find(doc_id)
+          assert replaced.file.attached?
+          refute_equal original_blob_id, replaced.file.blob.id
+          assert_equal "image/jpeg", replaced.file.blob.content_type
+        end
+
+        test "license without a stored file reports has_file false" do
+          doc = @profile.documents.create!(
+            doc_type: "certificate",
+            issuer: "EPA 608",
+            document_number: "59765",
+            status: :pending_review
+          )
+
+          get "/api/v1/documents", headers: auth_header_for(@user)
+          assert_response :ok
+          list = JSON.parse(response.body)
+          list = list["documents"] if list.is_a?(Hash)
+          row = list.find { |item| item["id"] == doc.id }
+          assert_equal false, row["has_file"]
+          assert_nil row["file_url"]
+        end
+
+        test "missing blob on disk is treated as no file" do
+          post "/api/v1/documents",
+               params: {
+                 file: uploaded(MINI_PNG, "gone.png", "image/png"),
+                 uploadable_type: "TechnicianProfile",
+                 uploadable_id: @profile.id,
+                 doc_type: "certificate",
+                 issuer: "TDLR",
+                 document_number: "148640"
+               },
+               headers: auth_header_for(@user)
+          assert_response :created
+          created = JSON.parse(response.body)
+          created = created["document"] if created["document"]
+          doc = Document.find(created["id"])
+          doc.file.blob.service.delete(doc.file.blob.key)
+
+          get "/api/v1/documents/#{doc.id}", headers: auth_header_for(@user)
+          assert_response :ok
+          body = JSON.parse(response.body)
+          body = body["document"] if body["document"]
+          assert_equal false, body["has_file"]
+          assert_nil body["file_url"]
+        end
+
+        test "index file urls still resolve after a second fetch" do
         post "/api/v1/documents",
              params: {
                file: uploaded(MINI_PNG, "refresh.png", "image/png"),

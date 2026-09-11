@@ -2,10 +2,16 @@ class DocumentSerializer < ActiveModel::Serializer
   include ActiveStorageUrlHelper
 
   attributes :id, :uploadable_id, :uploadable_type, :doc_type, :status, :file_url,
-             :issuer, :document_number, :issued_on, :valid_until, :reviewed_at,
+             :has_file, :issuer, :document_number, :issued_on, :valid_until, :reviewed_at,
              :rejection_reason, :metadata, :created_at, :updated_at
 
+  def has_file
+    blob_file_present?(object.file)
+  end
+
   def file_url
+    return nil unless has_file
+
     base_url = instance_options[:base_url].to_s.strip
     if base_url.present? && object.file.attached?
       begin

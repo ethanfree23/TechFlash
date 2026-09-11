@@ -142,6 +142,41 @@ module Api
           assert_equal "trialing", rows.fetch(technician.id).fetch("membership_status")
         end
 
+        test "index includes technician address fields and company location" do
+          admin = create_admin_user!("admin-index-location@example.com")
+          technician = create_technician!(
+            email: "tech-location-index@example.com",
+            first_name: "Keith",
+            last_name: "Harris",
+            phone: "713-555-0612",
+            trade_type: "Electrician",
+            zip_code: "77583"
+          )
+          technician.technician_profile.update_columns(city: "Rosharon", state: "TX", location: "Rosharon, TX")
+          company = create_company_user!(
+            email: "company-location-index@example.com",
+            first_name: "Imad",
+            last_name: "Farah",
+            phone: "713-555-0613",
+            company_name: "FYI Plumbing"
+          )
+          company.company_profile.update_columns(location: "Houston, TX", service_cities: ["Houston", "Katy"])
+
+          get "/api/v1/admin/users", headers: auth_header_for(admin)
+          assert_response :ok
+          rows = JSON.parse(response.body).fetch("users").index_by { |r| r.fetch("id") }
+
+          tech_row = rows.fetch(technician.id)
+          assert_equal "77583", tech_row.fetch("zip_code")
+          assert_equal "Rosharon", tech_row.fetch("city")
+          assert_equal "TX", tech_row.fetch("state")
+          assert_equal "Rosharon, TX", tech_row.fetch("location")
+
+          company_row = rows.fetch(company.id)
+          assert_equal "Houston, TX", company_row.fetch("location")
+          assert_equal ["Houston", "Katy"], company_row.fetch("service_cities")
+        end
+
         test "index includes technician skill class and experience years" do
           admin = create_admin_user!("admin-index-skill-class@example.com")
           technician = create_technician!(

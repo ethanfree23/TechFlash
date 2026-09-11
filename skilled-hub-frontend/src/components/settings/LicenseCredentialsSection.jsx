@@ -20,6 +20,7 @@ export default function LicenseCredentialsSection({
   onPreviewError,
   onDelete,
   onUpload,
+  onUpdate,
 }) {
   const [formOpen, setFormOpen] = useState(false);
   const [form, setForm] = useState(emptyLicenseForm);
@@ -81,6 +82,25 @@ export default function LicenseCredentialsSection({
     if (ok !== false) resetForm();
   };
 
+  const handleCardPhotoSelect = async (card, event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file || !onUpdate) return;
+    const check = isAllowedLicenseImageFile(file);
+    if (!check.ok) {
+      setFormError(check.message);
+      return;
+    }
+    await onUpdate({
+      id: card.id,
+      title: card.title === 'Trade license' ? '' : card.title,
+      reference: card.licenseNumber || '',
+      file,
+    });
+  };
+
   const addButton = (
     <button
       type="button"
@@ -128,8 +148,23 @@ export default function LicenseCredentialsSection({
                       onError={() => onPreviewError?.(card.id)}
                     />
                   ) : (
-                    <div className="flex h-full items-center justify-center px-4 text-center text-sm text-gray-500">
-                      {card.missingImageLabel}
+                    <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center text-sm text-gray-500">
+                      <span>{card.missingImageLabel}</span>
+                      {onUpdate ? (
+                        <label
+                          className="inline-flex cursor-pointer items-center rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-800 hover:bg-gray-50"
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <input
+                            type="file"
+                            accept={LICENSE_IMAGE_ACCEPT}
+                            className="hidden"
+                            onChange={(event) => handleCardPhotoSelect(card, event)}
+                            disabled={uploading}
+                          />
+                          Add photo
+                        </label>
+                      ) : null}
                     </div>
                   )}
                 </div>
@@ -138,7 +173,24 @@ export default function LicenseCredentialsSection({
                   {card.licenseNumber ? (
                     <p className="text-sm text-gray-600">License #: {card.licenseNumber}</p>
                   ) : null}
-                  <SettingsBadge variant={card.statusVariant}>{card.statusLabel}</SettingsBadge>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <SettingsBadge variant={card.statusVariant}>{card.statusLabel}</SettingsBadge>
+                    {onUpdate && showImage ? (
+                      <label
+                        className="inline-flex cursor-pointer items-center text-xs font-semibold text-blue-700 hover:underline"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <input
+                          type="file"
+                          accept={LICENSE_IMAGE_ACCEPT}
+                          className="hidden"
+                          onChange={(event) => handleCardPhotoSelect(card, event)}
+                          disabled={uploading}
+                        />
+                        Replace photo
+                      </label>
+                    ) : null}
+                  </div>
                 </div>
                 {onDelete ? (
                   <button
@@ -157,9 +209,9 @@ export default function LicenseCredentialsSection({
                     </svg>
                   </button>
                 ) : null}
-                {deletingId === card.id ? (
+                {deletingId === card.id || (uploading && selectedId === card.id) ? (
                   <div className="absolute inset-0 flex items-center justify-center bg-white/70 text-sm text-gray-600">
-                    Removing…
+                    {deletingId === card.id ? 'Removing…' : 'Saving…'}
                   </div>
                 ) : null}
               </div>
@@ -236,6 +288,8 @@ export default function LicenseCredentialsSection({
         isOpen={Boolean(selectedCard)}
         card={selectedCard}
         onClose={() => setSelectedId(null)}
+        onSave={onUpdate}
+        saving={uploading}
       />
     </div>
   );

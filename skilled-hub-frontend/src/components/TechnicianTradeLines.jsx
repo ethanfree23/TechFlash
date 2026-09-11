@@ -4,9 +4,9 @@ import { TRADE_OPTIONS } from '../constants/trades';
 import { isTechnicianClass, technicianClassLabel, technicianClassSelectOptions } from '../constants/technicianClass';
 import { makeTradeLine, unusedTradeOptions } from '../utils/tradeQualifications';
 
-const SETTINGS_INPUT = 'w-full border rounded-lg px-3 py-2 bg-white';
+const SETTINGS_INPUT = 'w-full min-w-0 max-w-full border rounded-lg px-3 py-2 bg-white';
 const SIGNUP_INPUT =
-  'mt-1 flex w-full items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm focus-within:border-[#3A7CA5] focus-within:ring-1 focus-within:ring-[#3A7CA5]';
+  'mt-1 flex w-full min-w-0 items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm focus-within:border-[#3A7CA5] focus-within:ring-1 focus-within:ring-[#3A7CA5]';
 const SIGNUP_SELECT =
   'min-w-0 flex-1 cursor-pointer border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0';
 
@@ -21,7 +21,7 @@ export default function TechnicianTradeLines({
   const rows = Array.isArray(lines) && lines.length ? lines : [makeTradeLine()];
   const inputClass = isSignup ? SIGNUP_INPUT : SETTINGS_INPUT;
   const numberWrapClass = isSignup ? SIGNUP_INPUT : SETTINGS_INPUT;
-  const labelClass = isSignup ? 'block text-sm font-medium text-gray-700' : 'block text-sm font-medium text-gray-700 mb-1';
+  const labelClass = isSignup ? 'block min-w-0 text-sm font-medium text-gray-700' : 'block min-w-0 text-sm font-medium text-gray-700 mb-1';
 
   const updateLine = (id, patch) => {
     onChange(rows.map((row) => (row.id === id ? { ...row, ...patch } : row)));
@@ -46,8 +46,14 @@ export default function TechnicianTradeLines({
           line.trade_type && !TRADE_OPTIONS.includes(line.trade_type) && !tradeChoices.includes(line.trade_type);
         return (
           <div key={line.id} className={isSignup ? 'rounded-xl border border-gray-100 bg-gray-50/40 p-3' : ''}>
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
-              <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-3">
+            <div
+              className={
+                isSignup
+                  ? 'flex min-w-0 flex-col gap-3 lg:flex-row lg:items-end'
+                  : 'grid min-w-0 grid-cols-1 items-end gap-3 md:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)_minmax(0,11rem)_auto]'
+              }
+            >
+              <div className={isSignup ? 'grid min-w-0 flex-1 grid-cols-1 gap-3 md:grid-cols-3' : 'contents'}>
                 <label className={labelClass}>
                   {index === 0 ? 'Trade type' : `Trade type ${index + 1}`}
                   {isSignup ? (
@@ -148,7 +154,7 @@ export default function TechnicianTradeLines({
                   )}
                 </label>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
+              <div className="flex h-10 w-[5.5rem] shrink-0 items-center justify-end gap-2">
                 {rows.length > 1 && (
                   <button
                     type="button"

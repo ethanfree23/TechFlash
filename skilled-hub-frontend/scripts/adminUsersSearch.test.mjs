@@ -120,6 +120,64 @@ function testCompanyColumnLabelFollowsTab() {
   assert.ok(allCols.some((c) => c.key === 'experience_years' && c.label === 'Years'));
 }
 
+function testLocationUsesZipCityAndCompanyLocation() {
+  const zipOnly = enrichUserRow({
+    id: 10,
+    email: 'zip@example.com',
+    first_name: 'Keith',
+    last_name: 'Harris',
+    role: 'technician',
+    zip_code: '77583',
+  });
+  assert.strictEqual(zipOnly.locationLabel, '77583');
+
+  const cityStateZip = enrichUserRow({
+    id: 11,
+    email: 'city@example.com',
+    first_name: 'Ada',
+    last_name: 'Tech',
+    role: 'technician',
+    city: 'Houston',
+    state: 'TX',
+    zip_code: '77002',
+  });
+  assert.strictEqual(cityStateZip.locationLabel, 'Houston, TX 77002');
+
+  const fromDetail = enrichUserRow(
+    { id: 12, email: 'detail@example.com', first_name: 'Jo', last_name: 'Tech', role: 'technician' },
+    { user: { profile: { city: 'Conroe', state: 'TX', zip_code: '77301' } } }
+  );
+  assert.strictEqual(fromDetail.locationLabel, 'Conroe, TX 77301');
+
+  const company = enrichUserRow({
+    id: 13,
+    email: 'ops-loc@example.com',
+    first_name: 'Casey',
+    last_name: 'Office',
+    role: 'company',
+    company_name: 'FixIt Co',
+    location: 'Austin, TX',
+  });
+  assert.strictEqual(company.locationLabel, 'Austin, TX');
+}
+
+function testFlagsStayDormantUntilWorkflowExists() {
+  const staleCompany = enrichUserRow({
+    id: 20,
+    email: 'ifarah@fylelectrical.com',
+    first_name: 'Imad',
+    last_name: 'Farah',
+    role: 'company',
+    company_name: 'FYI Plumbing',
+    created_at: '2024-01-01T00:00:00Z',
+    logins_last_30_days: 0,
+  });
+  assert.strictEqual(staleCompany.isFlagged, false);
+  assert.strictEqual(staleCompany.riskLevel, 'Low');
+  assert.deepStrictEqual(staleCompany.flagReasons, []);
+  assert.strictEqual(computeTabCounts([staleCompany]).flagged, 0);
+}
+
 function testKpisStayOnFullCensusWhenTabFilters() {
   const mixed = [
     row({ id: 1, role: 'technician', email: 'a@example.com' }),
@@ -156,5 +214,7 @@ testCompanyTradeZipAndMiss();
 testTrimsWhitespace();
 testTradeLevelAndYearsColumns();
 testCompanyColumnLabelFollowsTab();
+testLocationUsesZipCityAndCompanyLocation();
+testFlagsStayDormantUntilWorkflowExists();
 testKpisStayOnFullCensusWhenTabFilters();
 console.log('adminUsersSearch tests passed');

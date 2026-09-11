@@ -6,6 +6,7 @@ class AdminTechnicianProfileUpdater
   TRADE_LICENSE_DOC_TYPES = %w[license certificate cert].freeze
   DEFAULT_LICENSE_DOC_TYPE = "certificate"
   MAX_REFERENCES = 3
+  MAX_LICENSES = 10
   DEFAULT_RELATIONSHIP = "Professional reference"
 
   def self.call(user:, params:, user_attrs: {})
@@ -25,7 +26,7 @@ class AdminTechnicianProfileUpdater
       apply_profile_attrs!(profile)
       apply_job_alert_prefs!
       attach_avatar!(profile)
-      apply_trade_license!(profile)
+      apply_trade_licenses!(profile)
       sync_references!
     end
     { ok: true }
@@ -141,6 +142,15 @@ class AdminTechnicianProfileUpdater
     profile.save!
   end
 
+  def apply_trade_licenses!(profile)
+    if params.key?(:licenses)
+      sync_trade_licenses!(profile)
+      return
+    end
+
+    apply_trade_license!(profile)
+  end
+
   def apply_trade_license!(profile)
     file = params[:license_file].presence
     number = string_param(:license_document_number)
@@ -161,6 +171,68 @@ class AdminTechnicianProfileUpdater
       doc.file.attach(file)
     end
     doc.save!
+  end
+
+  def sync_trade_licenses!(profile)
+    submitted = parse_licenses
+    if submitted.length > MAX_LICENSES
+      raise ArgumentError, "A technician can have at most #{MAX_LICENSES} licenses"
+    end
+
+    existing = profile.documents.where(doc_type: TRADE_LICENSE_DOC_TYPES).to_a
+    keep_ids = submitted.filter_map { |row| row[:id].presence&.to_i }
+    existing.reject { |doc| keep_ids.include?(doc.id) }.each(&:destroy!)
+
+    submitted.each do |row|
+      doc =
+        if row[:id].present?
+          existing.find { |item| item.id == row[:id].to_i }
+        end
+      doc ||= profile.documents.build(doc_type: DEFAULT_LICENSE_DOC_TYPE, status: :pending_review)
+
+      doc.document_number = row[:document_number]
+      doc.issuer = row[:issuer]
+      if uploaded_file?(row[:file])
+        doc.file.purge if doc.file.attached?
+        doc.file.attach(row[:file])
+      end
+      doc.save!
+    end
+  end
+
+  def parse_licenses
+    raw = params[:licenses]
+    list =
+      case raw
+      when String
+        parsed = JSON.parse(raw)
+        parsed.is_a?(Array) ? parsed : []
+      when Array
+        raw
+      when ActionController::Parameters, Hash
+        raw.to_unsafe_h.sort_by { |k, _| k.to_s.to_i }.map { |_, v| v }
+      else
+        []
+      end
+
+    list.filter_map do |item|
+      hash = item.respond_to?(:to_unsafe_h) ? item.to_unsafe_h : item
+      hash = (hash || {}).with_indifferent_access
+      id = hash[:id].presence
+      number = hash[:document_number].to_s.strip.presence
+      issuer = hash[:issuer].to_s.strip.presence
+      file = hash[:file]
+      next if id.blank? && number.blank? && issuer.blank? && !uploaded_file?(file)
+
+      {
+        id: id,
+        document_number: number,
+        issuer: issuer,
+        file: file
+      }
+    end
+  rescue JSON::ParserError
+    raise ArgumentError, "Licenses payload is invalid"
   end
 
   def latest_trade_license(profile)

@@ -107,8 +107,8 @@ export function formatLicenseUploadedDate(value) {
 }
 
 export function presentLicenseCard(doc, resolveUrl) {
-  const imageUrl = typeof resolveUrl === 'function' ? resolveUrl(doc?.file_url, doc?.updated_at) : (doc?.file_url || null);
-  const hasImage = Boolean(imageUrl);
+  const claimedUrl = typeof resolveUrl === 'function' ? resolveUrl(doc?.file_url, doc?.updated_at) : (doc?.file_url || null);
+  const hasImage = doc?.has_file === false ? false : Boolean(claimedUrl);
   return {
     id: doc?.id,
     title: displayLicenseTitle(doc),
@@ -117,8 +117,9 @@ export function presentLicenseCard(doc, resolveUrl) {
     statusVariant: licenseStatusVariant(doc?.status),
     sourceLabel: licenseSourceLabel(doc),
     uploadedLabel: formatLicenseUploadedDate(doc?.created_at),
-    imageUrl: hasImage ? imageUrl : null,
+    imageUrl: hasImage ? claimedUrl : null,
     hasImage,
+    has_file: hasImage,
     missingImageLabel: 'No image uploaded',
     status: doc?.status,
   };

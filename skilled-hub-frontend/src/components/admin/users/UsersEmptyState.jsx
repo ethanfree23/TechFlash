@@ -47,7 +47,7 @@ const VARIANTS = {
   flagged: {
     icon: FaExclamationCircle,
     title: 'No flagged accounts',
-    description: 'No users are currently flagged for risk review.',
+    description: 'Nothing is in the review queue yet. Flagged accounts will show a specific reason and a path to resolution here.',
     actionLabel: 'View all users',
   },
   admins: {

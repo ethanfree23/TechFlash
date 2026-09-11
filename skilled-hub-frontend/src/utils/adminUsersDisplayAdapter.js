@@ -88,7 +88,6 @@ export const SAVED_VIEW_PRESETS = [
   { id: 'subscription_failed', label: 'Subscription failed', tab: 'all', filters: { subscriptionTier: 'past_due' } },
 ];
 
-const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
 /** Safe display helper — never surfaces raw null/undefined in UI. */
@@ -98,17 +97,32 @@ export function displayOrFallback(value, fallback = 'Not provided') {
   return s;
 }
 
-function formatLocation(profile) {
-  if (!profile) return null;
-  const city = profile.city?.trim();
-  const state = profile.state?.trim();
-  const loc = profile.location?.trim();
-  if (city && state) return `${city}, ${state}`;
-  if (loc) return loc;
-  if (city) return city;
-  if (Array.isArray(profile.service_cities) && profile.service_cities.length) {
-    return profile.service_cities.slice(0, 2).join(' · ');
+function firstPresent(...values) {
+  for (const value of values) {
+    const s = value == null ? '' : String(value).trim();
+    if (s) return s;
   }
+  return '';
+}
+
+function formatLocation(profile, row = {}) {
+  const city = firstPresent(profile?.city, row.city);
+  const state = firstPresent(profile?.state, row.state);
+  const loc = firstPresent(profile?.location, row.location);
+  const zip = firstPresent(profile?.zip_code, row.zip_code);
+  const serviceCities = Array.isArray(profile?.service_cities)
+    ? profile.service_cities
+    : Array.isArray(row.service_cities)
+      ? row.service_cities
+      : [];
+
+  if (city && state) return zip ? `${city}, ${state} ${zip}` : `${city}, ${state}`;
+  if (city && zip) return `${city} ${zip}`;
+  if (loc) return zip && !loc.includes(zip) ? `${loc} ${zip}` : loc;
+  if (city) return city;
+  const cityBits = serviceCities.map((c) => String(c || '').trim()).filter(Boolean);
+  if (cityBits.length) return cityBits.slice(0, 2).join(' · ');
+  if (zip) return zip;
   return null;
 }
 
@@ -125,9 +139,13 @@ export function getInitials(row) {
   return '?';
 }
 
-function isIncompleteProfile(row) {
+function contactPhone(row, profile) {
+  return firstPresent(row.phone, profile?.phone, row.profile_phone);
+}
+
+function isIncompleteProfile(row, profile = null) {
   const hasName = !!(row.first_name?.trim() && row.last_name?.trim());
-  const hasPhone = !!row.phone?.trim();
+  const hasPhone = !!contactPhone(row, profile);
   const hasRoleData =
     row.role === 'technician'
       ? !!row.label?.trim()
@@ -141,7 +159,7 @@ function deriveAccountStatus(row, detail) {
   // TODO(admin-users): wire real account status when backend adds suspend/deactivate fields
   const pwd = detail?.user?.password_status;
   if (pwd && !pwd.has_password) return 'Invited';
-  if (isIncompleteProfile(row)) return 'Incomplete profile';
+  if (isIncompleteProfile(row, detail?.user?.profile)) return 'Incomplete profile';
   return 'Active';
 }
 
@@ -159,15 +177,15 @@ function deriveVerificationStatus(row, detail) {
   return 'Not verified';
 }
 
-function deriveRiskLevel(row) {
-  const logins = Number(row.logins_last_30_days ?? 0);
-  const created = row.created_at ? new Date(row.created_at).getTime() : Date.now();
-  const ageMs = Date.now() - created;
-  const incomplete = isIncompleteProfile(row);
-
-  if (logins === 0 && ageMs > THIRTY_DAYS_MS && incomplete) return 'High';
-  if (logins === 0 && (ageMs > THIRTY_DAYS_MS || incomplete)) return 'Medium';
-  return 'Low';
+// Auto-flag heuristics are parked. Keep Flagged tab / KPI / column for a later
+// review workflow. When a row is flagged, populate reasons + a resolution path.
+function deriveFlagState(_row, _detail) {
+  return {
+    riskLevel: 'Low',
+    isFlagged: false,
+    flagReasons: [],
+    flagResolution: [],
+  };
 }
 
 function deriveSubscription(row, detail) {
@@ -183,7 +201,7 @@ export function enrichUserRow(row, detail = null) {
   const profile = detail?.user?.profile;
   const accountStatus = deriveAccountStatus(row, detail);
   const verificationStatus = deriveVerificationStatus(row, detail);
-  const riskLevel = deriveRiskLevel(row);
+  const flagState = deriveFlagState(row, detail);
   const subscription = deriveSubscription(row, detail);
   const logins30d = Number(row.logins_last_30_days ?? 0);
   const lastLoginAt = detail?.logins?.last_login_at || null;
@@ -193,7 +211,7 @@ export function enrichUserRow(row, detail = null) {
       ? displayOrFallback(row.label || profile?.trade_type, 'Not provided')
       : displayOrFallback(row.company_name || row.label || profile?.company_name, 'Not provided');
 
-  const location = formatLocation(profile) || 'Not provided';
+  const location = formatLocation(profile, row) || 'Not provided';
   const skillClass = row.skill_class || profile?.skill_class || null;
   const experienceYearsRaw = row.experience_years ?? profile?.experience_years;
   const experienceYears =
@@ -205,7 +223,9 @@ export function enrichUserRow(row, detail = null) {
     initials: getInitials(row),
     accountStatus,
     verificationStatus,
-    riskLevel,
+    riskLevel: flagState.riskLevel,
+    flagReasons: flagState.flagReasons,
+    flagResolution: flagState.flagResolution,
     subscriptionTier: subscription.tier,
     subscriptionStatus: subscription.status,
     membershipTier: subscription.tier,
@@ -222,7 +242,7 @@ export function enrichUserRow(row, detail = null) {
       (verificationStatus.includes('Pending') ||
         verificationStatus.includes('Not verified') ||
         verificationStatus.includes('missing')),
-    isFlagged: riskLevel === 'High',
+    isFlagged: flagState.isFlagged,
     // TODO(admin-users): wire real suspended state when backend adds account status
     isSuspended: false,
     isRecentlyActive: logins30d > 0,
@@ -237,7 +257,7 @@ export function enrichUserRow(row, detail = null) {
 export function computeProfileCompleteness(row, detail) {
   const profile = detail?.user?.profile;
   const items = [
-    { key: 'phone', label: 'Phone', done: !!row.phone?.trim() },
+    { key: 'phone', label: 'Phone', done: !!contactPhone(row, profile) },
     { key: 'name', label: 'Full name', done: !!(row.first_name?.trim() && row.last_name?.trim()) },
     { key: 'email', label: 'Email', done: !!row.email?.trim() },
   ];
@@ -247,7 +267,11 @@ export function computeProfileCompleteness(row, detail) {
     const hasLicense = licenses.some((doc) => doc?.file_url || doc?.document_number);
     items.push(
       { key: 'trade', label: 'Trade specialty', done: !!(profile?.trade_type || row.label?.trim()) },
-      { key: 'location', label: 'Location', done: !!(profile?.city || profile?.location || profile?.zip_code) },
+      {
+        key: 'location',
+        label: 'Location',
+        done: !!(profile?.city || profile?.location || profile?.zip_code || row.city || row.location || row.zip_code),
+      },
       { key: 'license', label: 'License', done: hasLicense },
       { key: 'insurance', label: 'Insurance', done: false },
       { key: 'payment', label: 'Payment setup', done: !!profile?.stripe_account_id },
@@ -256,7 +280,16 @@ export function computeProfileCompleteness(row, detail) {
   } else if (row.role === 'company') {
     items.push(
       { key: 'company', label: 'Company name', done: !!(row.company_name || profile?.company_name) },
-      { key: 'location', label: 'Location', done: !!(profile?.location || profile?.service_cities?.length) },
+      {
+        key: 'location',
+        label: 'Location',
+        done: !!(
+          profile?.location ||
+          profile?.service_cities?.length ||
+          row.location ||
+          row.service_cities?.length
+        ),
+      },
       { key: 'payment', label: 'Payment setup', done: !!profile?.stripe_customer_id }
     );
   }

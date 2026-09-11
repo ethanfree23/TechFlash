@@ -124,15 +124,17 @@ export default function AccountActionsCard({
   };
 
   const buttonClass =
-    'w-full inline-flex items-center justify-center rounded-lg border px-4 py-2.5 text-sm font-semibold shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2';
+    'inline-flex items-center justify-center rounded-lg border px-3 py-1.5 text-sm font-semibold shadow-sm transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2';
 
   return (
     <>
       <SettingsCard
         title="Account"
         description={currentEmail ? `Username: ${currentEmail}` : 'Update your login email, password, or delete this account.'}
+        collapsible
+        defaultOpen={false}
       >
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-wrap gap-2">
           <button
             type="button"
             className={`${buttonClass} border-gray-300 bg-white text-gray-800 hover:bg-gray-50 focus-visible:ring-blue-500`}

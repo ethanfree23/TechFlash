@@ -72,6 +72,12 @@ function testMissingImageIsTasteful() {
   assert.notStrictEqual(card.missingImageLabel, 'Document unavailable');
 }
 
+function testBrokenStoredFileIsTreatedAsMissing() {
+  const card = presentLicenseCard(ghlDoc({ has_file: false, file_url: '/rails/active_storage/disk/missing.png' }), (url) => url);
+  assert.strictEqual(card.hasImage, false);
+  assert.strictEqual(card.imageUrl, null);
+}
+
 function testModalViewModel() {
   const card = presentLicenseCard(ghlDoc(), (url) => `https://api.example${url}`);
   assert.strictEqual(card.title, 'Texas Journeyman Electrician');
@@ -134,6 +140,7 @@ function run() {
   testGhlTitleAndNumberDisplay();
   testHidesInternalGhlPlaceholders();
   testMissingImageIsTasteful();
+  testBrokenStoredFileIsTreatedAsMissing();
   testModalViewModel();
   testExistingLicensesDoNotOpenEmptyForm();
   testEmptyStateAndAddForm();

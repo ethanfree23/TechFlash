@@ -1071,6 +1071,50 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
+  const refreshLicenseDocuments = async () => {
+    const docsPayload = await documentsAPI.getAll();
+    setCertificates(extractDocumentsList(docsPayload).filter((d) => isTechnicianCertificateDocument(d, profile.id)));
+    setCertificatePreviewErrors({});
+  };
+
+  const handleLicenseUpdate = async ({ id, title, reference, file }) => {
+    const failLicenseSave = (message) => {
+      setError(message);
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not save',
+        message,
+        variant: 'error',
+      });
+      return false;
+    };
+    if (!isTechnician || !profile?.id || !id) {
+      return failLicenseSave('Profile is still loading. Please wait a moment and try again.');
+    }
+    setUploadingCert(true);
+    setError(null);
+    try {
+      const fd = new FormData();
+      if (file) fd.append('file', file);
+      fd.append('issuer', String(title || '').trim());
+      fd.append('document_number', String(reference || '').trim());
+      await documentsAPI.update(id, fd);
+      await refreshLicenseDocuments();
+      setAlertModal({
+        isOpen: true,
+        title: 'License updated',
+        message: file ? 'The license photo was saved.' : 'Your license details were saved.',
+        variant: 'success',
+      });
+      return true;
+    } catch (err) {
+      failLicenseSave(err.message || 'Failed to update license');
+      return false;
+    } finally {
+      setUploadingCert(false);
+    }
+  };
+
   const handleUpdateUsername = async (email) => {
     const nextEmail = String(email || '').trim();
     if (!nextEmail) throw new Error('Email is required.');
@@ -2080,6 +2124,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       onPreviewError={(id) => setCertificatePreviewErrors((prev) => ({ ...prev, [id]: true }))}
       onDelete={handleCertificateDelete}
       onUpload={handleLicenseUpload}
+      onUpdate={handleLicenseUpdate}
     />
   );
 
@@ -2133,16 +2178,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               </p>
             </div>
           )}
-          {isCompany && (
-            <div className="mb-6">
-              {renderProfileCompletionCard()}
-            </div>
-          )}
-          {isTechnician && (
-            <div className="mb-6">
-              {renderProfileCompletionCard()}
-            </div>
-          )}
           {isAdmin ? (
             <form onSubmit={handleProfileSubmit} className="space-y-4" noValidate>
               <p className="text-gray-500">Admin accounts do not have technician or company profiles, but you can update your name here.</p>
@@ -2187,29 +2222,36 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
             </form>
           ) : (
           <form onSubmit={handleProfileSubmit} className="space-y-4" noValidate>
-            <div className="flex items-center gap-6">
-              <div className="relative">
-                {profileAvatarUrl ? (
-                  <img
-                    src={profileAvatarUrl}
-                    alt=""
-                    className="w-24 h-24 rounded-full object-cover border-2 border-gray-200"
-                    onError={() => {
-                      setAvatarBroken(true);
-                      setAvatarPreview(null);
-                    }}
-                  />
-                ) : (
-                  <div className="w-24 h-24 rounded-full bg-gray-200 flex items-center justify-center text-3xl text-gray-500 font-bold">
-                    {(form.first_name || user?.first_name || user?.email || '?')[0]?.toUpperCase() || '?'}
-                  </div>
-                )}
-                <label className="absolute bottom-0 right-0 bg-blue-600 text-white rounded-full p-2 cursor-pointer hover:bg-blue-700">
-                  <input type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /></svg>
-                </label>
+            <div className="flex flex-col items-start gap-5 sm:flex-row">
+              <div className="flex shrink-0 flex-col items-center gap-2">
+                <div className="relative">
+                  {profileAvatarUrl ? (
+                    <img
+                      src={profileAvatarUrl}
+                      alt=""
+                      className="h-40 w-40 rounded-full object-cover border-2 border-gray-200"
+                      onError={() => {
+                        setAvatarBroken(true);
+                        setAvatarPreview(null);
+                      }}
+                    />
+                  ) : (
+                    <div className="flex h-40 w-40 items-center justify-center rounded-full bg-gray-200 text-5xl font-bold text-gray-500">
+                      {(form.first_name || user?.first_name || user?.email || '?')[0]?.toUpperCase() || '?'}
+                    </div>
+                  )}
+                  <label className="absolute bottom-1 right-1 cursor-pointer rounded-full bg-blue-600 p-2.5 text-white hover:bg-blue-700">
+                    <input type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /></svg>
+                  </label>
+                </div>
+                <div className="text-sm text-gray-500">Click to change photo</div>
               </div>
-              <div className="text-sm text-gray-500">Click to change photo</div>
+              {(isCompany || isTechnician) && (
+                <div className="w-full min-w-0 max-w-md">
+                  {renderProfileCompletionCard()}
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -2311,7 +2353,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
             {isTechnician && (
               <>
-                <div>
+                <div className="min-w-0">
                   <label className="block text-sm font-medium text-gray-700 mb-1">Trades</label>
                   <p className="mb-2 text-xs text-gray-500">Add each trade you perform, with class and years of experience.</p>
                   <TechnicianTradeLines
@@ -2413,6 +2455,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 )}
 
                 <AccountActionsCard
+                  key="account-actions-collapsed"
                   currentEmail={accountEmail}
                   saving={savingAccount}
                   onUpdateUsername={handleUpdateUsername}
@@ -2712,55 +2755,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   description="Choose what we email you about. Security, password reset, payment receipts, and legal notices stay on."
                 />
 
-                <SettingsCard title="Always on (cannot disable)" collapsible defaultOpen={false}>
-                  <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
-                    <li>Security alerts and password reset</li>
-                    <li>Payment receipts and tax or compliance notices when applicable</li>
-                    <li>Legal and policy updates when required</li>
-                  </ul>
-                </SettingsCard>
-
-                <SettingsCard title="Global email controls">
-                  <p className="text-sm text-gray-600 mb-4">
-                    Master switch for non-critical automated emails. Individual categories can still be tuned per row below.
-                  </p>
-                  <SettingsRow
-                    title="All automated non-critical emails"
-                    description="Turns off optional marketing and lifecycle digests except security and receipts."
-                    control={
-                      <SettingsToggle
-                        checked={notificationPrefs.email_notifications_enabled !== false}
-                        disabled={savingNotifications}
-                        onChange={(v) => handleNotificationToggle('email_notifications_enabled', v)}
-                        ariaLabel="All non-critical emails"
-                      />
-                    }
-                  />
-                </SettingsCard>
-
-                <SettingsCard title="Digest, quiet hours, and language" collapsible defaultOpen={false}>
-                  <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
-                    Not connected to the backend yet. TODO(backend): user notification_settings JSON for digest and quiet hours.
-                  </p>
-                  <p className="text-sm text-gray-600">UI placeholder for hourly/daily digests, time zone, and preferred language.</p>
-                </SettingsCard>
-
-                <div className="grid gap-4 md:grid-cols-2">
-                  {notificationCategories.map((item) => (
-                    <NotificationPreferenceCard
-                      key={item.id}
-                      item={item}
-                      notificationPrefs={notificationPrefs}
-                      jobAlertForm={jobAlertForm}
-                      isTechnician={isTechnician}
-                      savingNotifications={savingNotifications}
-                      savingJobAlertForm={savingJobAlertForm}
-                      onTogglePersisted={(it, v) => handleNotificationCardToggle(it, v)}
-                      onCustomize={(it) => setModalNotificationItem(it)}
-                    />
-                  ))}
-                </div>
-
                 {isTechnician && (
                   <SettingsCard
                     title="Job alert filters"
@@ -2902,6 +2896,55 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                     </form>
                   </SettingsCard>
                 )}
+
+                <SettingsCard title="Always on (cannot disable)" collapsible defaultOpen={false}>
+                  <ul className="list-disc pl-5 text-sm text-gray-700 space-y-1">
+                    <li>Security alerts and password reset</li>
+                    <li>Payment receipts and tax or compliance notices when applicable</li>
+                    <li>Legal and policy updates when required</li>
+                  </ul>
+                </SettingsCard>
+
+                <SettingsCard title="Global email controls">
+                  <p className="text-sm text-gray-600 mb-4">
+                    Master switch for non-critical automated emails. Individual categories can still be tuned per row below.
+                  </p>
+                  <SettingsRow
+                    title="All automated non-critical emails"
+                    description="Turns off optional marketing and lifecycle digests except security and receipts."
+                    control={
+                      <SettingsToggle
+                        checked={notificationPrefs.email_notifications_enabled !== false}
+                        disabled={savingNotifications}
+                        onChange={(v) => handleNotificationToggle('email_notifications_enabled', v)}
+                        ariaLabel="All non-critical emails"
+                      />
+                    }
+                  />
+                </SettingsCard>
+
+                <SettingsCard title="Digest, quiet hours, and language" collapsible defaultOpen={false}>
+                  <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
+                    Not connected to the backend yet. TODO(backend): user notification_settings JSON for digest and quiet hours.
+                  </p>
+                  <p className="text-sm text-gray-600">UI placeholder for hourly/daily digests, time zone, and preferred language.</p>
+                </SettingsCard>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  {notificationCategories.map((item) => (
+                    <NotificationPreferenceCard
+                      key={item.id}
+                      item={item}
+                      notificationPrefs={notificationPrefs}
+                      jobAlertForm={jobAlertForm}
+                      isTechnician={isTechnician}
+                      savingNotifications={savingNotifications}
+                      savingJobAlertForm={savingJobAlertForm}
+                      onTogglePersisted={(it, v) => handleNotificationCardToggle(it, v)}
+                      onCustomize={(it) => setModalNotificationItem(it)}
+                    />
+                  ))}
+                </div>
               </div>
             )}
 

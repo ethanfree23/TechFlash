@@ -46,7 +46,7 @@ function getCardSubtext(id, kpis) {
     case 'pending':
       return kpis.pending > 0 ? 'Needs review' : 'All clear';
     case 'flagged':
-      return kpis.flagged + kpis.suspended > 0 ? 'Action needed' : 'None flagged';
+      return kpis.flagged + kpis.suspended > 0 ? 'Action needed' : 'Review queue';
     default:
       return '';
   }

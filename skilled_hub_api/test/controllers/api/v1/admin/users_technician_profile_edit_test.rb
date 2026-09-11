@@ -172,6 +172,92 @@ module Api
           assert_equal "master", @profile.skill_class
         end
 
+        test "admin show returns every trade license including ones without a file" do
+          first = @profile.documents.create!(
+            doc_type: "certificate",
+            document_number: "59765",
+            issuer: "EPA 608"
+          )
+          second = @profile.documents.create!(
+            doc_type: "certificate",
+            document_number: "148640",
+            issuer: "TDLR"
+          )
+          second.file.attach(
+            io: StringIO.new("\x89PNG\r\n\x1A\n".b + ("\x00" * 32)),
+            filename: "Screenshot 2026-08-31 20141003.png",
+            content_type: "image/png"
+          )
+          second.file.blob.service.delete(second.file.blob.key)
+
+          get "/api/v1/admin/users/#{@technician.id}",
+              headers: auth_header_for(@admin),
+              as: :json
+
+          assert_response :ok, response.body
+          licenses = JSON.parse(response.body).dig("user", "profile", "trade_licenses")
+          assert_equal 2, licenses.size
+          by_number = licenses.index_by { |row| row["document_number"] }
+          assert_equal "EPA 608", by_number["59765"]["issuer"]
+          assert_equal false, by_number["59765"]["has_file"]
+          assert_nil by_number["59765"]["file_url"]
+          assert_equal "TDLR", by_number["148640"]["issuer"]
+          assert_equal false, by_number["148640"]["has_file"]
+          assert_nil by_number["148640"]["file_url"]
+          assert_equal [first.id, second.id], licenses.map { |row| row["id"] }
+        end
+
+        test "admin can add a second trade license without replacing the first" do
+          existing = @profile.documents.create!(
+            doc_type: "certificate",
+            document_number: "EPA-608",
+            issuer: "EPA 608 Universal"
+          )
+
+          patch "/api/v1/admin/users/#{@technician.id}/profile",
+                params: {
+                  licenses: [
+                    { id: existing.id, document_number: "EPA-608", issuer: "EPA 608 Universal" },
+                    { document_number: "TX-HVAC-1001", issuer: "Texas HVAC license" }
+                  ]
+                },
+                headers: auth_header_for(@admin),
+                as: :json
+
+          assert_response :ok, response.body
+          licenses = @profile.documents.where(doc_type: %w[license certificate cert]).order(:id)
+          assert_equal 2, licenses.size
+          assert_equal ["EPA-608", "TX-HVAC-1001"], licenses.map(&:document_number)
+          body = JSON.parse(response.body)
+          assert_equal 2, body.dig("user", "profile", "trade_licenses").size
+        end
+
+        test "admin can remove one of multiple trade licenses" do
+          keep = @profile.documents.create!(
+            doc_type: "certificate",
+            document_number: "KEEP-1",
+            issuer: "Keep issuer"
+          )
+          drop = @profile.documents.create!(
+            doc_type: "certificate",
+            document_number: "DROP-1",
+            issuer: "Drop issuer"
+          )
+
+          patch "/api/v1/admin/users/#{@technician.id}/profile",
+                params: {
+                  licenses: [
+                    { id: keep.id, document_number: "KEEP-1", issuer: "Keep issuer" }
+                  ]
+                },
+                headers: auth_header_for(@admin),
+                as: :json
+
+          assert_response :ok, response.body
+          assert Document.exists?(keep.id)
+          assert_not Document.exists?(drop.id)
+        end
+
         test "admin can replace avatar and trade license file" do
           existing = @profile.documents.create!(
             doc_type: "certificate",

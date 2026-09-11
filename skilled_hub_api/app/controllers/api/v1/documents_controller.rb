@@ -83,13 +83,29 @@ module Api
 
       def update
         document = Document.find(params[:id])
-        
-        # Check if user has access to this document
+
         unless can_access_document?(document)
           return render json: { error: "Access denied" }, status: :forbidden
         end
-        
-        if document.update(document_params)
+
+        if params[:file].present?
+          begin
+            attach_uploaded_file!(document, params[:file])
+          rescue LicenseImageRejected => e
+            return render json: { error: e.message }, status: :unprocessable_entity
+          rescue StandardError => e
+            return render json: { error: "File attachment failed: #{e.message}" }, status: :unprocessable_entity
+          end
+          if license_image_document?(document)
+            document.status = :pending_review
+            document.reviewed_at = nil
+            document.reviewed_by_user = nil
+            document.rejection_reason = nil
+          end
+        end
+
+        document.assign_attributes(document_update_params)
+        if document.save
           render json: document, serializer: DocumentSerializer, base_url: request.base_url, status: :ok
         else
           render json: { errors: document.errors.full_messages }, status: :unprocessable_entity
@@ -159,6 +175,10 @@ module Api
 
       def document_params
         params.permit(:uploadable_id, :uploadable_type, :doc_type, :issuer, :document_number, :issued_on, :valid_until, metadata: {})
+      end
+
+      def document_update_params
+        params.permit(:issuer, :document_number, :issued_on, :valid_until)
       end
 
       def can_create_document?(document)

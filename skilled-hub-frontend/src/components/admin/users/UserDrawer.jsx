@@ -139,13 +139,15 @@ export default function UserDrawer({
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
-    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    const onKey = (e) => {
+      if (e.key === 'Escape' && !editProfileOpen) onClose?.();
+    };
     window.addEventListener('keydown', onKey);
     return () => {
       document.body.style.overflow = prev;
       window.removeEventListener('keydown', onKey);
     };
-  }, [onClose]);
+  }, [onClose, editProfileOpen]);
 
   if (!userId) return null;
 
@@ -249,6 +251,9 @@ export default function UserDrawer({
                     <h3 className="text-base font-semibold text-slate-900 leading-tight truncate">{row.displayName}</h3>
                     <p className="text-xs text-slate-500 truncate mt-0.5">{row.email}</p>
                     {row.phone && <p className="text-xs text-slate-400 mt-0.5">{row.phone}</p>}
+                    {row.locationLabel && row.locationLabel !== 'Not provided' && (
+                      <p className="text-xs text-slate-400 mt-0.5">{row.locationLabel}</p>
+                    )}
                     <div className="flex flex-wrap gap-1 mt-2">
                       <UserTypeBadge role={row.role} />
                       <UserStatusBadge status={row.accountStatus} />
@@ -304,6 +309,37 @@ export default function UserDrawer({
                   />
                 </div>
               </div>
+
+              {row.isFlagged && (
+                <DrawerSection title="Flagged — needs resolution">
+                  <p className="text-xs text-slate-700 mb-2">
+                    This account is in the review queue for a specific reason, not a generic risk score.
+                  </p>
+                  {row.flagReasons?.length > 0 ? (
+                    <ul className="space-y-1 mb-3">
+                      {row.flagReasons.map((reason) => (
+                        <li key={reason} className="text-[11px] text-red-800 pl-2 border-l-2 border-red-200">
+                          {reason}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-[11px] text-slate-500 mb-3">No reason recorded yet.</p>
+                  )}
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Path to resolution</p>
+                  {row.flagResolution?.length > 0 ? (
+                    <ol className="list-decimal list-inside space-y-1">
+                      {row.flagResolution.map((step) => (
+                        <li key={step} className="text-[11px] text-slate-700">{step}</li>
+                      ))}
+                    </ol>
+                  ) : (
+                    <p className="text-[11px] text-slate-500">
+                      Open the full profile, fix the listed issue, then clear the flag from this queue.
+                    </p>
+                  )}
+                </DrawerSection>
+              )}
 
               <DrawerSection title="Quick stats">
                 <OverviewCards detail={detail} row={row} />

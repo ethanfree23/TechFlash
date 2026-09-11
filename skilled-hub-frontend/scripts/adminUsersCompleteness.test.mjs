@@ -37,5 +37,22 @@ function testTechnicianCompletenessUsesRealLicenseAndPhoto() {
   assert.ok(complete.percent > incomplete.percent);
 }
 
+function testLocationCountsWhenOnlyZipIsOnTheListRow() {
+  const completeness = computeProfileCompleteness(
+    {
+      role: 'technician',
+      first_name: 'Keith',
+      last_name: 'Harris',
+      email: 'keith@example.com',
+      phone: '3464098882',
+      label: 'Low-Voltage / Telecom Technician',
+      zip_code: '77583',
+    },
+    { user: { profile: {} } }
+  );
+  assert.ok(!completeness.missing.includes('Location'));
+}
+
 testTechnicianCompletenessUsesRealLicenseAndPhoto();
+testLocationCountsWhenOnlyZipIsOnTheListRow();
 console.log('adminUsersCompleteness tests passed');

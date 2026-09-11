@@ -153,17 +153,21 @@ class AdminUserDetail
   end
 
   def trade_license_payloads(technician_profile)
-    technician_profile.documents
-      .where(doc_type: TRADE_LICENSE_DOC_TYPES)
-      .order(created_at: :desc, id: :desc)
+    Document.where(uploadable: technician_profile, doc_type: TRADE_LICENSE_DOC_TYPES)
+      .with_attached_file
+      .order(created_at: :asc, id: :asc)
       .map do |doc|
+        file_url = absolute_blob_url(doc.file)
         {
           id: doc.id,
           doc_type: doc.doc_type,
+          status: doc.status,
           issuer: doc.issuer,
           document_number: doc.document_number,
-          file_url: absolute_blob_url(doc.file),
-          created_at: doc.created_at&.iso8601
+          has_file: file_url.present?,
+          file_url: file_url,
+          created_at: doc.created_at&.iso8601,
+          updated_at: doc.updated_at&.iso8601
         }
       end
   end

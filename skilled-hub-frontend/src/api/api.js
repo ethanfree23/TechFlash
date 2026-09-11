@@ -858,6 +858,13 @@ export const documentsAPI = {
       headers: {}, // Let browser set Content-Type for FormData
       body: formData,
     }),
+
+  update: (id, formData) =>
+    apiRequest(`/documents/${id}`, {
+      method: 'PATCH',
+      headers: {},
+      body: formData,
+    }),
   
   delete: (id) => 
     apiRequest(`/documents/${id}`, {
