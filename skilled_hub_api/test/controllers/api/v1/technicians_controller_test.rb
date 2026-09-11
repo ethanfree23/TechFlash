@@ -124,7 +124,7 @@ module Api
         assert_equal "Texas", profile.state
         assert_equal "77002", profile.zip_code
         assert_equal "United States", profile.country
-        assert_equal "Houston, Texas, United States", profile.location
+        assert_equal "Houston, Texas", profile.location
         assert_in_delta 29.7604, profile.latitude.to_f, 0.0001
         assert_in_delta(-95.3698, profile.longitude.to_f, 0.0001)
         assert_equal "success", profile.geocode_status

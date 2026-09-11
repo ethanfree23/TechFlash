@@ -1,13 +1,20 @@
 module Api
   module V1
     class UsersController < ApplicationController
-      # ui_preferences["table_columns"][table_id] => [{ "key", "visible" }, ...]
+      # ui_preferences["table_columns"][table_id] => [{ "key", "visible", "width" }, ...]
+      UI_TABLE_COLUMN_FIELDS = %i[key visible width].freeze
       UI_TABLE_COLUMNS_PERMIT = {
-        admin_users: %i[key visible],
-        admin_users_all: %i[key visible],
-        admin_users_company: %i[key visible],
-        admin_users_technician: %i[key visible],
-        crm_pipeline: %i[key visible]
+        admin_users: UI_TABLE_COLUMN_FIELDS,
+        admin_users_all: UI_TABLE_COLUMN_FIELDS,
+        admin_users_technicians: UI_TABLE_COLUMN_FIELDS,
+        admin_users_technician: UI_TABLE_COLUMN_FIELDS,
+        admin_users_company: UI_TABLE_COLUMN_FIELDS,
+        admin_users_admins: UI_TABLE_COLUMN_FIELDS,
+        admin_users_pending: UI_TABLE_COLUMN_FIELDS,
+        admin_users_flagged: UI_TABLE_COLUMN_FIELDS,
+        admin_users_suspended: UI_TABLE_COLUMN_FIELDS,
+        admin_users_recently_active: UI_TABLE_COLUMN_FIELDS,
+        crm_pipeline: UI_TABLE_COLUMN_FIELDS
       }.freeze
       TECHNICIAN_TRADE_OPTIONS = TradeCatalog::OPTIONS.freeze
 
@@ -116,6 +123,7 @@ module Api
         zip_code = params[:zip_code].to_s.strip
         address = params[:address].to_s.strip
         country = params[:country].to_s.strip.presence || "United States"
+        city, state = UsZipLookup.fill(city: city, state: state, zip_code: zip_code)
         qualifications = TradeQualificationNormalizer.normalize_list(params[:trade_qualifications])
         trade_type = params[:trade_type].to_s.strip
         skill_class = params[:skill_class].to_s.strip
@@ -138,6 +146,7 @@ module Api
           zip_code = params[:business_zip_code].to_s.strip.presence || zip_code
           address = params[:business_address].to_s.strip.presence || address
         end
+        city, state = UsZipLookup.fill(city: city, state: state, zip_code: zip_code)
         return render json: { error: "first_name is required for signup" }, status: :unprocessable_entity if first_name.blank?
         return render json: { error: "last_name is required for signup" }, status: :unprocessable_entity if last_name.blank?
         return render json: { error: "phone is required for signup" }, status: :unprocessable_entity if phone.blank?
@@ -315,7 +324,7 @@ module Api
           :job_alert_notifications_enabled,
           email_notification_preferences: {},
           ui_preferences: {
-            admin_users_table_columns: %i[key visible],
+            admin_users_table_columns: %i[key visible width],
             table_columns: UI_TABLE_COLUMNS_PERMIT
           }
         ).to_h

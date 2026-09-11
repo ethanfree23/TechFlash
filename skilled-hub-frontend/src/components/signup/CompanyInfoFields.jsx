@@ -3,6 +3,8 @@ import { FaEnvelope, FaMapMarkerAlt, FaPhone, FaUser } from 'react-icons/fa';
 import { US_STATES } from '../../data/statesByCountry';
 import { COMPANY_INDUSTRY_OPTIONS, companyIndustrySelectValue } from '../../constants/trades';
 import { requiresElectricalLicenseForState } from '../../utils/licensingRules';
+import { lookupUsZip } from '../../utils/zipLookup';
+import { normalizeToUsStateName } from '../../utils/crmUsState';
 
 const inputWrap =
   'mt-1 flex w-full items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm focus-within:border-[#3A7CA5] focus-within:ring-1 focus-within:ring-[#3A7CA5]';
@@ -150,7 +152,34 @@ export function CompanyInfoFields({ registerData, setRegisterData, idPrefix, ema
             </div>
             <p className="mt-1 text-xs text-gray-500">This address is used as your base service area.</p>
           </label>
-          <label className="block text-sm font-medium text-gray-700 sm:col-span-2">
+          <label className="block text-sm font-medium text-gray-700">
+            ZIP code
+            <div className={inputWrap}>
+              <input
+                id={`${idPrefix}-business-zip`}
+                type="text"
+                inputMode="numeric"
+                value={registerData.business_zip_code || ''}
+                onChange={async (e) => {
+                  const business_zip_code = e.target.value;
+                  set({ business_zip_code });
+                  const place = await lookupUsZip(business_zip_code);
+                  if (!place) return;
+                  set({
+                    business_zip_code,
+                    ...(place.city ? { business_city: place.city } : {}),
+                    ...(place.stateName || place.state
+                      ? { business_state: normalizeToUsStateName(place.stateName || place.state) }
+                      : {}),
+                  });
+                }}
+                placeholder="ZIP"
+                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-500">City and state fill in from the ZIP.</p>
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
             Business city
             <div className={inputWrap}>
               <FaMapMarkerAlt className="h-4 w-4 text-gray-400" aria-hidden />
@@ -179,19 +208,6 @@ export function CompanyInfoFields({ registerData, setRegisterData, idPrefix, ema
                 </option>
               ))}
             </select>
-          </label>
-          <label className="block text-sm font-medium text-gray-700">
-            ZIP code
-            <div className={inputWrap}>
-              <input
-                id={`${idPrefix}-business-zip`}
-                type="text"
-                value={registerData.business_zip_code || ''}
-                onChange={(e) => set({ business_zip_code: e.target.value })}
-                placeholder="ZIP"
-                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
-              />
-            </div>
           </label>
           <label className="block text-sm font-medium text-gray-700">
             Business phone

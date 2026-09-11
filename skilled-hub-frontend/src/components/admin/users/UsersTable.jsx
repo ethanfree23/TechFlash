@@ -15,11 +15,102 @@ import {
   persistPageSize,
   readStoredPageSize,
 } from '../../../utils/adminUsersPagination';
+import {
+  clampTableColumnWidth,
+  minWidthForColumnKey,
+} from '../../../utils/tableColumnPrefs';
 
-/** Tablet: hide subscription, membership tier, risk, jobs */
-const HIDDEN_MD = new Set(['jobs', 'risk', 'subscription', 'membership_tier']);
-/** Mobile table (lg breakpoint): also hide location, last_login, joined */
-const HIDDEN_LG = new Set(['location', 'last_login', 'joined']);
+const CHECKBOX_COL_WIDTH = 32;
+const ACTIONS_COL_WIDTH = 56;
+
+function columnWidthPx(col, draftWidths) {
+  const min = minWidthForColumnKey(col.key);
+  if (draftWidths[col.key] != null) {
+    return clampTableColumnWidth(draftWidths[col.key], { min }) ?? min;
+  }
+  return clampTableColumnWidth(col.width, { min }) ?? (col.key === 'user' ? 200 : 96);
+}
+
+function ColumnResizeHandle({ colKey, currentWidth, onDraftWidth, onCommitWidth, onResetWidth }) {
+  const startRef = useRef(null);
+
+  const endDrag = (target, pointerId) => {
+    const start = startRef.current;
+    startRef.current = null;
+    document.body.style.removeProperty('cursor');
+    document.body.style.removeProperty('user-select');
+    if (target && pointerId != null) {
+      try {
+        target.releasePointerCapture(pointerId);
+      } catch {
+        /* already released */
+      }
+    }
+    return start;
+  };
+
+  const onPointerDown = (e) => {
+    if (e.button != null && e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    startRef.current = { x: e.clientX, width: currentWidth };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  const onPointerMove = (e) => {
+    if (!startRef.current) return;
+    const next = clampTableColumnWidth(startRef.current.width + (e.clientX - startRef.current.x), {
+      min: minWidthForColumnKey(colKey),
+    });
+    if (next != null) onDraftWidth(colKey, next);
+  };
+
+  const onPointerUp = (e) => {
+    const start = endDrag(e.currentTarget, e.pointerId);
+    if (!start) return;
+    const next = clampTableColumnWidth(start.width + (e.clientX - start.x), {
+      min: minWidthForColumnKey(colKey),
+    });
+    if (next != null) onCommitWidth(colKey, next);
+  };
+
+  const onPointerCancel = (e) => {
+    const start = endDrag(e.currentTarget, e.pointerId);
+    if (!start) return;
+    onDraftWidth(colKey, null);
+  };
+
+  const onDoubleClick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    onResetWidth(colKey);
+  };
+
+  return (
+    <span
+      role="separator"
+      aria-orientation="vertical"
+      aria-label={`Resize ${colKey} column`}
+      title="Drag to resize. Double-click to reset."
+      className="absolute inset-y-0 right-0 z-20 w-2 cursor-col-resize touch-none group/handle"
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
+      onPointerCancel={onPointerCancel}
+      onDoubleClick={onDoubleClick}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <span className="pointer-events-none absolute inset-y-1 right-0 w-px rounded-full bg-slate-300 opacity-0 transition-opacity group-hover/col:opacity-100 group-hover/handle:w-0.5 group-hover/handle:bg-tf-blue group-hover/handle:opacity-100" />
+    </span>
+  );
+}
+
+/** Tablet: hide membership tier, risk, jobs */
+const HIDDEN_MD = new Set(['jobs', 'risk', 'membership_tier']);
+/** Mobile table (lg breakpoint): also hide city, state, last_login, joined */
+const HIDDEN_LG = new Set(['city', 'state', 'location', 'last_login', 'joined']);
 
 function Muted({ children, title }) {
   return (
@@ -107,13 +198,17 @@ function renderCell(col, row) {
       ) : (
         <CellText className="text-xs text-slate-600" title={row.locationLabel}>{row.locationLabel}</CellText>
       );
-    case 'subscription':
-      return (
-        <CellText
-          title={[displayOrFallback(row.subscriptionTier, 'Free'), row.subscriptionStatus].filter(Boolean).join(' · ')}
-        >
-          {displayOrFallback(row.subscriptionTier, 'Free')}
-        </CellText>
+    case 'city':
+      return row.cityLabel ? (
+        <CellText className="text-xs text-slate-600" title={row.cityLabel}>{row.cityLabel}</CellText>
+      ) : (
+        <Muted title="City not provided">—</Muted>
+      );
+    case 'state':
+      return row.stateLabel ? (
+        <CellText className="text-xs text-slate-600" title={row.stateLabel}>{row.stateLabel}</CellText>
+      ) : (
+        <Muted title="State not provided">—</Muted>
       );
     case 'membership_tier':
       return (
@@ -152,9 +247,9 @@ function renderCell(col, row) {
       return (
         <CellText
           className={`text-xs ${row.lastLoginAt ? 'text-slate-600' : 'text-slate-400'}`}
-          title={row.lastLoginDisplay || 'No activity yet'}
+          title={row.lastLoginDisplay || '—'}
         >
-          {row.lastLoginDisplay || 'No activity yet'}
+          {row.lastLoginDisplay || '—'}
         </CellText>
       );
     case 'risk':
@@ -171,14 +266,6 @@ function renderCell(col, row) {
 function colHiddenClass(key, asCol = false) {
   if (HIDDEN_LG.has(key)) return asCol ? 'hidden xl:table-column' : 'hidden xl:table-cell';
   if (HIDDEN_MD.has(key)) return asCol ? 'hidden lg:table-column' : 'hidden lg:table-cell';
-  return '';
-}
-
-function colWidthClass(key) {
-  if (key === 'user') return 'w-[16%]';
-  if (key === 'subscription') return 'w-[8%]';
-  if (key === 'trade_level') return 'w-[7.5%]';
-  if (key === 'experience_years' || key === 'joined' || key === 'risk' || key === 'jobs') return 'w-[5.5%]';
   return '';
 }
 
@@ -305,9 +392,12 @@ export default function UsersTable({
   sortKey,
   sortDir,
   onSort,
+  onColumnWidthChange,
+  onResetColumnWidth,
 }) {
   const [pageSize, setPageSize] = useState(readStoredPageSize);
   const [page, setPage] = useState(1);
+  const [draftWidths, setDraftWidths] = useState({});
   const selectAllRef = useRef(null);
   const rowsSignature = `${rows.length}:${rows[0]?.id ?? ''}:${rows[rows.length - 1]?.id ?? ''}`;
 
@@ -315,7 +405,52 @@ export default function UsersTable({
     setPage(1);
   }, [rowsSignature, pageSize]);
 
+  useEffect(() => () => {
+    document.body.style.removeProperty('cursor');
+    document.body.style.removeProperty('user-select');
+  }, []);
+
   const visibleColumns = useMemo(() => columns.filter((c) => c.visible), [columns]);
+  const tableWidth = useMemo(
+    () =>
+      CHECKBOX_COL_WIDTH +
+      ACTIONS_COL_WIDTH +
+      visibleColumns.reduce((sum, col) => sum + columnWidthPx(col, draftWidths), 0),
+    [visibleColumns, draftWidths]
+  );
+
+  const handleDraftWidth = (key, width) => {
+    setDraftWidths((prev) => {
+      if (width == null) {
+        if (!(key in prev)) return prev;
+        const next = { ...prev };
+        delete next[key];
+        return next;
+      }
+      if (prev[key] === width) return prev;
+      return { ...prev, [key]: width };
+    });
+  };
+
+  const handleCommitWidth = (key, width) => {
+    setDraftWidths((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    onColumnWidthChange?.(key, width);
+  };
+
+  const handleResetWidth = (key) => {
+    setDraftWidths((prev) => {
+      if (!(key in prev)) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    onResetColumnWidth?.(key);
+  };
 
   const sortedRows = useMemo(() => {
     const copy = [...rows];
@@ -331,7 +466,8 @@ export default function UsersTable({
           case 'trade_level': return TRADE_LEVEL_RANK[row.tradeLevelSlug] || 0;
           case 'experience_years': return row.experienceYears ?? -1;
           case 'location': return row.locationLabel || '';
-          case 'subscription': return row.subscriptionTier || '';
+          case 'city': return row.cityLabel || '';
+          case 'state': return row.stateLabel || '';
           case 'membership_tier': return row.membershipTier || '';
           case 'activity': return row.logins30d ?? 0;
           case 'jobs': return row.jobsSummary?.accepted ?? row.jobsSummary?.posted ?? 0;
@@ -432,18 +568,22 @@ export default function UsersTable({
       </div>
 
       <div className="hidden lg:flex flex-1 min-h-0 w-full flex-col rounded-lg border border-slate-200/90 bg-white shadow-sm overflow-hidden">
-        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-          <table className="w-full table-fixed">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <table className="table-fixed" style={{ width: tableWidth, minWidth: tableWidth }}>
             <colgroup>
-              <col className="w-8" />
+              <col style={{ width: CHECKBOX_COL_WIDTH }} />
               {visibleColumns.map((col) => (
-                <col key={col.key} className={`${colWidthClass(col.key)} ${colHiddenClass(col.key, true)}`} />
+                <col
+                  key={col.key}
+                  className={colHiddenClass(col.key, true)}
+                  style={{ width: columnWidthPx(col, draftWidths) }}
+                />
               ))}
-              <col className="w-14" />
+              <col style={{ width: ACTIONS_COL_WIDTH }} />
             </colgroup>
             <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm border-b border-slate-200/80">
               <tr>
-                <th className="w-8 px-1.5 py-2">
+                <th className="px-1.5 py-2" style={{ width: CHECKBOX_COL_WIDTH }}>
                   <input
                     ref={selectAllRef}
                     type="checkbox"
@@ -454,21 +594,32 @@ export default function UsersTable({
                   />
                 </th>
                 {visibleColumns.map((col) => (
-                  <th key={col.key} className={`px-1.5 py-2 text-left min-w-0 ${colHiddenClass(col.key)}`}>
+                  <th
+                    key={col.key}
+                    className={`group/col relative px-1.5 py-2 text-left min-w-0 ${colHiddenClass(col.key)}`}
+                    style={{ width: columnWidthPx(col, draftWidths) }}
+                  >
                     <button
                       type="button"
                       onClick={() => onSort(col.key)}
                       title={col.label}
-                      className={`group inline-flex max-w-full items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide text-left leading-none whitespace-nowrap ${
+                      className={`group inline-flex max-w-[calc(100%-8px)] items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide text-left leading-none whitespace-nowrap ${
                         sortKey === col.key ? 'text-tf-blue' : 'text-slate-500 hover:text-slate-800'
                       }`}
                     >
                       <span className="whitespace-nowrap">{col.label}</span>
                       <SortIndicator colKey={col.key} sortKey={sortKey} sortDir={sortDir} />
                     </button>
+                    <ColumnResizeHandle
+                      colKey={col.key}
+                      currentWidth={columnWidthPx(col, draftWidths)}
+                      onDraftWidth={handleDraftWidth}
+                      onCommitWidth={handleCommitWidth}
+                      onResetWidth={handleResetWidth}
+                    />
                   </th>
                 ))}
-                <th className="w-14 px-1.5 py-2" aria-label="Actions" />
+                <th className="px-1.5 py-2" style={{ width: ACTIONS_COL_WIDTH }} aria-label="Actions" />
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -492,7 +643,7 @@ export default function UsersTable({
                       {renderCell(col, row)}
                     </td>
                   ))}
-                  <td className="px-1 py-2 text-right align-middle" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-1 py-2 text-right align-middle" style={{ width: ACTIONS_COL_WIDTH }} onClick={(e) => e.stopPropagation()}>
                     <div className="flex items-center justify-end gap-0.5 opacity-70 group-hover/row:opacity-100 transition-opacity">
                       <Link
                         to={`/admin/users/${row.id}`}

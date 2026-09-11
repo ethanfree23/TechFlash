@@ -1,5 +1,4 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { COUNTRIES } from '../data/countries';
 import { getStatesForCountry } from '../data/statesByCountry';
 
 /**
@@ -64,63 +63,40 @@ const SearchableSelect = ({ options, value, onChange, placeholder, className = '
 };
 
 /**
- * Country and State/Province select. USA default, states change by country.
+ * US state select. TechFlash only operates in the United States.
  */
 const CountryStateSelect = ({ country, state, onCountryChange, onStateChange, required = false, highlightMissing = false }) => {
-  const countryCode = COUNTRIES.find((c) => c.name === country)?.code || '';
-  const stateOptions = getStatesForCountry(countryCode).map((s) => ({ value: s, label: s }));
-
-  const countryOptions = COUNTRIES.map((c) => ({ value: c.name, label: c.name }));
-  const countryInputClassName = highlightMissing && !String(country || '').trim() ? 'border-amber-400 bg-amber-50' : '';
+  const stateOptions = getStatesForCountry('US').map((s) => ({ value: s, label: s }));
   const stateInputClassName = highlightMissing && !String(state || '').trim() ? 'border-amber-400 bg-amber-50' : '';
 
-  const handleCountryChange = (newCountry) => {
-    onCountryChange(newCountry);
-    const newCode = COUNTRIES.find((c) => c.name === newCountry)?.code;
-    const newStates = getStatesForCountry(newCode);
-    if (!newStates.includes(state)) {
-      onStateChange(newStates.length > 0 ? newStates[0] : '');
-    }
-  };
+  useEffect(() => {
+    if (!country && onCountryChange) onCountryChange('United States');
+  }, [country, onCountryChange]);
 
   return (
-    <>
-      <div>
-        <label className="block font-medium mb-1 text-sm">Country</label>
+    <div>
+      <label className="block font-medium mb-1 text-sm">State</label>
+      {stateOptions.length > 0 ? (
         <SearchableSelect
-          options={countryOptions}
-          value={country}
-          onChange={handleCountryChange}
-          placeholder="Select country"
+          options={stateOptions}
+          value={state}
+          onChange={onStateChange}
+          placeholder="Type or scroll to select"
           className="bg-white"
           required={required}
-          inputClassName={countryInputClassName}
+          inputClassName={stateInputClassName}
         />
-      </div>
-      <div>
-        <label className="block font-medium mb-1 text-sm">State / Province</label>
-        {stateOptions.length > 0 ? (
-          <SearchableSelect
-            options={stateOptions}
-            value={state}
-            onChange={onStateChange}
-            placeholder="Type or scroll to select"
-            className="bg-white"
-            required={required}
-            inputClassName={stateInputClassName}
-          />
-        ) : (
-          <input
-            type="text"
-            value={state}
-            onChange={(e) => onStateChange(e.target.value)}
-            placeholder="Enter state or province"
-            required={required}
-            className={`w-full border px-3 py-2 rounded bg-white ${stateInputClassName}`}
-          />
-        )}
-      </div>
-    </>
+      ) : (
+        <input
+          type="text"
+          value={state}
+          onChange={(e) => onStateChange(e.target.value)}
+          placeholder="Enter state"
+          required={required}
+          className={`w-full border px-3 py-2 rounded bg-white ${stateInputClassName}`}
+        />
+      )}
+    </div>
   );
 };
 

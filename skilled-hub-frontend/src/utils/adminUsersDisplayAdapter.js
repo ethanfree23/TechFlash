@@ -1,3 +1,6 @@
+import { parseCityState, stripCountryFromAddress } from './usAddress.js';
+import { usStateAbbreviation } from './crmUsState.js';
+
 /** Derived display fields, KPIs, tabs, and filters for Admin Users command center. */
 
 export const USER_TABS = [
@@ -26,21 +29,21 @@ export const TRADE_LEVEL_RANK = {
 };
 
 export const DEFAULT_TABLE_COLUMNS = [
-  { key: 'user', label: 'User', visible: true },
-  { key: 'type', label: 'Type', visible: true },
-  { key: 'status', label: 'Status', visible: true },
-  { key: 'verification', label: 'Verification', visible: true },
-  { key: 'company_trade', label: 'Company', visible: true },
-  { key: 'trade_level', label: 'Level', visible: true },
-  { key: 'experience_years', label: 'Years', visible: true },
-  { key: 'location', label: 'Location', visible: true },
-  { key: 'subscription', label: 'Subscription', visible: true },
-  { key: 'membership_tier', label: 'Tier', visible: true },
-  { key: 'activity', label: 'Activity', visible: true },
-  { key: 'jobs', label: 'Jobs', visible: true },
-  { key: 'joined', label: 'Joined', visible: true },
-  { key: 'last_login', label: 'Last login', visible: true },
-  { key: 'risk', label: 'Risk', visible: true },
+  { key: 'user', label: 'User', visible: true, width: 200 },
+  { key: 'type', label: 'Type', visible: true, width: 96 },
+  { key: 'status', label: 'Status', visible: true, width: 80 },
+  { key: 'verification', label: 'Verification', visible: true, width: 112 },
+  { key: 'company_trade', label: 'Company', visible: true, width: 120 },
+  { key: 'trade_level', label: 'Level', visible: true, width: 96 },
+  { key: 'experience_years', label: 'Years', visible: true, width: 64 },
+  { key: 'city', label: 'City', visible: true, width: 104 },
+  { key: 'state', label: 'State', visible: true, width: 56 },
+  { key: 'membership_tier', label: 'Tier', visible: true, width: 80 },
+  { key: 'activity', label: 'Activity', visible: true, width: 120 },
+  { key: 'jobs', label: 'Jobs', visible: true, width: 72 },
+  { key: 'joined', label: 'Joined', visible: true, width: 80 },
+  { key: 'last_login', label: 'Last login', visible: true, width: 104 },
+  { key: 'risk', label: 'Risk', visible: true, width: 64 },
 ];
 
 export function defaultColumnsForTab(tab) {
@@ -105,9 +108,9 @@ function firstPresent(...values) {
   return '';
 }
 
-function formatLocation(profile, row = {}) {
-  const city = firstPresent(profile?.city, row.city);
-  const state = firstPresent(profile?.state, row.state);
+function deriveCityState(profile, row = {}) {
+  let city = firstPresent(profile?.city, row.city);
+  let state = firstPresent(profile?.state, row.state);
   const loc = firstPresent(profile?.location, row.location);
   const zip = firstPresent(profile?.zip_code, row.zip_code);
   const serviceCities = Array.isArray(profile?.service_cities)
@@ -116,12 +119,30 @@ function formatLocation(profile, row = {}) {
       ? row.service_cities
       : [];
 
+  if ((!city || !state) && loc) {
+    const parsed = parseCityState(loc);
+    city = city || parsed.city;
+    state = state || parsed.state;
+  }
+  if (!city) {
+    const cityBits = serviceCities.map((c) => String(c || '').trim()).filter(Boolean);
+    if (cityBits.length) city = cityBits[0];
+  }
+
+  const stateAbbr = usStateAbbreviation(state) || stripCountryFromAddress(state);
+  return {
+    city: city || '',
+    state: stateAbbr || '',
+    zip: zip || '',
+  };
+}
+
+function formatLocation(profile, row = {}) {
+  const { city, state, zip } = deriveCityState(profile, row);
   if (city && state) return zip ? `${city}, ${state} ${zip}` : `${city}, ${state}`;
   if (city && zip) return `${city} ${zip}`;
-  if (loc) return zip && !loc.includes(zip) ? `${loc} ${zip}` : loc;
   if (city) return city;
-  const cityBits = serviceCities.map((c) => String(c || '').trim()).filter(Boolean);
-  if (cityBits.length) return cityBits.slice(0, 2).join(' · ');
+  if (state) return state;
   if (zip) return zip;
   return null;
 }
@@ -204,13 +225,14 @@ export function enrichUserRow(row, detail = null) {
   const flagState = deriveFlagState(row, detail);
   const subscription = deriveSubscription(row, detail);
   const logins30d = Number(row.logins_last_30_days ?? 0);
-  const lastLoginAt = detail?.logins?.last_login_at || null;
+  const lastLoginAt = detail?.logins?.last_login_at || row.last_login_at || null;
 
   const companyTrade =
     row.role === 'technician'
       ? displayOrFallback(row.label || profile?.trade_type, 'Not provided')
       : displayOrFallback(row.company_name || row.label || profile?.company_name, 'Not provided');
 
+  const place = deriveCityState(profile, row);
   const location = formatLocation(profile, row) || 'Not provided';
   const skillClass = row.skill_class || profile?.skill_class || null;
   const experienceYearsRaw = row.experience_years ?? profile?.experience_years;
@@ -236,7 +258,7 @@ export function enrichUserRow(row, detail = null) {
     experienceYearsLabel: row.role === 'technician' ? formatExperienceYears(experienceYears) : '',
     logins30d,
     lastLoginAt,
-    lastLoginDisplay: lastLoginAt ? formatRelativeTime(lastLoginAt) : 'No activity yet',
+    lastLoginDisplay: lastLoginAt ? formatRelativeTime(lastLoginAt) : '—',
     isPendingVerification:
       verificationStatus !== 'Verified' &&
       (verificationStatus.includes('Pending') ||
@@ -247,6 +269,8 @@ export function enrichUserRow(row, detail = null) {
     isSuspended: false,
     isRecentlyActive: logins30d > 0,
     companyTradeLabel: companyTrade,
+    cityLabel: place.city,
+    stateLabel: place.state,
     locationLabel: location,
     profileCompleteness: computeProfileCompleteness(row, detail),
     jobsSummary: detail ? buildJobsSummary(row, detail) : null,
@@ -450,7 +474,9 @@ export function applyAdvancedFilters(rows, filters = {}) {
   }
   if (filters.location?.trim()) {
     const q = filters.location.trim().toLowerCase();
-    result = result.filter((u) => (u.locationLabel || u.label || '').toLowerCase().includes(q));
+    result = result.filter((u) =>
+      [u.locationLabel, u.cityLabel, u.stateLabel, u.label].filter(Boolean).join(' ').toLowerCase().includes(q)
+    );
   }
   if (filters.trade?.trim()) {
     const q = filters.trade.trim().toLowerCase();
@@ -513,6 +539,8 @@ export function applyClientSearch(rows, searchQ) {
       u.tradeLevelLabel,
       u.experienceYearsLabel,
       u.zip_code,
+      u.cityLabel,
+      u.stateLabel,
       u.locationLabel,
       u.role,
       String(u.id),

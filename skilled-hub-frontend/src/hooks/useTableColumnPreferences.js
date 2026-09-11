@@ -11,7 +11,7 @@ import {
 const LEGACY_ADMIN_USERS_KEY = 'admin_users_table_columns';
 
 /**
- * Persist column visibility/order per logical table under user.ui_preferences.table_columns[tableId].
+ * Persist column visibility/order/width per logical table under user.ui_preferences.table_columns[tableId].
  */
 export function useTableColumnPreferences({
   tableId,
@@ -61,7 +61,7 @@ export function useTableColumnPreferences({
     try {
       window.localStorage.setItem(
         localStorageKey,
-        JSON.stringify(columns.map((c) => ({ key: c.key, visible: c.visible })))
+        JSON.stringify(serializeTableColumns(columns))
       );
     } catch {
       /* ignore */

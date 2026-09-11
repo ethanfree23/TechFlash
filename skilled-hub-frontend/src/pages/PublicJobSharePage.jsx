@@ -126,7 +126,6 @@ export default function PublicJobSharePage() {
               {(preview.city || preview.state) && (
                 <p className="text-sm text-gray-500 mt-2">
                   {[preview.city, preview.state].filter(Boolean).join(', ')}
-                  {preview.country && preview.country !== 'United States' ? ` · ${preview.country}` : ''}
                 </p>
               )}
             </div>

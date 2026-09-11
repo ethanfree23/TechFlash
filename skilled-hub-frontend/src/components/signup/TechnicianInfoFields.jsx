@@ -3,6 +3,8 @@ import { FaEnvelope, FaMapMarkerAlt, FaPhone, FaUser } from 'react-icons/fa';
 import { US_STATES } from '../../data/statesByCountry';
 import TechnicianTradeLines from '../TechnicianTradeLines';
 import { makeTradeLine, payloadFromTradeLines } from '../../utils/tradeQualifications';
+import { lookupUsZip } from '../../utils/zipLookup';
+import { normalizeToUsStateName } from '../../utils/crmUsState';
 
 const inputWrap =
   'mt-1 flex w-full items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2.5 shadow-sm focus-within:border-[#3A7CA5] focus-within:ring-1 focus-within:ring-[#3A7CA5]';
@@ -106,6 +108,47 @@ export function TechnicianInfoFields({ registerData, setRegisterData, idPrefix, 
             <p className="mt-1 text-xs text-gray-500">Optional. Add later for more accurate job distance on the map.</p>
           </label>
           <label className="block text-sm font-medium text-gray-700">
+            ZIP code
+            <div className={inputWrap}>
+              <input
+                id={`${idPrefix}-zip`}
+                type="text"
+                inputMode="numeric"
+                value={registerData.zip_code}
+                onChange={async (e) => {
+                  const zip_code = e.target.value;
+                  set({ zip_code });
+                  const place = await lookupUsZip(zip_code);
+                  if (!place) return;
+                  set({
+                    zip_code,
+                    ...(place.city ? { city: place.city } : {}),
+                    ...(place.stateName || place.state
+                      ? { state: normalizeToUsStateName(place.stateName || place.state) }
+                      : {}),
+                  });
+                }}
+                placeholder="ZIP"
+                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
+              />
+            </div>
+            <p className="mt-1 text-xs text-gray-500">City and state fill in from the ZIP.</p>
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
+            City
+            <div className={inputWrap}>
+              <FaMapMarkerAlt className="h-4 w-4 text-gray-400" aria-hidden />
+              <input
+                id={`${idPrefix}-city`}
+                type="text"
+                value={registerData.city}
+                onChange={(e) => set({ city: e.target.value })}
+                placeholder="City"
+                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
+              />
+            </div>
+          </label>
+          <label className="block text-sm font-medium text-gray-700">
             State
             <select
               id={`${idPrefix}-state`}
@@ -120,33 +163,6 @@ export function TechnicianInfoFields({ registerData, setRegisterData, idPrefix, 
                 </option>
               ))}
             </select>
-          </label>
-          <label className="block text-sm font-medium text-gray-700">
-            ZIP code
-            <div className={inputWrap}>
-              <input
-                id={`${idPrefix}-zip`}
-                type="text"
-                value={registerData.zip_code}
-                onChange={(e) => set({ zip_code: e.target.value })}
-                placeholder="ZIP"
-                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
-              />
-            </div>
-          </label>
-          <label className="block text-sm font-medium text-gray-700 sm:col-span-2">
-            City
-            <div className={inputWrap}>
-              <FaMapMarkerAlt className="h-4 w-4 text-gray-400" aria-hidden />
-              <input
-                id={`${idPrefix}-city`}
-                type="text"
-                value={registerData.city}
-                onChange={(e) => set({ city: e.target.value })}
-                placeholder="City (e.g. Dallas)"
-                className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm text-gray-900 outline-none ring-0"
-              />
-            </div>
           </label>
         </div>
       </section>

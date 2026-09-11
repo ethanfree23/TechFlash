@@ -33,6 +33,7 @@ Rails.application.routes.draw do
       post 'feedback', to: 'feedback_submissions#create'
       get 'address_suggestions', to: 'addresses#suggestions'
       get 'address_resolve', to: 'addresses#resolve'
+      get 'zip_lookup', to: 'addresses#zip_lookup'
       get 'tech_presence_markers', to: 'tech_presence_markers#index'
       resources :users
       resources :jobs do

@@ -6,6 +6,8 @@ import { formatPhoneInput } from '../utils/phone';
 import { requiresElectricalLicenseForState, setLocalOnlyLicenseStates } from '../utils/licensingRules';
 import { TRADE_OPTIONS } from '../constants/trades';
 import { technicianClassSelectOptions, isTechnicianClass, technicianClassLabel } from '../constants/technicianClass';
+import { lookupUsZip } from '../utils/zipLookup';
+import { normalizeToUsStateName } from '../utils/crmUsState';
 
 /**
  * Same "Create user" flow as the Admin Users list page.
@@ -338,7 +340,7 @@ export default function AdminCreateUserModal({
           city: createForm.city?.trim() || undefined,
           state: createForm.state?.trim() || undefined,
           zip_code: createForm.zip_code?.trim() || undefined,
-          country: createForm.country?.trim() || undefined,
+          country: 'United States',
           experience_years:
             createForm.experience_years === '' ? undefined : parseInt(createForm.experience_years, 10),
           bio: createForm.bio?.trim() || undefined,
@@ -826,17 +828,21 @@ export default function AdminCreateUserModal({
                         autoComplete="postal-code"
                         className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
                         value={createForm.zip_code}
-                        onChange={(e) => setCreateForm((f) => ({ ...f, zip_code: e.target.value }))}
-                      />
-                    </label>
-                    <label className="block">
-                      <span className="text-xs font-medium text-gray-500 uppercase">Country</span>
-                      <input
-                        autoComplete="country"
-                        className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white"
-                        value={createForm.country}
-                        onChange={(e) => setCreateForm((f) => ({ ...f, country: e.target.value }))}
-                        placeholder="United States"
+                        onChange={async (e) => {
+                          const zip_code = e.target.value;
+                          setCreateForm((f) => ({ ...f, zip_code }));
+                          const place = await lookupUsZip(zip_code);
+                          if (!place) return;
+                          setCreateForm((f) => ({
+                            ...f,
+                            zip_code,
+                            ...(place.city ? { city: place.city } : {}),
+                            ...(place.stateName || place.state
+                              ? { state: place.state || normalizeToUsStateName(place.stateName) }
+                              : {}),
+                            country: 'United States',
+                          }));
+                        }}
                       />
                     </label>
                   </div>

@@ -119,20 +119,25 @@ export default function MarketingFooter({ variant = 'default' }) {
           <span>{`© ${year} TechFlash`}</span>
         </div>
 
-        <div className="mt-3 text-center text-xs text-gray-600 space-y-1">
-          <p className="font-medium">TechFlash is operated by TECHFLASH INC.</p>
-          <p>TECHFLASH INC. d/b/a TechFlash</p>
-          <p>8012 Ravenswood Rd, Granbury, TX 76049 USA</p>
-          <p>
-            <a href="mailto:admin@techflash.app" className="hover:text-[#3A7CA5]">
-              admin@techflash.app
-            </a>{' '}
-            |{' '}
-            <a href="tel:+18326213956" className="hover:text-[#3A7CA5]">
-              832-621-3956
-            </a>
-          </p>
-        </div>
+        <p className="mt-3 text-center text-xs leading-5 text-gray-600">
+          TechFlash is operated by TECHFLASH INC. d/b/a TechFlash
+          <span className="mx-2 text-gray-300" aria-hidden>
+            ·
+          </span>
+          8012 Ravenswood Rd, Granbury, TX 76049 USA
+          <span className="mx-2 text-gray-300" aria-hidden>
+            ·
+          </span>
+          <a href="mailto:admin@techflash.app" className="hover:text-[#3A7CA5]">
+            admin@techflash.app
+          </a>
+          <span className="mx-2 text-gray-300" aria-hidden>
+            ·
+          </span>
+          <a href="tel:+18326213956" className="hover:text-[#3A7CA5]">
+            832-621-3956
+          </a>
+        </p>
       </div>
     </footer>
   );

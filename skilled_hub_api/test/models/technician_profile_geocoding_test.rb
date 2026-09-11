@@ -121,7 +121,7 @@ class TechnicianProfileGeocodingTest < ActiveSupport::TestCase
       geocode_calls += 1
       assert_equal "77306", kwargs[:zip_code]
       assert kwargs[:address].blank?
-      assert kwargs[:city].blank?
+      assert_equal "Conroe", kwargs[:city]
       [30.3113, -95.456]
     }) do
       profile = TechnicianProfile.new(
@@ -135,6 +135,7 @@ class TechnicianProfileGeocodingTest < ActiveSupport::TestCase
       )
       profile.save!
       assert_equal 1, geocode_calls
+      assert_equal "Conroe", profile.city
       assert_in_delta 30.3113, profile.latitude, 0.0001
       assert_in_delta(-95.456, profile.longitude, 0.0001)
       assert_equal "success", profile.geocode_status
@@ -154,6 +155,10 @@ class TechnicianProfileGeocodingTest < ActiveSupport::TestCase
       )
       profile.save!
       assert_equal "United States", profile.country
+      assert_equal "Houston", profile.city
+      assert_equal "TX", profile.state
+      assert_equal "Houston, TX", profile.location
+      refute_match(/united states/i, profile.location.to_s)
       assert_in_delta 29.7604, profile.latitude, 0.0001
       assert profile.map_ready?
     end

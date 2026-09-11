@@ -4,6 +4,43 @@ export const TABLE_COLUMN_IDS = {
   crmPipeline: 'crm_pipeline',
 };
 
+export const TABLE_COL_MIN_WIDTH = 56;
+export const TABLE_COL_MAX_WIDTH = 480;
+export const TABLE_COL_USER_MIN_WIDTH = 140;
+
+export function minWidthForColumnKey(key) {
+  return key === 'user' ? TABLE_COL_USER_MIN_WIDTH : TABLE_COL_MIN_WIDTH;
+}
+
+export function clampTableColumnWidth(width, { min = TABLE_COL_MIN_WIDTH, max = TABLE_COL_MAX_WIDTH } = {}) {
+  const n = Number(width);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(Math.min(max, Math.max(min, n)));
+}
+
+function serializedWidth(col) {
+  return clampTableColumnWidth(col?.width, { min: minWidthForColumnKey(col?.key) });
+}
+
+function migrateLegacyAdminUserColumns(parsed, defaultMap) {
+  if (!Array.isArray(parsed)) return [];
+  if (!defaultMap.has('city') && !defaultMap.has('state')) return parsed;
+
+  const hasCity = parsed.some((c) => c.key === 'city');
+  const hasState = parsed.some((c) => c.key === 'state');
+  const out = [];
+  for (const col of parsed) {
+    if (col.key === 'subscription') continue;
+    if (col.key === 'location') {
+      if (!hasCity) out.push({ ...col, key: 'city' });
+      if (!hasState) out.push({ key: 'state', visible: col.visible !== false, width: 56 });
+      continue;
+    }
+    out.push(col);
+  }
+  return out;
+}
+
 /** Admin Users tabs each get their own saved column layout. */
 export function adminUsersTableId(roleTab) {
   const safe = [
@@ -17,11 +54,17 @@ export function adminUsersTableId(roleTab) {
 
 export function columnsFromSavedArray(parsed, defaultColumns) {
   const defaultMap = new Map(defaultColumns.map((c) => [c.key, c]));
-  const fromSaved = parsed
+  const migrated = migrateLegacyAdminUserColumns(parsed, defaultMap);
+  const fromSaved = migrated
     .map((c) => {
       const base = defaultMap.get(c.key);
       if (!base) return null;
-      return { ...base, visible: c.visible !== false };
+      const width = serializedWidth({ key: c.key, width: c.width }) ?? serializedWidth(base);
+      return {
+        ...base,
+        visible: c.visible !== false,
+        ...(width != null ? { width } : {}),
+      };
     })
     .filter(Boolean);
   const missing = defaultColumns.filter((c) => !fromSaved.some((x) => x.key === c.key));
@@ -29,15 +72,25 @@ export function columnsFromSavedArray(parsed, defaultColumns) {
 }
 
 export function serializeTableColumns(cols) {
-  return cols.map((c) => ({ key: c.key, visible: c.visible !== false }));
+  return cols.map((c) => {
+    const row = { key: c.key, visible: c.visible !== false };
+    const width = serializedWidth(c);
+    if (width != null) row.width = width;
+    return row;
+  });
 }
 
 export function normalizeSavedColumnsJson(saved) {
   if (!Array.isArray(saved)) return '';
-  const normalized = saved.map((c) => ({
-    key: String(c.key),
-    visible: c.visible !== false && c.visible !== 'false',
-  }));
+  const normalized = saved.map((c) => {
+    const row = {
+      key: String(c.key),
+      visible: c.visible !== false && c.visible !== 'false',
+    };
+    const width = serializedWidth(c);
+    if (width != null) row.width = width;
+    return row;
+  });
   return JSON.stringify(normalized);
 }
 

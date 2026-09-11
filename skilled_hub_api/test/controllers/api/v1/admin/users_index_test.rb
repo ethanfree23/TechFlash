@@ -52,6 +52,8 @@ module Api
           rows = body["users"].index_by { |r| r["id"] }
           assert_equal 2, rows[u1.id]["logins_last_30_days"]
           assert_equal 1, rows[u2.id]["logins_last_30_days"]
+          assert_in_delta (t - 1.day).to_i, Time.iso8601(rows[u1.id]["last_login_at"]).to_i, 1
+          assert_in_delta (t - 1.day).to_i, Time.iso8601(rows[u2.id]["last_login_at"]).to_i, 1
         end
 
         test "index returns shared company name for additional company logins" do
@@ -175,6 +177,26 @@ module Api
           company_row = rows.fetch(company.id)
           assert_equal "Houston, TX", company_row.fetch("location")
           assert_equal ["Houston", "Katy"], company_row.fetch("service_cities")
+        end
+
+        test "index fills city and state from zip when those fields are blank" do
+          admin = create_admin_user!("admin-index-zip-place@example.com")
+          technician = create_technician!(
+            email: "tech-zip-only-index@example.com",
+            first_name: "Marques",
+            last_name: "Pierre",
+            phone: "713-555-0614",
+            trade_type: "HVAC Technician",
+            zip_code: "77002"
+          )
+          technician.technician_profile.update_columns(city: nil, state: "Texas", location: "Texas, United States")
+
+          get "/api/v1/admin/users", headers: auth_header_for(admin)
+          assert_response :ok
+          row = JSON.parse(response.body).fetch("users").find { |u| u["id"] == technician.id }
+          assert_equal "Houston", row.fetch("city")
+          assert_equal "TX", row.fetch("state")
+          refute_match(/united states|\busa\b/i, row.fetch("location").to_s)
         end
 
         test "index includes technician skill class and experience years" do

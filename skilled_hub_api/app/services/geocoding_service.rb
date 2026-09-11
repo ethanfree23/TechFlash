@@ -249,7 +249,7 @@ class GeocodingService
       {
         "source" => "google",
         "place_id" => p["place_id"],
-        "label" => p["description"].to_s
+        "label" => UsAddress.strip_country(p["description"].to_s)
       }
     end
   rescue StandardError => e
@@ -329,7 +329,7 @@ class GeocodingService
       "state" => state.to_s,
       "zip_code" => zip.to_s,
       "country" => country.presence || "United States",
-      "formatted" => formatted_address
+      "formatted" => UsAddress.strip_country(formatted_address)
     }
   end
 
@@ -369,7 +369,7 @@ class GeocodingService
       state_str = nominatim_state_display(addr)
       country = addr["country"].presence || country_name_from_code(addr["country_code"])
       zip = addr["postcode"].to_s
-      label = r["display_name"].to_s
+      label = UsAddress.strip_country(r["display_name"].to_s)
       next if label.blank? || seen.include?(label)
 
       seen.add(label)

@@ -1,4 +1,4 @@
-import { US_STATES } from '../data/statesByCountry';
+import { US_STATES } from '../data/statesByCountry.js';
 
 const US_STATE_BY_ABBR = {
   AL: 'Alabama',
@@ -64,4 +64,17 @@ export function normalizeToUsStateName(raw) {
   const lower = s.toLowerCase();
   const found = US_STATES.find((x) => x.toLowerCase() === lower);
   return found || s;
+}
+
+const US_ABBR_BY_NAME = Object.fromEntries(
+  Object.entries(US_STATE_BY_ABBR).map(([abbr, name]) => [name.toLowerCase(), abbr])
+);
+
+/** Map free-text or full name to a 2-letter US state code when possible. */
+export function usStateAbbreviation(raw) {
+  const s = String(raw || '').trim();
+  if (!s) return '';
+  const up = s.toUpperCase();
+  if (US_STATE_BY_ABBR[up]) return up;
+  return US_ABBR_BY_NAME[s.toLowerCase()] || '';
 }

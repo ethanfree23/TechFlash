@@ -10,6 +10,7 @@ class TechnicianProfile < ApplicationRecord
   before_validation :normalize_membership_level
   before_validation :normalize_skill_class
   before_validation :sync_trade_qualifications
+  before_validation :fill_city_state_from_zip
   before_validation :default_country_from_us_zip
   after_save :sync_job_alert_trade_from_primary
 
@@ -90,6 +91,12 @@ class TechnicianProfile < ApplicationRecord
 
   private
 
+  def fill_city_state_from_zip
+    filled_city, filled_state = UsZipLookup.fill(city: city, state: state, zip_code: zip_code)
+    self.city = filled_city if city.blank? && filled_city.present?
+    self.state = filled_state if state.blank? && filled_state.present?
+  end
+
   def default_country_from_us_zip
     return if country.present?
     return if GeocodingService.normalized_us_zip(zip_code).blank?
@@ -98,8 +105,8 @@ class TechnicianProfile < ApplicationRecord
   end
 
   def sync_location_from_address
-    return unless city.present? || state.present? || country.present?
-    parts = [city, state, country].compact.reject(&:blank?)
+    return unless city.present? || state.present?
+    parts = [city, state].compact.reject(&:blank?)
     self.location = parts.join(', ') if parts.any?
   end
 

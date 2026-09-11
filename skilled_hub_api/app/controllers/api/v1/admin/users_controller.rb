@@ -16,15 +16,18 @@ module Api
 
           ids = scope.pluck(:id)
           since = 30.days.ago
+          login_scope = UserLoginEvent.where(user_id: ids).where(via_masquerade: false)
           counts =
-            UserLoginEvent
-              .where(user_id: ids)
+            login_scope
               .where("user_login_events.created_at >= ?", since)
-              .where(via_masquerade: false)
               .group(:user_id)
               .count
+          last_logins = login_scope.group(:user_id).maximum(:created_at)
           users = scope.map do |user|
-            list_item(user).merge(logins_last_30_days: counts[user.id].to_i)
+            list_item(user).merge(
+              logins_last_30_days: counts[user.id].to_i,
+              last_login_at: last_logins[user.id]&.iso8601
+            )
           end
           render json: { users: users }, status: :ok
         end
@@ -510,6 +513,7 @@ module Api
           membership_profile = user.company? ? user.company_profile : user.technician_profile
           tech_profile = user.technician_profile
           company_profile = user.company_profile
+          city, state = resolved_city_state(user)
           user_name = [user.first_name, user.last_name].map(&:to_s).map(&:strip).reject(&:blank?).join(" ")
           {
             id: user.id,
@@ -518,9 +522,9 @@ module Api
             last_name: user.last_name,
             phone: user.phone.presence || tech_profile&.phone.presence || company_profile&.phone,
             zip_code: tech_profile&.zip_code,
-            city: tech_profile&.city,
-            state: tech_profile&.state.presence || company_profile&.state,
-            location: tech_profile&.location.presence || company_profile&.location,
+            city: city,
+            state: state,
+            location: UsAddress.strip_country(tech_profile&.location.presence || company_profile&.location),
             service_cities: user.company? ? Array(company_profile&.service_cities) : nil,
             user_name: user_name.presence,
             role: user.role,
@@ -577,6 +581,36 @@ module Api
             expires_at: assignment.expires_at,
             auto_renew: assignment.auto_renew
           }
+        end
+
+        def resolved_city_state(user)
+          if user.technician?
+            tp = user.technician_profile
+            city = tp&.city.to_s.strip.presence
+            state = tp&.state.to_s.strip.presence
+            if tp&.zip_code.present? && (city.blank? || state.blank?)
+              place = UsZipLookup.place_for(tp.zip_code)
+              city ||= place&.dig(:city)
+              state ||= place&.dig(:state)
+            end
+            if (city.blank? || state.blank?) && tp&.location.present?
+              parsed = UsAddress.parse_city_state(tp.location)
+              city ||= parsed[:city]
+              state ||= parsed[:state]
+            end
+            [city, UsAddress.state_abbreviation(state).presence || state]
+          else
+            cp = user.company_profile
+            state = cp&.state.to_s.strip.presence
+            parsed = UsAddress.parse_city_state(cp&.location)
+            city = parsed[:city]
+            state ||= parsed[:state]
+            if city.blank?
+              cities = Array(cp&.service_cities).map { |c| c.to_s.strip }.reject(&:blank?)
+              city = cities.first
+            end
+            [city, UsAddress.state_abbreviation(state).presence || state]
+          end
         end
 
         def user_list_label(user)

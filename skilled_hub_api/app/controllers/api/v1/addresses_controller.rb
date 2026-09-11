@@ -4,6 +4,23 @@ module Api
   module V1
     class AddressesController < ApplicationController
       before_action :authenticate_user
+      skip_before_action :authenticate_user, only: [:zip_lookup], raise: false
+
+      # GET /api/v1/zip_lookup?zip=
+      def zip_lookup
+        zip5 = GeocodingService.normalized_us_zip(params[:zip].presence || params[:zip_code])
+        if zip5.blank?
+          return render json: { error: "zip is required" }, status: :unprocessable_entity
+        end
+
+        place = UsZipLookup.place_for(zip5)
+        render json: {
+          zip_code: zip5,
+          city: place&.dig(:city),
+          state: place&.dig(:state),
+          state_name: place ? GeocodingService.us_full_state_name_from_abbr(place[:state]) : nil
+        }, status: :ok
+      end
 
       # GET /api/v1/address_suggestions?q=
       def suggestions

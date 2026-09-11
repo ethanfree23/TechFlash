@@ -638,7 +638,7 @@ const JobDetail = () => {
         state: editData.state,
         zip_code: editData.zip_code,
         country: editData.country,
-        location: [editData.city, editData.state, editData.country].filter(Boolean).join(', '),
+        location: [editData.city, editData.state].filter(Boolean).join(', '),
         scheduled_start_at: editData.scheduled_start_at ? new Date(editData.scheduled_start_at).toISOString() : null,
         scheduled_end_at: editData.scheduled_end_at ? new Date(editData.scheduled_end_at).toISOString() : null,
         go_live_at: editData.use_custom_go_live_at && editData.go_live_at ? new Date(editData.go_live_at).toISOString() : null,

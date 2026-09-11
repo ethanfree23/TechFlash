@@ -118,6 +118,11 @@ function testCompanyColumnLabelFollowsTab() {
   assert.strictEqual(companyTrade(techCols), 'Trade');
   assert.ok(allCols.some((c) => c.key === 'trade_level' && c.label === 'Level'));
   assert.ok(allCols.some((c) => c.key === 'experience_years' && c.label === 'Years'));
+  assert.ok(allCols.some((c) => c.key === 'city' && c.label === 'City'));
+  assert.ok(allCols.some((c) => c.key === 'state' && c.label === 'State'));
+  assert.ok(allCols.some((c) => c.key === 'membership_tier' && c.label === 'Tier'));
+  assert.ok(!allCols.some((c) => c.key === 'subscription'));
+  assert.ok(!allCols.some((c) => c.key === 'location'));
 }
 
 function testLocationUsesZipCityAndCompanyLocation() {
@@ -130,6 +135,8 @@ function testLocationUsesZipCityAndCompanyLocation() {
     zip_code: '77583',
   });
   assert.strictEqual(zipOnly.locationLabel, '77583');
+  assert.strictEqual(zipOnly.cityLabel, '');
+  assert.strictEqual(zipOnly.stateLabel, '');
 
   const cityStateZip = enrichUserRow({
     id: 11,
@@ -142,6 +149,8 @@ function testLocationUsesZipCityAndCompanyLocation() {
     zip_code: '77002',
   });
   assert.strictEqual(cityStateZip.locationLabel, 'Houston, TX 77002');
+  assert.strictEqual(cityStateZip.cityLabel, 'Houston');
+  assert.strictEqual(cityStateZip.stateLabel, 'TX');
 
   const fromDetail = enrichUserRow(
     { id: 12, email: 'detail@example.com', first_name: 'Jo', last_name: 'Tech', role: 'technician' },
@@ -159,6 +168,47 @@ function testLocationUsesZipCityAndCompanyLocation() {
     location: 'Austin, TX',
   });
   assert.strictEqual(company.locationLabel, 'Austin, TX');
+  assert.strictEqual(company.cityLabel, 'Austin');
+  assert.strictEqual(company.stateLabel, 'TX');
+
+  const countryInLocation = enrichUserRow({
+    id: 14,
+    email: 'us-loc@example.com',
+    first_name: 'Marques',
+    last_name: 'Pierre',
+    role: 'technician',
+    location: 'Texas, United States',
+    state: 'Texas',
+  });
+  assert.strictEqual(countryInLocation.stateLabel, 'TX');
+  assert.strictEqual(countryInLocation.cityLabel, '');
+  assert.ok(!/united states|\busa\b/i.test(countryInLocation.locationLabel));
+}
+
+function testLastLoginComesFromListPayload() {
+  const withLogins = enrichUserRow({
+    id: 30,
+    email: 'login@example.com',
+    first_name: 'Askari',
+    last_name: 'Taylor',
+    role: 'technician',
+    logins_last_30_days: 3,
+    last_login_at: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+  });
+  assert.strictEqual(withLogins.activityLabel.logins, '3 logins');
+  assert.ok(withLogins.lastLoginAt);
+  assert.notStrictEqual(withLogins.lastLoginDisplay, '—');
+  assert.notStrictEqual(withLogins.lastLoginDisplay, 'No activity yet');
+
+  const none = enrichUserRow({
+    id: 31,
+    email: 'nologin@example.com',
+    first_name: 'No',
+    last_name: 'Login',
+    role: 'technician',
+    logins_last_30_days: 0,
+  });
+  assert.strictEqual(none.lastLoginDisplay, '—');
 }
 
 function testFlagsStayDormantUntilWorkflowExists() {
@@ -215,6 +265,7 @@ testTrimsWhitespace();
 testTradeLevelAndYearsColumns();
 testCompanyColumnLabelFollowsTab();
 testLocationUsesZipCityAndCompanyLocation();
+testLastLoginComesFromListPayload();
 testFlagsStayDormantUntilWorkflowExists();
 testKpisStayOnFullCensusWhenTabFilters();
 console.log('adminUsersSearch tests passed');

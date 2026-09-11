@@ -7,7 +7,7 @@ import ConfirmModal from '../components/ConfirmModal';
 import { adminUsersAPI, adminAPI } from '../api/api';
 import { auth } from '../auth';
 import { useTableColumnPreferences } from '../hooks/useTableColumnPreferences';
-import { adminUsersTableId } from '../utils/tableColumnPrefs';
+import { adminUsersTableId, clampTableColumnWidth, minWidthForColumnKey } from '../utils/tableColumnPrefs';
 import {
   enrichUserRow,
   computeKpis,
@@ -33,7 +33,7 @@ import SendUserEmailModal from '../components/admin/users/SendUserEmailModal';
 import AdminActionPlaceholderModal from '../components/admin/users/AdminActionPlaceholderModal';
 import { withDemoPath } from '../utils/demoMode';
 
-const COLUMN_STORAGE_KEY = 'admin-users-table-columns-v3';
+const COLUMN_STORAGE_KEY = 'admin-users-table-columns-v4';
 
 export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const navigate = useNavigate();
@@ -308,6 +308,39 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
     setColumns((prev) => prev.map((c) => (c.key === key ? { ...c, visible: !c.visible } : c)));
   };
 
+  const setColumnWidth = (key, width) => {
+    setColumns((prev) => prev.map((c) => {
+      if (c.key !== key) return c;
+      const nextWidth = clampTableColumnWidth(width, { min: minWidthForColumnKey(key) });
+      return nextWidth == null ? c : { ...c, width: nextWidth };
+    }));
+  };
+
+  const resetColumnWidth = (key) => {
+    setColumns((prev) => prev.map((c) => {
+      if (c.key !== key) return c;
+      const def = defaultColumns.find((d) => d.key === c.key);
+      if (def?.width == null) {
+        const next = { ...c };
+        delete next.width;
+        return next;
+      }
+      return { ...c, width: def.width };
+    }));
+  };
+
+  const resetColumnWidths = () => {
+    setColumns((prev) => prev.map((c) => {
+      const def = defaultColumns.find((d) => d.key === c.key);
+      if (def?.width == null) {
+        const next = { ...c };
+        delete next.width;
+        return next;
+      }
+      return { ...c, width: def.width };
+    }));
+  };
+
   const handleSort = (key) => {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else {
@@ -355,6 +388,8 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
               columns={columns}
               onMoveColumn={moveColumn}
               onToggleColumn={toggleColumnVisible}
+              onColumnWidthChange={setColumnWidth}
+              onResetColumnWidths={resetColumnWidths}
               draggingColumnKey={draggingColumnKey}
               setDraggingColumnKey={setDraggingColumnKey}
             />
@@ -383,6 +418,8 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
               sortKey={sortKey}
               sortDir={sortDir}
               onSort={handleSort}
+              onColumnWidthChange={setColumnWidth}
+              onResetColumnWidth={resetColumnWidth}
             />
           </div>
         </main>

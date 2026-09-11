@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import CountryStateSelect from './CountryStateSelect';
 import { addressesAPI } from '../api/api';
+import { stripCountryFromAddress } from '../utils/usAddress';
+import { lookupUsZip } from '../utils/zipLookup';
+import { normalizeToUsStateName } from '../utils/crmUsState';
 
 /**
  * Search by street, city, or ZIP, pick a Google Maps / Places
@@ -34,7 +37,7 @@ const JobAddressFields = ({
     Boolean(String(zipCode || '').trim());
 
   const usingText = hasSelectedLocation
-    ? (pickedLabel || [address, city, state, zipCode, country].filter(Boolean).join(', '))
+    ? (pickedLabel || stripCountryFromAddress([address, city, state, zipCode].filter(Boolean).join(', ')))
     : '';
 
   const applyResolved = useCallback(
@@ -50,7 +53,7 @@ const JobAddressFields = ({
         longitude: row.longitude ?? null,
         place_id: row.place_id || null,
       });
-      setPickedLabel(row.formatted || row.label || [row.address, row.city, row.state].filter(Boolean).join(', '));
+      setPickedLabel(stripCountryFromAddress(row.formatted || row.label || [row.address, row.city, row.state].filter(Boolean).join(', ')));
       setSearchQuery('');
       setSuggestions([]);
       setOpen(false);
@@ -273,16 +276,29 @@ const JobAddressFields = ({
               placeholder="e.g. 123 Main St"
             />
           </div>
-          <div>
-            <label className="block font-medium mb-1 text-sm">City (optional)</label>
-            <input
-              className={inputClass}
-              value={city}
-              onChange={(e) => onChange({ city: e.target.value })}
-              placeholder="e.g. Houston"
-            />
-          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block font-medium mb-1 text-sm">Zip Code</label>
+              <input
+                className={inputClass}
+                value={zipCode}
+                onChange={async (e) => {
+                  const nextZip = e.target.value;
+                  onChange({ zip_code: nextZip });
+                  const place = await lookupUsZip(nextZip);
+                  if (!place) return;
+                  onChange({
+                    zip_code: nextZip,
+                    ...(place.city ? { city: place.city } : {}),
+                    ...(place.stateName || place.state
+                      ? { state: normalizeToUsStateName(place.stateName || place.state) }
+                      : {}),
+                    country: 'United States',
+                  });
+                }}
+                placeholder="e.g. 77007 — fills city and state"
+              />
+            </div>
             <CountryStateSelect
               country={country}
               state={state}
@@ -292,12 +308,12 @@ const JobAddressFields = ({
             />
           </div>
           <div>
-            <label className="block font-medium mb-1 text-sm">Zip Code</label>
+            <label className="block font-medium mb-1 text-sm">City</label>
             <input
               className={inputClass}
-              value={zipCode}
-              onChange={(e) => onChange({ zip_code: e.target.value })}
-              placeholder="e.g. 77007 — ZIP alone is enough for the map"
+              value={city}
+              onChange={(e) => onChange({ city: e.target.value })}
+              placeholder="Filled from ZIP"
             />
           </div>
         </div>

@@ -103,6 +103,7 @@ class Job < ApplicationRecord
   before_validation :normalize_job_display_fields
   before_validation :normalize_schedule_fields
   before_validation :normalize_trade_type
+  before_validation :fill_city_state_from_zip
 
   before_save :sync_price_cents
   before_save :sync_location_from_address
@@ -171,9 +172,15 @@ class Job < ApplicationRecord
     self.price_cents = (hourly_rate_cents * hours_per_day * days).to_i
   end
 
+  def fill_city_state_from_zip
+    filled_city, filled_state = UsZipLookup.fill(city: city, state: state, zip_code: zip_code)
+    self.city = filled_city if city.blank? && filled_city.present?
+    self.state = filled_state if state.blank? && filled_state.present?
+  end
+
   def sync_location_from_address
-    return unless city.present? || state.present? || country.present?
-    parts = [city, state, country].compact.reject(&:blank?)
+    return unless city.present? || state.present?
+    parts = [city, state].compact.reject(&:blank?)
     self.location = parts.join(', ') if parts.any?
   end
 

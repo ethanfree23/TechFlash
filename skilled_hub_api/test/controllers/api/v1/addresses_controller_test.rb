@@ -110,6 +110,22 @@ module Api
         body = JSON.parse(response.body)
         assert_equal "Cupertino", body["city"]
       end
+
+      test "zip lookup is public and returns city and state" do
+        get "/api/v1/zip_lookup?zip=77002"
+
+        assert_response :ok
+        body = JSON.parse(response.body)
+        assert_equal "77002", body["zip_code"]
+        assert_equal "Houston", body["city"]
+        assert_equal "TX", body["state"]
+        assert_equal "Texas", body["state_name"]
+      end
+
+      test "zip lookup requires a zip" do
+        get "/api/v1/zip_lookup"
+        assert_response :unprocessable_entity
+      end
     end
   end
 end

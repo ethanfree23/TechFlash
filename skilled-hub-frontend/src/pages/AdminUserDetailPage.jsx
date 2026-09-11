@@ -452,7 +452,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               last_name: profileDraft.last_name?.trim() || null,
               account_phone: formatPhoneInput((profileDraft.account_phone || '').trim()),
               trade_type: profileDraft.trade_type?.trim(),
-              location: [profileDraft.city?.trim(), profileDraft.state?.trim(), profileDraft.country?.trim()]
+              location: [profileDraft.city?.trim(), profileDraft.state?.trim()]
                 .filter(Boolean)
                 .join(', '),
               address: profileDraft.address?.trim(),
@@ -779,7 +779,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                       <div className="sm:col-span-2">
                         <dt className="text-gray-500">Address</dt>
                         <dd className="font-medium text-gray-900">
-                          {[profile.address, profile.city, profile.state, profile.zip_code, profile.country]
+                          {[profile.address, profile.city, profile.state, profile.zip_code]
                             .filter(Boolean)
                             .join(', ') || '—'}
                         </dd>

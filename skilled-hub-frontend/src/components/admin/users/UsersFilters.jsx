@@ -1,6 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FaCog, FaFilter, FaSearch, FaTimes } from 'react-icons/fa';
 import { getFilterChips } from '../../../utils/adminUsersDisplayAdapter';
+import {
+  TABLE_COL_MAX_WIDTH,
+  clampTableColumnWidth,
+  minWidthForColumnKey,
+} from '../../../utils/tableColumnPrefs';
 
 const SAVED_VIEWS_KEY = 'admin_users_saved_views';
 
@@ -15,7 +20,7 @@ const FILTER_FIELDS = [
   { key: 'trade', label: 'Trade / specialty', type: 'text' },
   { key: 'tradeLevel', label: 'Trade level', type: 'select', options: ['', 'helper', 'apprentice', 'journeyman', 'master'] },
   { key: 'minExperienceYears', label: 'Years (min)', type: 'select', options: ['', '1', '2', '3', '5', '8', '10', '15'] },
-  { key: 'subscriptionTier', label: 'Subscription', type: 'select', options: ['', 'trial', 'past_due'], disabledNote: 'Best-effort — detail data may be required' },
+  { key: 'subscriptionTier', label: 'Tier status', type: 'select', options: ['', 'trial', 'past_due'], disabledNote: 'Best-effort — detail data may be required' },
   { key: 'hasAcceptedJob', label: 'Has accepted job', type: 'select', options: ['', 'yes', 'no'], disabledNote: 'Approximate until index exposes job counts' },
 ];
 
@@ -48,6 +53,55 @@ function optionLabel(opt) {
   return map[opt] ?? opt;
 }
 
+function ColumnWidthInput({ col, onColumnWidthChange }) {
+  const min = minWidthForColumnKey(col.key);
+  const committed = clampTableColumnWidth(col.width, { min }) ?? min;
+  const [draft, setDraft] = useState(String(committed));
+
+  useEffect(() => {
+    setDraft(String(committed));
+  }, [committed]);
+
+  const commit = (raw) => {
+    onColumnWidthChange?.(col.key, raw);
+    const next = clampTableColumnWidth(raw, { min });
+    setDraft(String(next ?? committed));
+  };
+
+  return (
+    <label className="inline-flex items-center gap-1 shrink-0 text-[10px] text-slate-400">
+      <input
+        type="number"
+        min={min}
+        max={TABLE_COL_MAX_WIDTH}
+        step="8"
+        value={draft}
+        aria-label={`${col.label} column width`}
+        onMouseDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        onChange={(e) => {
+          const raw = e.target.value;
+          setDraft(raw);
+          const n = Number(raw);
+          if (Number.isFinite(n) && n >= min && n <= TABLE_COL_MAX_WIDTH) {
+            onColumnWidthChange?.(col.key, n);
+          }
+        }}
+        onBlur={(e) => commit(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            commit(e.currentTarget.value);
+            e.currentTarget.blur();
+          }
+        }}
+        className="w-14 rounded border border-slate-200 bg-white px-1 py-0.5 text-[11px] text-slate-700 tabular-nums text-right focus:outline-none focus:ring-2 focus:ring-tf-blue/20"
+      />
+      px
+    </label>
+  );
+}
+
 export default function UsersFilters({
   searchQ,
   onSearchChange,
@@ -57,6 +111,8 @@ export default function UsersFilters({
   columns,
   onMoveColumn,
   onToggleColumn,
+  onColumnWidthChange,
+  onResetColumnWidths,
   draggingColumnKey,
   setDraggingColumnKey,
 }) {
@@ -175,14 +231,20 @@ export default function UsersFilters({
           {columnsOpen && (
             <>
               <button type="button" className="fixed inset-0 z-30" aria-label="Close columns" onClick={() => setColumnsOpen(false)} />
-              <div className="absolute right-0 top-full mt-1 z-40 w-64 rounded-lg border border-slate-200 bg-white shadow-xl p-2.5">
+              <div className="absolute right-0 top-full mt-1 z-40 w-80 rounded-lg border border-slate-200 bg-white shadow-xl p-2.5">
                 <p className="text-[10px] text-slate-400 mb-2 uppercase tracking-wide font-semibold">Visible columns</p>
-                <ul className="space-y-1 max-h-56 overflow-auto">
+                <ul className="space-y-1 max-h-64 overflow-auto">
                   {columns.map((col) => (
                     <li
                       key={col.key}
                       draggable
-                      onDragStart={() => setDraggingColumnKey?.(col.key)}
+                      onDragStart={(e) => {
+                        if (e.target.closest('input')) {
+                          e.preventDefault();
+                          return;
+                        }
+                        setDraggingColumnKey?.(col.key);
+                      }}
                       onDragOver={(e) => e.preventDefault()}
                       onDrop={() => {
                         onMoveColumn?.(draggingColumnKey, col.key);
@@ -194,9 +256,17 @@ export default function UsersFilters({
                         <input type="checkbox" checked={col.visible} onChange={() => onToggleColumn?.(col.key)} className="rounded border-slate-300" />
                         <span className="truncate">{col.label}</span>
                       </label>
+                      <ColumnWidthInput col={col} onColumnWidthChange={onColumnWidthChange} />
                     </li>
                   ))}
                 </ul>
+                <button
+                  type="button"
+                  onClick={() => onResetColumnWidths?.()}
+                  className="mt-2 w-full rounded-md px-2 py-1 text-[11px] font-medium text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                >
+                  Reset widths
+                </button>
               </div>
             </>
           )}

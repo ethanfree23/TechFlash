@@ -317,6 +317,8 @@ export const addressesAPI = {
     apiRequest(`/address_suggestions?q=${encodeURIComponent(q || '')}`),
   resolve: (placeId) =>
     apiRequest(`/address_resolve?place_id=${encodeURIComponent(placeId)}`),
+  zipLookup: (zip) =>
+    publicApiRequest(`/zip_lookup?zip=${encodeURIComponent(zip || '')}`),
 };
 
 export const techPresenceAPI = {

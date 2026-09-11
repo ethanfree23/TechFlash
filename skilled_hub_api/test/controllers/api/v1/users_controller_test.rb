@@ -62,24 +62,34 @@ module Api
         assert_match(/last_name is required/i, body["error"].to_s)
       end
 
-      test "signup requires city" do
+      test "signup fills city and state from zip when they are blank" do
+        email = "zip-fill-#{SecureRandom.hex(4)}@example.com"
         post "/api/v1/users",
-             params: base_signup_params(city: ""),
+             params: base_signup_params(
+               email: email,
+               city: "",
+               state: "",
+               zip_code: "77002",
+               trade_type: "Electrician"
+             ),
              as: :json
 
-        assert_response :unprocessable_entity
-        body = JSON.parse(response.body)
-        assert_match(/city is required/i, body["error"].to_s)
+        assert_response :created
+        profile = User.find_by!(email: email).technician_profile
+        assert_equal "Houston", profile.city
+        assert_equal "TX", profile.state
+        assert_equal "Houston, TX", profile.location
+        refute_match(/united states/i, profile.location.to_s)
       end
 
-      test "signup requires state" do
+      test "signup requires city and state when zip is unknown" do
         post "/api/v1/users",
-             params: base_signup_params(state: ""),
+             params: base_signup_params(city: "", state: "", zip_code: "00000"),
              as: :json
 
         assert_response :unprocessable_entity
         body = JSON.parse(response.body)
-        assert_match(/state is required/i, body["error"].to_s)
+        assert_match(/city is required|state is required/i, body["error"].to_s)
       end
 
       test "signup requires zip code" do
@@ -392,6 +402,37 @@ module Api
                      user.ui_preferences_hash.dig("table_columns", "admin_users")
         assert_equal [{ "key" => "status", "visible" => false }],
                      user.ui_preferences_hash.dig("table_columns", "crm_pipeline")
+      end
+
+      test "update me persists table column widths" do
+        user = User.create!(
+          email: "ui-prefs-widths@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :admin,
+          phone: "713-555-0111"
+        )
+
+        cols = [
+          { key: "user", visible: true, width: 240 },
+          { key: "status", visible: false, width: 96 }
+        ]
+
+        patch "/api/v1/users/me",
+              params: {
+                ui_preferences: {
+                  table_columns: {
+                    admin_users_all: cols
+                  }
+                }
+              },
+              headers: auth_header_for(user),
+              as: :json
+
+        assert_response :ok
+        user.reload
+        assert_equal cols.map { |h| h.deep_stringify_keys },
+                     user.ui_preferences_hash.dig("table_columns", "admin_users_all")
       end
 
       test "login history returns current user login events only" do
