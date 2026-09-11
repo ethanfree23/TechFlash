@@ -142,6 +142,34 @@ module Api
           assert_equal "trialing", rows.fetch(technician.id).fetch("membership_status")
         end
 
+        test "index includes technician skill class and experience years" do
+          admin = create_admin_user!("admin-index-skill-class@example.com")
+          technician = create_technician!(
+            email: "tech-level-years@example.com",
+            first_name: "Jordan",
+            last_name: "Wire",
+            phone: "713-555-0610",
+            trade_type: "Electrician"
+          )
+          technician.technician_profile.update!(skill_class: "journeyman", experience_years: 8)
+          company = create_company_user!(
+            email: "company-no-skill@example.com",
+            first_name: "Casey",
+            last_name: "Office",
+            phone: "713-555-0611",
+            company_name: "No Skill Co"
+          )
+
+          get "/api/v1/admin/users", headers: auth_header_for(admin)
+          assert_response :ok
+          rows = JSON.parse(response.body).fetch("users").index_by { |r| r.fetch("id") }
+
+          assert_equal "journeyman", rows.fetch(technician.id).fetch("skill_class")
+          assert_equal 8, rows.fetch(technician.id).fetch("experience_years")
+          assert_nil rows.fetch(company.id)["skill_class"]
+          assert_nil rows.fetch(company.id)["experience_years"]
+        end
+
         test "index search matches phones regardless of formatting including area code 832" do
           admin = create_admin_user!("admin-index-search-phone@example.com")
           formatted = create_technician!(

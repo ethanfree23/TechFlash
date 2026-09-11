@@ -8,7 +8,6 @@ import {
   filterJobsWithinRadius,
   formatDistanceMi,
   haversineMiles,
-  needsExactStreetAddress,
   needsMapPlacement,
   parseCoordinatePair,
   resolveTechnicianMapCenter,
@@ -1204,8 +1203,8 @@ const TechnicianDashboardContent = ({
   }, [user?.role]);
 
   const nearbyPreviewDistance = mapDisplayJobs.find((job) => job.id === nearbyJobPreviewId)?.distanceMiles;
-  const needsExactAddressPrompt = needsExactStreetAddress(technicianProfile);
   const needsPlacementPrompt = needsMapPlacement(technicianProfile);
+  const placementHasZip = Boolean(String(technicianProfile?.zip_code || '').trim());
 
   const openNearbyJobPreview = (jobId) => {
     setSelectedMapJobId(jobId);
@@ -1226,29 +1225,19 @@ const TechnicianDashboardContent = ({
       />
       {needsPlacementPrompt && (
         <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-950 shadow-sm">
-          <p className="font-semibold text-sm sm:text-base mb-1">We couldn't place your address on the map</p>
+          <p className="font-semibold text-sm sm:text-base mb-1">
+            {placementHasZip ? "We couldn't place your ZIP on the map" : "Add a ZIP so the map can find you"}
+          </p>
           <p className="text-sm text-amber-900/90 mb-3">
-            Please confirm it in Settings so nearby jobs and your home pin stay in the right place.
+            {placementHasZip
+              ? 'A ZIP is enough for your home pin. Check that it is a valid 5-digit US ZIP in Settings.'
+              : 'Add a ZIP in Settings. Street address is optional.'}
           </p>
           <Link
             to="/settings"
             className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700"
           >
-            Confirm address in Settings
-          </Link>
-        </div>
-      )}
-      {needsExactAddressPrompt && !needsPlacementPrompt && (
-        <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-950 shadow-sm">
-          <p className="font-semibold text-sm sm:text-base mb-1">Add your exact address for better map matching</p>
-          <p className="text-sm text-amber-900/90 mb-3">
-            We have your city, but adding your full street address improves map centering and nearby job distance accuracy.
-          </p>
-          <Link
-            to="/settings"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-semibold hover:bg-amber-700"
-          >
-            Add address in Settings
+            {placementHasZip ? 'Check ZIP in Settings' : 'Add ZIP in Settings'}
           </Link>
         </div>
       )}

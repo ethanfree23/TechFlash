@@ -378,7 +378,7 @@ module Api
         end
 
         def user_admin_params
-          # job_alert_trade_label is persisted on job_alert_preferences, not users (see update_profile).
+          # Technician job alerts follow technician_profiles.trade_type automatically.
           # account_phone maps to users.phone (see update_profile); distinct from company_profile :phone.
           params.permit(:first_name, :last_name, :email, :account_phone)
         end
@@ -524,7 +524,9 @@ module Api
             technician_profile_id: user.technician_profile&.id,
             company_profile_id: user.company_profile&.id,
             membership_level: membership_profile&.membership_level,
-            membership_status: membership_profile&.membership_status
+            membership_status: membership_profile&.membership_status,
+            skill_class: user.technician_profile&.skill_class,
+            experience_years: user.technician_profile&.experience_years
           }
         end
 

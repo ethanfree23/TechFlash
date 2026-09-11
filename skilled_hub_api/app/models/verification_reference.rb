@@ -1,4 +1,6 @@
 class VerificationReference < ApplicationRecord
+  DEFAULT_RELATIONSHIP = "N/A"
+
   belongs_to :technician_user, class_name: "User"
   belongs_to :reviewed_by_user, class_name: "User", optional: true
 
@@ -10,12 +12,14 @@ class VerificationReference < ApplicationRecord
   }, default: :requested
 
   validates :full_name, presence: true
-  validates :email, :relationship, presence: true, unless: :phone_first_pending?
+  validates :email, presence: true, unless: :phone_first_pending?
+  validates :relationship, presence: true
   validates :request_token, presence: true, uniqueness: true
   validate :email_unique_for_technician
   validate :phone_unique_for_technician, if: :phone_normalized_present?
 
   before_validation :normalize_contact_fields
+  before_validation :apply_default_relationship
   before_validation :ensure_request_token, on: :create
 
   scope :pending_review, -> { where(status: :responded).order(responded_at: :asc) }
@@ -29,6 +33,10 @@ class VerificationReference < ApplicationRecord
   def normalize_contact_fields
     self.email_normalized = email.to_s.strip.downcase.presence
     self.phone_normalized = GhlPhoneNormalizer.normalize(phone)
+  end
+
+  def apply_default_relationship
+    self.relationship = relationship.to_s.strip.presence || DEFAULT_RELATIONSHIP
   end
 
   def phone_normalized_present?

@@ -109,7 +109,5 @@ export const formatDistanceMi = (miles) => {
 
 export const needsTechnicianMapSetup = (profile) => !technicianHomeFromProfile(profile);
 
-export const needsExactStreetAddress = (profile) => (
-  !needsTechnicianMapSetup(profile) &&
-  !String(profile?.address || '').trim()
-);
+/** Street is optional. ZIP (or any stored home pin) is enough for the map. */
+export const needsExactStreetAddress = (_profile) => false;

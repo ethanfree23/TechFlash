@@ -12,11 +12,10 @@ import {
   enrichUserRow,
   computeKpis,
   computeTabCounts,
-  getApiRoleForTab,
   applyTabFilter,
   applyAdvancedFilters,
   applyClientSearch,
-  DEFAULT_TABLE_COLUMNS,
+  defaultColumnsForTab,
   resolveEmptyVariant,
 } from '../utils/adminUsersDisplayAdapter';
 import { exportUsersToCsv } from '../utils/adminUsersExport';
@@ -36,16 +35,6 @@ import { withDemoPath } from '../utils/demoMode';
 
 const COLUMN_STORAGE_KEY = 'admin-users-table-columns-v3';
 
-function useDebouncedValue(value, delay = 300) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const wait = String(value || '').trim() === '' ? 0 : delay;
-    const t = setTimeout(() => setDebounced(value), wait);
-    return () => clearTimeout(t);
-  }, [value, delay]);
-  return debounced;
-}
-
 export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('all');
@@ -54,7 +43,6 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [searchQ, setSearchQ] = useState('');
-  const debouncedSearch = useDebouncedValue(searchQ);
   const [filters, setFilters] = useState({});
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [drawerUserId, setDrawerUserId] = useState(null);
@@ -80,16 +68,17 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
     });
   }, []);
 
+  const defaultColumns = useMemo(() => defaultColumnsForTab(activeTab), [activeTab]);
+
   const [columns, setColumns] = useTableColumnPreferences({
     tableId: adminUsersTableId(activeTab),
-    defaultColumns: DEFAULT_TABLE_COLUMNS,
+    defaultColumns,
     user,
     onUserUpdate,
     onSaveError: handleColumnSaveError,
     localStorageKey: `${COLUMN_STORAGE_KEY}-${activeTab}`,
   });
 
-  const apiRole = getApiRoleForTab(activeTab);
   const loadSeqRef = useRef(0);
   const abortRef = useRef(null);
 
@@ -101,9 +90,9 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
     setLoading(true);
     setLoadError(null);
     try {
+      // Always load the full census so KPI/tab totals stay stable when switching views.
       const res = await adminUsersAPI.list({
-        role: apiRole === null ? 'all' : apiRole,
-        q: debouncedSearch.trim() || undefined,
+        role: 'all',
         signal: controller.signal,
       });
       if (seq !== loadSeqRef.current) return;
@@ -116,7 +105,7 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
     } finally {
       if (seq === loadSeqRef.current) setLoading(false);
     }
-  }, [apiRole, debouncedSearch]);
+  }, []);
 
   useEffect(() => {
     loadUsers();
@@ -139,14 +128,11 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const filteredRows = useMemo(() => {
     let rows = applyTabFilter(enriched, activeTab);
     rows = applyAdvancedFilters(rows, filters);
-    const typed = searchQ.trim();
-    const sent = debouncedSearch.trim();
-    // Server already filtered for `sent`. Only client-filter while the next debounce is pending.
-    if (typed && typed !== sent) {
+    if (searchQ.trim()) {
       rows = applyClientSearch(rows, searchQ);
     }
     return rows;
-  }, [enriched, activeTab, filters, searchQ, debouncedSearch]);
+  }, [enriched, activeTab, filters, searchQ]);
 
   const kpis = useMemo(() => computeKpis(enriched, techInsights), [enriched, techInsights]);
   const tabCounts = useMemo(() => computeTabCounts(enriched), [enriched]);
@@ -223,9 +209,21 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
     });
   };
 
-  const handleSelectAll = (checked) => {
-    if (checked) setSelectedIds(new Set(filteredRows.map((r) => r.id)));
-    else setSelectedIds(new Set());
+  const handleSelectAll = (checked, rowIds) => {
+    const ids = Array.isArray(rowIds) ? rowIds : filteredRows.map((r) => r.id);
+    setSelectedIds((prev) => {
+      if (checked) {
+        const next = new Set(prev);
+        ids.forEach((id) => next.add(id));
+        return next;
+      }
+      const remove = new Set(ids);
+      const next = new Set();
+      prev.forEach((id) => {
+        if (!remove.has(id)) next.add(id);
+      });
+      return next;
+    });
   };
 
   const startMasquerade = async (targetUserId) => {
@@ -321,67 +319,76 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const selectedUsers = filteredRows.filter((r) => selectedIds.has(r.id));
 
   return (
-    <div className="min-h-screen lg:h-screen flex flex-col bg-[#f8f9fb] lg:overflow-hidden">
-      <div className="shrink-0">
-        <AppHeader user={user} onLogout={onLogout} activePage="users" emailVariant="crm" />
+    <div className="flex flex-col bg-[#f8f9fb]">
+      <div className="h-screen h-dvh flex flex-col overflow-hidden">
+        <div className="shrink-0">
+          <AppHeader user={user} onLogout={onLogout} activePage="users" emailVariant="crm" />
+        </div>
+
+        <main className="flex-1 flex flex-col min-h-0 w-full px-4 sm:px-6 lg:px-8 pt-5 pb-24 lg:pb-2">
+          <div className="shrink-0">
+            <UsersHeader
+              onCreateUser={() => setCreateModalOpen(true)}
+              onInviteUser={() => setInviteModalOpen(true)}
+              onExport={() => handleExport(selectedUsers.length ? selectedUsers : filteredRows)}
+              onRefresh={loadUsers}
+              onClearFilters={clearAllFilters}
+            />
+
+            <UsersKpiCards
+            kpis={kpis}
+            loading={loading && list.length === 0 && !loadError}
+            activeTab={activeTab}
+            onCardClick={handleKpiClick}
+          />
+
+            <UsersSegmentedTabs activeTab={activeTab} tabCounts={tabCounts} onChange={(tab) => { setActiveTab(tab); setActiveViewId('all'); }} />
+
+            <UsersSavedViews activeViewId={activeViewId} onSelectView={handleSelectView} />
+
+            <UsersFilters
+              searchQ={searchQ}
+              onSearchChange={setSearchQ}
+              filters={filters}
+              onFiltersChange={setFilters}
+              onClear={clearAllFilters}
+              columns={columns}
+              onMoveColumn={moveColumn}
+              onToggleColumn={toggleColumnVisible}
+              draggingColumnKey={draggingColumnKey}
+              setDraggingColumnKey={setDraggingColumnKey}
+            />
+          </div>
+
+          <div className="flex-1 min-h-0 flex flex-col">
+            <UsersTable
+              rows={filteredRows}
+              columns={columns}
+              loading={loading}
+              loadError={loadError}
+              emptyVariant={emptyVariant}
+              onEmptyAction={handleEmptyAction}
+              onRetry={loadUsers}
+              selectedIds={selectedIds}
+              onSelect={handleSelect}
+              onSelectAll={handleSelectAll}
+              onRowClick={(row) => setDrawerUserId(row.id)}
+              onViewProfile={(row) => navigate(`/admin/users/${row.id}`)}
+              onMasquerade={startMasquerade}
+              onSendEmail={(u) => setEmailModalUsers(u)}
+              onResetPassword={handleResetPassword}
+              onDelete={(u) => setDeleteTarget(u)}
+              onPlaceholderAction={setPlaceholderAction}
+              masqueradeBusyId={masqueradeBusyId}
+              sortKey={sortKey}
+              sortDir={sortDir}
+              onSort={handleSort}
+            />
+          </div>
+        </main>
       </div>
 
-      <main className="flex-1 flex flex-col min-h-0 w-full px-4 sm:px-6 lg:px-8 pt-5 pb-24 lg:pb-3">
-        <div className="shrink-0">
-          <UsersHeader
-            onCreateUser={() => setCreateModalOpen(true)}
-            onInviteUser={() => setInviteModalOpen(true)}
-            onExport={() => handleExport(selectedUsers.length ? selectedUsers : filteredRows)}
-            onRefresh={loadUsers}
-            onClearFilters={clearAllFilters}
-          />
-
-          <UsersKpiCards kpis={kpis} loading={loading && list.length === 0 && !loadError} onCardClick={handleKpiClick} />
-
-          <UsersSegmentedTabs activeTab={activeTab} tabCounts={tabCounts} onChange={(tab) => { setActiveTab(tab); setActiveViewId('all'); }} />
-
-          <UsersSavedViews activeViewId={activeViewId} onSelectView={handleSelectView} />
-
-          <UsersFilters
-            searchQ={searchQ}
-            onSearchChange={setSearchQ}
-            filters={filters}
-            onFiltersChange={setFilters}
-            onClear={clearAllFilters}
-            columns={columns}
-            onMoveColumn={moveColumn}
-            onToggleColumn={toggleColumnVisible}
-            draggingColumnKey={draggingColumnKey}
-            setDraggingColumnKey={setDraggingColumnKey}
-          />
-        </div>
-
-        <div className="flex-1 min-h-0 flex flex-col">
-        <UsersTable
-          rows={filteredRows}
-          columns={columns}
-          loading={loading}
-          loadError={loadError}
-          emptyVariant={emptyVariant}
-          onEmptyAction={handleEmptyAction}
-          onRetry={loadUsers}
-          selectedIds={selectedIds}
-          onSelect={handleSelect}
-          onSelectAll={handleSelectAll}
-          onRowClick={(row) => setDrawerUserId(row.id)}
-          onViewProfile={(row) => navigate(`/admin/users/${row.id}`)}
-          onMasquerade={startMasquerade}
-          onSendEmail={(u) => setEmailModalUsers(u)}
-          onResetPassword={handleResetPassword}
-          onDelete={(u) => setDeleteTarget(u)}
-          onPlaceholderAction={setPlaceholderAction}
-          masqueradeBusyId={masqueradeBusyId}
-          sortKey={sortKey}
-          sortDir={sortDir}
-          onSort={handleSort}
-        />
-        </div>
-      </main>
+      <AppFooter />
 
       <BulkActionBar
         selectedCount={selectedIds.size}
@@ -473,7 +480,6 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
         variant={alertModal.variant}
         onClose={() => setAlertModal((m) => ({ ...m, isOpen: false }))}
       />
-      <AppFooter />
     </div>
   );
 }

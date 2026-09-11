@@ -12,7 +12,7 @@ class JobAlertDispatcher
       next if Rails.cache.exist?(dedupe_key)
 
       pref = user.job_alert_preference || default_preference_for(user)
-      next unless matches_trade?(pref: pref, job: job)
+      next unless matches_trade?(job: job, technician_profile: tech)
       next unless matches_pay?(pref: pref, job: job)
       next unless matches_duration?(pref: pref, job: job)
       next unless matches_distance?(pref: pref, job: job, technician_profile: tech)
@@ -27,8 +27,11 @@ class JobAlertDispatcher
   end
 
   def self.default_preference_for(user)
+    existing = user.job_alert_preference
+    return existing if existing
+
     user.create_job_alert_preference!(
-      trade_label: nil,
+      trade_label: user.technician_profile&.trade_type.presence,
       min_hourly_rate_cents: 0,
       max_distance_miles: 200,
       min_duration_weeks: nil,
@@ -39,12 +42,19 @@ class JobAlertDispatcher
     )
   end
 
-  def self.matches_trade?(pref:, job:)
-    return true if pref.trade_label.blank?
+  def self.matches_trade?(job:, technician_profile:)
+    tech_trade = catalog_trade(technician_profile.trade_type)
+    return true if tech_trade.blank?
     return true if job.trade_type.blank?
 
-    pref.trade_label.to_s.downcase == job.trade_type.to_s.downcase
+    job_trade = catalog_trade(job.trade_type)
+    tech_trade.casecmp?(job_trade)
   end
+
+  def self.catalog_trade(raw)
+    TradeCatalog.normalized_label(raw).presence || raw.to_s.strip.presence
+  end
+  private_class_method :catalog_trade
 
   def self.matches_pay?(pref:, job:)
     job.hourly_rate_cents.to_i >= pref.min_hourly_rate_cents.to_i

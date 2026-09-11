@@ -21,7 +21,6 @@ module Api
 
       def pref_params
         params.permit(
-          :trade_label,
           :min_hourly_rate_cents,
           :max_distance_miles,
           :min_duration_weeks,

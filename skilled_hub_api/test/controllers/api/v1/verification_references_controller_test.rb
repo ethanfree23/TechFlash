@@ -143,7 +143,7 @@ module Api
         assert_includes JSON.parse(response.body)["errors"], "Phone has already been used for another reference"
       end
 
-      test "technician create requires email or phone plus relationship" do
+      test "technician create requires email or phone and defaults blank relationship to N/A" do
         tech_user = User.create!(
           email: "reference-tech-required@example.com",
           password: "password123",
@@ -165,10 +165,11 @@ module Api
              headers: auth_header_for(tech_user),
              as: :json
 
-        assert_response :unprocessable_entity
-        errors = JSON.parse(response.body)["errors"]
-        assert_includes errors, "relationship is required"
-        refute_includes errors, "email is required"
+        assert_response :created
+        phone_only = VerificationReference.order(:id).last
+        assert_equal "7135551111", phone_only.phone
+        assert_nil phone_only.email.presence
+        assert_equal "N/A", phone_only.relationship
 
         post "/api/v1/verification_references",
              params: {
@@ -183,17 +184,18 @@ module Api
 
         post "/api/v1/verification_references",
              params: {
-               full_name: "Sam Boss",
-               phone: "7135551111",
+               full_name: "Alex Lead",
+               phone: "7135552222",
                relationship: "Supervisor"
              },
              headers: auth_header_for(tech_user),
              as: :json
 
         assert_response :created
-        ref = VerificationReference.order(:id).last
-        assert_equal "7135551111", ref.phone
-        assert_nil ref.email.presence
+        named_relationship = VerificationReference.order(:id).last
+        assert_equal "7135552222", named_relationship.phone
+        assert_equal "Supervisor", named_relationship.relationship
+        assert_nil named_relationship.email.presence
 
         post "/api/v1/verification_references",
              params: {

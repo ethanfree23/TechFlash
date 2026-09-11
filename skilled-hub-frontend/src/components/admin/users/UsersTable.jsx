@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FaChevronRight, FaSort, FaSortDown, FaSortUp } from 'react-icons/fa';
 import UserTypeBadge from './UserTypeBadge';
@@ -8,7 +8,13 @@ import UserRiskBadge from './UserRiskBadge';
 import UserRowActionsMenu from './UserRowActionsMenu';
 import UsersEmptyState from './UsersEmptyState';
 import { TableRowsSkeleton } from './UsersSkeleton';
-import { displayOrFallback } from '../../../utils/adminUsersDisplayAdapter';
+import { displayOrFallback, TRADE_LEVEL_RANK } from '../../../utils/adminUsersDisplayAdapter';
+import {
+  ADMIN_USERS_PAGE_SIZES,
+  paginateItems,
+  persistPageSize,
+  readStoredPageSize,
+} from '../../../utils/adminUsersPagination';
 
 /** Tablet: hide subscription, membership tier, risk, jobs */
 const HIDDEN_MD = new Set(['jobs', 'risk', 'subscription', 'membership_tier']);
@@ -81,6 +87,20 @@ function renderCell(col, row) {
       );
     case 'company_trade':
       return <CellText title={row.companyTradeLabel}>{row.companyTradeLabel}</CellText>;
+    case 'trade_level':
+      return row.tradeLevelLabel ? (
+        <CellText title={row.tradeLevelLabel}>{row.tradeLevelLabel}</CellText>
+      ) : (
+        <Muted title="Trade level not provided">—</Muted>
+      );
+    case 'experience_years':
+      return row.experienceYearsLabel ? (
+        <CellText className="text-xs text-slate-600 tabular-nums" title={row.experienceYearsLabel}>
+          {row.experienceYearsLabel}
+        </CellText>
+      ) : (
+        <Muted title="Years not provided">—</Muted>
+      );
     case 'location':
       return row.locationLabel === 'Not provided' ? (
         <Muted title="Location not provided">Not provided</Muted>
@@ -155,9 +175,63 @@ function colHiddenClass(key, asCol = false) {
 }
 
 function colWidthClass(key) {
-  if (key === 'user') return 'w-[18%]';
-  if (key === 'joined' || key === 'risk' || key === 'jobs') return 'w-[5.5%]';
+  if (key === 'user') return 'w-[16%]';
+  if (key === 'subscription') return 'w-[8%]';
+  if (key === 'trade_level') return 'w-[7.5%]';
+  if (key === 'experience_years' || key === 'joined' || key === 'risk' || key === 'jobs') return 'w-[5.5%]';
   return '';
+}
+
+function TablePaginationBar({ pageInfo, pageSize, onPageSizeChange, onPageChange }) {
+  const { total, start, end, page, totalPages } = pageInfo;
+
+  return (
+    <div className="shrink-0 px-3 py-1.5 border-t border-slate-100 bg-slate-50/50 flex flex-wrap items-center justify-between gap-2 text-[10px] text-slate-500">
+      <span className="tabular-nums">
+        {total} user{total === 1 ? '' : 's'}
+      </span>
+      <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+        <label className="inline-flex items-center gap-1.5">
+          <span className="text-slate-400">Rows</span>
+          <select
+            value={pageSize}
+            onChange={(e) => onPageSizeChange(Number(e.target.value))}
+            className="rounded-md border border-slate-200 bg-white px-1.5 py-0.5 text-[11px] text-slate-700 focus:outline-none focus:ring-2 focus:ring-tf-blue/20"
+            aria-label="Rows per page"
+          >
+            {ADMIN_USERS_PAGE_SIZES.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="tabular-nums text-slate-400" aria-live="polite">
+          {total === 0 ? '0 of 0' : `${start}–${end} of ${total}`}
+        </span>
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            disabled={page <= 1}
+            onClick={() => onPageChange(page - 1)}
+            className="px-2 py-0.5 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none"
+            aria-label="Previous page"
+          >
+            Prev
+          </button>
+          <button
+            type="button"
+            disabled={page >= totalPages}
+            onClick={() => onPageChange(page + 1)}
+            className="px-2 py-0.5 rounded-md border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:pointer-events-none"
+            aria-label="Next page"
+          >
+            Next
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function UserMobileCard({ row, selected, onSelect, onRowClick, onViewProfile, actions }) {
@@ -187,6 +261,11 @@ function UserMobileCard({ row, selected, onSelect, onRowClick, onViewProfile, ac
             {row.activityLabel?.logins || 'No activity yet'}
             {row.activityLabel?.lastActive ? ` · ${row.activityLabel.lastActive}` : ''}
           </p>
+          {row.role === 'technician' && (row.tradeLevelLabel || row.experienceYearsLabel) && (
+            <p className="mt-1 text-[11px] text-slate-500">
+              {[row.tradeLevelLabel, row.experienceYearsLabel].filter(Boolean).join(' · ')}
+            </p>
+          )}
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
           {actions}
@@ -227,8 +306,16 @@ export default function UsersTable({
   sortDir,
   onSort,
 }) {
+  const [pageSize, setPageSize] = useState(readStoredPageSize);
+  const [page, setPage] = useState(1);
+  const selectAllRef = useRef(null);
+  const rowsSignature = `${rows.length}:${rows[0]?.id ?? ''}:${rows[rows.length - 1]?.id ?? ''}`;
+
+  useEffect(() => {
+    setPage(1);
+  }, [rowsSignature, pageSize]);
+
   const visibleColumns = useMemo(() => columns.filter((c) => c.visible), [columns]);
-  const allSelected = rows.length > 0 && rows.every((r) => selectedIds.has(r.id));
 
   const sortedRows = useMemo(() => {
     const copy = [...rows];
@@ -241,6 +328,8 @@ export default function UsersTable({
           case 'status': return row.accountStatus || '';
           case 'verification': return row.verificationStatus || '';
           case 'company_trade': return row.companyTradeLabel || '';
+          case 'trade_level': return TRADE_LEVEL_RANK[row.tradeLevelSlug] || 0;
+          case 'experience_years': return row.experienceYears ?? -1;
           case 'location': return row.locationLabel || '';
           case 'subscription': return row.subscriptionTier || '';
           case 'membership_tier': return row.membershipTier || '';
@@ -260,9 +349,30 @@ export default function UsersTable({
     return copy;
   }, [rows, sortKey, sortDir]);
 
+  const pageInfo = useMemo(
+    () => paginateItems(sortedRows, page, pageSize),
+    [sortedRows, page, pageSize]
+  );
+  const pagedRows = pageInfo.items;
+  const pageIds = useMemo(() => pagedRows.map((r) => r.id), [pagedRows]);
+  const allSelected = pagedRows.length > 0 && pagedRows.every((r) => selectedIds.has(r.id));
+  const someSelected = pagedRows.some((r) => selectedIds.has(r.id));
+
+  useEffect(() => {
+    if (selectAllRef.current) {
+      selectAllRef.current.indeterminate = someSelected && !allSelected;
+    }
+  }, [someSelected, allSelected]);
+
+  const handlePageSizeChange = (size) => {
+    setPageSize(size);
+    persistPageSize(size);
+    setPage(1);
+  };
+
   if (loading) {
     return (
-      <div className="flex-1 min-h-[16rem] w-full rounded-lg border border-slate-200/90 bg-white shadow-sm overflow-hidden">
+      <div className="flex-1 min-h-0 w-full rounded-lg border border-slate-200/90 bg-white shadow-sm overflow-hidden">
         <TableRowsSkeleton />
       </div>
     );
@@ -270,7 +380,7 @@ export default function UsersTable({
 
   if (loadError) {
     return (
-      <div className="flex-1 min-h-[16rem] w-full flex flex-col">
+      <div className="flex-1 min-h-0 w-full flex flex-col">
         <UsersEmptyState variant="error" onAction={onRetry} />
       </div>
     );
@@ -278,7 +388,7 @@ export default function UsersTable({
 
   if (rows.length === 0) {
     return (
-      <div className="flex-1 min-h-[16rem] w-full flex flex-col">
+      <div className="flex-1 min-h-0 w-full flex flex-col">
         <UsersEmptyState variant={emptyVariant} onAction={onEmptyAction} />
       </div>
     );
@@ -299,8 +409,8 @@ export default function UsersTable({
 
   return (
     <div className="flex-1 min-h-0 flex flex-col w-full">
-      <div className="lg:hidden space-y-2 overflow-y-auto">
-        {sortedRows.map((row) => (
+      <div className="lg:hidden flex-1 min-h-0 space-y-2 overflow-y-auto">
+        {pagedRows.map((row) => (
           <UserMobileCard
             key={row.id}
             row={row}
@@ -311,6 +421,14 @@ export default function UsersTable({
             actions={rowActions(row, true)}
           />
         ))}
+      </div>
+      <div className="lg:hidden shrink-0 mt-2 rounded-lg border border-slate-200/90 bg-white overflow-hidden">
+        <TablePaginationBar
+          pageInfo={pageInfo}
+          pageSize={pageInfo.pageSize}
+          onPageSizeChange={handlePageSizeChange}
+          onPageChange={setPage}
+        />
       </div>
 
       <div className="hidden lg:flex flex-1 min-h-0 w-full flex-col rounded-lg border border-slate-200/90 bg-white shadow-sm overflow-hidden">
@@ -327,23 +445,25 @@ export default function UsersTable({
               <tr>
                 <th className="w-8 px-1.5 py-2">
                   <input
+                    ref={selectAllRef}
                     type="checkbox"
                     checked={allSelected}
-                    onChange={(e) => onSelectAll(e.target.checked)}
-                    aria-label="Select all"
+                    onChange={(e) => onSelectAll(e.target.checked, pageIds)}
+                    aria-label="Select all on this page"
                     className="rounded border-slate-300"
                   />
                 </th>
                 {visibleColumns.map((col) => (
-                  <th key={col.key} className={`px-1.5 py-2 text-left min-w-0 overflow-hidden ${colHiddenClass(col.key)}`}>
+                  <th key={col.key} className={`px-1.5 py-2 text-left min-w-0 ${colHiddenClass(col.key)}`}>
                     <button
                       type="button"
                       onClick={() => onSort(col.key)}
-                      className={`group inline-flex max-w-full items-start gap-0.5 text-[10px] font-semibold uppercase tracking-wide text-left leading-tight ${
+                      title={col.label}
+                      className={`group inline-flex max-w-full items-center gap-0.5 text-[9px] font-semibold uppercase tracking-wide text-left leading-none whitespace-nowrap ${
                         sortKey === col.key ? 'text-tf-blue' : 'text-slate-500 hover:text-slate-800'
                       }`}
                     >
-                      <span className="min-w-0 break-words">{col.label}</span>
+                      <span className="whitespace-nowrap">{col.label}</span>
                       <SortIndicator colKey={col.key} sortKey={sortKey} sortDir={sortDir} />
                     </button>
                   </th>
@@ -352,7 +472,7 @@ export default function UsersTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {sortedRows.map((row) => (
+              {pagedRows.map((row) => (
                 <tr
                   key={row.id}
                   onClick={() => onRowClick(row)}
@@ -389,9 +509,12 @@ export default function UsersTable({
             </tbody>
           </table>
         </div>
-        <div className="shrink-0 px-3 py-1.5 border-t border-slate-100 bg-slate-50/50 text-[10px] text-slate-400">
-          {sortedRows.length} user{sortedRows.length === 1 ? '' : 's'}
-        </div>
+        <TablePaginationBar
+          pageInfo={pageInfo}
+          pageSize={pageInfo.pageSize}
+          onPageSizeChange={handlePageSizeChange}
+          onPageChange={setPage}
+        />
       </div>
     </div>
   );

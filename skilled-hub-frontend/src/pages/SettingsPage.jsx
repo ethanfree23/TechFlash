@@ -13,7 +13,6 @@ import {
   jobAlertPreferencesAPI,
   verificationAPI,
   verificationReferencesAPI,
-  feedbackAPI,
 } from '../api/api';
 import { auth } from '../auth';
 import CardPaymentForm from '../components/CardPaymentForm';
@@ -26,7 +25,7 @@ import SystemControlsPricing from '../components/admin/SystemControlsPricing';
 import { needsTechnicianMapSetup } from '../utils/technicianMap';
 import { requiresElectricalLicenseForState, setLocalOnlyLicenseStates } from '../utils/licensingRules';
 import { formatPhoneInput } from '../utils/phone';
-import { TRADE_OPTIONS, TRADE_OTHER_SENTINEL, COMPANY_INDUSTRY_OPTIONS, companyIndustrySelectValue } from '../constants/trades';
+import { COMPANY_INDUSTRY_OPTIONS, companyIndustrySelectValue } from '../constants/trades';
 import { isTechnicianClass } from '../constants/technicianClass';
 import { payloadFromTradeLines, tradeLineValidationMessage, tradeLinesFromProfile } from '../utils/tradeQualifications';
 import { getNotificationCategories } from '../config/notificationPreferenceCatalog';
@@ -70,6 +69,14 @@ const DEFAULT_EMAIL_PREFS = {
 };
 
 const MAX_DURATION_WEEKS = 12;
+const EMPTY_REFERENCE_FORM = {
+  full_name: '',
+  email: '',
+  phone: '',
+  company_name: '',
+  relationship: '',
+};
+const DEFAULT_REFERENCE_RELATIONSHIP = 'N/A';
 
 const clampDurationThumb = (value) => {
   const n = Number(value);
@@ -203,7 +210,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   });
   const [savingNotifications, setSavingNotifications] = useState(false);
   const [jobAlertForm, setJobAlertForm] = useState({
-    trade_label: '',
     min_hourly_rate_dollars: '0.00',
     max_distance_miles: 200,
     min_duration_weeks: null,
@@ -213,11 +219,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     app_enabled: true,
   });
   const [savingJobAlertForm, setSavingJobAlertForm] = useState(false);
-  const [tradeQueryOpen, setTradeQueryOpen] = useState(false);
-  const [tradeOtherNoteOpen, setTradeOtherNoteOpen] = useState(false);
-  const [jobAlertTradeNote, setJobAlertTradeNote] = useState('');
-  const [sendingTradeSuggestion, setSendingTradeSuggestion] = useState(false);
-  const [tradeSuggestionSent, setTradeSuggestionSent] = useState(false);
   const [couponCode, setCouponCode] = useState('');
   const [couponBusy, setCouponBusy] = useState(false);
   const [certificates, setCertificates] = useState([]);
@@ -258,15 +259,10 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [expandedReferenceRows, setExpandedReferenceRows] = useState({});
   const [loadingReferences, setLoadingReferences] = useState(false);
   const [submittingReference, setSubmittingReference] = useState(false);
+  const [referenceFormOpen, setReferenceFormOpen] = useState(false);
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [avatarBroken, setAvatarBroken] = useState(false);
-  const [newReference, setNewReference] = useState({
-    full_name: '',
-    email: '',
-    phone: '',
-    company_name: '',
-    relationship: '',
-  });
+  const [newReference, setNewReference] = useState(EMPTY_REFERENCE_FORM);
   const publishableKey = getStripePublishableKey();
   const stripe = useMemo(() => {
     if (window.Stripe && isValidStripePublishableKey(publishableKey)) {
@@ -457,12 +453,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
 
     if (isTechnician) {
-      requiredItems.push('Trade type', 'Class', 'Bio', 'ZIP or address for maps');
+      requiredItems.push('Trade type', 'Class', 'Bio', 'ZIP for maps');
       const primaryTrade = (form.trade_lines && form.trade_lines[0]) || {};
       if (!(primaryTrade.trade_type || '').trim()) missing.push('Trade type');
       if (!isTechnicianClass(primaryTrade.skill_class)) missing.push('Class');
       if (!(form.bio || '').trim()) missing.push('Bio');
-      if (needsMapSetup) missing.push('ZIP or address for maps');
+      if (needsMapSetup) missing.push('ZIP for maps');
     }
 
     const total = requiredItems.length;
@@ -493,12 +489,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
     return opts;
   }, [membershipTierOptions, profile?.membership_level]);
-
-  const matchingTradeOptions = useMemo(() => {
-    const query = (jobAlertForm.trade_label || '').trim().toLowerCase();
-    if (!query) return TRADE_OPTIONS;
-    return TRADE_OPTIONS.filter((opt) => opt.toLowerCase().includes(query));
-  }, [jobAlertForm.trade_label]);
 
   const minDurationSlider = Number.isFinite(jobAlertForm.min_duration_weeks) ? jobAlertForm.min_duration_weeks : 0;
   const maxDurationSlider = Number.isFinite(jobAlertForm.max_duration_weeks) ? jobAlertForm.max_duration_weeks : MAX_DURATION_WEEKS;
@@ -730,7 +720,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         const j = res?.job_alert_preference;
         if (!j) return;
         setJobAlertForm({
-          trade_label: j.trade_label ?? '',
           min_hourly_rate_dollars: ((Number(j.min_hourly_rate_cents) || 0) / 100).toFixed(2),
           max_distance_miles: j.max_distance_miles ?? 200,
           min_duration_weeks: Number.isFinite(j.min_duration_weeks) ? j.min_duration_weeks : null,
@@ -1284,45 +1273,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }));
   };
 
-  const handlePickTrade = (label) => {
-    setTradeSuggestionSent(false);
-    if (label === TRADE_OTHER_SENTINEL) {
-      setTradeQueryOpen(true);
-      setTradeOtherNoteOpen(true);
-      return;
-    }
-    setTradeOtherNoteOpen(false);
-    setTradeQueryOpen(false);
-    setJobAlertForm((prev) => ({ ...prev, trade_label: label }));
-  };
-
-  const handleSendTradeSuggestion = async () => {
-    const typed = (jobAlertForm.trade_label || '').trim();
-    const note = jobAlertTradeNote.trim();
-    if (!typed || !note) return;
-    setSendingTradeSuggestion(true);
-    try {
-      await feedbackAPI.create({
-        kind: 'suggestion',
-        body: `Trade suggestion from Job alert matching:\nTyped: "${typed}"\nNote: ${note}`,
-        page_path: '/settings',
-      });
-      setTradeSuggestionSent(true);
-      setJobAlertTradeNote('');
-      setTradeQueryOpen(false);
-      setTradeOtherNoteOpen(false);
-    } catch (err) {
-      setAlertModal({
-        isOpen: true,
-        title: 'Could not send suggestion',
-        message: err.message || 'Please try again.',
-        variant: 'error',
-      });
-    } finally {
-      setSendingTradeSuggestion(false);
-    }
-  };
-
   const handleSaveJobAlertPreferences = async (e) => {
     if (e?.preventDefault) e.preventDefault();
     setSavingJobAlertForm(true);
@@ -1330,7 +1280,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       const md = jobAlertForm.max_distance_miles === '' ? NaN : Number(jobAlertForm.max_distance_miles);
       const dollars = parseFloat(jobAlertForm.min_hourly_rate_dollars || '0');
       const payload = {
-        trade_label: (jobAlertForm.trade_label || '').trim(),
         min_hourly_rate_cents: Number.isFinite(dollars) ? Math.max(0, Math.round(dollars * 100)) : 0,
         max_distance_miles: Number.isFinite(md) && md > 0 ? md : 1,
         min_duration_weeks: Number.isFinite(jobAlertForm.min_duration_weeks) ? jobAlertForm.min_duration_weeks : null,
@@ -1741,6 +1690,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     setExpandedReferenceRows((prev) => ({ ...prev, [referenceId]: !prev[referenceId] }));
   };
 
+  const resetReferenceForm = () => {
+    setNewReference(EMPTY_REFERENCE_FORM);
+    setReferenceFormOpen(false);
+  };
+
   const handleAddReference = async (e) => {
     e.preventDefault();
 
@@ -1777,16 +1731,13 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
     setSubmittingReference(true);
     try {
-      await verificationReferencesAPI.create(newReference);
+      await verificationReferencesAPI.create({
+        ...newReference,
+        relationship: String(newReference.relationship || '').trim() || DEFAULT_REFERENCE_RELATIONSHIP,
+      });
       const rows = await verificationReferencesAPI.list();
       setVerificationReferences(Array.isArray(rows) ? rows : []);
-      setNewReference({
-        full_name: '',
-        email: '',
-        phone: '',
-        company_name: '',
-        relationship: '',
-      });
+      resetReferenceForm();
       setAlertModal({
         isOpen: true,
         title: 'Reference request created',
@@ -1840,7 +1791,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                       <p><span className="font-semibold text-gray-800">Email:</span> {ref.email || 'Not provided'}</p>
                       <p><span className="font-semibold text-gray-800">Phone:</span> {ref.phone || 'Not provided'}</p>
                       <p><span className="font-semibold text-gray-800">Company:</span> {ref.company_name || 'Not provided'}</p>
-                      <p><span className="font-semibold text-gray-800">Relationship:</span> {ref.relationship || 'Not provided'}</p>
+                      <p><span className="font-semibold text-gray-800">Relationship:</span> {ref.relationship || DEFAULT_REFERENCE_RELATIONSHIP}</p>
                       <p>
                         <span className="font-semibold text-gray-800">Requested date:</span>{' '}
                         {ref.requested_at
@@ -1863,60 +1814,77 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
             })
           )}
         </div>
-        <form onSubmit={handleAddReference} className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <input
-            className="border rounded px-2 py-1 text-xs"
-            name="full_name"
-            placeholder="Full name"
-            value={newReference.full_name}
-            onChange={handleReferenceFieldChange}
-            required
-          />
-          <input
-            className="border rounded px-2 py-1 text-xs"
-            name="relationship"
-            placeholder="Relationship"
-            value={newReference.relationship}
-            onChange={handleReferenceFieldChange}
-            required
-          />
-          <input
-            className="border rounded px-2 py-1 text-xs"
-            name="email"
-            type="email"
-            placeholder="Email"
-            value={newReference.email}
-            onChange={handleReferenceFieldChange}
-            required={!String(newReference.phone || '').trim()}
-          />
-          <input
-            className="border rounded px-2 py-1 text-xs"
-            name="phone"
-            placeholder="Phone"
-            value={newReference.phone}
-            onChange={handleReferenceFieldChange}
-            required={!String(newReference.email || '').trim()}
-          />
-          <p className="sm:col-span-2 text-[11px] text-gray-500">
-            Email or phone is required (at least one).
-          </p>
-          <input
-            className="border rounded px-2 py-1 text-xs sm:col-span-2"
-            name="company_name"
-            placeholder="Company (optional)"
-            value={newReference.company_name}
-            onChange={handleReferenceFieldChange}
-          />
-          <div className="sm:col-span-2">
-            <button
-              type="submit"
-              disabled={submittingReference}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50"
-            >
-              {submittingReference ? 'Saving...' : 'Add reference'}
-            </button>
-          </div>
-        </form>
+        {referenceFormOpen ? (
+          <form onSubmit={handleAddReference} className="rounded-2xl border border-gray-200 p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input
+              className="border rounded px-2 py-1 text-xs"
+              name="full_name"
+              placeholder="Full name"
+              value={newReference.full_name}
+              onChange={handleReferenceFieldChange}
+              required
+            />
+            <input
+              className="border rounded px-2 py-1 text-xs"
+              name="relationship"
+              placeholder="Relationship (optional)"
+              value={newReference.relationship}
+              onChange={handleReferenceFieldChange}
+            />
+            <input
+              className="border rounded px-2 py-1 text-xs"
+              name="email"
+              type="email"
+              placeholder="Email"
+              value={newReference.email}
+              onChange={handleReferenceFieldChange}
+              required={!String(newReference.phone || '').trim()}
+            />
+            <input
+              className="border rounded px-2 py-1 text-xs"
+              name="phone"
+              placeholder="Phone"
+              value={newReference.phone}
+              onChange={handleReferenceFieldChange}
+              required={!String(newReference.email || '').trim()}
+            />
+            <p className="sm:col-span-2 text-[11px] text-gray-500">
+              Email or phone is required (at least one).
+            </p>
+            <input
+              className="border rounded px-2 py-1 text-xs sm:col-span-2"
+              name="company_name"
+              placeholder="Company (optional)"
+              value={newReference.company_name}
+              onChange={handleReferenceFieldChange}
+            />
+            <div className="sm:col-span-2 flex flex-wrap gap-2">
+              <button
+                type="submit"
+                disabled={submittingReference}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50"
+              >
+                {submittingReference ? 'Saving...' : 'Save reference'}
+              </button>
+              <button
+                type="button"
+                onClick={resetReferenceForm}
+                disabled={submittingReference}
+                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setReferenceFormOpen(true)}
+            className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
+          >
+            + Add reference
+          </button>
+        )}
       </>
     );
   };
@@ -2152,12 +2120,16 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           {needsMapSetup && (
             <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
               <p className="text-sm font-semibold text-amber-900">
-                {profile?.address || profile?.city || profile?.zip_code ? "We couldn't place your address on the map" : 'Complete map setup'}
+                {profile?.zip_code
+                  ? "We couldn't place your ZIP on the map"
+                  : profile?.address || profile?.city
+                    ? "We couldn't place your address on the map"
+                    : 'Add a ZIP for the map'}
               </p>
               <p className="text-sm text-amber-800 mt-1">
-                {profile?.address || profile?.city || profile?.zip_code
-                  ? 'Please confirm it below so nearby jobs and your home pin stay in the right place.'
-                  : 'Add a ZIP or address so job maps can center correctly and show accurate nearby jobs.'}
+                {profile?.zip_code
+                  ? 'A 5-digit US ZIP is enough for your home pin. Street address is optional.'
+                  : 'Add a ZIP below. Street address is optional.'}
               </p>
             </div>
           )}
@@ -2370,7 +2342,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                     <h4 className="font-medium text-gray-900">Home address</h4>
                     {needsMapSetup && (
                       <span className="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-800">
-                        Complete map setup
+                        ZIP needed for map
                       </span>
                     )}
                   </div>
@@ -2385,12 +2357,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   />
                   {profile?.geocode_status === 'failed' && (
                     <p className="mt-2 text-xs text-amber-800">
-                      We couldn't place this address on the map. A ZIP is enough, or add a street and city.
+                      We couldn't place this ZIP on the map. Check that it is a valid 5-digit US ZIP. Street address is optional.
                     </p>
                   )}
                   {needsMapSetup && (
                     <p className="mt-2 text-xs text-amber-800">
-                      Required to enable accurate map radius and distance sorting on your dashboard.
+                      A ZIP is enough to center the map and sort nearby jobs.
                     </p>
                   )}
                 </div>
@@ -2792,104 +2764,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 {isTechnician && (
                   <SettingsCard
                     title="Job alert filters"
-                    description="Trade, pay floor, distance, duration, and channels for nearby jobs."
+                    description="Pay floor, distance, duration, and channels for nearby jobs."
                     collapsible
                     defaultOpen={false}
                   >
                     <form onSubmit={handleSaveJobAlertPreferences} className="space-y-4">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div className="md:col-span-2">
-                          <label htmlFor="job-alert-trade" className="block text-xs font-medium text-gray-700 mb-1">
-                            Trade / role label (optional)
-                          </label>
-                          <input
-                            id="job-alert-trade"
-                            name="trade_label"
-                            value={jobAlertForm.trade_label}
-                            onChange={(e) => {
-                              setTradeSuggestionSent(false);
-                              setTradeOtherNoteOpen(false);
-                              handleJobAlertFieldChange(e);
-                              setTradeQueryOpen(true);
-                            }}
-                            onFocus={() => setTradeQueryOpen(true)}
-                            className="w-full border rounded-lg px-3 py-2 text-sm"
-                            placeholder="Type a trade (example: Electrician)"
-                            disabled={savingJobAlertForm}
-                          />
-                          {tradeQueryOpen && (
-                            <div className="mt-2 rounded-lg border border-gray-200 bg-white shadow-sm">
-                              {matchingTradeOptions.slice(0, 8).map((opt) => (
-                                <button
-                                  key={opt}
-                                  type="button"
-                                  onClick={() => handlePickTrade(opt)}
-                                  className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50"
-                                >
-                                  {opt}
-                                </button>
-                              ))}
-                              {matchingTradeOptions.length === 0 && (
-                                <button
-                                  type="button"
-                                  onClick={() => handlePickTrade(TRADE_OTHER_SENTINEL)}
-                                  className="w-full text-left px-3 py-2 text-sm text-blue-700 hover:bg-blue-50"
-                                >
-                                  Other — suggest a new trade
-                                </button>
-                              )}
-                            </div>
-                          )}
-                          {tradeQueryOpen && tradeOtherNoteOpen && matchingTradeOptions.length === 0 && (
-                            <div className="mt-2 rounded-lg border border-gray-200 bg-gray-50 p-3">
-                              <p className="text-xs text-gray-600 mb-2">
-                                Typed:{' '}
-                                <span className="font-medium text-gray-800">
-                                  &quot;{(jobAlertForm.trade_label || '').trim()}&quot;
-                                </span>
-                              </p>
-                              <p className="text-xs text-gray-700 mb-2">
-                                Add details for the admin (max 1000 characters).
-                              </p>
-                              <textarea
-                                rows={3}
-                                maxLength={1000}
-                                value={jobAlertTradeNote}
-                                onChange={(e) => setJobAlertTradeNote(e.target.value)}
-                                className="w-full border rounded-lg px-3 py-2 text-sm"
-                                placeholder="Describe this trade and common job titles"
-                                disabled={sendingTradeSuggestion}
-                              />
-                              <div className="mt-2 flex justify-end gap-2">
-                                <button
-                                  type="button"
-                                  className="px-3 py-1.5 text-xs border border-gray-300 rounded-lg text-gray-700"
-                                  onClick={() => {
-                                    setTradeQueryOpen(false);
-                                    setTradeOtherNoteOpen(false);
-                                    setJobAlertTradeNote('');
-                                  }}
-                                  disabled={sendingTradeSuggestion}
-                                >
-                                  Cancel
-                                </button>
-                                <button
-                                  type="button"
-                                  className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg disabled:opacity-50"
-                                  onClick={handleSendTradeSuggestion}
-                                  disabled={sendingTradeSuggestion || !jobAlertTradeNote.trim() || !jobAlertForm.trade_label.trim()}
-                                >
-                                  {sendingTradeSuggestion ? 'Sending…' : 'Send to admin'}
-                                </button>
-                              </div>
-                            </div>
-                          )}
-                          {tradeSuggestionSent && (
-                            <p className="mt-2 text-xs text-green-700">
-                              Sent to admin — we&apos;ll review and add it to the list.
-                            </p>
-                          )}
-                        </div>
                         <div>
                           <label htmlFor="job-alert-min-rate" className="block text-xs font-medium text-gray-700 mb-1">
                             Minimum hourly rate

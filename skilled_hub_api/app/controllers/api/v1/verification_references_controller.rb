@@ -12,7 +12,6 @@ module Api
       def create
         missing = []
         missing << "email or phone is required" if params[:email].to_s.strip.blank? && params[:phone].to_s.strip.blank?
-        missing << "relationship is required" if params[:relationship].to_s.strip.blank?
         missing << "full_name is required" if params[:full_name].to_s.strip.blank?
         if missing.any?
           return render json: { errors: missing }, status: :unprocessable_entity

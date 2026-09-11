@@ -115,7 +115,8 @@ module Api
       def profile
         profile = @current_user.technician_profile
         if profile
-          render json: profile, serializer: TechnicianProfileSerializer, status: :ok
+          profile.ensure_map_placement!
+          render json: profile.reload, serializer: TechnicianProfileSerializer, status: :ok
         else
           render json: { error: "Technician profile not found" }, status: :not_found
         end

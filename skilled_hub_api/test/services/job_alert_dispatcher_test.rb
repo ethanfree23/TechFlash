@@ -66,12 +66,15 @@ class JobAlertDispatcherTest < ActiveSupport::TestCase
     delivery_message.verify
   end
 
-  test "matches_trade uses job trade_type not skill_class" do
-    pref = Struct.new(:trade_label).new("Electrician")
+  test "matches_trade uses technician primary trade_type not preference trade_label" do
+    tech = TechnicianProfile.new(trade_type: "Electrician")
     job = Job.new(trade_type: "Electrician", skill_class: "HVAC")
-    assert JobAlertDispatcher.matches_trade?(pref: pref, job: job)
+    assert JobAlertDispatcher.matches_trade?(job: job, technician_profile: tech)
 
-    hvac_pref = Struct.new(:trade_label).new("HVAC")
-    refute JobAlertDispatcher.matches_trade?(pref: hvac_pref, job: job)
+    hvac_tech = TechnicianProfile.new(trade_type: "HVAC Technician")
+    refute JobAlertDispatcher.matches_trade?(job: job, technician_profile: hvac_tech)
+
+    stale_pref_tech = TechnicianProfile.new(trade_type: "Electrician")
+    assert JobAlertDispatcher.matches_trade?(job: job, technician_profile: stale_pref_tech)
   end
 end

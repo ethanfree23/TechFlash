@@ -448,6 +448,37 @@ module Api
         assert_nil JSON.parse(response.body)["skill_class"]
       end
 
+      test "profile load geocodes a zip-only technician without requiring a street" do
+        user = User.create!(
+          email: "tech-zip-repair@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        profile = nil
+        GeocodingService.stub(:geocode, nil) do
+          profile = TechnicianProfile.create!(
+            user: user,
+            phone: "713-555-0392",
+            zip_code: "77002"
+          )
+        end
+        profile.update_columns(latitude: nil, longitude: nil, geocode_status: "failed", geocoded_at: 1.hour.ago)
+
+        with_stubbed_geocode([29.7604, -95.3698]) do
+          get "/api/v1/technicians/profile",
+              headers: auth_header_for(user),
+              as: :json
+        end
+
+        assert_response :ok
+        body = JSON.parse(response.body)
+        assert_in_delta 29.7604, body["latitude"].to_f, 0.0001
+        assert_in_delta(-95.3698, body["longitude"].to_f, 0.0001)
+        assert_equal "success", body["geocode_status"]
+        assert_equal "77002", body["zip_code"]
+      end
+
       test "company can filter technician directory by verification requirements" do
         company_user = User.create!(
           email: "company-tech-filter@example.com",

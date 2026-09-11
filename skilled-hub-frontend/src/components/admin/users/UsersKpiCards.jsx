@@ -11,6 +11,15 @@ const CARDS = [
   { id: 'flagged', label: 'Flagged', icon: FaExclamationTriangle },
 ];
 
+const CARD_TAB = {
+  total: 'all',
+  technicians: 'technicians',
+  companies: 'company',
+  active: 'recently_active',
+  pending: 'pending',
+  flagged: 'flagged',
+};
+
 function getCardValue(id, kpis) {
   switch (id) {
     case 'total': return kpis.total;
@@ -49,7 +58,7 @@ function getCardAccent(id, kpis) {
   return 'bg-white hover:bg-slate-50/80';
 }
 
-export default function UsersKpiCards({ kpis, loading, onCardClick }) {
+export default function UsersKpiCards({ kpis, loading, onCardClick, activeTab }) {
   if (loading) return <KpiCardsSkeleton />;
 
   return (
@@ -58,13 +67,17 @@ export default function UsersKpiCards({ kpis, loading, onCardClick }) {
         const Icon = card.icon;
         const value = getCardValue(card.id, kpis);
         const subtext = getCardSubtext(card.id, kpis);
-        const accent = getCardAccent(card.id, kpis);
+        const selected = CARD_TAB[card.id] === activeTab;
+        const accent = selected
+          ? 'ring-1 ring-tf-blue/35 bg-blue-50/50 border-tf-blue/30'
+          : getCardAccent(card.id, kpis);
 
         return (
           <button
             key={card.id}
             type="button"
             onClick={() => onCardClick?.(card.id)}
+            aria-pressed={selected}
             className={`group rounded-lg border border-slate-200/90 px-2.5 py-2 text-left transition-all hover:border-slate-300 hover:shadow-sm ${accent}`}
           >
             <div className="flex items-center justify-between gap-1">

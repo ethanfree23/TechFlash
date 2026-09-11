@@ -23,6 +23,7 @@ const testFiles = [
   'metaPixel.test.mjs',
   'adminUsersCompleteness.test.mjs',
   'adminUsersSearch.test.mjs',
+  'adminUsersPagination.test.mjs',
   'licenseCredentials.test.mjs',
 ];
 

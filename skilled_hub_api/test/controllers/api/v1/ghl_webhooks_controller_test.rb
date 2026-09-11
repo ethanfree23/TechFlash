@@ -72,10 +72,31 @@ module Api
         assert profile.present?
         assert_equal false, profile.background_verified
         assert_equal "77002", profile.zip_code
+        assert_equal "United States", profile.country
         assert_equal 0, ActionMailer::Base.deliveries.size
         assert_equal 3, user.verification_references_as_technician.count
         assert user.verification_references_as_technician.all? { |ref| ref.requested? }
         assert_nil VerificationProfile.find_by(user_id: user.id)
+      end
+
+      test "zip only from ghl is geocoded to a map pin without a street address" do
+        GeocodingService.stub(:geocode, ->(**kwargs) {
+          assert_equal "77002", kwargs[:zip_code]
+          assert kwargs[:address].blank?
+          [29.7604, -95.3698]
+        }) do
+          post_ghl(valid_payload.merge(idempotency_key: "ghl-zip-map", ghl_contact_id: "ghl-zip-map"))
+        end
+
+        assert_response :accepted
+        profile = User.find(JSON.parse(response.body)["user_id"]).technician_profile
+        assert_equal "77002", profile.zip_code
+        assert_equal "", profile.address.to_s
+        assert_equal "United States", profile.country
+        assert_in_delta 29.7604, profile.latitude, 0.0001
+        assert_in_delta(-95.3698, profile.longitude, 0.0001)
+        assert_equal "success", profile.geocode_status
+        assert profile.map_ready?
       end
 
       test "creates technician when names are blank" do

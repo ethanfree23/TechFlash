@@ -161,8 +161,6 @@ export default function AdminUserDetailPage({ user, onLogout }) {
   const [masqueradeBusy, setMasqueradeBusy] = useState(false);
   const [ensureProfileBusy, setEnsureProfileBusy] = useState(false);
   const [deleteBusy, setDeleteBusy] = useState(false);
-  const [jobAlertTradeDraft, setJobAlertTradeDraft] = useState('');
-  const [jobAlertTradeSaveBusy, setJobAlertTradeSaveBusy] = useState(false);
   const [detailTab, setDetailTab] = useState('profile');
 
   const load = useCallback(async () => {
@@ -216,14 +214,6 @@ export default function AdminUserDetailPage({ user, onLogout }) {
     ],
     []
   );
-
-  useEffect(() => {
-    if (!isTech) {
-      setJobAlertTradeDraft('');
-      return;
-    }
-    setJobAlertTradeDraft(profile?.job_alert_trade_label || '');
-  }, [isTech, profile?.job_alert_trade_label]);
 
   useEffect(() => {
     const audience = isCompany ? 'company' : isTech ? 'technician' : null;
@@ -544,33 +534,6 @@ export default function AdminUserDetailPage({ user, onLogout }) {
       });
     } finally {
       setMembershipSaveBusy(false);
-    }
-  };
-
-  const saveJobAlertTrade = async (e) => {
-    e.preventDefault();
-    if (!u?.id || !isTech) return;
-    setJobAlertTradeSaveBusy(true);
-    try {
-      await adminUsersAPI.updateProfile(u.id, {
-        job_alert_trade_label: jobAlertTradeDraft.trim() || null,
-      });
-      await load();
-      setAlertModal({
-        isOpen: true,
-        title: 'Job alert trade updated',
-        message: 'The trade label used for this user job alerts was updated.',
-        variant: 'success',
-      });
-    } catch (err) {
-      setAlertModal({
-        isOpen: true,
-        title: 'Could not update job alert trade',
-        message: err.message || 'Request failed',
-        variant: 'error',
-      });
-    } finally {
-      setJobAlertTradeSaveBusy(false);
     }
   };
 
@@ -1167,39 +1130,6 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                 </form>
               )}
             </AdminCollapsibleCard>
-            )}
-
-            {detailTab === 'profile' && isTech && (
-              <AdminCollapsibleCard
-                title="Job alert trade"
-                description="Override the trade label used when matching this technician to job alerts."
-              >
-                <form onSubmit={saveJobAlertTrade} className="space-y-3">
-                  <label className="block">
-                    <span className="text-xs font-medium text-gray-500 uppercase">Trade label</span>
-                    <input
-                      list="admin-job-alert-trades"
-                      className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
-                      value={jobAlertTradeDraft}
-                      onChange={(e) => setJobAlertTradeDraft(e.target.value)}
-                      placeholder="Type or pick a trade"
-                      disabled={jobAlertTradeSaveBusy}
-                    />
-                    <datalist id="admin-job-alert-trades">
-                      {TRADE_OPTIONS.map((trade) => (
-                        <option key={trade} value={trade} />
-                      ))}
-                    </datalist>
-                  </label>
-                  <button
-                    type="submit"
-                    disabled={jobAlertTradeSaveBusy}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium disabled:opacity-50"
-                  >
-                    {jobAlertTradeSaveBusy ? 'Saving…' : 'Save trade label'}
-                  </button>
-                </form>
-              </AdminCollapsibleCard>
             )}
 
             {detailTab === 'profile' && isCompany && u?.company_context && (

@@ -10,6 +10,8 @@ class TechnicianProfile < ApplicationRecord
   before_validation :normalize_membership_level
   before_validation :normalize_skill_class
   before_validation :sync_trade_qualifications
+  before_validation :default_country_from_us_zip
+  after_save :sync_job_alert_trade_from_primary
 
   belongs_to :user
   has_many :job_applications, dependent: :destroy
@@ -42,6 +44,38 @@ class TechnicianProfile < ApplicationRecord
     CoordinateValidator.valid?(latitude, longitude, country: country)
   end
 
+  # Re-geocode ZIP/address when the stored pin is missing. Used on profile load so
+  # GHL ZIP-only techs get a map pin without visiting Settings.
+  def ensure_map_placement!
+    return self if map_ready?
+    return self unless address.present? || city.present? || zip_code.present?
+    if geocode_status == "failed" && geocoded_at.present? && geocoded_at > 30.seconds.ago
+      return self
+    end
+
+    coords = GeocodingService.geocode(
+      address: address,
+      city: city,
+      state: state,
+      zip_code: zip_code,
+      country: country.presence || "United States"
+    )
+    pair = coords && CoordinateValidator.pair(coords[0], coords[1], country: country.presence || "United States")
+    attrs = { geocoded_at: Time.current, updated_at: Time.current }
+    if pair&.valid?
+      attrs[:latitude] = pair.latitude
+      attrs[:longitude] = pair.longitude
+      attrs[:geocode_status] = "success"
+      attrs[:country] = country.presence || "United States"
+    else
+      attrs[:latitude] = nil
+      attrs[:longitude] = nil
+      attrs[:geocode_status] = "failed"
+    end
+    update_columns(attrs)
+    self
+  end
+
   def effective_trade_qualifications
     stored = TradeQualificationNormalizer.normalize_list(trade_qualifications)
     return stored if stored.any?
@@ -55,6 +89,13 @@ class TechnicianProfile < ApplicationRecord
   end
 
   private
+
+  def default_country_from_us_zip
+    return if country.present?
+    return if GeocodingService.normalized_us_zip(zip_code).blank?
+
+    self.country = "United States"
+  end
 
   def sync_location_from_address
     return unless city.present? || state.present? || country.present?
@@ -172,5 +213,14 @@ class TechnicianProfile < ApplicationRecord
     return if TechnicianClassCatalog.valid_label?(skill_class)
 
     errors.add(:skill_class, "must be Apprentice, Journeyman, or Master.")
+  end
+
+  def sync_job_alert_trade_from_primary
+    return unless saved_change_to_trade_type?
+    return unless user
+
+    pref = user.job_alert_preference || JobAlertDispatcher.default_preference_for(user)
+    next_label = trade_type.presence
+    pref.update!(trade_label: next_label) if pref.trade_label != next_label
   end
 end

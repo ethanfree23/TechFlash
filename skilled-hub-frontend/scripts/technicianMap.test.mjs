@@ -4,6 +4,7 @@ import {
   filterJobsWithinRadius,
   needsExactStreetAddress,
   needsTechnicianMapSetup,
+  needsMapPlacement,
   zoomForMapWidthMiles,
   technicianHomeLatLng,
   resolveTechnicianMapCenter,
@@ -140,7 +141,8 @@ function testNeedsExactStreetAddress() {
       latitude: 29.7604,
       longitude: -95.3698,
     }),
-    true
+    false,
+    'street is optional once the map pin exists'
   );
 
   assert.strictEqual(
@@ -174,8 +176,31 @@ function testNeedsExactStreetAddress() {
       latitude: 30.3113,
       longitude: -95.456,
     }),
+    false,
+    'ZIP-only with coords does not prompt for a street'
+  );
+}
+
+function testNeedsMapPlacement() {
+  assert.strictEqual(
+    needsMapPlacement({
+      zip_code: '77002',
+      latitude: 29.7604,
+      longitude: -95.3698,
+      country: 'United States',
+    }),
+    false,
+    'ZIP with coords does not ask to confirm address'
+  );
+  assert.strictEqual(
+    needsMapPlacement({
+      zip_code: '77002',
+      latitude: null,
+      longitude: null,
+      country: 'United States',
+    }),
     true,
-    'ZIP-only with coords still prompts for an exact street'
+    'ZIP without coords still needs placement'
   );
 }
 
@@ -263,6 +288,7 @@ function run() {
   testFilterWithoutCoordinatesFallsBack();
   testNeedsTechnicianMapSetup();
   testNeedsExactStreetAddress();
+  testNeedsMapPlacement();
   testZoomForFortyFiveMileDiameter();
   testNullCoordinatesDoNotBecomeZero();
   testNumericStringsAndTexasCoordsAreValid();

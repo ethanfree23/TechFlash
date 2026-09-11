@@ -11,12 +11,28 @@ export const USER_TABS = [
   { id: 'recently_active', label: 'Recently active', apiRole: 'all' },
 ];
 
+export const TRADE_LEVEL_SLUGS = ['helper', 'apprentice', 'journeyman', 'master'];
+export const TRADE_LEVEL_LABELS = {
+  helper: 'Helper',
+  apprentice: 'Apprentice',
+  journeyman: 'Journeyman',
+  master: 'Master',
+};
+export const TRADE_LEVEL_RANK = {
+  helper: 1,
+  apprentice: 2,
+  journeyman: 3,
+  master: 4,
+};
+
 export const DEFAULT_TABLE_COLUMNS = [
   { key: 'user', label: 'User', visible: true },
   { key: 'type', label: 'Type', visible: true },
   { key: 'status', label: 'Status', visible: true },
   { key: 'verification', label: 'Verification', visible: true },
   { key: 'company_trade', label: 'Company', visible: true },
+  { key: 'trade_level', label: 'Level', visible: true },
+  { key: 'experience_years', label: 'Years', visible: true },
   { key: 'location', label: 'Location', visible: true },
   { key: 'subscription', label: 'Subscription', visible: true },
   { key: 'membership_tier', label: 'Tier', visible: true },
@@ -26,6 +42,38 @@ export const DEFAULT_TABLE_COLUMNS = [
   { key: 'last_login', label: 'Last login', visible: true },
   { key: 'risk', label: 'Risk', visible: true },
 ];
+
+export function defaultColumnsForTab(tab) {
+  return DEFAULT_TABLE_COLUMNS.map((col) => {
+    if (col.key === 'company_trade') {
+      return { ...col, label: tab === 'technicians' ? 'Trade' : 'Company' };
+    }
+    return { ...col };
+  });
+}
+
+export function normalizeTradeLevel(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  const slug = raw.toLowerCase().replace(/[\s-]+/g, '_');
+  if (TRADE_LEVEL_SLUGS.includes(slug)) return slug;
+  const matched = TRADE_LEVEL_SLUGS.find((s) => TRADE_LEVEL_LABELS[s].toLowerCase() === raw.toLowerCase());
+  return matched || slug;
+}
+
+export function tradeLevelLabel(value) {
+  const slug = normalizeTradeLevel(value);
+  if (!slug) return '';
+  return TRADE_LEVEL_LABELS[slug] || String(value || '').trim();
+}
+
+export function formatExperienceYears(years) {
+  if (years == null || years === '') return '';
+  const n = Number(years);
+  if (!Number.isFinite(n)) return '';
+  if (n >= 50) return '50+ yrs';
+  return n === 1 ? '1 yr' : `${n} yrs`;
+}
 
 export const SAVED_VIEW_PRESETS = [
   { id: 'all', label: 'All users', tab: 'all', filters: {} },
@@ -146,6 +194,10 @@ export function enrichUserRow(row, detail = null) {
       : displayOrFallback(row.company_name || row.label || profile?.company_name, 'Not provided');
 
   const location = formatLocation(profile) || 'Not provided';
+  const skillClass = row.skill_class || profile?.skill_class || null;
+  const experienceYearsRaw = row.experience_years ?? profile?.experience_years;
+  const experienceYears =
+    experienceYearsRaw == null || experienceYearsRaw === '' ? null : Number(experienceYearsRaw);
 
   return {
     ...row,
@@ -157,6 +209,11 @@ export function enrichUserRow(row, detail = null) {
     subscriptionTier: subscription.tier,
     subscriptionStatus: subscription.status,
     membershipTier: subscription.tier,
+    tradeLevel: skillClass,
+    tradeLevelSlug: normalizeTradeLevel(skillClass),
+    tradeLevelLabel: row.role === 'technician' ? tradeLevelLabel(skillClass) : '',
+    experienceYears: Number.isFinite(experienceYears) ? experienceYears : null,
+    experienceYearsLabel: row.role === 'technician' ? formatExperienceYears(experienceYears) : '',
     logins30d,
     lastLoginAt,
     lastLoginDisplay: lastLoginAt ? formatRelativeTime(lastLoginAt) : 'No activity yet',
@@ -366,6 +423,14 @@ export function applyAdvancedFilters(rows, filters = {}) {
     const q = filters.trade.trim().toLowerCase();
     result = result.filter((u) => (u.label || '').toLowerCase().includes(q));
   }
+  if (filters.tradeLevel) {
+    const want = normalizeTradeLevel(filters.tradeLevel);
+    result = result.filter((u) => u.role === 'technician' && normalizeTradeLevel(u.tradeLevel || u.skill_class) === want);
+  }
+  if (filters.minExperienceYears) {
+    const min = Number(filters.minExperienceYears);
+    result = result.filter((u) => u.role === 'technician' && Number(u.experienceYears) >= min);
+  }
   if (filters.loginActivity === 'active_30d') {
     result = result.filter((u) => u.logins30d > 0);
   }
@@ -412,6 +477,8 @@ export function applyClientSearch(rows, searchQ) {
       u.phone,
       u.company_name,
       u.label,
+      u.tradeLevelLabel,
+      u.experienceYearsLabel,
       u.zip_code,
       u.locationLabel,
       u.role,
@@ -466,6 +533,8 @@ export function getFilterChips(filters) {
   if (filters.company) add('company', filters.company);
   if (filters.location) add('location', filters.location);
   if (filters.trade) add('trade', filters.trade);
+  if (filters.tradeLevel) add('tradeLevel', tradeLevelLabel(filters.tradeLevel) || filters.tradeLevel);
+  if (filters.minExperienceYears) add('minExperienceYears', `${filters.minExperienceYears}+ years`);
   if (filters.loginActivity === 'active_30d') add('loginActivity', 'Logged in last 30 days');
   if (filters.loginActivity === 'inactive_30d') add('loginActivity', 'Inactive 30 days');
   if (filters.joinedPreset === 'week') add('joinedPreset', 'New this week');

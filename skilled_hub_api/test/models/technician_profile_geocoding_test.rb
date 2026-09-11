@@ -142,6 +142,43 @@ class TechnicianProfileGeocodingTest < ActiveSupport::TestCase
     end
   end
 
+  test "us zip without country defaults country and is map ready" do
+    GeocodingService.stub(:geocode, ->(**kwargs) {
+      assert_equal "United States", kwargs[:country]
+      [29.7604, -95.3698]
+    }) do
+      profile = TechnicianProfile.new(
+        user: @user,
+        phone: "7135550100",
+        zip_code: "77002"
+      )
+      profile.save!
+      assert_equal "United States", profile.country
+      assert_in_delta 29.7604, profile.latitude, 0.0001
+      assert profile.map_ready?
+    end
+  end
+
+  test "ensure_map_placement repairs zip only profile without street" do
+    profile = TechnicianProfile.new(user: @user, phone: "7135550100", zip_code: "77002")
+    GeocodingService.stub(:geocode, nil) { profile.save! }
+    profile.update_columns(latitude: nil, longitude: nil, geocode_status: "failed", geocoded_at: 1.hour.ago)
+
+    GeocodingService.stub(:geocode, ->(**kwargs) {
+      assert_equal "77002", kwargs[:zip_code]
+      [29.7604, -95.3698]
+    }) do
+      profile.ensure_map_placement!
+    end
+
+    profile.reload
+    assert_in_delta 29.7604, profile.latitude, 0.0001
+    assert_in_delta(-95.3698, profile.longitude, 0.0001)
+    assert_equal "success", profile.geocode_status
+    assert profile.map_ready?
+    assert_equal "United States", profile.country
+  end
+
   test "zero zero coordinates are never persisted" do
     profile = TechnicianProfile.new(
       user: @user,

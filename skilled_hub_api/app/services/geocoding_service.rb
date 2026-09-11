@@ -54,9 +54,18 @@ class GeocodingService
 
   GEOCODE_CACHE_TTL = 12.hours
   MAX_GEOCODE_ATTEMPTS = 2
+  US_ZIP5_REGEX = /\b(\d{5})\b/
 
-  # Geocode an address and return [latitude, longitude] or nil
+  # Geocode an address and return [latitude, longitude] or nil.
+  # ZIP alone is enough: we pin the geometric center of the postal code.
   def self.geocode(address:, city:, state: nil, zip_code: nil, country: nil)
+    zip = normalized_us_zip(zip_code)
+    street_parts = [address, city].compact.reject(&:blank?)
+
+    if street_parts.empty? && zip.present?
+      return geocode_zip_centroid(zip, country: country)
+    end
+
     parts = [address, city, state, zip_code, country].compact.reject(&:blank?)
     return nil if parts.empty?
 
@@ -74,12 +83,41 @@ class GeocodingService
       end
     coords ||= nominatim_geocode(address: address, city: city, state: state, zip_code: zip_code, country: country)
     pair = validated_pair(coords&.[](0), coords&.[](1), country: country)
+    if pair&.valid?
+      Rails.cache.write(cache_key, [pair.latitude, pair.longitude], expires_in: GEOCODE_CACHE_TTL)
+      return [pair.latitude, pair.longitude]
+    end
+
+    geocode_zip_centroid(zip, country: country)
+  rescue StandardError => e
+    Rails.logger.warn("Geocoding failed: #{e.message}")
+    nil
+  end
+
+  def self.normalized_us_zip(value)
+    value.to_s[US_ZIP5_REGEX, 1]
+  end
+
+  def self.geocode_zip_centroid(zip, country: nil)
+    zip5 = normalized_us_zip(zip)
+    return nil if zip5.blank?
+
+    cache_key = "geocode:v4:zip:#{zip5}"
+    cached = Rails.cache.read(cache_key)
+    cached_pair = validated_pair(cached&.[](0), cached&.[](1), country: country) if cached.is_a?(Array) && cached.size == 2
+    return [cached_pair.latitude, cached_pair.longitude] if cached_pair&.valid?
+
+    Rails.cache.delete(cache_key) if cached.present?
+
+    coords = google_zip_geocode(zip5, country: country) if google_maps_api_key.present?
+    coords ||= nominatim_zip_geocode(zip5)
+    pair = validated_pair(coords&.[](0), coords&.[](1), country: country)
     return nil unless pair&.valid?
 
     Rails.cache.write(cache_key, [pair.latitude, pair.longitude], expires_in: GEOCODE_CACHE_TTL)
     [pair.latitude, pair.longitude]
   rescue StandardError => e
-    Rails.logger.warn("Geocoding failed: #{e.message}")
+    Rails.logger.warn("ZIP centroid geocoding failed: #{e.message}")
     nil
   end
 
@@ -187,12 +225,14 @@ class GeocodingService
 
   def self.google_address_autocomplete(input)
     uri = URI(GOOGLE_AUTOCOMPLETE_URL)
-    uri.query = URI.encode_www_form(
+    params = {
       input: input,
       key: google_maps_api_key,
-      types: "address",
       components: "country:us"
-    )
+    }
+    zip_query = input.to_s.strip
+    params[:types] = zip_query.match?(/\A\d{5}(?:-\d{4})?\z/) ? "postal_code" : "address"
+    uri.query = URI.encode_www_form(params)
 
     http = Net::HTTP.new(uri.host, uri.port)
     http.use_ssl = true
@@ -278,10 +318,13 @@ class GeocodingService
     zip = find.call("postal_code")&.fetch("long_name", nil)
     country = find.call("country")&.fetch("long_name", nil)
 
-    return nil if line1.blank? && city.blank?
+    return nil if line1.blank? && city.blank? && zip.blank?
+
+    address_line = line1.presence
+    address_line ||= formatted_address.to_s.split(",").first.to_s.strip if city.present?
 
     {
-      "address" => line1.presence || formatted_address.to_s.split(",").first.to_s.strip,
+      "address" => address_line.to_s,
       "city" => city.to_s,
       "state" => state.to_s,
       "zip_code" => zip.to_s,
@@ -387,6 +430,70 @@ class GeocodingService
     return c.upcase if c.match?(/\A[A-Za-z]{2}\z/)
 
     COUNTRY_NAME_TO_CODE[c.downcase] || c
+  end
+
+  def self.google_zip_geocode(zip, country: nil)
+    zip5 = normalized_us_zip(zip)
+    return nil if zip5.blank?
+
+    iso = iso_country_code(country).presence || "US"
+    uri = URI("https://maps.googleapis.com/maps/api/geocode/json")
+    uri.query = URI.encode_www_form(
+      components: "postal_code:#{zip5}|country:#{iso}",
+      key: google_maps_api_key
+    )
+
+    with_retry(MAX_GEOCODE_ATTEMPTS) do
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = true
+      http.open_timeout = 5
+      http.read_timeout = 5
+      res = http.request(Net::HTTP::Get.new(uri))
+      return nil unless res.is_a?(Net::HTTPSuccess)
+
+      body = JSON.parse(res.body)
+      return nil unless body["status"] == "OK"
+
+      candidate = body["results"]&.first
+      loc = candidate.is_a?(Hash) ? candidate.dig("geometry", "location") : nil
+      pair = validated_pair(loc && loc["lat"], loc && loc["lng"], country: country)
+      pair&.valid? ? [pair.latitude, pair.longitude] : nil
+    end
+  end
+
+  def self.nominatim_zip_geocode(zip)
+    zip5 = normalized_us_zip(zip)
+    return nil if zip5.blank?
+
+    uri = URI(NOMINATIM_URL)
+    uri.query = URI.encode_www_form(
+      postalcode: zip5,
+      country: "United States",
+      countrycodes: "us",
+      format: "json",
+      limit: 5,
+      addressdetails: 1
+    )
+
+    with_retry(MAX_GEOCODE_ATTEMPTS) do
+      http = Net::HTTP.new(uri.host, uri.port)
+      http.use_ssl = true
+      http.open_timeout = 5
+      http.read_timeout = 5
+      req = Net::HTTP::Get.new(uri)
+      req["User-Agent"] = USER_AGENT
+      res = http.request(req)
+      return nil unless res.is_a?(Net::HTTPSuccess)
+
+      rows = JSON.parse(res.body)
+      return nil unless rows.is_a?(Array)
+
+      candidate = rows.find { |row| geocode_candidate_matches?(row, state: nil, zip_code: zip5) } || rows.first
+      return nil unless candidate.is_a?(Hash)
+
+      pair = validated_pair(candidate["lat"], candidate["lon"] || candidate["lng"], country: "United States")
+      pair&.valid? ? [pair.latitude, pair.longitude] : nil
+    end
   end
 
   def self.google_geocode(address:, city:, state:, zip_code:, country:)

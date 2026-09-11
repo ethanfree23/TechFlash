@@ -182,7 +182,7 @@ const JobAddressFields = ({
             <>
               <label className="block font-medium mb-1 text-sm">Search address</label>
               <p className="text-xs text-gray-500">
-                Enter a street address, city, or ZIP, then choose a match below.
+                Enter a ZIP or street, then choose a match below. ZIP alone is enough for the map.
                 {provider === 'google'
                   ? ' Suggestions use Google Places.'
                   : ' Suggestions use OpenStreetMap (enable GOOGLE_MAPS_API_KEY on the server for Google Maps results).'}

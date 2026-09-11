@@ -9,6 +9,8 @@ const EXPORT_COLUMNS = [
   { key: 'accountStatus', header: 'Status' },
   { key: 'verificationStatus', header: 'Verification' },
   { key: 'companyTradeLabel', header: 'Company / Trade' },
+  { key: 'tradeLevelLabel', header: 'Trade level' },
+  { key: 'experienceYears', header: 'Years' },
   { key: 'subscriptionTier', header: 'Subscription' },
   { key: 'logins30d', header: 'Logins (30d)' },
   { key: 'riskLevel', header: 'Risk' },

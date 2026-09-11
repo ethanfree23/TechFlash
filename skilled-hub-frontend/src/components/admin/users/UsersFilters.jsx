@@ -13,6 +13,8 @@ const FILTER_FIELDS = [
   { key: 'company', label: 'Company', type: 'text' },
   { key: 'location', label: 'Location', type: 'text' },
   { key: 'trade', label: 'Trade / specialty', type: 'text' },
+  { key: 'tradeLevel', label: 'Trade level', type: 'select', options: ['', 'helper', 'apprentice', 'journeyman', 'master'] },
+  { key: 'minExperienceYears', label: 'Years (min)', type: 'select', options: ['', '1', '2', '3', '5', '8', '10', '15'] },
   { key: 'subscriptionTier', label: 'Subscription', type: 'select', options: ['', 'trial', 'past_due'], disabledNote: 'Best-effort — detail data may be required' },
   { key: 'hasAcceptedJob', label: 'Has accepted job', type: 'select', options: ['', 'yes', 'no'], disabledNote: 'Approximate until index exposes job counts' },
 ];
@@ -31,6 +33,17 @@ function optionLabel(opt) {
     no: 'No',
     trial: 'Trial',
     past_due: 'Past due',
+    helper: 'Helper',
+    apprentice: 'Apprentice',
+    journeyman: 'Journeyman',
+    master: 'Master',
+    1: '1+ years',
+    2: '2+ years',
+    3: '3+ years',
+    5: '5+ years',
+    8: '8+ years',
+    10: '10+ years',
+    15: '15+ years',
   };
   return map[opt] ?? opt;
 }

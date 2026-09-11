@@ -115,10 +115,7 @@ class AdminTechnicianProfileUpdater
 
   def apply_job_alert_prefs!
     pref_attrs = {}
-    if params.key?(:job_alert_trade_label)
-      pref_attrs[:trade_label] = params[:job_alert_trade_label].to_s.strip.presence
-    end
-        if params.key?(:min_hourly_rate_cents)
+    if params.key?(:min_hourly_rate_cents)
       raw = params[:min_hourly_rate_cents]
       pref_attrs[:min_hourly_rate_cents] = raw.present? ? Integer(raw) : 0
     end
