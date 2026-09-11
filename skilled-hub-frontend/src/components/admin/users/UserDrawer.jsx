@@ -264,8 +264,8 @@ export default function UserDrawer({
                       {row.created_at && (
                         <> · Joined {new Date(row.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</>
                       )}
-                      {detail?.logins?.last_login_at && (
-                        <> · Last login {formatRelativeTime(detail.logins.last_login_at)}</>
+                      {(detail?.logins?.last_login_at || row.lastLoginAt) && (
+                        <> · Last login {formatRelativeTime(detail?.logins?.last_login_at || row.lastLoginAt)}</>
                       )}
                     </p>
                   </div>
