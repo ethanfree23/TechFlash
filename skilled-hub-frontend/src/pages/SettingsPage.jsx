@@ -453,18 +453,29 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
 
     if (isTechnician) {
-      requiredItems.push('Trade type', 'Class', 'Bio', 'ZIP for maps');
+      requiredItems.push(
+        'Trade type',
+        'Class',
+        'Bio',
+        'ZIP for maps',
+        'Identity verification',
+        'Background check',
+        'References'
+      );
       const primaryTrade = (form.trade_lines && form.trade_lines[0]) || {};
       if (!(primaryTrade.trade_type || '').trim()) missing.push('Trade type');
       if (!isTechnicianClass(primaryTrade.skill_class)) missing.push('Class');
       if (!(form.bio || '').trim()) missing.push('Bio');
       if (needsMapSetup) missing.push('ZIP for maps');
+      if (!verificationChecklistStatus.identityComplete) missing.push('Identity verification');
+      if (!verificationChecklistStatus.backgroundComplete) missing.push('Background check');
+      if (!verificationChecklistStatus.referencesComplete) missing.push('References');
     }
 
     const total = requiredItems.length;
     const pct = Math.round(((total - missing.length) / total) * 100);
     return { pct: Math.min(100, Math.max(0, pct)), missing };
-  }, [profile, isAdmin, isCompany, isTechnician, form, needsMapSetup]);
+  }, [profile, isAdmin, isCompany, isTechnician, form, needsMapSetup, verificationChecklistStatus]);
 
   const verificationCompletion = useMemo(() => {
     if (!isTechnician) return { allComplete: true };
@@ -2083,23 +2094,43 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     );
   };
 
-  const renderProfileCompletionCard = () => (
-    <SettingsCard title="Profile completion" description="Based on fields on this page only.">
-      <div className="flex items-end gap-3">
-        <p className="text-3xl font-bold text-gray-900">{profileCompletion.pct}%</p>
-        <p className="text-sm text-gray-600 pb-1">complete</p>
-      </div>
-      {profileCompletion.missing.length > 0 ? (
-        <ul className="mt-3 list-disc pl-5 text-sm text-gray-700 space-y-1">
-          {profileCompletion.missing.map((m) => (
-            <li key={m}>{m}</li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-2 text-sm text-emerald-800">Great — no obvious gaps from this checklist.</p>
-      )}
-    </SettingsCard>
-  );
+  const renderProfileCompletionCard = () => {
+    const verificationGaps = new Set(['Identity verification', 'Background check', 'References']);
+    return (
+      <SettingsCard
+        title="Profile completion"
+        description={isTechnician
+          ? 'Includes profile details plus identity, background check, and references.'
+          : 'Based on fields on this page only.'}
+      >
+        <div className="flex items-end gap-3">
+          <p className="text-3xl font-bold text-gray-900">{profileCompletion.pct}%</p>
+          <p className="text-sm text-gray-600 pb-1">complete</p>
+        </div>
+        {profileCompletion.missing.length > 0 ? (
+          <ul className="mt-3 list-disc pl-5 text-sm text-gray-700 space-y-1">
+            {profileCompletion.missing.map((m) => (
+              <li key={m}>
+                {verificationGaps.has(m) ? (
+                  <button
+                    type="button"
+                    onClick={() => setSettingsTab('verification')}
+                    className="text-blue-700 hover:underline"
+                  >
+                    {m}
+                  </button>
+                ) : (
+                  m
+                )}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-2 text-sm text-emerald-800">Great — no obvious gaps from this checklist.</p>
+        )}
+      </SettingsCard>
+    );
+  };
 
   const renderVerificationNudge = () => {
     if (!isTechnician || verificationCompletion.allComplete) return null;

@@ -201,6 +201,57 @@ export default function JobsDashboard() {
 
   const pageNumbers = getPageNumbers(currentPage, totalPages);
 
+  const completedJobsSection = config.showCompletedSection ? (
+    <div className="mb-10 pb-10 border-b border-slate-200">
+      <div className="mb-4">
+        <h2 className="text-xl font-bold text-slate-900">My Completed Jobs</h2>
+        <p className="text-sm text-slate-500 mt-0.5">Leave a review for companies you&apos;ve worked with.</p>
+      </div>
+      {loadingCompleted ? (
+        <JobLoadingSkeleton viewMode="card" />
+      ) : completedJobs.length === 0 ? (
+        <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-600">
+          No completed jobs yet. Complete a job and the company will mark it as finished.
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 items-stretch">
+          {completedJobs.map((job) => (
+            <article
+              key={job.id}
+              className="flex h-full min-h-[14rem] flex-col rounded-2xl border border-l-[3px] border-l-emerald-400 border-slate-200 bg-white p-4 shadow-sm"
+            >
+              <div className="flex justify-between items-start gap-2 mb-2">
+                <h3 className="font-semibold text-slate-900">{job.title}</h3>
+                <JobStatusBadge job={job} />
+              </div>
+              <p className="text-sm text-slate-600 line-clamp-2 mb-3">{job.description || '—'}</p>
+              <div className="text-xs text-slate-500 mb-4">
+                <Link to={`/companies/${job.company_profile_id}`} className="text-blue-600 hover:underline">
+                  {job.company_profile?.company_name || 'Company'}
+                </Link>
+                {job.location && ` · ${job.location}`}
+              </div>
+              <div className="mt-auto flex flex-col gap-2">
+                <Link
+                  to={`/companies/${job.company_profile_id}`}
+                  className="text-center rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
+                >
+                  View Company Profile
+                </Link>
+                <Link
+                  to={`/jobs/${job.id}`}
+                  className="text-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
+                >
+                  {reviewedJobIds.has(job.id) ? 'View Past Job' : 'View & Leave Review'}
+                </Link>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
+  ) : null;
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
       <JobsCommandHeader
@@ -215,6 +266,8 @@ export default function JobsDashboard() {
         saveSearchBusy={saveSearchBusy}
         savedSearchCount={savedSearches.length}
       />
+
+      {completedJobsSection}
 
       <JobsFilterBar
         config={config}
@@ -241,7 +294,14 @@ export default function JobsDashboard() {
           {config.viewModes.length > 1 ? (
             <JobsViewToggle viewMode={viewMode} onChange={handleViewModeChange} allowedModes={config.viewModes} />
           ) : (
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Job listings</p>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Job listings</p>
+              {role === 'technician' && (
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Browse open roles and recently claimed jobs nearby.
+                </p>
+              )}
+            </div>
           )}
           {!jobsLoading && (
             <p className="text-xs text-slate-500 tabular-nums">
@@ -346,57 +406,6 @@ export default function JobsDashboard() {
             Showing {indexOfFirstJob}–{Math.min(indexOfLastJob, resultCount)} of {resultCount}
           </p>
         </>
-      )}
-
-      {config.showCompletedSection && serverFilters.status !== 'completed' && (
-        <div className="mt-12 pt-8 border-t border-slate-200">
-          <div className="mb-4">
-            <h2 className="text-xl font-bold text-slate-900">My Completed Jobs</h2>
-            <p className="text-sm text-slate-500 mt-0.5">Leave a review for companies you&apos;ve worked with.</p>
-          </div>
-          {loadingCompleted ? (
-            <JobLoadingSkeleton viewMode="card" />
-          ) : completedJobs.length === 0 ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-6 text-sm text-slate-600">
-              No completed jobs yet. Complete a job and the company will mark it as finished.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 items-stretch">
-              {completedJobs.map((job) => (
-                <article
-                  key={job.id}
-                  className="flex h-full min-h-[14rem] flex-col rounded-2xl border border-l-[3px] border-l-emerald-400 border-slate-200 bg-white p-4 shadow-sm"
-                >
-                  <div className="flex justify-between items-start gap-2 mb-2">
-                    <h3 className="font-semibold text-slate-900">{job.title}</h3>
-                    <JobStatusBadge job={job} />
-                  </div>
-                  <p className="text-sm text-slate-600 line-clamp-2 mb-3">{job.description || '—'}</p>
-                  <div className="text-xs text-slate-500 mb-4">
-                    <Link to={`/companies/${job.company_profile_id}`} className="text-blue-600 hover:underline">
-                      {job.company_profile?.company_name || 'Company'}
-                    </Link>
-                    {job.location && ` · ${job.location}`}
-                  </div>
-                  <div className="mt-auto flex flex-col gap-2">
-                    <Link
-                      to={`/companies/${job.company_profile_id}`}
-                      className="text-center rounded-lg border border-slate-200 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-50"
-                    >
-                      View Company Profile
-                    </Link>
-                    <Link
-                      to={`/jobs/${job.id}`}
-                      className="text-center rounded-lg bg-blue-600 px-3 py-2 text-sm font-semibold text-white hover:bg-blue-700"
-                    >
-                      {reviewedJobIds.has(job.id) ? 'View Past Job' : 'View & Leave Review'}
-                    </Link>
-                  </div>
-                </article>
-              ))}
-            </div>
-          )}
-        </div>
       )}
 
       <AlertModal
