@@ -28,9 +28,21 @@ class AiSmsSession < ApplicationRecord
 
   def conversation_url
     location = ghl_location_id
-    return nil if ghl_conversation_id.blank? || location.blank?
+    return nil if location.blank?
 
-    "https://app.gohighlevel.com/v2/location/#{CGI.escape(location)}/conversations/detail/#{CGI.escape(ghl_conversation_id)}"
+    if ghl_conversation_id.present?
+      return "https://app.gohighlevel.com/v2/location/#{escape_ghl_id(location)}/conversations/#{escape_ghl_id(ghl_conversation_id)}"
+    end
+
+    contact_url
+  end
+
+  def contact_url
+    location = ghl_location_id
+    contact = ghl_contact_id.presence
+    return nil if location.blank? || contact.blank?
+
+    "https://app.gohighlevel.com/v2/location/#{escape_ghl_id(location)}/contacts/detail/#{escape_ghl_id(contact)}"
   end
 
   def ghl_location_id
@@ -67,7 +79,14 @@ class AiSmsSession < ApplicationRecord
       failure_reason: failure_reason,
       ghl_contact_id: ghl_contact_id,
       ghl_conversation_id: ghl_conversation_id,
-      conversation_url: conversation_url
+      conversation_url: conversation_url,
+      contact_url: contact_url
     }.compact
+  end
+
+  private
+
+  def escape_ghl_id(value)
+    CGI.escape(value.to_s)
   end
 end
