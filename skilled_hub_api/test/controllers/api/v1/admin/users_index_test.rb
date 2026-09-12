@@ -375,6 +375,48 @@ module Api
           refute_includes company_ids, tech.id
         end
 
+        test "index includes avatar_url when a profile photo is attached" do
+          admin = create_admin_user!("admin-index-avatar@example.com")
+          technician = create_technician!(
+            email: "tech-with-avatar@example.com",
+            first_name: "Askari",
+            last_name: "Taylor",
+            phone: "713-555-0701",
+            trade_type: "HVAC Technician"
+          )
+          attach_mini_png_avatar!(technician.technician_profile)
+
+          company = create_company_user!(
+            email: "company-with-avatar@example.com",
+            first_name: "Matt",
+            last_name: "Walker",
+            phone: "713-555-0702",
+            company_name: "Triplet Diesel"
+          )
+          attach_mini_png_avatar!(company.company_profile)
+
+          no_photo = create_technician!(
+            email: "tech-without-avatar@example.com",
+            first_name: "No",
+            last_name: "Photo",
+            phone: "713-555-0703",
+            trade_type: "Electrician"
+          )
+
+          get "/api/v1/admin/users", headers: auth_header_for(admin)
+          assert_response :ok
+          rows = JSON.parse(response.body).fetch("users").index_by { |r| r.fetch("id") }
+
+          tech_row = rows.fetch(technician.id)
+          assert_match(%r{/rails/active_storage/}, tech_row.fetch("avatar_url").to_s)
+          assert tech_row.fetch("avatar_updated_at").present?
+
+          company_row = rows.fetch(company.id)
+          assert_match(%r{/rails/active_storage/}, company_row.fetch("avatar_url").to_s)
+
+          assert_nil rows.fetch(no_photo.id)["avatar_url"]
+        end
+
         private
 
         def create_admin_user!(email)
@@ -424,6 +466,17 @@ module Api
             bio: "Search fixture"
           )
           user
+        end
+
+        def attach_mini_png_avatar!(profile)
+          png = Base64.decode64(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII="
+          ).b
+          profile.avatar.attach(
+            io: StringIO.new(png),
+            filename: "avatar.png",
+            content_type: "image/png"
+          )
         end
 
         def ids_for(query, role: nil, admin: nil)

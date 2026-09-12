@@ -147,7 +147,9 @@ class AdminUserDetail
         effective_membership_fee_cents: MembershipPolicy.company_monthly_fee_cents(cp),
         effective_commission_percent: MembershipPolicy.company_commission_percent(cp),
         membership_status: cp.membership_status,
-        membership_current_period_end_at: cp.membership_current_period_end_at&.iso8601
+        membership_current_period_end_at: cp.membership_current_period_end_at&.iso8601,
+        avatar_url: absolute_blob_url(cp.avatar),
+        updated_at: cp.updated_at&.iso8601
       }
     end
   end

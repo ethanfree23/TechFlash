@@ -231,14 +231,14 @@ export default function UserDrawer({
               <div className="pb-3 border-b border-slate-100">
                 <div className="flex items-start gap-3">
                   {(() => {
-                    const avatarUrl = detail?.user?.profile?.avatar_url;
+                    const avatarUrl = row.avatarUrl || detail?.user?.profile?.avatar_url;
                     const resolved = avatarUrl
-                      ? mediaUrlWithCacheBust(avatarUrl, detail?.user?.profile?.updated_at)
+                      ? mediaUrlWithCacheBust(avatarUrl, row.avatarUpdatedAt || detail?.user?.profile?.updated_at)
                       : null;
                     return resolved ? (
                       <img
                         src={resolved}
-                        alt={row.displayName}
+                        alt=""
                         className="h-11 w-11 shrink-0 rounded-full object-cover border border-slate-200"
                       />
                     ) : (

@@ -9,6 +9,7 @@ import UserRowActionsMenu from './UserRowActionsMenu';
 import UsersEmptyState from './UsersEmptyState';
 import { TableRowsSkeleton } from './UsersSkeleton';
 import { displayOrFallback, TRADE_LEVEL_RANK } from '../../../utils/adminUsersDisplayAdapter';
+import { mediaUrlWithCacheBust } from '../../../utils/mediaUrl';
 import {
   ADMIN_USERS_PAGE_SIZES,
   paginateItems,
@@ -140,12 +141,36 @@ function SortIndicator({ colKey, sortKey, sortDir }) {
   );
 }
 
+function UserAvatar({ row }) {
+  const [broken, setBroken] = useState(false);
+  const avatarUrl = row.avatarUrl;
+
+  useEffect(() => {
+    setBroken(false);
+  }, [avatarUrl]);
+
+  const src = avatarUrl && !broken ? mediaUrlWithCacheBust(avatarUrl, row.avatarUpdatedAt) : null;
+
+  return (
+    <div className="h-7 w-7 shrink-0 rounded-full bg-gradient-to-br from-slate-100 to-slate-50 border border-slate-200/80 overflow-hidden flex items-center justify-center text-[10px] font-bold text-slate-600">
+      {src ? (
+        <img
+          src={src}
+          alt=""
+          className="h-full w-full object-cover"
+          onError={() => setBroken(true)}
+        />
+      ) : (
+        row.initials
+      )}
+    </div>
+  );
+}
+
 function UserCell({ row }) {
   return (
     <div className="flex items-center gap-2 min-w-0">
-      <div className="h-7 w-7 shrink-0 rounded-full bg-gradient-to-br from-slate-100 to-slate-50 border border-slate-200/80 flex items-center justify-center text-[10px] font-bold text-slate-600">
-        {row.initials}
-      </div>
+      <UserAvatar row={row} />
       <div className="min-w-0 flex-1">
         <div className="text-xs font-medium text-slate-900 truncate leading-tight">{row.displayName}</div>
         <div className="text-[11px] text-slate-500 truncate leading-tight mt-0.5">{row.email}</div>

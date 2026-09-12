@@ -243,6 +243,8 @@ export function enrichUserRow(row, detail = null) {
     ...row,
     displayName: getFullName(row),
     initials: getInitials(row),
+    avatarUrl: firstPresent(row.avatar_url, profile?.avatar_url),
+    avatarUpdatedAt: firstPresent(row.avatar_updated_at, profile?.updated_at),
     accountStatus,
     verificationStatus,
     riskLevel: flagState.riskLevel,

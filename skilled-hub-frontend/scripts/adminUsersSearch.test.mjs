@@ -267,5 +267,37 @@ testCompanyColumnLabelFollowsTab();
 testLocationUsesZipCityAndCompanyLocation();
 testLastLoginComesFromListPayload();
 testFlagsStayDormantUntilWorkflowExists();
+function testAvatarUrlFromListAndDetail() {
+  const fromList = enrichUserRow({
+    id: 10,
+    email: 'photo@example.com',
+    first_name: 'Askari',
+    last_name: 'Taylor',
+    role: 'technician',
+    avatar_url: '/rails/active_storage/blobs/photo.png',
+    avatar_updated_at: '2026-09-12T10:00:00Z',
+  });
+  assert.strictEqual(fromList.avatarUrl, '/rails/active_storage/blobs/photo.png');
+  assert.strictEqual(fromList.avatarUpdatedAt, '2026-09-12T10:00:00Z');
+  assert.strictEqual(fromList.initials, 'AT');
+
+  const fromDetail = enrichUserRow(
+    { id: 11, email: 'ops@example.com', first_name: 'Fix', last_name: 'It', role: 'company' },
+    { user: { profile: { avatar_url: '/rails/active_storage/blobs/logo.png', updated_at: '2026-09-01T00:00:00Z' } } }
+  );
+  assert.strictEqual(fromDetail.avatarUrl, '/rails/active_storage/blobs/logo.png');
+  assert.strictEqual(fromDetail.avatarUpdatedAt, '2026-09-01T00:00:00Z');
+
+  const none = enrichUserRow({
+    id: 12,
+    email: 'nophoto@example.com',
+    first_name: 'No',
+    last_name: 'Photo',
+    role: 'technician',
+  });
+  assert.strictEqual(none.avatarUrl, '');
+}
+
 testKpisStayOnFullCensusWhenTabFilters();
+testAvatarUrlFromListAndDetail();
 console.log('adminUsersSearch tests passed');

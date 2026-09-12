@@ -4,13 +4,19 @@ module Api
   module V1
     module Admin
       class UsersController < ApplicationController
+        include ActiveStorageUrlHelper
+
         before_action :authenticate_user
         before_action :require_admin
 
         # GET /api/v1/admin/users?q=&role=
         # role: all | technician | company (default all)
         def index
-          scope = User.where(role: %i[technician company]).includes(:technician_profile, :company_profile, :shared_company_profile).order(:email)
+          scope = User.where(role: %i[technician company]).includes(
+            technician_profile: { avatar_attachment: :blob },
+            company_profile: { avatar_attachment: :blob },
+            shared_company_profile: { avatar_attachment: :blob }
+          ).order(:email)
           scope = filter_by_role(scope)
           scope = filter_by_search(scope)
 
@@ -121,7 +127,7 @@ module Api
                     id company_name industry location bio phone website_url facebook_url instagram_url linkedin_url
                     service_cities service_trades state electrical_license_number user_id created_at updated_at
                   ]
-                ).merge("avatar_url" => company_avatar_url(profile))
+                ).merge("avatar_url" => profile_avatar_url(profile))
               }
             else
               {
@@ -437,8 +443,9 @@ module Api
           "#{base}/reset-password?token=#{CGI.escape(token)}"
         end
 
-        def company_avatar_url(profile)
-          extend ActiveStorageUrlHelper
+        def profile_avatar_url(profile)
+          return nil unless profile&.respond_to?(:avatar)
+
           absolute_blob_url(profile.avatar)
         end
 
@@ -536,7 +543,9 @@ module Api
             membership_level: membership_profile&.membership_level,
             membership_status: membership_profile&.membership_status,
             skill_class: tech_profile&.skill_class,
-            experience_years: tech_profile&.experience_years
+            experience_years: tech_profile&.experience_years,
+            avatar_url: profile_avatar_url(user.technician? ? tech_profile : company_profile),
+            avatar_updated_at: (user.technician? ? tech_profile : company_profile)&.updated_at&.iso8601
           }
         end
 
