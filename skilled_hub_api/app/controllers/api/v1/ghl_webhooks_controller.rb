@@ -12,6 +12,15 @@ module Api
         render json: result.body, status: result.http_status
       end
 
+      def inbound_sms
+        unless GhlWebhookAuthenticator.authorized?(request)
+          return head :unauthorized
+        end
+
+        result = Ai::InboundSmsProcessor.call(inbound_sms_payload)
+        render json: result.body, status: result.http_status
+      end
+
       private
 
       def webhook_payload
@@ -68,6 +77,12 @@ module Api
         ).to_h
         permitted["attachments"] = params[:attachments] if params.key?(:attachments)
         permitted
+      end
+
+      def inbound_sms_payload
+        raw = request.request_parameters
+        hash = raw.is_a?(Hash) && raw.present? ? raw : params.to_unsafe_h
+        hash.deep_stringify_keys.except("controller", "action", "format")
       end
     end
   end

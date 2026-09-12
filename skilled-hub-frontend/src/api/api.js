@@ -404,6 +404,19 @@ export const adminUsersAPI = {
       method: 'POST',
       body: JSON.stringify({ message, context }),
     }),
+  getAiSmsSession: (id) => apiRequest(`/admin/users/${id}/ai_sms_session`),
+  startAiSms: (id) =>
+    apiRequest(`/admin/users/${id}/ai_sms_session`, {
+      method: 'POST',
+    }),
+  pauseAiSms: (id) =>
+    apiRequest(`/admin/users/${id}/ai_sms_session/pause`, {
+      method: 'POST',
+    }),
+  endAiSms: (id) =>
+    apiRequest(`/admin/users/${id}/ai_sms_session/end_session`, {
+      method: 'POST',
+    }),
 };
 
 /** Admin: global membership tier pricing (technician vs company audiences) */

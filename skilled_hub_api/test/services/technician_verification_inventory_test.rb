@@ -131,6 +131,35 @@ class TechnicianVerificationInventoryTest < ActiveSupport::TestCase
     assert_equal "passed", overridden[:background_check][:color_bucket]
   end
 
+  test "technician-actionable gaps exclude processing background checks" do
+    @profile.update!(has_trade_credential: false)
+    create_references!(3)
+    create_check!(normalized_status: "report_pending", status: :processing)
+    snap = TechnicianVerificationInventory.call(@user.reload)
+    assert_equal true, snap[:collection_complete]
+    assert_equal false, snap[:technician_actionable]
+    assert_equal [], snap[:actionable_missing]
+    assert_equal "wait", snap[:background_check][:technician_action]
+  end
+
+  test "invitation sent remains technician-actionable" do
+    create_check!(normalized_status: "invitation_sent", invitation_url: "https://apply.checkr.com/invite/test")
+    snap = TechnicianVerificationInventory.call(@user.reload)
+    assert_equal true, snap[:background_check][:technician_actionable]
+    assert_equal "complete_invitation", snap[:background_check][:technician_action]
+    assert_equal "https://apply.checkr.com/invite/test", snap[:background_check][:details][:invitation_url]
+  end
+
+  test "consider needs human and is not technician-actionable" do
+    @profile.update!(has_trade_credential: false)
+    create_references!(3)
+    create_check!(normalized_status: "consider", status: :consider)
+    snap = TechnicianVerificationInventory.call(@user.reload)
+    assert_equal true, snap[:needs_human]
+    assert_equal false, snap[:technician_actionable]
+    assert_equal false, snap[:collection_complete]
+  end
+
   test "suggested sms comes from inventory gaps" do
     @profile.update!(has_trade_credential: true)
     sms = TechnicianVerificationInventory.call(@user.reload)[:suggested_sms]

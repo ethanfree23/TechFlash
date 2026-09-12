@@ -117,6 +117,7 @@ Rails.application.routes.draw do
       post 'checkr/webhook', to: 'checkr_webhooks#create'
       post 'webhooks/checkr', to: 'checkr_webhooks#create'
       post 'webhooks/ghl/technician_onboarding', to: 'ghl_webhooks#create'
+      post 'webhooks/ghl/inbound_sms', to: 'ghl_webhooks#inbound_sms'
       resource :verification, only: [:show], controller: :verifications do
         post :start_background_check
         post :create_background_check_checkout
@@ -171,6 +172,10 @@ Rails.application.routes.draw do
             patch :company_membership
             patch :membership_pricing
             patch :profile, action: :update_profile
+          end
+          resource :ai_sms_session, only: %i[show create], controller: "ai_sms_sessions" do
+            post :pause
+            post :end_session
           end
         end
         resources :crm_leads, only: %i[index show create update destroy] do

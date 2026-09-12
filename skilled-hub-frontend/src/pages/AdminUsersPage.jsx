@@ -527,7 +527,10 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
         user={smsTarget?.user}
         suggestedMessage={smsTarget?.message || ''}
         onClose={() => setSmsTarget(null)}
-        onSuccess={(msg) => setAlertModal({ isOpen: true, title: 'SMS sent', message: msg, variant: 'success' })}
+        onSuccess={(msg) => {
+          loadUsers();
+          setAlertModal({ isOpen: true, title: 'SMS sent', message: msg, variant: 'success' });
+        }}
         onError={(msg) => setAlertModal({ isOpen: true, title: 'SMS failed', message: msg, variant: 'error' })}
       />
 

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_09_12_120100) do
+ActiveRecord::Schema[7.1].define(version: 2026_09_12_180000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -37,6 +37,48 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_12_120100) do
     t.bigint "blob_id", null: false
     t.string "variation_digest", null: false
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
+  end
+
+  create_table "ai_sms_sessions", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.string "ghl_contact_id"
+    t.string "ghl_conversation_id"
+    t.string "purpose", default: "technician_verification", null: false
+    t.string "status", default: "active", null: false
+    t.datetime "started_at", null: false
+    t.datetime "last_inbound_at"
+    t.datetime "last_outbound_at"
+    t.datetime "completed_at"
+    t.datetime "paused_at"
+    t.text "failure_reason"
+    t.json "metadata", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["ghl_contact_id"], name: "index_ai_sms_sessions_on_ghl_contact_id"
+    t.index ["status"], name: "index_ai_sms_sessions_on_status"
+    t.index ["user_id", "purpose"], name: "idx_ai_sms_sessions_one_live_per_user_purpose", unique: true, where: "status IN ('active', 'waiting_for_reply')"
+    t.index ["user_id", "purpose"], name: "index_ai_sms_sessions_on_user_id_and_purpose"
+    t.index ["user_id"], name: "index_ai_sms_sessions_on_user_id"
+  end
+
+  create_table "ai_sms_turns", force: :cascade do |t|
+    t.integer "ai_sms_session_id", null: false
+    t.string "direction", null: false
+    t.string "ghl_message_id"
+    t.text "body"
+    t.json "attachments", default: [], null: false
+    t.json "inventory_before"
+    t.json "inventory_after"
+    t.json "actions_proposed", default: [], null: false
+    t.json "actions_accepted", default: [], null: false
+    t.json "actions_rejected", default: [], null: false
+    t.text "error"
+    t.json "metadata", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["ai_sms_session_id", "created_at"], name: "index_ai_sms_turns_on_ai_sms_session_id_and_created_at"
+    t.index ["ai_sms_session_id"], name: "index_ai_sms_turns_on_ai_sms_session_id"
+    t.index ["ghl_message_id"], name: "index_ai_sms_turns_on_ghl_message_id", unique: true, where: "ghl_message_id IS NOT NULL"
   end
 
   create_table "app_notifications", force: :cascade do |t|
@@ -1015,6 +1057,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_12_120100) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "ai_sms_sessions", "users"
+  add_foreign_key "ai_sms_turns", "ai_sms_sessions"
   add_foreign_key "app_notifications", "users"
   add_foreign_key "background_checks", "company_profiles"
   add_foreign_key "background_checks", "job_applications"

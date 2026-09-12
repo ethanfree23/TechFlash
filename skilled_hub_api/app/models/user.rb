@@ -59,6 +59,7 @@ class User < ApplicationRecord
   has_one :job_alert_preference, dependent: :destroy
   has_many :app_notifications, dependent: :destroy
   has_many :sms_delivery_logs, dependent: :destroy
+  has_many :ai_sms_sessions, dependent: :destroy
   has_many :ghl_webhook_events, dependent: :nullify
   has_many :password_setup_challenges, dependent: :delete_all
   has_many :sent_referrals, class_name: "ReferralSubmission", foreign_key: :referrer_user_id, dependent: :destroy, inverse_of: :referrer_user

@@ -69,11 +69,17 @@ class TechnicianVerificationInventory
     background = background_check_payload
     missing = compile_missing(trade, refs, background)
 
+    actionable = compile_actionable_missing(trade, refs, background)
+
     {
       trade_license: trade,
       professional_references: refs,
       background_check: background,
       missing: missing,
+      actionable_missing: actionable,
+      technician_actionable: actionable.any?,
+      collection_complete: actionable.empty? && background[:color_bucket] != "review",
+      needs_human: background[:color_bucket] == "review",
       pending: pending?(trade, refs, background),
       suggested_sms: suggested_sms(trade, refs, background)
     }
@@ -201,23 +207,29 @@ class TechnicianVerificationInventory
         label: "Incomplete",
         color_bucket: "incomplete",
         complete: false,
+        technician_actionable: true,
+        technician_action: "start",
         details: {}
       }
     end
 
     mapping = background_mapping(check)
+    action = background_technician_action(mapping)
     {
       state: mapping[:state],
       label: mapping[:label],
       color_bucket: mapping[:color_bucket],
       complete: mapping[:complete],
+      technician_actionable: %i[start complete_invitation].include?(action),
+      technician_action: action.to_s,
       details: {
         package_name: check.package_name.presence,
         started_at: check.started_at&.iso8601,
         completed_at: check.completed_at&.iso8601,
         admin_override_status: check.admin_override_status.presence,
         provider_status: check.provider_status.presence,
-        normalized_status: check.normalized_status_value
+        normalized_status: check.normalized_status_value,
+        invitation_url: action == :complete_invitation ? check.invitation_url.presence : nil
       }.compact
     }
   end
@@ -282,6 +294,39 @@ class TechnicianVerificationInventory
       items << { key: "background_check_review", label: "background-check review" }
     end
     items
+  end
+
+  def compile_actionable_missing(trade, refs, background)
+    items = []
+    if trade[:state] == "unknown"
+      items << { key: "trade_license_status", label: "whether they hold a trade credential" }
+    elsif trade[:state] == "no"
+      trade[:missing].each do |piece|
+        items << { key: "trade_license", label: piece }
+      end
+    end
+    if refs[:missing_count].positive?
+      noun = refs[:missing_count] == 1 ? "professional reference" : "professional references"
+      items << { key: "professional_references", label: "#{refs[:missing_count]} #{noun}", count: refs[:missing_count] }
+    end
+    if background[:technician_actionable]
+      items << { key: "background_check", label: "background-check completion" }
+    end
+    items
+  end
+
+  def background_technician_action(mapping)
+    return :none if mapping[:complete]
+    return :human_review if mapping[:color_bucket] == "review"
+
+    case mapping[:state]
+    when "invitation_sent", "report_suspended"
+      :complete_invitation
+    when "invitation_completed", "pending", "report_pending", "processing", "report_engaged", "report_resumed"
+      :wait
+    else
+      :start
+    end
   end
 
   def pending?(trade, refs, background)

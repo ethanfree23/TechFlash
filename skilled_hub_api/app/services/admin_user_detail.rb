@@ -71,6 +71,7 @@ class AdminUserDetail
       password_status: password_status_payload(user),
       profile: profile_payload(user),
       verification: TechnicianVerificationInventory.call(user),
+      ai_sms_session: AiSmsSession.current_for(user)&.as_admin_json,
       company_context: company_context_payload(user, company_profile)
     }
   end

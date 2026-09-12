@@ -452,6 +452,12 @@ export default function UserDrawer({
                   <button type="button" onClick={() => onSendSms?.(row, row.verification?.suggested_sms?.next_gap || '')} className="font-semibold text-slate-500 hover:text-slate-700 hover:underline">
                     Send SMS
                   </button>
+                  {row.ai_sms_session?.live && (
+                    <span className="font-semibold text-sky-700">AI SMS: Active</span>
+                  )}
+                  {row.ai_sms_session?.status === 'needs_human' && (
+                    <span className="font-semibold text-amber-700">AI SMS: Needs human</span>
+                  )}
                   <Link to="/crm" className="font-semibold text-tf-blue hover:underline">CRM</Link>
                 </div>
               </DrawerSection>

@@ -31,11 +31,15 @@ module Api
               .count
           last_logins = login_scope.group(:user_id).maximum(:created_at)
           inventories = TechnicianVerificationInventory.preload_for(users)
+          sessions = AiSmsSession.live.where(user_id: ids).order(created_at: :desc, id: :desc)
+          session_by_user = {}
+          sessions.each { |session| session_by_user[session.user_id] ||= session }
           payload = users.map do |user|
             list_item(user).merge(
               logins_last_30_days: counts[user.id].to_i,
               last_login_at: last_logins[user.id]&.iso8601,
-              verification: inventories[user.id]
+              verification: inventories[user.id],
+              ai_sms_session: session_by_user[user.id]&.as_admin_json
             )
           end
           render json: { users: payload }, status: :ok

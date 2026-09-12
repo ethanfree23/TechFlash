@@ -506,7 +506,6 @@ export default function UsersTable({
     () => visibleColumns.filter((col) => isXl || !HIDDEN_LG.has(col.key)),
     [visibleColumns, isXl]
   );
-  const flexColKey = displayedColumns[displayedColumns.length - 1]?.key ?? null;
   const preferredTableWidth = useMemo(
     () =>
       CHECKBOX_COL_WIDTH +
@@ -516,11 +515,23 @@ export default function UsersTable({
   );
   const extraFill = Math.max(0, containerWidth - preferredTableWidth);
   const tableWidth = preferredTableWidth + extraFill;
+  const extraByKey = useMemo(() => {
+    const n = displayedColumns.length;
+    if (n === 0 || extraFill <= 0) return {};
+    const base = Math.floor(extraFill / n);
+    let leftover = extraFill - base * n;
+    const map = {};
+    displayedColumns.forEach((col) => {
+      const extra = base + (leftover > 0 ? 1 : 0);
+      if (leftover > 0) leftover -= 1;
+      map[col.key] = extra;
+    });
+    return map;
+  }, [displayedColumns, extraFill]);
 
   const colSizeStyle = (col) => {
     const px = columnWidthPx(col, draftWidths);
-    if (col.key === flexColKey) return { width: px + extraFill };
-    return { width: px };
+    return { width: px + (extraByKey[col.key] || 0) };
   };
 
   const handleDraftWidth = (key, width) => {
