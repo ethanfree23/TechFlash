@@ -77,7 +77,7 @@ function BackgroundInventory({ background }) {
   );
 }
 
-export default function SendUserSmsModal({ isOpen, user, suggestedMessage = '', onClose, onSuccess, onError }) {
+export default function SendUserSmsModal({ isOpen, user, suggestedMessage = '', initialMode = 'manual', onClose, onSuccess, onError }) {
   const [mode, setMode] = useState('manual');
   const [message, setMessage] = useState('');
   const [sending, setSending] = useState(false);
@@ -89,11 +89,11 @@ export default function SendUserSmsModal({ isOpen, user, suggestedMessage = '', 
   useEffect(() => {
     if (!isOpen) return undefined;
     setMessage(suggestedMessage || '');
-    setMode('manual');
+    setMode(initialMode === 'ai' ? 'ai' : 'manual');
     setAiPayload(null);
     setSending(false);
     setAiLoading(false);
-  }, [isOpen, suggestedMessage]);
+  }, [isOpen, suggestedMessage, initialMode]);
 
   useEffect(() => {
     if (!isOpen) return undefined;

@@ -416,7 +416,11 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
               onViewProfile={(row) => navigate(`/admin/users/${row.id}`)}
               onMasquerade={startMasquerade}
               onSendEmail={(u) => setEmailModalUsers(u)}
-              onSendSms={(u, message) => setSmsTarget({ user: u, message: message || u?.verification?.suggested_sms?.next_gap || '' })}
+              onSendSms={(u, message, mode) => setSmsTarget({
+                user: u,
+                message: message || u?.verification?.suggested_sms?.next_gap || '',
+                mode: mode || 'manual',
+              })}
               onViewDocument={(doc) => setLicenseCard(presentLicenseCard(doc))}
               onResetPassword={handleResetPassword}
               onDelete={(u) => setDeleteTarget(u)}
@@ -471,7 +475,11 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
           listRow={drawerRow}
           onClose={() => setDrawerUserId(null)}
           onSendEmail={(u) => setEmailModalUsers(u)}
-          onSendSms={(u, message) => setSmsTarget({ user: u, message: message || u?.verification?.suggested_sms?.next_gap || '' })}
+          onSendSms={(u, message, mode) => setSmsTarget({
+            user: u,
+            message: message || u?.verification?.suggested_sms?.next_gap || '',
+            mode: mode || 'manual',
+          })}
           onViewDocument={(doc) => setLicenseCard(presentLicenseCard(doc))}
           onMasquerade={startMasquerade}
           onResetPassword={handleResetPassword}
@@ -526,6 +534,7 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
         isOpen={!!smsTarget}
         user={smsTarget?.user}
         suggestedMessage={smsTarget?.message || ''}
+        initialMode={smsTarget?.mode || 'manual'}
         onClose={() => setSmsTarget(null)}
         onSuccess={(msg) => {
           loadUsers();
