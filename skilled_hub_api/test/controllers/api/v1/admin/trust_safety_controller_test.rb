@@ -38,7 +38,7 @@ module Api
             password_confirmation: "password123",
             role: :technician
           )
-          TechnicianProfile.create!(user: tech_user, trade_type: "HVAC", availability: "Full-time", membership_level: "basic")
+          technician_profile = TechnicianProfile.create!(user: tech_user, trade_type: "HVAC", availability: "Full-time", membership_level: "basic")
           ref = VerificationReference.create!(
             technician_user: tech_user,
             full_name: "Reference Person",
@@ -48,6 +48,17 @@ module Api
             requested_at: 2.days.ago,
             responded_at: 1.day.ago
           )
+          doc = Document.create!(
+            uploadable: technician_profile,
+            doc_type: "license",
+            status: :pending_review,
+            issuer: "Texas"
+          )
+          doc.file.attach(
+            io: StringIO.new("fake-license"),
+            filename: "license.txt",
+            content_type: "text/plain"
+          )
 
           get "/api/v1/admin/trust_safety/dashboard",
               headers: auth_header_for(admin),
@@ -55,6 +66,10 @@ module Api
           assert_response :ok
           body = JSON.parse(response.body)
           assert body.key?("checkr_webhook_anomalies")
+          pending_docs = body.fetch("pending_documents")
+          assert pending_docs.any? { |row| row["id"] == doc.id && row["doc_type"] == "license" }
+          pending_refs = body.fetch("pending_references")
+          assert pending_refs.any? { |row| row["id"] == ref.id && row["full_name"] == "Reference Person" }
 
           patch "/api/v1/admin/trust_safety/references/#{ref.id}/review",
                 params: { status: "invalid_status" },

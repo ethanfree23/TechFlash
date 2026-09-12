@@ -28,9 +28,11 @@ module Api
             pending_background_checks: serialize_checks(BackgroundCheck.where(status: %i[pending processing consider invited]).order(created_at: :desc).limit(100)),
             expiring_background_checks: serialize_checks(BackgroundCheck.where("expires_at IS NOT NULL AND expires_at <= ?", 30.days.from_now).order(:expires_at).limit(100)),
             checkr_webhook_anomalies: serialize_webhook_anomalies(CheckrWebhookEvent.where.not(processing_error: [nil, ""]).order(updated_at: :desc).limit(100)),
-            pending_references: VerificationReference.pending_review.limit(100),
-            pending_documents: Document.pending_review_queue.where(doc_type: %w[license certificate cert insurance identity drivers_license passport]).limit(100),
-            audit_timeline: VerificationAuditLog.order(created_at: :desc).limit(200)
+            pending_references: serialize_references(VerificationReference.pending_review.limit(100)),
+            pending_documents: serialize_documents(
+              Document.pending_review_queue.where(doc_type: %w[license certificate cert insurance identity drivers_license passport]).limit(100)
+            ),
+            audit_timeline: serialize_audit_events(VerificationAuditLog.order(created_at: :desc).limit(200))
           }, status: :ok
         end
 
@@ -242,6 +244,49 @@ module Api
               processed_at: row.processed_at,
               received_at: row.received_at,
               updated_at: row.updated_at
+            }
+          end
+        end
+
+        # Document has both a `file` column and `has_one_attached :file`. Rendering the
+        # AR objects directly recurses through ActiveStorage's blob association.
+        def serialize_documents(scope)
+          scope.map do |doc|
+            {
+              id: doc.id,
+              doc_type: doc.doc_type,
+              uploadable_type: doc.uploadable_type,
+              uploadable_id: doc.uploadable_id,
+              status: doc.status,
+              issuer: doc.issuer,
+              valid_until: doc.valid_until,
+              created_at: doc.created_at
+            }
+          end
+        end
+
+        def serialize_references(scope)
+          scope.map do |ref|
+            {
+              id: ref.id,
+              full_name: ref.full_name,
+              relationship: ref.relationship,
+              email: ref.email,
+              status: ref.status
+            }
+          end
+        end
+
+        def serialize_audit_events(scope)
+          scope.map do |evt|
+            {
+              id: evt.id,
+              action: evt.action,
+              user_id: evt.user_id,
+              actor_user_id: evt.actor_user_id,
+              entity_type: evt.entity_type,
+              entity_id: evt.entity_id,
+              created_at: evt.created_at
             }
           end
         end
