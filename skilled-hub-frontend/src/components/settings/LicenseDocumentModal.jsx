@@ -96,7 +96,7 @@ export default function LicenseDocumentModal({
       shouldCloseOnEsc={!saving}
       contentLabel={card.title || 'License'}
       className="relative mx-auto my-4 w-[calc(100%-1.25rem)] max-w-3xl max-h-[92vh] flex flex-col rounded-2xl border border-gray-200 bg-white shadow-2xl outline-none overflow-hidden"
-      overlayClassName="fixed inset-0 z-[80] bg-black/55 backdrop-blur-[2px] flex items-center justify-center overflow-y-auto py-4"
+      overlayClassName="fixed inset-0 z-[110] bg-black/55 backdrop-blur-[2px] flex items-center justify-center overflow-y-auto py-4"
     >
       <form onSubmit={handleSave} className="flex min-h-0 flex-1 flex-col">
         <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4 shrink-0">

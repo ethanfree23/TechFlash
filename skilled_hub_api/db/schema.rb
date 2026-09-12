@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_09_09_143000) do
+ActiveRecord::Schema[7.1].define(version: 2026_09_12_120100) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -760,6 +760,11 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_09_143000) do
     t.text "error_message"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "provider"
+    t.string "provider_message_id"
+    t.string "provider_conversation_id"
+    t.index ["provider"], name: "index_sms_delivery_logs_on_provider"
+    t.index ["provider_message_id"], name: "index_sms_delivery_logs_on_provider_message_id"
     t.index ["user_id"], name: "index_sms_delivery_logs_on_user_id"
   end
 
@@ -812,6 +817,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_09_143000) do
     t.datetime "geocoded_at"
     t.string "place_id"
     t.json "trade_qualifications", default: [], null: false
+    t.boolean "has_trade_credential"
     t.index ["geocode_status"], name: "index_technician_profiles_on_geocode_status"
     t.index ["membership_level"], name: "index_technician_profiles_on_membership_level"
     t.index ["stripe_membership_subscription_id"], name: "index_technician_profiles_on_stripe_membership_subscription_id", unique: true

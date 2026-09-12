@@ -7,6 +7,13 @@ class GhlPhoneNormalizer
     digits.presence
   end
 
+  def self.e164(value)
+    digits = normalize(value)
+    return nil if digits.blank? || digits.length != 10
+
+    "+1#{digits}"
+  end
+
   # Digit strings that should match a stored US number regardless of formatting.
   # "+18325551212" and "8325551212" both need to hit E.164 or 10-digit values.
   def self.search_digit_variants(value)

@@ -12,7 +12,7 @@ const SAVED_VIEWS_KEY = 'admin_users_saved_views';
 const FILTER_FIELDS = [
   { key: 'userType', label: 'User type', type: 'select', options: ['', 'technician', 'company'] },
   { key: 'status', label: 'Status', type: 'select', options: ['', 'Active', 'Invited', 'Incomplete profile'] },
-  { key: 'verificationStatus', label: 'Verification', type: 'select', options: ['', 'Verified', 'Pending docs', 'Not verified'] },
+  { key: 'verificationStatus', label: 'Verification', type: 'select', options: ['', 'Verified', 'Pending'] },
   { key: 'riskLevel', label: 'Risk level', type: 'select', options: ['', 'Low', 'Medium', 'High'] },
   { key: 'loginActivity', label: 'Login activity', type: 'select', options: ['', 'active_30d', 'inactive_30d'] },
   { key: 'company', label: 'Company', type: 'text' },

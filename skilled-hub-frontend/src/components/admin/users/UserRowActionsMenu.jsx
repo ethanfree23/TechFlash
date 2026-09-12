@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { FaEllipsisH } from 'react-icons/fa';
 
 const PLACEHOLDER_ACTIONS = new Set([
-  'Send SMS',
   'Verify account',
   'Suspend account',
   'Deactivate account',
@@ -16,6 +15,7 @@ export default function UserRowActionsMenu({
   user,
   onMasquerade: _onMasquerade,
   onSendEmail,
+  onSendSms,
   onResetPassword,
   onDelete,
   onPlaceholderAction,
@@ -121,7 +121,7 @@ export default function UserRowActionsMenu({
             className="fixed z-[80] w-48 rounded-lg border border-slate-200 bg-white shadow-lg py-1 ring-1 ring-black/5"
           >
             {menuItem('Send email', () => onSendEmail?.(user))}
-            {menuItem('Send SMS', () => {})}
+            {menuItem('Send SMS', () => onSendSms?.(user, user.verification?.suggested_sms?.next_gap || ''))}
             {menuItem('Reset password', () => onResetPassword?.(user))}
             {menuItem('Verify account', () => {})}
             {menuItem('Suspend account', () => {})}

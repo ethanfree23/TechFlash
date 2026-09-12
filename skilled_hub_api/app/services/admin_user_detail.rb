@@ -17,7 +17,7 @@ class AdminUserDetail
   end
 
   def to_h
-    user = User.includes(:technician_profile, :company_profile, :job_alert_preference, :verification_references_as_technician).find_by(id: @user_id)
+    user = User.includes(:technician_profile, :company_profile, :job_alert_preference, :verification_references_as_technician, :background_checks).find_by(id: @user_id)
     return { error: "User not found" } unless user
     return { error: "User is an admin account" } if user.admin?
 
@@ -70,6 +70,7 @@ class AdminUserDetail
       created_at: user.created_at&.iso8601,
       password_status: password_status_payload(user),
       profile: profile_payload(user),
+      verification: TechnicianVerificationInventory.call(user),
       company_context: company_context_payload(user, company_profile)
     }
   end

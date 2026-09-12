@@ -31,6 +31,14 @@ function migrateLegacyAdminUserColumns(parsed, defaultMap) {
   const out = [];
   for (const col of parsed) {
     if (col.key === 'subscription') continue;
+    if (col.key === 'verification') {
+      ['trade_license', 'references', 'background_check'].forEach((key) => {
+        if (defaultMap.has(key) && !out.some((c) => c.key === key)) {
+          out.push({ key, visible: col.visible !== false, width: defaultMap.get(key).width });
+        }
+      });
+      continue;
+    }
     if (col.key === 'location') {
       if (!hasCity) out.push({ ...col, key: 'city' });
       if (!hasState) out.push({ key: 'state', visible: col.visible !== false, width: 56 });
@@ -68,8 +76,11 @@ export function columnsFromSavedArray(parsed, defaultColumns) {
     })
     .filter(Boolean);
   const withZip = insertMissingColumnAfter(fromSaved, defaultMap, 'zip', 'state');
-  const missing = defaultColumns.filter((c) => !withZip.some((x) => x.key === c.key));
-  return [...withZip, ...missing];
+  const withLicense = insertMissingColumnAfter(withZip, defaultMap, 'trade_license', 'status');
+  const withRefs = insertMissingColumnAfter(withLicense, defaultMap, 'references', 'trade_license');
+  const withBg = insertMissingColumnAfter(withRefs, defaultMap, 'background_check', 'references');
+  const missing = defaultColumns.filter((c) => !withBg.some((x) => x.key === c.key));
+  return [...withBg, ...missing];
 }
 
 function insertMissingColumnAfter(cols, defaultMap, key, afterKey) {

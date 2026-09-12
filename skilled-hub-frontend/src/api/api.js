@@ -399,6 +399,11 @@ export const adminUsersAPI = {
     apiRequest(`/admin/users/${id}`, {
       method: 'DELETE',
     }),
+  sendSms: (id, { message, context } = {}) =>
+    apiRequest(`/admin/users/${id}/sms`, {
+      method: 'POST',
+      body: JSON.stringify({ message, context }),
+    }),
 };
 
 /** Admin: global membership tier pricing (technician vs company audiences) */

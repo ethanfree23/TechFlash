@@ -20,7 +20,8 @@ module Api
           scope = filter_by_role(scope)
           scope = filter_by_search(scope)
 
-          ids = scope.pluck(:id)
+          users = scope.to_a
+          ids = users.map(&:id)
           since = 30.days.ago
           login_scope = UserLoginEvent.where(user_id: ids).where(via_masquerade: false)
           counts =
@@ -29,13 +30,15 @@ module Api
               .group(:user_id)
               .count
           last_logins = login_scope.group(:user_id).maximum(:created_at)
-          users = scope.map do |user|
+          inventories = TechnicianVerificationInventory.preload_for(users)
+          payload = users.map do |user|
             list_item(user).merge(
               logins_last_30_days: counts[user.id].to_i,
-              last_login_at: last_logins[user.id]&.iso8601
+              last_login_at: last_logins[user.id]&.iso8601,
+              verification: inventories[user.id]
             )
           end
-          render json: { users: users }, status: :ok
+          render json: { users: payload }, status: :ok
         end
 
         # GET /api/v1/admin/users/:id?period=7d
@@ -47,6 +50,20 @@ module Api
           else
             render json: result, status: :ok
           end
+        end
+
+        # POST /api/v1/admin/users/:id/sms
+        def send_sms
+          user = User.includes(:technician_profile, :company_profile).find_by(id: params[:id])
+          return render json: { error: "User not found" }, status: :not_found unless user
+          return render json: { error: "User is an admin account" }, status: :unprocessable_entity if user.admin?
+
+          outcome = Ghl::SmsSender.call(
+            user: user,
+            message: params[:message],
+            context: params[:context].presence || "admin_manual"
+          )
+          render json: outcome.as_json, status: outcome.http_status || :unprocessable_entity
         end
 
         # POST /api/v1/admin/users — JSON or multipart (company + logo)

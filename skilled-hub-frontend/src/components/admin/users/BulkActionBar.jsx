@@ -1,7 +1,7 @@
 import React from 'react';
 import { FaEnvelope, FaFileExport, FaSms, FaTag, FaTimes, FaTrash, FaUserCheck } from 'react-icons/fa';
 
-export default function BulkActionBar({ selectedCount, onClear, onExport, onSendEmail, onResetPassword, onDelete, onPlaceholderAction }) {
+export default function BulkActionBar({ selectedCount, onClear, onExport, onSendEmail, onSendSms, onResetPassword, onDelete, onPlaceholderAction }) {
   if (selectedCount <= 0) return null;
 
   const btn =
@@ -17,7 +17,7 @@ export default function BulkActionBar({ selectedCount, onClear, onExport, onSend
           <button type="button" onClick={onSendEmail} className={btn}>
             <FaEnvelope className="w-3 h-3" /> Email
           </button>
-          <button type="button" onClick={placeholder('Send SMS')} className={btn}>
+          <button type="button" onClick={onSendSms} className={btn}>
             <FaSms className="w-3 h-3" /> SMS
           </button>
           <button type="button" onClick={placeholder('Assign tag')} className={btn}>

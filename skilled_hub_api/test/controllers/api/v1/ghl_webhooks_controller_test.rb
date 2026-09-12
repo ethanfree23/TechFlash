@@ -167,12 +167,8 @@ module Api
         assert_equal "journeyman", profile.skill_class
         assert_equal 8, profile.experience_years
         assert_equal "HVAC Technician", user.job_alert_preference.trade_label
-        assert_equal 1, profile.documents.where(doc_type: %w[license certificate cert]).count
-        license = profile.documents.where(doc_type: %w[license certificate cert]).first
-        assert_equal "Trade license", license.issuer
-        assert_nil license.document_number
-        assert license.pending_review?
-        refute license.file.attached?
+        assert_equal 0, profile.documents.where(doc_type: %w[license certificate cert]).count
+        assert_equal true, profile.has_trade_credential
         assert_equal digest, user.password_digest
 
         post_ghl(
@@ -285,6 +281,22 @@ module Api
         assert_equal "77002", profile.zip_code
         assert_equal 4_000, pref.min_hourly_rate_cents
         assert_equal 25, pref.max_distance_miles
+        assert_nil profile.has_trade_credential
+      end
+
+      test "explicit no trade credential persists false without creating a document" do
+        post_ghl(meta_lead_payload)
+        post_ghl(
+          identity_payload.merge(
+            idempotency_key: "contact-lead-no-cred",
+            has_trade_credential: "No"
+          )
+        )
+
+        assert_response :accepted
+        profile = User.find_by!(email: "lead@example.com").technician_profile
+        assert_equal false, profile.has_trade_credential
+        assert_equal 0, profile.documents.where(doc_type: %w[license certificate cert]).count
       end
 
       test "same idempotency key does not create a duplicate user" do
@@ -626,7 +638,7 @@ module Api
         assert_equal "pending_review", match["status"]
       end
 
-      test "later trade license photo updates the ghl placeholder without duplicating" do
+      test "later trade license photo creates the canonical document without duplicating" do
         post_ghl(meta_lead_payload)
         post_ghl(
           identity_payload.merge(
@@ -636,9 +648,8 @@ module Api
           )
         )
         profile = User.find_by!(email: "lead@example.com").technician_profile
-        placeholder = profile.documents.where(doc_type: %w[license certificate cert]).first
-        assert placeholder.present?
-        refute placeholder.file.attached?
+        assert_equal true, profile.has_trade_credential
+        assert_equal 0, profile.documents.where(doc_type: %w[license certificate cert]).count
 
         stub_ghl_image_fetch(filename: "trade-license.png") do
           post_ghl(
@@ -656,7 +667,6 @@ module Api
         docs = profile.reload.documents.where(doc_type: %w[license certificate cert])
         assert_equal 1, docs.count
         doc = docs.first
-        assert_equal placeholder.id, doc.id
         assert_equal "Texas Journeyman Electrician", doc.issuer
         assert_equal "123456", doc.document_number
         assert doc.file.attached?

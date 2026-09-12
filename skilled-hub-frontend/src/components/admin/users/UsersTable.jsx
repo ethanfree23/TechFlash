@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { FaChevronRight, FaSort, FaSortDown, FaSortUp } from 'react-icons/fa';
 import UserTypeBadge from './UserTypeBadge';
 import UserStatusBadge from './UserStatusBadge';
-import UserVerificationBadge from './UserVerificationBadge';
 import UserRiskBadge from './UserRiskBadge';
 import UserRowActionsMenu from './UserRowActionsMenu';
+import { TradeLicenseCell, ReferencesCell, BackgroundCheckCell } from './VerificationInventoryCells';
 import UsersEmptyState from './UsersEmptyState';
 import { TableRowsSkeleton } from './UsersSkeleton';
 import { displayOrFallback, TRADE_LEVEL_RANK } from '../../../utils/adminUsersDisplayAdapter';
@@ -30,6 +30,22 @@ function columnWidthPx(col, draftWidths) {
     return clampTableColumnWidth(draftWidths[col.key], { min }) ?? min;
   }
   return clampTableColumnWidth(col.width, { min }) ?? (col.key === 'user' ? 200 : 96);
+}
+
+function useMinWidthMedia(query) {
+  const [matches, setMatches] = useState(() =>
+    typeof window !== 'undefined' ? window.matchMedia(query).matches : true
+  );
+
+  useEffect(() => {
+    const mq = window.matchMedia(query);
+    const onChange = () => setMatches(mq.matches);
+    onChange();
+    mq.addEventListener('change', onChange);
+    return () => mq.removeEventListener('change', onChange);
+  }, [query]);
+
+  return matches;
 }
 
 function ColumnResizeHandle({ colKey, currentWidth, onDraftWidth, onCommitWidth, onResetWidth }) {
@@ -179,7 +195,7 @@ function UserCell({ row }) {
   );
 }
 
-function renderCell(col, row) {
+function renderCell(col, row, handlers = {}) {
   switch (col.key) {
     case 'user':
       return <UserCell row={row} />;
@@ -195,10 +211,32 @@ function renderCell(col, row) {
           <UserStatusBadge status={row.accountStatus} />
         </div>
       );
-    case 'verification':
+    case 'trade_license':
       return (
-        <div className="min-w-0 overflow-hidden">
-          <UserVerificationBadge status={row.verificationStatus} />
+        <div className="min-w-0 overflow-visible" onClick={(e) => e.stopPropagation()}>
+          <TradeLicenseCell
+            inventory={row.verification}
+            onSendSms={(message) => handlers.onSendSms?.(row, message)}
+            onViewDocument={handlers.onViewDocument}
+          />
+        </div>
+      );
+    case 'references':
+      return (
+        <div className="min-w-0 overflow-visible" onClick={(e) => e.stopPropagation()}>
+          <ReferencesCell
+            inventory={row.verification}
+            onSendSms={(message) => handlers.onSendSms?.(row, message)}
+          />
+        </div>
+      );
+    case 'background_check':
+      return (
+        <div className="min-w-0 overflow-visible" onClick={(e) => e.stopPropagation()}>
+          <BackgroundCheckCell
+            inventory={row.verification}
+            onSendSms={(message) => handlers.onSendSms?.(row, message)}
+          />
         </div>
       );
     case 'company_trade':
@@ -352,7 +390,7 @@ function TablePaginationBar({ pageInfo, pageSize, onPageSizeChange, onPageChange
   );
 }
 
-function UserMobileCard({ row, selected, onSelect, onRowClick, onViewProfile, actions }) {
+function UserMobileCard({ row, selected, onSelect, onRowClick, onViewProfile, menu, onSendSms, onViewDocument }) {
   return (
     <div
       className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-sm active:bg-slate-50/50 transition-colors"
@@ -374,6 +412,13 @@ function UserMobileCard({ row, selected, onSelect, onRowClick, onViewProfile, ac
           <div className="mt-2 flex flex-wrap gap-1">
             <UserTypeBadge role={row.role} />
             <UserStatusBadge status={row.accountStatus} />
+            {row.role === 'technician' && row.verification ? (
+              <>
+                <TradeLicenseCell inventory={row.verification} onSendSms={(message) => onSendSms?.(row, message)} onViewDocument={onViewDocument} />
+                <ReferencesCell inventory={row.verification} onSendSms={(message) => onSendSms?.(row, message)} />
+                <BackgroundCheckCell inventory={row.verification} onSendSms={(message) => onSendSms?.(row, message)} />
+              </>
+            ) : null}
           </div>
           <p className={`mt-1.5 text-[11px] ${row.activityLabel?.isEmpty ? 'text-slate-400' : 'text-slate-500'}`}>
             {row.activityLabel?.logins || 'No activity yet'}
@@ -386,7 +431,7 @@ function UserMobileCard({ row, selected, onSelect, onRowClick, onViewProfile, ac
           )}
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-          {actions}
+          {menu}
           <button
             type="button"
             onClick={() => onViewProfile?.(row)}
@@ -416,6 +461,8 @@ export default function UsersTable({
   onViewProfile,
   onMasquerade,
   onSendEmail,
+  onSendSms,
+  onViewDocument,
   onResetPassword,
   onDelete,
   onPlaceholderAction,
@@ -430,6 +477,8 @@ export default function UsersTable({
   const [page, setPage] = useState(1);
   const [draftWidths, setDraftWidths] = useState({});
   const selectAllRef = useRef(null);
+  const tableScrollRef = useRef(null);
+  const [containerWidth, setContainerWidth] = useState(0);
   const rowsSignature = `${rows.length}:${rows[0]?.id ?? ''}:${rows[rows.length - 1]?.id ?? ''}`;
 
   useEffect(() => {
@@ -441,14 +490,38 @@ export default function UsersTable({
     document.body.style.removeProperty('user-select');
   }, []);
 
+  useLayoutEffect(() => {
+    const el = tableScrollRef.current;
+    if (!el) return undefined;
+    const updateWidth = () => setContainerWidth(el.clientWidth);
+    updateWidth();
+    const ro = new ResizeObserver(updateWidth);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [loading, loadError, rows.length]);
+
   const visibleColumns = useMemo(() => columns.filter((c) => c.visible), [columns]);
-  const tableWidth = useMemo(
+  const isXl = useMinWidthMedia('(min-width: 1280px)');
+  const displayedColumns = useMemo(
+    () => visibleColumns.filter((col) => isXl || !HIDDEN_LG.has(col.key)),
+    [visibleColumns, isXl]
+  );
+  const flexColKey = displayedColumns[displayedColumns.length - 1]?.key ?? null;
+  const preferredTableWidth = useMemo(
     () =>
       CHECKBOX_COL_WIDTH +
       ACTIONS_COL_WIDTH +
-      visibleColumns.reduce((sum, col) => sum + columnWidthPx(col, draftWidths), 0),
-    [visibleColumns, draftWidths]
+      displayedColumns.reduce((sum, col) => sum + columnWidthPx(col, draftWidths), 0),
+    [displayedColumns, draftWidths]
   );
+  const extraFill = Math.max(0, containerWidth - preferredTableWidth);
+  const tableWidth = preferredTableWidth + extraFill;
+
+  const colSizeStyle = (col) => {
+    const px = columnWidthPx(col, draftWidths);
+    if (col.key === flexColKey) return { width: px + extraFill };
+    return { width: px };
+  };
 
   const handleDraftWidth = (key, width) => {
     setDraftWidths((prev) => {
@@ -492,7 +565,9 @@ export default function UsersTable({
           case 'user': return row.displayName?.toLowerCase() || '';
           case 'type': return row.role || '';
           case 'status': return row.accountStatus || '';
-          case 'verification': return row.verificationStatus || '';
+          case 'trade_license': return row.verification?.trade_license?.state || '';
+          case 'references': return Number(row.verification?.professional_references?.count || 0);
+          case 'background_check': return row.verification?.background_check?.label || '';
           case 'company_trade': return row.companyTradeLabel || '';
           case 'trade_level': return TRADE_LEVEL_RANK[row.tradeLevelSlug] || 0;
           case 'experience_years': return row.experienceYears ?? -1;
@@ -562,11 +637,14 @@ export default function UsersTable({
     );
   }
 
+  const cellHandlers = { onSendSms, onViewDocument };
+
   const rowActions = (row, compact = false) => (
     <UserRowActionsMenu
       user={row}
       onMasquerade={onMasquerade}
       onSendEmail={onSendEmail}
+      onSendSms={onSendSms}
       onResetPassword={onResetPassword}
       onDelete={onDelete}
       onPlaceholderAction={onPlaceholderAction}
@@ -586,7 +664,9 @@ export default function UsersTable({
             onSelect={onSelect}
             onRowClick={onRowClick}
             onViewProfile={onViewProfile}
-            actions={rowActions(row, true)}
+            menu={rowActions(row, true)}
+            onSendSms={onSendSms}
+            onViewDocument={onViewDocument}
           />
         ))}
       </div>
@@ -600,15 +680,21 @@ export default function UsersTable({
       </div>
 
       <div className="hidden lg:flex flex-1 min-h-0 w-full flex-col rounded-lg border border-slate-200/90 bg-white shadow-sm overflow-hidden">
-        <div className="min-h-0 flex-1 overflow-auto">
-          <table className="table-fixed" style={{ width: tableWidth, minWidth: tableWidth }}>
+        <div ref={tableScrollRef} className="min-h-0 flex-1 overflow-auto">
+          <table
+            className="table-fixed w-full"
+            style={{
+              width: containerWidth > 0 ? tableWidth : '100%',
+              minWidth: preferredTableWidth,
+            }}
+          >
             <colgroup>
               <col style={{ width: CHECKBOX_COL_WIDTH }} />
               {visibleColumns.map((col) => (
                 <col
                   key={col.key}
                   className={colHiddenClass(col.key, true)}
-                  style={{ width: columnWidthPx(col, draftWidths) }}
+                  style={colSizeStyle(col)}
                 />
               ))}
               <col style={{ width: ACTIONS_COL_WIDTH }} />
@@ -629,7 +715,7 @@ export default function UsersTable({
                   <th
                     key={col.key}
                     className={`group/col relative px-1.5 py-2 text-left min-w-0 ${colHiddenClass(col.key)}`}
-                    style={{ width: columnWidthPx(col, draftWidths) }}
+                    style={colSizeStyle(col)}
                   >
                     <button
                       type="button"
@@ -671,8 +757,8 @@ export default function UsersTable({
                     />
                   </td>
                   {visibleColumns.map((col) => (
-                    <td key={col.key} className={`px-1.5 py-2 align-middle min-w-0 overflow-hidden ${colHiddenClass(col.key)}`}>
-                      {renderCell(col, row)}
+                    <td key={col.key} className={`px-1.5 py-2 align-middle min-w-0 ${['trade_license', 'references', 'background_check'].includes(col.key) ? 'overflow-visible' : 'overflow-hidden'} ${colHiddenClass(col.key)}`}>
+                      {renderCell(col, row, cellHandlers)}
                     </td>
                   ))}
                   <td className="px-1 py-2 text-right align-middle" style={{ width: ACTIONS_COL_WIDTH }} onClick={(e) => e.stopPropagation()}>

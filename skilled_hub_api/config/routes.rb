@@ -166,6 +166,7 @@ Rails.application.routes.draw do
           member do
             post :password_setup
             post :ensure_profile
+            post :sms, action: :send_sms
             patch :password, action: :set_password
             patch :company_membership
             patch :membership_pricing

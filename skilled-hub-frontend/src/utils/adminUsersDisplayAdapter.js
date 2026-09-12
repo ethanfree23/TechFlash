@@ -32,7 +32,9 @@ export const DEFAULT_TABLE_COLUMNS = [
   { key: 'user', label: 'User', visible: true, width: 200 },
   { key: 'type', label: 'Type', visible: true, width: 96 },
   { key: 'status', label: 'Status', visible: true, width: 80 },
-  { key: 'verification', label: 'Verification', visible: true, width: 112 },
+  { key: 'trade_license', label: 'Trade license', visible: true, width: 88 },
+  { key: 'references', label: 'References', visible: true, width: 72 },
+  { key: 'background_check', label: 'Background check', visible: true, width: 112 },
   { key: 'company_trade', label: 'Company', visible: true, width: 120 },
   { key: 'trade_level', label: 'Level', visible: true, width: 96 },
   { key: 'experience_years', label: 'Years', visible: true, width: 64 },
@@ -185,20 +187,6 @@ function deriveAccountStatus(row, detail) {
   return 'Active';
 }
 
-function deriveVerificationStatus(row, detail) {
-  const profile = detail?.user?.profile;
-  if (row.role === 'technician') {
-    if (profile?.background_verified) return 'Verified';
-    if (row.label?.trim()) return 'Pending docs';
-    return 'Not verified';
-  }
-  if (row.role === 'company') {
-    if (row.company_name?.trim() || profile?.company_name?.trim()) return 'Verified';
-    return 'Not verified';
-  }
-  return 'Not verified';
-}
-
 // Auto-flag heuristics are parked. Keep Flagged tab / KPI / column for a later
 // review workflow. When a row is flagged, populate reasons + a resolution path.
 function deriveFlagState(_row, _detail) {
@@ -222,7 +210,14 @@ function deriveSubscription(row, detail) {
 export function enrichUserRow(row, detail = null) {
   const profile = detail?.user?.profile;
   const accountStatus = deriveAccountStatus(row, detail);
-  const verificationStatus = deriveVerificationStatus(row, detail);
+  const inventory = detail?.user?.verification || row.verification || null;
+  const verificationStatus = inventory?.pending
+    ? 'Pending'
+    : inventory && inventory.pending === false
+      ? 'Verified'
+      : row.role === 'company'
+        ? 'Not applicable'
+        : 'Pending';
   const flagState = deriveFlagState(row, detail);
   const subscription = deriveSubscription(row, detail);
   const logins30d = Number(row.logins_last_30_days ?? 0);
@@ -247,6 +242,7 @@ export function enrichUserRow(row, detail = null) {
     avatarUrl: firstPresent(row.avatar_url, profile?.avatar_url),
     avatarUpdatedAt: firstPresent(row.avatar_updated_at, profile?.updated_at),
     accountStatus,
+    verification: inventory,
     verificationStatus,
     riskLevel: flagState.riskLevel,
     flagReasons: flagState.flagReasons,
@@ -262,11 +258,7 @@ export function enrichUserRow(row, detail = null) {
     logins30d,
     lastLoginAt,
     lastLoginDisplay: lastLoginAt ? formatRelativeTime(lastLoginAt) : '—',
-    isPendingVerification:
-      verificationStatus !== 'Verified' &&
-      (verificationStatus.includes('Pending') ||
-        verificationStatus.includes('Not verified') ||
-        verificationStatus.includes('missing')),
+    isPendingVerification: row.role === 'technician' && inventory?.pending === true,
     isFlagged: flagState.isFlagged,
     // TODO(admin-users): wire real suspended state when backend adds account status
     isSuspended: false,

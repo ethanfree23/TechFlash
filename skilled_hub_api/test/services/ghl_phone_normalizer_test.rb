@@ -16,4 +16,10 @@ class GhlPhoneNormalizerTest < ActiveSupport::TestCase
     assert_includes GhlPhoneNormalizer.search_digit_variants("8325551212"), "18325551212"
     assert_empty GhlPhoneNormalizer.search_digit_variants("Ethan")
   end
+
+  test "e164 requires a 10-digit US number" do
+    assert_equal "+18325551212", GhlPhoneNormalizer.e164("(832) 555-1212")
+    assert_nil GhlPhoneNormalizer.e164("555")
+    assert_nil GhlPhoneNormalizer.e164("")
+  end
 end

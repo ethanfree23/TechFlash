@@ -30,10 +30,13 @@ import BulkActionBar from '../components/admin/users/BulkActionBar';
 import CreateUserModal from '../components/admin/users/CreateUserModal';
 import InviteUserModal from '../components/admin/users/InviteUserModal';
 import SendUserEmailModal from '../components/admin/users/SendUserEmailModal';
+import SendUserSmsModal from '../components/admin/users/SendUserSmsModal';
 import AdminActionPlaceholderModal from '../components/admin/users/AdminActionPlaceholderModal';
+import LicenseDocumentModal from '../components/settings/LicenseDocumentModal';
+import { presentLicenseCard } from '../utils/licenseCredentials';
 import { withDemoPath } from '../utils/demoMode';
 
-const COLUMN_STORAGE_KEY = 'admin-users-table-columns-v4';
+const COLUMN_STORAGE_KEY = 'admin-users-table-columns-v5';
 
 export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const navigate = useNavigate();
@@ -56,6 +59,8 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
   const [emailModalUsers, setEmailModalUsers] = useState(null);
+  const [smsTarget, setSmsTarget] = useState(null);
+  const [licenseCard, setLicenseCard] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [alertModal, setAlertModal] = useState({ isOpen: false, title: '', message: '', variant: 'success' });
 
@@ -411,6 +416,8 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
               onViewProfile={(row) => navigate(`/admin/users/${row.id}`)}
               onMasquerade={startMasquerade}
               onSendEmail={(u) => setEmailModalUsers(u)}
+              onSendSms={(u, message) => setSmsTarget({ user: u, message: message || u?.verification?.suggested_sms?.next_gap || '' })}
+              onViewDocument={(doc) => setLicenseCard(presentLicenseCard(doc))}
               onResetPassword={handleResetPassword}
               onDelete={(u) => setDeleteTarget(u)}
               onPlaceholderAction={setPlaceholderAction}
@@ -432,6 +439,19 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
         onClear={() => setSelectedIds(new Set())}
         onExport={() => handleExport(selectedUsers)}
         onSendEmail={() => setEmailModalUsers(selectedUsers)}
+        onSendSms={() => {
+          if (selectedUsers.length !== 1) {
+            setAlertModal({
+              isOpen: true,
+              title: 'Send SMS',
+              message: 'Select a single user to send SMS.',
+              variant: 'error',
+            });
+            return;
+          }
+          const u = selectedUsers[0];
+          setSmsTarget({ user: u, message: u.verification?.suggested_sms?.next_gap || '' });
+        }}
         onResetPassword={() => handleResetPassword(selectedUsers)}
         onPlaceholderAction={setPlaceholderAction}
         onDelete={() => {
@@ -451,6 +471,8 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
           listRow={drawerRow}
           onClose={() => setDrawerUserId(null)}
           onSendEmail={(u) => setEmailModalUsers(u)}
+          onSendSms={(u, message) => setSmsTarget({ user: u, message: message || u?.verification?.suggested_sms?.next_gap || '' })}
+          onViewDocument={(doc) => setLicenseCard(presentLicenseCard(doc))}
           onMasquerade={startMasquerade}
           onResetPassword={handleResetPassword}
           onDelete={(u) => setDeleteTarget(u)}
@@ -498,6 +520,21 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
         onClose={() => setEmailModalUsers(null)}
         onSuccess={(msg) => setAlertModal({ isOpen: true, title: 'Email sent', message: msg, variant: 'success' })}
         onError={(msg) => setAlertModal({ isOpen: true, title: 'Email failed', message: msg, variant: 'error' })}
+      />
+
+      <SendUserSmsModal
+        isOpen={!!smsTarget}
+        user={smsTarget?.user}
+        suggestedMessage={smsTarget?.message || ''}
+        onClose={() => setSmsTarget(null)}
+        onSuccess={(msg) => setAlertModal({ isOpen: true, title: 'SMS sent', message: msg, variant: 'success' })}
+        onError={(msg) => setAlertModal({ isOpen: true, title: 'SMS failed', message: msg, variant: 'error' })}
+      />
+
+      <LicenseDocumentModal
+        isOpen={!!licenseCard}
+        card={licenseCard}
+        onClose={() => setLicenseCard(null)}
       />
 
       <ConfirmModal

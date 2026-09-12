@@ -4,7 +4,7 @@ import { FaTimes, FaEnvelope, FaExternalLinkAlt } from 'react-icons/fa';
 import { adminUsersAPI } from '../../../api/api';
 import UserTypeBadge from './UserTypeBadge';
 import UserStatusBadge from './UserStatusBadge';
-import UserVerificationBadge from './UserVerificationBadge';
+import { TradeLicenseCell, ReferencesCell, BackgroundCheckCell } from './VerificationInventoryCells';
 import UserRowActionsMenu from './UserRowActionsMenu';
 import EditTechnicianProfileModal from './EditTechnicianProfileModal';
 import { DrawerSkeleton } from './UsersSkeleton';
@@ -100,6 +100,8 @@ export default function UserDrawer({
   listRow,
   onClose,
   onSendEmail,
+  onSendSms,
+  onViewDocument,
   onMasquerade,
   onResetPassword,
   onDelete,
@@ -257,7 +259,23 @@ export default function UserDrawer({
                     <div className="flex flex-wrap gap-1 mt-2">
                       <UserTypeBadge role={row.role} />
                       <UserStatusBadge status={row.accountStatus} />
-                      <UserVerificationBadge status={row.verificationStatus} />
+                      {row.role === 'technician' && row.verification ? (
+                        <>
+                          <TradeLicenseCell
+                            inventory={row.verification}
+                            onSendSms={(message) => onSendSms?.(row, message)}
+                            onViewDocument={onViewDocument}
+                          />
+                          <ReferencesCell
+                            inventory={row.verification}
+                            onSendSms={(message) => onSendSms?.(row, message)}
+                          />
+                          <BackgroundCheckCell
+                            inventory={row.verification}
+                            onSendSms={(message) => onSendSms?.(row, message)}
+                          />
+                        </>
+                      ) : null}
                     </div>
                     <p className="text-[10px] text-slate-400 mt-2 tabular-nums">
                       ID #{row.id}
@@ -301,6 +319,7 @@ export default function UserDrawer({
                     user={row}
                     onMasquerade={onMasquerade}
                     onSendEmail={onSendEmail}
+                    onSendSms={onSendSms}
                     onResetPassword={onResetPassword}
                     onDelete={onDelete}
                     onPlaceholderAction={onPlaceholderAction}
@@ -430,7 +449,7 @@ export default function UserDrawer({
                   <button type="button" onClick={() => onSendEmail?.(row)} className="font-semibold text-tf-blue hover:underline">
                     Send email
                   </button>
-                  <button type="button" onClick={() => onPlaceholderAction?.('Send SMS')} className="font-semibold text-slate-500 hover:text-slate-700 hover:underline">
+                  <button type="button" onClick={() => onSendSms?.(row, row.verification?.suggested_sms?.next_gap || '')} className="font-semibold text-slate-500 hover:text-slate-700 hover:underline">
                     Send SMS
                   </button>
                   <Link to="/crm" className="font-semibold text-tf-blue hover:underline">CRM</Link>

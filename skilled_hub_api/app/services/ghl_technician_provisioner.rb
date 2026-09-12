@@ -93,6 +93,15 @@ class GhlTechnicianProvisioner
     assign_unless_blank(profile, :trade_type, @trade_type)
     assign_unless_blank(profile, :skill_class, @skill_class)
     assign_unless_blank(profile, :experience_years, @experience_years)
+    persist_has_trade_credential!(profile)
+  end
+
+  def persist_has_trade_credential!(profile)
+    if license_details_present?
+      profile.has_trade_credential = true
+    elsif !@has_trade_credential.nil?
+      profile.has_trade_credential = @has_trade_credential
+    end
   end
 
   def persist_job_alert_preferences!(user)
@@ -118,7 +127,7 @@ class GhlTechnicianProvisioner
   PLACEHOLDER_NUMBERS = %w[ghl_self_reported].freeze
 
   def persist_trade_credential!(profile)
-    return unless persist_trade_credential?
+    return unless license_details_present?
 
     docs = profile.documents.where(doc_type: TRADE_LICENSE_DOC_TYPES).order(:created_at, :id)
     ghl_doc = docs.find { |doc| ghl_sourced?(doc) }
@@ -128,7 +137,7 @@ class GhlTechnicianProvisioner
       return
     end
 
-    return if docs.any? && !license_details_present?
+    return if docs.any?
 
     doc = profile.documents.create!(
       doc_type: DEFAULT_LICENSE_DOC_TYPE,
@@ -138,10 +147,6 @@ class GhlTechnicianProvisioner
       metadata: { "source" => GHL_CREDENTIAL_SOURCE, "has_trade_credential" => true }
     )
     attach_license_image!(doc)
-  end
-
-  def persist_trade_credential?
-    @has_trade_credential == true || license_details_present?
   end
 
   def license_details_present?

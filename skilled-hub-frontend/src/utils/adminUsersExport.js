@@ -7,7 +7,9 @@ const EXPORT_COLUMNS = [
   { key: 'phone', header: 'Phone' },
   { key: 'role', header: 'Type' },
   { key: 'accountStatus', header: 'Status' },
-  { key: 'verificationStatus', header: 'Verification' },
+  { key: 'tradeLicense', header: 'Trade license' },
+  { key: 'referencesCount', header: 'References' },
+  { key: 'backgroundCheck', header: 'Background check' },
   { key: 'companyTradeLabel', header: 'Company / Trade' },
   { key: 'tradeLevelLabel', header: 'Trade level' },
   { key: 'experienceYears', header: 'Years' },
@@ -32,6 +34,9 @@ export function exportUsersToCsv(rows, filename = 'techflash-users.csv') {
     displayName: r.displayName || getFullName(r),
     role: r.role === 'technician' ? 'Technician' : r.role === 'company' ? 'Company' : r.role,
     created_at: r.created_at ? new Date(r.created_at).toISOString() : '',
+    tradeLicense: r.verification?.trade_license?.state || '',
+    referencesCount: r.verification?.professional_references?.display_count || '',
+    backgroundCheck: r.verification?.background_check?.label || '',
   }));
 
   const header = EXPORT_COLUMNS.map((c) => escapeCsv(c.header)).join(',');

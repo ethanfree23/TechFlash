@@ -27,7 +27,11 @@ export default function UsersHeader({ onCreateUser, onInviteUser, onExport, onRe
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-        <button type="button" onClick={onCreateUser} className={`${btnSecondary} bg-tf-blue text-white border-tf-blue hover:bg-tf-blue-dark hover:border-tf-blue-dark`}>
+        <button
+          type="button"
+          onClick={onCreateUser}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200/90 bg-white text-slate-700 text-xs font-semibold shadow-sm transition-colors hover:bg-tf-blue-dark hover:border-tf-blue-dark hover:text-white"
+        >
           <FaUserPlus className="w-3 h-3" aria-hidden />
           Create
         </button>
