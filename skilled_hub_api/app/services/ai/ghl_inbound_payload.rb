@@ -3,6 +3,7 @@
 module Ai
   class GhlInboundPayload
     OPT_OUT_PHRASES = %w[stop stopall unsubscribe cancel end quit].freeze
+    UNINTERPOLATED = /\A\{\{.*\}\}\z/
 
     Parsed = Struct.new(
       :contact_id,
@@ -34,11 +35,15 @@ module Ai
       )
       Parsed.new(
         contact_id: contact_id,
-        conversation_id: first_present(%w[ghl_conversation_id conversationId conversation_id]) || nested("conversation", "id") || nested("message", "conversationId"),
-        message_id: first_present(%w[ghl_message_id messageId message_id idempotency_key]) || nested("message", "id"),
-        body: body.to_s,
+        conversation_id: optional_id(
+          first_present(%w[ghl_conversation_id conversationId conversation_id]) || nested("conversation", "id") || nested("message", "conversationId")
+        ),
+        message_id: optional_id(
+          first_present(%w[ghl_message_id messageId message_id idempotency_key]) || nested("message", "id")
+        ),
+        body: clean_text(body).to_s,
         attachments: attachment_urls,
-        timestamp: first_present(%w[timestamp dateAdded date_added]) || nested("message", "dateAdded"),
+        timestamp: optional_id(first_present(%w[timestamp dateAdded date_added]) || nested("message", "dateAdded")),
         direction: direction,
         channel: first_present(%w[channel messageType message_type]) || nested("message", "messageType") || "SMS",
         dnd: dnd?,
@@ -56,9 +61,11 @@ module Ai
     private
 
     def contact_id
-      first_present(%w[ghl_contact_id contactId contact_id]) ||
-        nested("contact", "id") ||
-        nested("message", "contactId")
+      optional_id(
+        first_present(%w[ghl_contact_id contactId contact_id]) ||
+          nested("contact", "id") ||
+          nested("message", "contactId")
+      )
     end
 
     def attachment_urls
@@ -83,7 +90,10 @@ module Ai
       when Array
         value.flat_map { |item| extract_urls(item) }
       when String
-        value.to_s.scan(%r{https?://[^\s"'<>\\]+}i).map { |url| url.sub(/[),.;]+$/, "") }
+        cleaned = clean_text(value)
+        return [] if cleaned.blank?
+
+        cleaned.scan(%r{https?://[^\s"'<>\\]+}i).map { |url| url.sub(/[),.;]+$/, "") }
       else
         []
       end
@@ -107,10 +117,23 @@ module Ai
 
     def first_present(keys)
       keys.each do |key|
-        value = @data[key]
+        value = clean_text(@data[key])
         return value if value.present?
       end
       nil
+    end
+
+    def optional_id(value)
+      clean_text(value).presence
+    end
+
+    def clean_text(value)
+      return value unless value.is_a?(String) || value.nil?
+
+      raw = value.to_s.strip
+      return nil if raw.blank? || raw.match?(UNINTERPOLATED)
+
+      raw
     end
 
     def nested(*keys)

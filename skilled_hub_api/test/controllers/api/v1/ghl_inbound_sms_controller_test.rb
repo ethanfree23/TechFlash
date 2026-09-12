@@ -34,6 +34,27 @@ module Api
         assert_response :unauthorized
       end
 
+      test "production customer-replied payload without GHL ids is processed" do
+        Ghl::SmsSender.stub(:call, sent_sms) do
+          post "/api/v1/webhooks/ghl/inbound_sms",
+               params: {
+                 ghl_contact_id: "contact-wh",
+                 body: "Yes",
+                 attachments: "",
+                 direction: "inbound",
+                 channel: "SMS"
+               },
+               headers: { "Authorization" => "Bearer #{SECRET}" },
+               as: :json
+        end
+        assert_response :ok
+        body = JSON.parse(response.body)
+        assert_equal true, body["success"]
+        turn = @session.turns.where(direction: "inbound").last
+        assert_nil turn.ghl_message_id
+        assert turn.received_at.present?
+      end
+
       test "authenticated inbound for active session is processed" do
         Ghl::SmsSender.stub(:call, sent_sms) do
           post "/api/v1/webhooks/ghl/inbound_sms",

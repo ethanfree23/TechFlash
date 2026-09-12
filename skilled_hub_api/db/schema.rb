@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_09_12_180000) do
+ActiveRecord::Schema[7.1].define(version: 2026_09_12_193000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -76,9 +76,12 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_12_180000) do
     t.json "metadata", default: {}, null: false
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "inbound_fingerprint"
+    t.datetime "received_at"
     t.index ["ai_sms_session_id", "created_at"], name: "index_ai_sms_turns_on_ai_sms_session_id_and_created_at"
     t.index ["ai_sms_session_id"], name: "index_ai_sms_turns_on_ai_sms_session_id"
     t.index ["ghl_message_id"], name: "index_ai_sms_turns_on_ghl_message_id", unique: true, where: "ghl_message_id IS NOT NULL"
+    t.index ["inbound_fingerprint", "received_at"], name: "index_ai_sms_turns_on_fingerprint_and_received_at"
   end
 
   create_table "app_notifications", force: :cascade do |t|

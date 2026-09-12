@@ -5,6 +5,7 @@ require_relative "../support/ai_sms_test_helper"
 
 class AiInboundSmsProcessorTest < ActiveSupport::TestCase
   include AiSmsTestHelper
+  include ActiveSupport::Testing::TimeHelpers
 
   setup do
     @user = create_ai_tech!(email: "ai-in@example.com", contact_id: "contact-in")
@@ -140,6 +141,78 @@ class AiInboundSmsProcessorTest < ActiveSupport::TestCase
     assert_equal 0, @user.technician_profile.documents.count
   end
 
+  test "contact and body only is processed without conversation id message id or timestamp" do
+    Ghl::SmsSender.stub(:call, sent_sms(id: "out-min")) do
+      result = Ai::InboundSmsProcessor.call(production_payload("Yes"))
+      assert result.ok
+    end
+    turn = @session.turns.where(direction: "inbound").last
+    assert_nil turn.ghl_message_id
+    assert turn.inbound_fingerprint.present?
+    assert turn.received_at.present?
+    assert_equal "Yes", turn.body
+  end
+
+  test "blank conversation id message id and timestamp are treated as absent" do
+    Ghl::SmsSender.stub(:call, sent_sms(id: "out-blank")) do
+      result = Ai::InboundSmsProcessor.call(
+        production_payload("Yes").merge(
+          "ghl_conversation_id" => "",
+          "ghl_message_id" => "",
+          "timestamp" => "",
+          "attachments" => "{{message.attachments}}"
+        )
+      )
+      assert result.ok
+    end
+    turn = @session.turns.where(direction: "inbound").last
+    assert_nil turn.ghl_message_id
+    assert_equal [], turn.attachments
+  end
+
+  test "contact body and attachment without GHL ids is processed" do
+    GhlRemoteImageFetcher.stub(:fetch, fetched_png) do
+      Ghl::SmsSender.stub(:call, sent_sms(id: "out-att")) do
+        result = Ai::InboundSmsProcessor.call(
+          production_payload("here you go", attachments: "https://services.msgsndr.com/mms/photo.png")
+        )
+        assert result.ok
+      end
+    end
+    turn = @session.turns.where(direction: "inbound").last
+    assert_nil turn.ghl_message_id
+    assert_includes turn.attachments, "https://services.msgsndr.com/mms/photo.png"
+    snap = TechnicianVerificationInventory.call(@user.reload)
+    assert_equal true, snap[:trade_license][:documents].first[:has_file]
+  end
+
+  test "immediate duplicate production webhook is ignored" do
+    n = 0
+    Ghl::SmsSender.stub(:call, ->(**) { n += 1; sent_sms(id: "out-dup-#{n}") }) do
+      first = Ai::InboundSmsProcessor.call(production_payload("Yes"))
+      second = Ai::InboundSmsProcessor.call(production_payload("Yes"))
+      assert first.ok
+      assert_equal true, second.duplicate
+      assert_equal true, second.ignored
+    end
+    assert_equal 1, @session.turns.where(direction: "inbound").count
+  end
+
+  test "same text outside the dedupe window is processed again" do
+    n = 0
+    Ghl::SmsSender.stub(:call, ->(**) { n += 1; sent_sms(id: "out-win-#{n}") }) do
+      first = Ai::InboundSmsProcessor.call(production_payload("Yes"))
+      assert first.ok
+      travel 3.minutes do
+        second = Ai::InboundSmsProcessor.call(production_payload("Yes"))
+        assert second.ok
+        refute second.duplicate
+      end
+    end
+    assert_equal 2, @session.turns.where(direction: "inbound").count
+    assert_equal 2, n
+  end
+
   private
 
   def inbound_payload(message_id, body)
@@ -148,6 +221,16 @@ class AiInboundSmsProcessorTest < ActiveSupport::TestCase
       "ghl_conversation_id" => "conv-in",
       "ghl_message_id" => message_id,
       "body" => body,
+      "direction" => "inbound",
+      "channel" => "SMS"
+    }
+  end
+
+  def production_payload(body, attachments: "")
+    {
+      "ghl_contact_id" => "contact-in",
+      "body" => body,
+      "attachments" => attachments,
       "direction" => "inbound",
       "channel" => "SMS"
     }

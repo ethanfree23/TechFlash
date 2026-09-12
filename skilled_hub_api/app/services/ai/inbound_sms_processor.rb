@@ -2,6 +2,8 @@
 
 module Ai
   class InboundSmsProcessor
+    DEDUPE_WINDOW = 2.minutes
+
     Result = Struct.new(:ok, :ignored, :duplicate, :body, :http_status, keyword_init: true)
 
     def self.call(payload)
@@ -21,70 +23,81 @@ module Ai
         return ignored("non_sms")
       end
 
-      message_id = parsed.message_id.presence || Digest::SHA256.hexdigest(
-        [parsed.contact_id, parsed.conversation_id, parsed.body, parsed.timestamp].join(":")
-      )[0, 40]
-
-      event = find_or_create_event!(message_id, parsed)
-      if event.processed_at.present?
-        return Result.new(ok: true, duplicate: true, ignored: true, http_status: :ok, body: { success: true, duplicate: true })
-      end
-
       user = User.find_by(ghl_contact_id: parsed.contact_id.to_s.strip)
-      unless user
-        mark_event!(event, error: "unknown_contact")
-        return ignored("unknown_contact")
-      end
+      return ignored("unknown_contact") unless user
 
       session = AiSmsSession.live_for(user)
-      unless session
-        mark_event!(event, user: user, error: "no_active_session")
-        return ignored("no_active_session")
-      end
+      return ignored("no_active_session") unless session
 
+      fingerprint = InboundFingerprint.call(
+        contact_id: parsed.contact_id,
+        body: parsed.body,
+        attachments: parsed.attachments
+      )
+
+      session.with_lock do
+        process_locked(parsed, user, session, fingerprint)
+      end
+    rescue ActiveRecord::RecordNotUnique
+      Result.new(ok: true, duplicate: true, ignored: true, http_status: :ok, body: { success: true, duplicate: true })
+    end
+
+    private
+
+    def process_locked(parsed, user, session, fingerprint)
       if session.ghl_conversation_id.blank? && parsed.conversation_id.present?
         session.update!(ghl_conversation_id: parsed.conversation_id)
       end
 
+      if parsed.message_id.present?
+        event = GhlWebhookEvent.find_by(idempotency_key: "inbound-sms:#{parsed.message_id}")
+        if event&.processed_at.present? || AiSmsTurn.exists?(ghl_message_id: parsed.message_id)
+          mark_event!(event, user: user) if event
+          return Result.new(ok: true, duplicate: true, ignored: true, http_status: :ok, body: { success: true, duplicate: true })
+        end
+      end
+
+      if fingerprint_replay?(session, fingerprint)
+        return Result.new(ok: true, duplicate: true, ignored: true, http_status: :ok, body: { success: true, duplicate: true })
+      end
+
+      event = create_event!(parsed, fingerprint)
+      received_at = Time.current
       if parsed.dnd || GhlInboundPayload.opt_out_text?(parsed.body)
         session.update!(
           status: "opted_out",
           failure_reason: "Technician opted out of SMS",
-          last_inbound_at: Time.current,
-          completed_at: Time.current
+          last_inbound_at: received_at,
+          completed_at: received_at
         )
         session.turns.create!(
           direction: "inbound",
-          ghl_message_id: message_id,
+          ghl_message_id: parsed.message_id.presence,
+          inbound_fingerprint: fingerprint,
+          received_at: received_at,
           body: parsed.body.to_s.truncate(1600),
-          metadata: { "opt_out" => true }
+          attachments: parsed.attachments,
+          metadata: { "opt_out" => true, "received_at" => received_at.iso8601 }
         )
         mark_event!(event, user: user)
         return Result.new(ok: true, http_status: :ok, body: { success: true, status: "opted_out" })
       end
 
-      if AiSmsTurn.exists?(ghl_message_id: message_id)
-        mark_event!(event, user: user)
-        return Result.new(ok: true, duplicate: true, ignored: true, http_status: :ok, body: { success: true, duplicate: true })
-      end
-
-      begin
-        session.turns.create!(
-          direction: "inbound",
-          ghl_message_id: message_id,
-          body: parsed.body.to_s.truncate(1600),
-          attachments: parsed.attachments
-        )
-      rescue ActiveRecord::RecordNotUnique
-        mark_event!(event, user: user)
-        return Result.new(ok: true, duplicate: true, ignored: true, http_status: :ok, body: { success: true, duplicate: true })
-      end
+      inbound_turn = session.turns.create!(
+        direction: "inbound",
+        ghl_message_id: parsed.message_id.presence,
+        inbound_fingerprint: fingerprint,
+        received_at: received_at,
+        body: parsed.body.to_s.truncate(1600),
+        attachments: parsed.attachments,
+        metadata: { "received_at" => received_at.iso8601 }
+      )
 
       inventory = TechnicianVerificationInventory.call(user)
       media = InboundMediaHandler.call(user: user, inventory: inventory, urls: parsed.attachments)
       inventory = TechnicianVerificationInventory.call(user.reload) if media.saved
 
-      session.update!(last_inbound_at: Time.current, ghl_contact_id: parsed.contact_id)
+      session.update!(last_inbound_at: received_at, ghl_contact_id: parsed.contact_id)
       turn = TurnRunner.call(
         session: session,
         user: user,
@@ -96,7 +109,8 @@ module Ai
           attachment_error: media.ok ? nil : media.error
         },
         persist: true,
-        ghl_message_id: message_id
+        ghl_message_id: parsed.message_id.presence,
+        inbound_turn: inbound_turn
       )
       mark_event!(event, user: user, error: turn.ok ? nil : turn.error)
       Result.new(
@@ -104,35 +118,53 @@ module Ai
         http_status: turn.ok ? :ok : (turn.http_status || :unprocessable_entity),
         body: { success: turn.ok, status: session.reload.status, error: turn.error }.compact
       )
-    rescue ActiveRecord::RecordNotUnique
-      Result.new(ok: true, duplicate: true, ignored: true, http_status: :ok, body: { success: true, duplicate: true })
     end
 
-    private
+    def fingerprint_replay?(session, fingerprint)
+      return false if fingerprint.blank?
+
+      session.turns
+        .where(direction: "inbound", inbound_fingerprint: fingerprint)
+        .where("received_at >= ?", DEDUPE_WINDOW.ago)
+        .exists?
+    end
 
     def ignored(reason)
       Result.new(ok: true, ignored: true, http_status: :ok, body: { success: true, ignored: true, reason: reason })
     end
 
-    def find_or_create_event!(message_id, parsed)
-      GhlWebhookEvent.find_or_create_by!(idempotency_key: "inbound-sms:#{message_id}") do |event|
-        event.ghl_contact_id = parsed.contact_id
-        event.event_type = "inbound_sms"
-        event.payload = {
+    def create_event!(parsed, fingerprint)
+      key =
+        if parsed.message_id.present?
+          "inbound-sms:#{parsed.message_id}"
+        else
+          "inbound-sms:#{SecureRandom.uuid}"
+        end
+
+      GhlWebhookEvent.create!(
+        idempotency_key: key,
+        ghl_contact_id: parsed.contact_id,
+        event_type: "inbound_sms",
+        payload: {
           "contact_id" => parsed.contact_id,
           "conversation_id" => parsed.conversation_id,
-          "message_id" => message_id,
+          "message_id" => parsed.message_id,
+          "fingerprint" => fingerprint,
           "direction" => parsed.direction,
           "channel" => parsed.channel,
           "timestamp" => parsed.timestamp,
           "has_body" => parsed.body.present?,
           "attachment_count" => parsed.attachments.size
-        }
-        event.attempt_count = 0
-      end
+        },
+        attempt_count: 0
+      )
+    rescue ActiveRecord::RecordNotUnique
+      GhlWebhookEvent.find_by!(idempotency_key: key)
     end
 
     def mark_event!(event, user: nil, error: nil)
+      return if event.blank?
+
       event.update!(
         user_id: user&.id || event.user_id,
         processed_at: Time.current,

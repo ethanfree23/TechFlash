@@ -8,13 +8,14 @@ module Ai
       new(**attrs).call
     end
 
-    def initialize(session:, user:, inventory:, inbound:, persist: true, ghl_message_id: nil)
+    def initialize(session:, user:, inventory:, inbound:, persist: true, ghl_message_id: nil, inbound_turn: nil)
       @session = session
       @user = user
       @inventory = inventory
       @inbound = inbound.to_h
       @persist = persist
       @ghl_message_id = ghl_message_id
+      @inbound_turn = inbound_turn
     end
 
     def call
@@ -166,17 +167,32 @@ module Ai
         actions_accepted: Array(accepted),
         actions_rejected: Array(rejected),
         error: error,
-        metadata: { "reply" => reply, "outbound_message_id" => outbound_id }.compact
+        metadata: merged_turn_metadata(outbound_id, reply)
       }
-      if @ghl_message_id.present?
-        turn = @session.turns.find_or_initialize_by(ghl_message_id: @ghl_message_id)
-        turn.assign_attributes(attrs)
-        turn.save!
-      else
-        @session.turns.create!(attrs)
-      end
+      turn =
+        if @inbound_turn.present? && direction != "outbound"
+          @inbound_turn
+        elsif @ghl_message_id.present?
+          @session.turns.find_or_initialize_by(ghl_message_id: @ghl_message_id)
+        else
+          @session.turns.new
+        end
+      turn.assign_attributes(attrs)
+      turn.ghl_message_id = @ghl_message_id if @ghl_message_id.present?
+      turn.received_at ||= Time.current
+      turn.save!
     rescue ActiveRecord::RecordNotUnique
       nil
+    end
+
+    def merged_turn_metadata(outbound_id, reply)
+      existing = @inbound_turn&.metadata.to_h.stringify_keys
+      existing.merge(
+        {
+          "reply" => reply,
+          "outbound_message_id" => outbound_id
+        }.compact
+      )
     end
   end
 end
