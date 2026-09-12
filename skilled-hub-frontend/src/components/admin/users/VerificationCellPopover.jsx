@@ -85,7 +85,7 @@ export default function VerificationCellPopover({
   return (
     <div
       ref={triggerRef}
-      className="relative min-w-0"
+      className="relative inline-flex h-5 min-h-5 max-h-5 shrink-0 items-center"
       onMouseEnter={() => {
         cancelClose();
         setOpen(true);
@@ -103,7 +103,7 @@ export default function VerificationCellPopover({
     >
       <button
         type="button"
-        className="block max-w-full text-left"
+        className="inline-flex h-5 min-h-5 max-h-5 items-center overflow-hidden p-0 m-0 border-0 bg-transparent appearance-none leading-none max-w-full text-left"
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-label={ariaLabel}

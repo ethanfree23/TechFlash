@@ -13,7 +13,7 @@ const styles = {
 export default function StatusBadge({ children, variant = 'default' }) {
   return (
     <span
-      className={`inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-semibold leading-none ${styles[variant] || styles.default}`}
+      className={`inline-flex h-5 min-h-5 max-h-5 shrink-0 items-center overflow-hidden whitespace-nowrap rounded border box-border px-1.5 text-[10px] font-semibold leading-none ${styles[variant] || styles.default}`}
     >
       {children}
     </span>

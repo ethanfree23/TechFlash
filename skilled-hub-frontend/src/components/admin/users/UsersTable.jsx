@@ -409,7 +409,7 @@ function UserMobileCard({ row, selected, onSelect, onRowClick, onViewProfile, me
         />
         <div className="flex-1 min-w-0">
           <UserCell row={row} />
-          <div className="mt-2 flex flex-wrap gap-1">
+          <div className="mt-2 flex flex-wrap items-center gap-1">
             <UserTypeBadge role={row.role} />
             <UserStatusBadge status={row.accountStatus} />
             {row.role === 'technician' && row.verification ? (

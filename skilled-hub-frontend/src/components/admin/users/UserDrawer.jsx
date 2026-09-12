@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { FaTimes, FaEnvelope, FaExternalLinkAlt } from 'react-icons/fa';
 import { adminUsersAPI } from '../../../api/api';
@@ -95,6 +96,42 @@ function DrawerSection({ title, children, className = '' }) {
   );
 }
 
+function AvatarLightbox({ src, name, onClose }) {
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [onClose]);
+
+  return createPortal(
+    <div className="fixed inset-0 z-[130] flex items-center justify-center p-4" role="dialog" aria-modal="true" aria-label={`${name || 'User'} profile photo`}>
+      <button type="button" className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm" aria-label="Close photo" onClick={onClose} />
+      <div className="relative z-10 flex max-h-[90vh] w-full max-w-xl flex-col items-center">
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute -top-10 right-0 rounded-md p-1.5 text-white/80 hover:bg-white/10 hover:text-white"
+          aria-label="Close photo"
+        >
+          <FaTimes className="h-5 w-5" />
+        </button>
+        <img
+          src={src}
+          alt={name ? `${name} profile photo` : 'Profile photo'}
+          className="max-h-[82vh] w-auto max-w-full rounded-2xl object-contain shadow-2xl ring-1 ring-white/20"
+        />
+        {name ? <p className="mt-3 text-sm font-medium text-white/90">{name}</p> : null}
+      </div>
+    </div>,
+    document.body
+  );
+}
+
 export default function UserDrawer({
   userId,
   listRow,
@@ -115,6 +152,7 @@ export default function UserDrawer({
   const [notes, setNotes] = useState([]);
   const [noteText, setNoteText] = useState('');
   const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [avatarOpen, setAvatarOpen] = useState(false);
 
   const loadDetail = useCallback(async () => {
     if (!userId) return;
@@ -134,6 +172,7 @@ export default function UserDrawer({
   useEffect(() => {
     if (userId) {
       setNotes(loadNotes(userId));
+      setAvatarOpen(false);
       loadDetail();
     }
   }, [userId, loadDetail]);
@@ -142,14 +181,16 @@ export default function UserDrawer({
     const prev = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const onKey = (e) => {
-      if (e.key === 'Escape' && !editProfileOpen) onClose?.();
+      if (e.key !== 'Escape') return;
+      if (avatarOpen || editProfileOpen) return;
+      onClose?.();
     };
     window.addEventListener('keydown', onKey);
     return () => {
       document.body.style.overflow = prev;
       window.removeEventListener('keydown', onKey);
     };
-  }, [onClose, editProfileOpen]);
+  }, [onClose, editProfileOpen, avatarOpen]);
 
   if (!userId) return null;
 
@@ -189,6 +230,19 @@ export default function UserDrawer({
 
   return (
     <>
+      {avatarOpen && (() => {
+        const avatarUrl = row?.avatarUrl || detail?.user?.profile?.avatar_url;
+        const resolved = avatarUrl
+          ? mediaUrlWithCacheBust(avatarUrl, row?.avatarUpdatedAt || detail?.user?.profile?.updated_at)
+          : null;
+        return resolved ? (
+          <AvatarLightbox
+            src={resolved}
+            name={row?.displayName}
+            onClose={() => setAvatarOpen(false)}
+          />
+        ) : null;
+      })()}
       {editProfileOpen && isTechnician && (
         <EditTechnicianProfileModal
           isOpen={editProfileOpen}
@@ -238,11 +292,14 @@ export default function UserDrawer({
                       ? mediaUrlWithCacheBust(avatarUrl, row.avatarUpdatedAt || detail?.user?.profile?.updated_at)
                       : null;
                     return resolved ? (
-                      <img
-                        src={resolved}
-                        alt=""
-                        className="h-11 w-11 shrink-0 rounded-full object-cover border border-slate-200"
-                      />
+                      <button
+                        type="button"
+                        onClick={() => setAvatarOpen(true)}
+                        className="h-11 w-11 shrink-0 cursor-zoom-in overflow-hidden rounded-full border border-slate-200 hover:ring-2 hover:ring-tf-blue/40 focus:outline-none focus-visible:ring-2 focus-visible:ring-tf-blue/50"
+                        aria-label={`View ${row.displayName || 'user'} profile photo`}
+                      >
+                        <img src={resolved} alt="" className="h-full w-full object-cover" />
+                      </button>
                     ) : (
                       <div className="h-11 w-11 shrink-0 rounded-full bg-gradient-to-br from-slate-100 to-slate-50 border border-slate-200 flex items-center justify-center text-sm font-bold text-slate-600">
                         {row.initials}
@@ -256,7 +313,7 @@ export default function UserDrawer({
                     {row.locationLabel && row.locationLabel !== 'Not provided' && (
                       <p className="text-xs text-slate-400 mt-0.5">{row.locationLabel}</p>
                     )}
-                    <div className="flex flex-wrap gap-1 mt-2">
+                    <div className="flex flex-wrap items-center gap-1 mt-2">
                       <UserTypeBadge role={row.role} />
                       <UserStatusBadge status={row.accountStatus} />
                       {row.role === 'technician' && row.verification ? (

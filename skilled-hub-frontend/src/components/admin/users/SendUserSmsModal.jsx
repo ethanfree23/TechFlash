@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { FaTimes } from 'react-icons/fa';
 import { adminUsersAPI } from '../../../api/api';
 import { formatPhoneInput } from '../../../utils/phone';
@@ -83,18 +83,26 @@ export default function SendUserSmsModal({ isOpen, user, suggestedMessage = '', 
   const [sending, setSending] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiPayload, setAiPayload] = useState(null);
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   useEffect(() => {
     if (!isOpen) return undefined;
     setMessage(suggestedMessage || '');
     setMode('manual');
     setAiPayload(null);
+    setSending(false);
+    setAiLoading(false);
+  }, [isOpen, suggestedMessage]);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
     const onKey = (e) => {
-      if (e.key === 'Escape' && !sending && !aiLoading) onClose();
+      if (e.key === 'Escape' && !sending) onClose();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, suggestedMessage, sending, aiLoading, onClose]);
+  }, [isOpen, sending, onClose]);
 
   useEffect(() => {
     if (!isOpen || !user?.id || mode !== 'ai') return undefined;
@@ -105,15 +113,16 @@ export default function SendUserSmsModal({ isOpen, user, suggestedMessage = '', 
         if (!cancelled) setAiPayload(payload);
       })
       .catch((e) => {
-        if (!cancelled) onError?.(e.message || 'Failed to load verification inventory');
+        if (!cancelled) onErrorRef.current?.(e.message || 'Failed to load verification inventory');
       })
       .finally(() => {
         if (!cancelled) setAiLoading(false);
       });
     return () => {
       cancelled = true;
+      setAiLoading(false);
     };
-  }, [isOpen, user?.id, mode, onError]);
+  }, [isOpen, user?.id, mode]);
 
   if (!isOpen || !user) return null;
 
@@ -170,11 +179,11 @@ export default function SendUserSmsModal({ isOpen, user, suggestedMessage = '', 
 
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-      <button type="button" className="absolute inset-0 bg-slate-900/40" aria-label="Close" onClick={() => !sending && !aiLoading && onClose()} />
-      <div className="relative w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl">
+      <button type="button" className="absolute inset-0 bg-slate-900/40" aria-label="Close" onClick={() => !sending && onClose()} />
+      <div className="relative z-10 w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
           <h3 className="text-base font-semibold text-slate-900">Send SMS</h3>
-          <button type="button" onClick={onClose} disabled={sending || aiLoading} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100">
+          <button type="button" onClick={onClose} disabled={sending} className="p-1 rounded-lg text-slate-400 hover:bg-slate-100 disabled:opacity-50">
             <FaTimes />
           </button>
         </div>
@@ -245,8 +254,8 @@ export default function SendUserSmsModal({ isOpen, user, suggestedMessage = '', 
           <button
             type="button"
             onClick={onClose}
-            disabled={sending || aiLoading}
-            className="rounded-md px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+            disabled={sending}
+            className="rounded-md px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50 disabled:opacity-50"
           >
             Cancel
           </button>
