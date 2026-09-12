@@ -2098,22 +2098,26 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       ) : (
         <p className="mt-2 text-sm text-emerald-800">Great — no obvious gaps from this checklist.</p>
       )}
-      {isTechnician && !verificationCompletion.allComplete && (
-        <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-          <p className="text-sm text-amber-900">
-            Identity, background check, and references are on the Verification tab.
-          </p>
-          <button
-            type="button"
-            onClick={() => setSettingsTab('verification')}
-            className="mt-2 inline-flex items-center rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
-          >
-            Finish verification
-          </button>
-        </div>
-      )}
     </SettingsCard>
   );
+
+  const renderVerificationNudge = () => {
+    if (!isTechnician || verificationCompletion.allComplete) return null;
+    return (
+      <div className="w-full max-w-sm shrink-0 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 sm:ml-auto">
+        <p className="text-sm text-amber-900">
+          Identity, background check, and references are on the Verification tab.
+        </p>
+        <button
+          type="button"
+          onClick={() => setSettingsTab('verification')}
+          className="mt-2 inline-flex items-center rounded-lg bg-blue-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-blue-700"
+        >
+          Finish verification
+        </button>
+      </div>
+    );
+  };
 
   const renderLicensesAndCertificates = () => (
     <LicenseCredentialsSection
@@ -2222,27 +2226,27 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
             </form>
           ) : (
           <form onSubmit={handleProfileSubmit} className="space-y-4" noValidate>
-            <div className="flex flex-col items-start gap-5 sm:flex-row">
+            <div className="flex flex-col items-start gap-5 sm:flex-row sm:items-start">
               <div className="flex shrink-0 flex-col items-center gap-2">
                 <div className="relative">
                   {profileAvatarUrl ? (
                     <img
                       src={profileAvatarUrl}
                       alt=""
-                      className="h-40 w-40 rounded-full object-cover border-2 border-gray-200"
+                      className="h-56 w-56 rounded-full object-cover border-2 border-gray-200"
                       onError={() => {
                         setAvatarBroken(true);
                         setAvatarPreview(null);
                       }}
                     />
                   ) : (
-                    <div className="flex h-40 w-40 items-center justify-center rounded-full bg-gray-200 text-5xl font-bold text-gray-500">
+                    <div className="flex h-56 w-56 items-center justify-center rounded-full bg-gray-200 text-6xl font-bold text-gray-500">
                       {(form.first_name || user?.first_name || user?.email || '?')[0]?.toUpperCase() || '?'}
                     </div>
                   )}
-                  <label className="absolute bottom-1 right-1 cursor-pointer rounded-full bg-blue-600 p-2.5 text-white hover:bg-blue-700">
+                  <label className="absolute bottom-1 right-1 cursor-pointer rounded-full bg-blue-600 p-3 text-white hover:bg-blue-700">
                     <input type="file" accept="image/*" className="hidden" onChange={handleAvatarChange} />
-                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /></svg>
+                    <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" /></svg>
                   </label>
                 </div>
                 <div className="text-sm text-gray-500">Click to change photo</div>
@@ -2252,6 +2256,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   {renderProfileCompletionCard()}
                 </div>
               )}
+              {renderVerificationNudge()}
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
