@@ -15,7 +15,7 @@ import {
   US_DEFAULT_MAP_CENTER,
   zoomForMapWidthMiles,
 } from '../utils/technicianMap';
-import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen, FaBuilding } from 'react-icons/fa';
+import { FaBriefcase, FaCheckSquare, FaWrench, FaFolderOpen, FaBuilding, FaInfoCircle } from 'react-icons/fa';
 import { AdminPlatformCharts, CompanyAnalyticsCharts, TechnicianAnalyticsCharts } from '../components/dashboard/RoleDashboardCharts';
 import AdminCommandCenter from '../components/admin/command-center/AdminCommandCenter';
 import { fetchAdminCommandCenterInsights } from '../services/fetchAdminCommandCenterData';
@@ -919,11 +919,11 @@ const TechnicianOpenJobsMap = ({
       ? 'Add VITE_GOOGLE_MAPS_API_KEY to skilled-hub-frontend/.env (enable the Maps JavaScript API for this key), then restart the Vite dev server. Without it, only this preview opens — blue job pins need the interactive map.'
       : 'The Maps script failed to load. Confirm the API key, billing, and that “Maps JavaScript API” is enabled for your Google Cloud project.';
     return (
-      <div className="relative h-full w-full min-h-[24rem] bg-slate-200">
+      <div className="relative h-full w-full bg-slate-200">
         <iframe
           title="Open jobs map area view"
           src={fallbackEmbedUrl}
-          className="h-full w-full min-h-[24rem] border-0"
+          className="h-full w-full border-0"
           loading="eager"
           fetchPriority="high"
           referrerPolicy="no-referrer-when-downgrade"
@@ -938,13 +938,13 @@ const TechnicianOpenJobsMap = ({
 
   if (!mapsReady) {
     return (
-      <div className="h-full w-full min-h-[24rem] flex items-center justify-center bg-slate-100 text-gray-500 text-sm">
+      <div className="flex h-full w-full items-center justify-center bg-slate-100 text-sm text-gray-500">
         Loading map...
       </div>
     );
   }
 
-  return <div ref={mapContainerRef} className="h-full w-full min-h-[24rem]" />;
+  return <div ref={mapContainerRef} className="h-full w-full" />;
 };
 
 const DashboardStatSkeleton = () => (
@@ -1122,6 +1122,56 @@ const CompanyDashboardContent = ({
   );
 };
 
+const OpenJobsMapHelp = ({ searchRadiusMiles }) => (
+  <div className="group absolute left-3 top-3 z-20">
+    <button
+      type="button"
+      aria-label="How the map works"
+      className="flex h-9 w-9 items-center justify-center rounded-full border border-gray-200 bg-white text-slate-600 shadow-md hover:bg-gray-50 hover:text-slate-800"
+    >
+      <FaInfoCircle className="h-[18px] w-[18px]" />
+    </button>
+    <div className="pointer-events-none invisible absolute left-0 top-full z-30 w-[min(20rem,calc(100vw-1.5rem))] pt-2 opacity-0 transition-opacity duration-150 group-hover:pointer-events-auto group-hover:visible group-hover:opacity-100">
+      <div
+        role="tooltip"
+        className="rounded-xl border border-gray-200 bg-white p-4 text-left shadow-lg"
+      >
+        <p className="text-sm font-semibold text-gray-900">How the map works</p>
+        <ul className="mt-3 space-y-2 text-sm text-gray-700">
+          <li className="flex items-center gap-2.5">
+            <span
+              className="inline-block h-0 w-0 shrink-0 border-x-[6px] border-b-[11px] border-x-transparent border-b-red-600"
+              aria-hidden="true"
+            />
+            Your location
+          </li>
+          <li className="flex items-center gap-2.5">
+            <span
+              className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-green-600 text-[11px] font-bold text-white"
+              aria-hidden="true"
+            >
+              $
+            </span>
+            Open job
+          </li>
+          <li className="flex items-center gap-2.5">
+            <span className="h-3.5 w-3.5 shrink-0 rounded-full border-2 border-white bg-blue-500 shadow-sm" aria-hidden="true" />
+            Other technicians
+          </li>
+        </ul>
+        <div className="mt-3 space-y-1.5 border-t border-gray-100 pt-3 text-xs leading-relaxed text-gray-600">
+          <p>Open listings refresh every 5 minutes.</p>
+          <p>The map opens at a 45-mile-wide view around your profile.</p>
+          <p>
+            Pins show jobs within {searchRadiusMiles} miles when both you and the company are a fit
+            (experience, membership timing, and profile rules).
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+);
+
 const TechnicianDashboardContent = ({
   jobs,
   jobsLoading,
@@ -1243,92 +1293,41 @@ const TechnicianDashboardContent = ({
       )}
 
       <section className="mb-8 rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">
-        <div className="grid grid-cols-1 xl:grid-cols-3">
-          <div className="xl:col-span-2 min-h-[24rem] bg-slate-100 relative">
-            {openJobsLoading && openJobs.length === 0 ? (
-              <div className="h-full min-h-[24rem] flex items-center justify-center text-gray-500 text-sm">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-2" />
-                  Loading open jobs map…
-                </div>
+        <div className="relative h-[36rem] bg-slate-100 lg:h-[42rem]">
+          {openJobsLoading && openJobs.length === 0 ? (
+            <div className="flex h-full items-center justify-center text-sm text-gray-500">
+              <div className="text-center">
+                <div className="mx-auto mb-2 h-8 w-8 animate-spin rounded-full border-b-2 border-blue-600" />
+                Loading open jobs map…
               </div>
-            ) : (
-              <>
-            <TechnicianOpenJobsMap
-              technicianProfile={technicianProfile}
-              jobs={mapDisplayJobs}
-              selectedMapJobId={selectedMapJobId}
-              mapPanNonce={mapPanNonce}
-              onSelectJob={(jobId) => openNearbyJobPreview(jobId)}
-              viewerTechnicianProfileId={technicianProfile?.id}
-            />
-            {openJobs.length === 0 && (
-              <div className="pointer-events-none absolute inset-x-0 top-4 flex justify-center px-4">
-                <div className="rounded-full bg-slate-900/45 text-white text-xs sm:text-sm px-4 py-2 backdrop-blur-[1px] max-w-md text-center leading-snug">
-                  No open jobs match your account yet (not only distance—tier timing, experience vs. each job, and profile
-                  rules apply)
-                </div>
-              </div>
-            )}
-            {openJobs.length > 0 && mapDisplayJobs.length === 0 && (
-              <div className="pointer-events-none absolute inset-x-0 top-4 flex justify-center px-4">
-                <div className="rounded-full bg-amber-900/55 text-white text-xs sm:text-sm px-4 py-2 backdrop-blur-[1px] max-w-lg text-center">
-                  No open listings within {searchRadiusMiles} miles of your profile.
-                </div>
-              </div>
-            )}
-              </>
-            )}
-          </div>
-          <div className="border-t xl:border-t-0 xl:border-l border-gray-200 p-5">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-lg font-semibold text-gray-900">Open Jobs Map</h2>
-              <span className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-1 text-xs font-medium text-blue-700">
-                Live
-              </span>
             </div>
-            <p className="text-sm text-gray-600 mb-4">
-              Open listings refresh every 5 minutes. The map opens at a 45-mile-wide view around your profile.
-              Jobs are filtered server-side by membership rules (including experience vs. each posting); we then
-              list pins within {searchRadiusMiles} miles when coordinates are available.
-            </p>
-            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
-              {mapDisplayJobs.map((job) => (
-                <button
-                  key={job.id}
-                  type="button"
-                  onClick={() => openNearbyJobPreview(job.id)}
-                  className={`w-full rounded-lg border px-3 py-2 text-left transition cursor-pointer ${
-                    selectedMapJobId === job.id
-                      ? 'border-blue-500 bg-blue-50'
-                      : 'border-gray-200 bg-white hover:bg-gray-50'
-                  }`}
-                >
-                  <p className="text-sm font-semibold text-gray-900 line-clamp-1">{job.title}</p>
-                  <p className="text-xs text-gray-600 line-clamp-1">
-                    {job.location || 'Location pending'}
-                    {Number.isFinite(job.distanceMiles) ? ` • ${formatDistanceMi(job.distanceMiles)}` : ''}
-                  </p>
-                  <div className="mt-2 flex justify-end">
-                    <span className="text-xs font-medium text-blue-700">Show on map</span>
+          ) : (
+            <>
+              <TechnicianOpenJobsMap
+                technicianProfile={technicianProfile}
+                jobs={mapDisplayJobs}
+                selectedMapJobId={selectedMapJobId}
+                mapPanNonce={mapPanNonce}
+                onSelectJob={(jobId) => openNearbyJobPreview(jobId)}
+                viewerTechnicianProfileId={technicianProfile?.id}
+              />
+              {openJobs.length === 0 && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-12 flex justify-center px-4">
+                  <div className="rounded-full border border-gray-200 bg-white/95 px-4 py-2 text-center text-sm text-gray-800 shadow-md">
+                    There are no jobs where both you and the company are a fit.
                   </div>
-                </button>
-              ))}
-              {!mapDisplayJobs.length && (
-                <div className="text-sm text-gray-500 space-y-2">
-                  <p>No open jobs to show on the map right now.</p>
-                  <p className="text-xs text-gray-500">
-                    If the jobs board looks quiet but companies have postings, confirm your years of experience and profile in
-                    Settings meet each listing&apos;s requirements. Premium speeds tier timing—it does not skip job minimum
-                    experience.
-                  </p>
-                  <Link to="/settings" className="inline-block text-xs font-medium text-blue-700 hover:underline">
-                    Open Settings
-                  </Link>
                 </div>
               )}
-            </div>
-          </div>
+              {openJobs.length > 0 && mapDisplayJobs.length === 0 && (
+                <div className="pointer-events-none absolute inset-x-0 bottom-12 flex justify-center px-4">
+                  <div className="rounded-full border border-amber-200 bg-amber-50/95 px-4 py-2 text-center text-sm text-amber-950 shadow-md">
+                    No open listings within {searchRadiusMiles} miles of your profile.
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+          <OpenJobsMapHelp searchRadiusMiles={searchRadiusMiles} />
         </div>
       </section>
 

@@ -4,6 +4,20 @@ import { adminUsersAPI } from '../../../api/api';
 import { formatPhoneInput } from '../../../utils/phone';
 import { getFullName } from '../../../utils/adminUsersDisplayAdapter';
 
+function GhlOpenLink({ url }) {
+  if (!url) return null;
+  return (
+    <a
+      href={url}
+      target="_blank"
+      rel="noreferrer"
+      className="rounded-md px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+    >
+      Open in GHL
+    </a>
+  );
+}
+
 function statusLabel(session) {
   if (!session?.status) return null;
   const map = {
@@ -130,6 +144,7 @@ export default function SendUserSmsModal({ isOpen, user, suggestedMessage = '', 
   const phone = user.phone ? formatPhoneInput(user.phone) : 'No phone on file';
   const inventory = aiPayload?.inventory || user.verification;
   const session = aiPayload?.session || user.ai_sms_session;
+  const ghlUrl = session?.contact_url || session?.conversation_url;
   const live = session?.live || ['active', 'waiting_for_reply'].includes(session?.status);
   const sessionLabel = statusLabel(session);
 
@@ -270,16 +285,7 @@ export default function SendUserSmsModal({ isOpen, user, suggestedMessage = '', 
             </button>
           ) : live ? (
             <>
-              {session?.conversation_url && (
-                <a
-                  href={session.conversation_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-md px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                  Open Conversation
-                </a>
-              )}
+              <GhlOpenLink url={ghlUrl} />
               <button
                 type="button"
                 onClick={() => runAi(adminUsersAPI.pauseAiSms, () => 'AI SMS paused.')}
@@ -299,16 +305,7 @@ export default function SendUserSmsModal({ isOpen, user, suggestedMessage = '', 
             </>
           ) : (
             <div className="flex items-center gap-2">
-              {session?.conversation_url && (
-                <a
-                  href={session.conversation_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="rounded-md px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                >
-                  Open Conversation
-                </a>
-              )}
+              <GhlOpenLink url={ghlUrl} />
               {(session?.status === 'paused' || session?.status === 'needs_human') && (
                 <button
                   type="button"

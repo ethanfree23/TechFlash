@@ -27,13 +27,6 @@ class AiSmsSession < ApplicationRecord
   end
 
   def conversation_url
-    location = ghl_location_id
-    return nil if location.blank?
-
-    if ghl_conversation_id.present?
-      return "https://app.gohighlevel.com/v2/location/#{escape_ghl_id(location)}/conversations/#{escape_ghl_id(ghl_conversation_id)}"
-    end
-
     contact_url
   end
 
