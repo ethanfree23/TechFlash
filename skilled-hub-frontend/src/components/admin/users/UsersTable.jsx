@@ -111,7 +111,7 @@ function ColumnResizeHandle({ colKey, currentWidth, onDraftWidth, onCommitWidth,
 /** Tablet: hide membership tier, risk, jobs */
 const HIDDEN_MD = new Set(['jobs', 'risk', 'membership_tier']);
 /** Mobile table (lg breakpoint): also hide city, state, last_login, joined */
-const HIDDEN_LG = new Set(['city', 'state', 'location', 'last_login', 'joined']);
+const HIDDEN_LG = new Set(['city', 'state', 'zip', 'location', 'last_login', 'joined']);
 
 function Muted({ children, title }) {
   return (
@@ -234,6 +234,12 @@ function renderCell(col, row) {
         <CellText className="text-xs text-slate-600" title={row.stateLabel}>{row.stateLabel}</CellText>
       ) : (
         <Muted title="State not provided">—</Muted>
+      );
+    case 'zip':
+      return row.zipLabel ? (
+        <CellText className="text-xs text-slate-600 tabular-nums" title={row.zipLabel}>{row.zipLabel}</CellText>
+      ) : (
+        <Muted title="ZIP not provided">—</Muted>
       );
     case 'membership_tier':
       return (
@@ -493,6 +499,7 @@ export default function UsersTable({
           case 'location': return row.locationLabel || '';
           case 'city': return row.cityLabel || '';
           case 'state': return row.stateLabel || '';
+          case 'zip': return row.zipLabel || '';
           case 'membership_tier': return row.membershipTier || '';
           case 'activity': return row.logins30d ?? 0;
           case 'jobs': return row.jobsSummary?.accepted ?? row.jobsSummary?.posted ?? 0;

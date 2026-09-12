@@ -67,8 +67,19 @@ export function columnsFromSavedArray(parsed, defaultColumns) {
       };
     })
     .filter(Boolean);
-  const missing = defaultColumns.filter((c) => !fromSaved.some((x) => x.key === c.key));
-  return [...fromSaved, ...missing];
+  const withZip = insertMissingColumnAfter(fromSaved, defaultMap, 'zip', 'state');
+  const missing = defaultColumns.filter((c) => !withZip.some((x) => x.key === c.key));
+  return [...withZip, ...missing];
+}
+
+function insertMissingColumnAfter(cols, defaultMap, key, afterKey) {
+  if (!defaultMap.has(key) || cols.some((c) => c.key === key)) return cols;
+  const def = defaultMap.get(key);
+  const idx = cols.findIndex((c) => c.key === afterKey);
+  if (idx === -1) return cols;
+  const next = [...cols];
+  next.splice(idx + 1, 0, { ...def });
+  return next;
 }
 
 export function serializeTableColumns(cols) {

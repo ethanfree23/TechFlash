@@ -72,6 +72,7 @@ function testLegacyLocationAndSubscriptionColumnsMigrate() {
     { key: 'user', label: 'User', visible: true, width: 200 },
     { key: 'city', label: 'City', visible: true, width: 104 },
     { key: 'state', label: 'State', visible: true, width: 56 },
+    { key: 'zip', label: 'ZIP', visible: false, width: 72 },
     { key: 'membership_tier', label: 'Tier', visible: true, width: 80 },
   ];
   const hydrated = columnsFromSavedArray(
@@ -84,10 +85,39 @@ function testLegacyLocationAndSubscriptionColumnsMigrate() {
   );
   assert.deepEqual(
     hydrated.map((c) => c.key),
-    ['user', 'city', 'state', 'membership_tier']
+    ['user', 'city', 'state', 'zip', 'membership_tier']
   );
   assert.ok(!hydrated.some((c) => c.key === 'subscription'));
   assert.ok(!hydrated.some((c) => c.key === 'location'));
+}
+
+function testMissingZipColumnInsertsAfterState() {
+  const defaults = [
+    { key: 'user', label: 'User', visible: true, width: 200 },
+    { key: 'city', label: 'City', visible: true, width: 104 },
+    { key: 'state', label: 'State', visible: true, width: 56 },
+    { key: 'zip', label: 'ZIP', visible: false, width: 72 },
+    { key: 'activity', label: 'Activity', visible: true, width: 120 },
+  ];
+  const hydrated = columnsFromSavedArray(
+    [
+      { key: 'user', visible: true, width: 200 },
+      { key: 'city', visible: true, width: 104 },
+      { key: 'state', visible: true, width: 56 },
+      { key: 'activity', visible: true, width: 120 },
+    ],
+    defaults
+  );
+  assert.deepEqual(
+    hydrated.map((c) => ({ key: c.key, visible: c.visible })),
+    [
+      { key: 'user', visible: true },
+      { key: 'city', visible: true },
+      { key: 'state', visible: true },
+      { key: 'zip', visible: false },
+      { key: 'activity', visible: true },
+    ]
+  );
 }
 
 testClampRespectsMinMax();
@@ -95,4 +125,5 @@ testSavedWidthsRoundTrip();
 testLegacySavedPrefsKeepDefaultWidths();
 testNormalizeIncludesWidthForDirtyCheck();
 testLegacyLocationAndSubscriptionColumnsMigrate();
+testMissingZipColumnInsertsAfterState();
 console.log('tableColumnPrefs tests passed');

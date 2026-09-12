@@ -120,6 +120,9 @@ function testCompanyColumnLabelFollowsTab() {
   assert.ok(allCols.some((c) => c.key === 'experience_years' && c.label === 'Years'));
   assert.ok(allCols.some((c) => c.key === 'city' && c.label === 'City'));
   assert.ok(allCols.some((c) => c.key === 'state' && c.label === 'State'));
+  const zipCol = allCols.find((c) => c.key === 'zip');
+  assert.ok(zipCol && zipCol.label === 'ZIP');
+  assert.strictEqual(zipCol.visible, false);
   assert.ok(allCols.some((c) => c.key === 'membership_tier' && c.label === 'Tier'));
   assert.ok(!allCols.some((c) => c.key === 'subscription'));
   assert.ok(!allCols.some((c) => c.key === 'location'));
@@ -137,6 +140,7 @@ function testLocationUsesZipCityAndCompanyLocation() {
   assert.strictEqual(zipOnly.locationLabel, '77583');
   assert.strictEqual(zipOnly.cityLabel, '');
   assert.strictEqual(zipOnly.stateLabel, '');
+  assert.strictEqual(zipOnly.zipLabel, '77583');
 
   const cityStateZip = enrichUserRow({
     id: 11,
@@ -151,6 +155,7 @@ function testLocationUsesZipCityAndCompanyLocation() {
   assert.strictEqual(cityStateZip.locationLabel, 'Houston, TX 77002');
   assert.strictEqual(cityStateZip.cityLabel, 'Houston');
   assert.strictEqual(cityStateZip.stateLabel, 'TX');
+  assert.strictEqual(cityStateZip.zipLabel, '77002');
 
   const fromDetail = enrichUserRow(
     { id: 12, email: 'detail@example.com', first_name: 'Jo', last_name: 'Tech', role: 'technician' },

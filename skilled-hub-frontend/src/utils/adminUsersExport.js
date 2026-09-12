@@ -13,6 +13,7 @@ const EXPORT_COLUMNS = [
   { key: 'experienceYears', header: 'Years' },
   { key: 'cityLabel', header: 'City' },
   { key: 'stateLabel', header: 'State' },
+  { key: 'zipLabel', header: 'ZIP' },
   { key: 'membershipTier', header: 'Tier' },
   { key: 'logins30d', header: 'Logins (30d)' },
   { key: 'riskLevel', header: 'Risk' },
