@@ -22,7 +22,6 @@ import { exportUsersToCsv } from '../utils/adminUsersExport';
 import UsersHeader from '../components/admin/users/UsersHeader';
 import UsersKpiCards from '../components/admin/users/UsersKpiCards';
 import UsersSegmentedTabs from '../components/admin/users/UsersSegmentedTabs';
-import UsersSavedViews from '../components/admin/users/UsersSavedViews';
 import UsersFilters from '../components/admin/users/UsersFilters';
 import UsersTable from '../components/admin/users/UsersTable';
 import UserDrawer from '../components/admin/users/UserDrawer';
@@ -187,7 +186,7 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
 
   const handleSelectView = (view) => {
     setActiveViewId(view.id);
-    setActiveTab(view.tab);
+    setActiveTab(view.tab || 'all');
     setFilters(view.filters || {});
   };
 
@@ -382,8 +381,6 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
 
             <UsersSegmentedTabs activeTab={activeTab} tabCounts={tabCounts} onChange={(tab) => { setActiveTab(tab); setActiveViewId('all'); }} />
 
-            <UsersSavedViews activeViewId={activeViewId} onSelectView={handleSelectView} />
-
             <UsersFilters
               searchQ={searchQ}
               onSearchChange={setSearchQ}
@@ -397,6 +394,9 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
               onResetColumnWidths={resetColumnWidths}
               draggingColumnKey={draggingColumnKey}
               setDraggingColumnKey={setDraggingColumnKey}
+              activeViewId={activeViewId}
+              onSelectView={handleSelectView}
+              activeTab={activeTab}
             />
           </div>
 

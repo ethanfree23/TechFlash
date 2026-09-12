@@ -1,13 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { FaCog, FaFilter, FaSearch, FaTimes } from 'react-icons/fa';
 import { getFilterChips } from '../../../utils/adminUsersDisplayAdapter';
+import UsersSavedViews from './UsersSavedViews';
 import {
   TABLE_COL_MAX_WIDTH,
   clampTableColumnWidth,
   minWidthForColumnKey,
 } from '../../../utils/tableColumnPrefs';
-
-const SAVED_VIEWS_KEY = 'admin_users_saved_views';
 
 const FILTER_FIELDS = [
   { key: 'userType', label: 'User type', type: 'select', options: ['', 'technician', 'company'] },
@@ -115,6 +114,9 @@ export default function UsersFilters({
   onResetColumnWidths,
   draggingColumnKey,
   setDraggingColumnKey,
+  activeViewId,
+  onSelectView,
+  activeTab,
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [columnsOpen, setColumnsOpen] = useState(false);
@@ -154,19 +156,6 @@ export default function UsersFilters({
     onFiltersChange(next);
   };
 
-  const saveView = () => {
-    const name = window.prompt('Name this view:');
-    if (!name?.trim()) return;
-    try {
-      const existing = JSON.parse(localStorage.getItem(SAVED_VIEWS_KEY) || '[]');
-      existing.push({ id: Date.now(), name: name.trim(), filters, savedAt: new Date().toISOString() });
-      localStorage.setItem(SAVED_VIEWS_KEY, JSON.stringify(existing.slice(-20)));
-      window.alert('View saved locally.');
-    } catch {
-      window.alert('Could not save view.');
-    }
-  };
-
   const toolBtn =
     'inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border text-xs font-medium transition-colors';
 
@@ -193,6 +182,12 @@ export default function UsersFilters({
             </button>
           )}
         </div>
+        <UsersSavedViews
+          activeViewId={activeViewId}
+          onSelectView={onSelectView}
+          filters={filters}
+          activeTab={activeTab}
+        />
         <button
           type="button"
           onClick={() => setFiltersOpen(true)}
@@ -216,9 +211,6 @@ export default function UsersFilters({
             Clear
           </button>
         )}
-        <button type="button" onClick={saveView} className={`${toolBtn} border-slate-200/90 bg-white text-slate-600 hover:bg-slate-50`}>
-          Save view
-        </button>
         <div className="relative" ref={columnsRef}>
           <button
             type="button"
