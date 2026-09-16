@@ -34,6 +34,18 @@ class Job < ApplicationRecord
     highest_applicable: 0,
     stacked: 1
   }, scopes: false
+  # How much room a technician has to propose a different schedule.
+  #   flexible_start - may start later while completing the full requested duration
+  #   hard_end       - must finish by the end date; may work only the remaining days
+  # Derived from hard_deadline_at for jobs created before this setting existed.
+  enum :schedule_flexibility, {
+    flexible_start: 0,
+    hard_end: 1
+  }, scopes: false, prefix: :schedule
+
+  # Not a guarantee of employment. See POTENTIAL_FULL_TIME_DISCLAIMER.
+  POTENTIAL_FULL_TIME_DISCLAIMER =
+    "This position may lead to a permanent role with the company. Permanent employment is not guaranteed."
 
   belongs_to :company_profile
   belongs_to :company_membership_tier_config, class_name: "MembershipTierConfig", optional: true
@@ -100,6 +112,40 @@ class Job < ApplicationRecord
     funding_funded? || funding_adjustment_required?
   end
 
+  # How many accepted claims this job can hold. Single-technician today; centralised so
+  # capacity checks have one definition.
+  def claim_capacity
+    1
+  end
+
+  def accepted_claim_count
+    job_applications.accepted.count
+  end
+
+  def capacity_remaining
+    [claim_capacity - accepted_claim_count, 0].max
+  end
+
+  def capacity_available?
+    capacity_remaining.positive?
+  end
+
+  # ISO weekday (1=Mon .. 7=Sun) the job is actually worked on.
+  def working_weekday?(cwday)
+    Array(standard_work_days).map(&:to_i).include?(cwday.to_i)
+  end
+
+  # The date/time the work must be finished by, when the company declared a hard end.
+  def hard_end_boundary_at
+    return nil unless schedule_hard_end?
+
+    hard_deadline_at || scheduled_end_at
+  end
+
+  def potential_full_time_details_hash
+    (potential_full_time_details || {}).to_h
+  end
+
   before_validation :normalize_job_display_fields
   before_validation :normalize_schedule_fields
   before_validation :normalize_trade_type
@@ -137,6 +183,8 @@ class Job < ApplicationRecord
     where.not(status: :pending_funding)
   end
 
+  scope :potential_full_time_only, -> { where(potential_full_time: true) }
+
   private
 
   def normalize_job_display_fields
@@ -165,6 +213,7 @@ class Job < ApplicationRecord
     self.overtime_multiplier = overtime_multiplier.presence&.to_d
     self.saturday_multiplier = saturday_multiplier.presence&.to_d
     self.sunday_multiplier = sunday_multiplier.presence&.to_d
+    self.potential_full_time_details = {} unless potential_full_time_details.is_a?(Hash)
   end
 
   def sync_price_cents

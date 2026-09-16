@@ -47,6 +47,7 @@ Rails.application.routes.draw do
           patch :extend
           post :confirm_funding
           post :unpublish
+          get :schedule_availability
         end
         resources :counter_offers, only: [:index, :create], controller: :job_counter_offers
         resources :weekend_work_requests, only: [:index, :create, :update]
@@ -62,6 +63,11 @@ Rails.application.routes.draw do
           patch :accept, controller: :job_counter_offers
           patch :decline, controller: :job_counter_offers
           patch :counter, controller: :job_counter_offers
+        end
+      end
+      resources :job_templates, only: %i[index show create update destroy] do
+        member do
+          post :apply
         end
       end
       post 'stripe/webhook', to: 'stripe_webhooks#create'

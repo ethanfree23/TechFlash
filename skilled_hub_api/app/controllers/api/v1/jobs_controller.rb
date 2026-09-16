@@ -107,6 +107,10 @@ module Api
           end
         end
         
+        if params[:potential_full_time].present? && ActiveModel::Type::Boolean.new.cast(params[:potential_full_time])
+          jobs = jobs.merge(Job.potential_full_time_only)
+        end
+
         # Apply keyword search in title and description
         if params[:keyword].present?
           kw = "%#{params[:keyword]}%"
@@ -269,6 +273,8 @@ module Api
         set_go_live_at_for_post!(job)
         if job.save
           Jobs::TermChangeAuditLogger.log!(job: job, actor_user: @current_user, reason: params[:change_reason])
+          # A pending alternate-schedule proposal was calculated against the old terms.
+          Schedule::ProposalInvalidator.invalidate_stale_for_job!(job, reason: "company_edited_job")
           JobAlertDispatcher.dispatch_for_job(job) if job.effectively_open?
           render json: job, serializer: JobSerializer, status: :ok
         else
@@ -402,6 +408,7 @@ module Api
           return render json: { error: 'New end time must be later than current end time' }, status: :unprocessable_entity
         end
         job.update!(scheduled_end_at: new_end)
+        Schedule::ProposalInvalidator.invalidate_stale_for_job!(job, reason: "company_extended_job")
         render json: job, serializer: JobSerializer, status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: 'Job not found' }, status: :not_found
@@ -466,11 +473,36 @@ module Api
           return render json: {
             error: result[:error],
             verification_required: result[:verification_required] || false,
-            verification_reasons: result[:verification_reasons] || []
-          }, status: (result[:status] || :unprocessable_entity)
+            verification_reasons: result[:verification_reasons] || [],
+            # Present when the job overlaps an existing commitment: the client turns Claim
+            # into an alternate-schedule proposal using these pre-computed options.
+            schedule_conflict: result[:schedule_conflict] || false,
+            schedule_conflict_details: result[:schedule_conflict_details]
+          }.compact, status: (result[:status] || :unprocessable_entity)
         end
 
         render json: job, serializer: JobSerializer, include: [:company_profile, { job_applications: { technician_profile: :user } }], status: :ok
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: 'Job not found' }, status: :not_found
+      end
+
+      # Conflict classification plus the alternate schedules TechFlash can offer, so the
+      # technician never has to work out dates that TechFlash already knows.
+      def schedule_availability
+        job = Job.find(params[:id])
+        unless @current_user&.technician?
+          return render json: { error: 'Access denied. Technician role required.' }, status: :forbidden
+        end
+
+        technician_profile = @current_user.technician_profile
+        if technician_profile.blank?
+          return render json: { classification: Schedule::JobAvailabilityClassifier::AVAILABLE, options: [] }, status: :ok
+        end
+
+        render json: Schedule::JobAvailabilityClassifier.payload(
+          job: job,
+          technician_profile: technician_profile
+        ), status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: 'Job not found' }, status: :not_found
       end
@@ -549,19 +581,11 @@ module Api
                       :premium_combination_rule,
                       :overtime_enabled, :daily_overtime_threshold_hours, :weekly_overtime_threshold_hours, :overtime_multiplier,
                       :hard_deadline_at, :job_timezone,
+                      :potential_full_time, :schedule_flexibility,
                       standard_work_days: [],
                       standard_day_shifts: {},
-                      weekend_day_shifts: {})
-      end
-
-      def jobs_overlap?(job_a, job_b)
-        # If either job has missing times, we cannot verify no overlap - treat as overlapping to prevent double-booking
-        return true if job_a.scheduled_start_at.blank? || job_a.scheduled_end_at.blank? || job_b.scheduled_start_at.blank? || job_b.scheduled_end_at.blank?
-        start_a = job_a.scheduled_start_at
-        end_a = job_a.scheduled_end_at
-        start_b = job_b.scheduled_start_at
-        end_b = job_b.scheduled_end_at
-        start_a < end_b && end_a > start_b
+                      weekend_day_shifts: {},
+                      potential_full_time_details: {})
       end
 
       # Posting should make the job live immediately.
@@ -588,7 +612,9 @@ module Api
           serialized = ActiveModelSerializers::SerializableResource.new(
             records,
             each_serializer: JobSerializer,
-            include: [:company_profile, { job_applications: { technician_profile: :user } }]
+            include: [:company_profile, { job_applications: { technician_profile: :user } }],
+            scope: @current_user,
+            scope_name: :current_user
           ).as_json
           render json: {
             jobs: serialized,
