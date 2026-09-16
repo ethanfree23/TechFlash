@@ -8,6 +8,10 @@ class TechnicianProfileSerializer < ActiveModel::Serializer
              :membership_status, :membership_current_period_end_at, :effective_membership_fee_cents, :effective_commission_percent,
              :background_verified, :review_summary, :verification_badges
 
+  # Knowledge assessment results, visible to the owning technician, companies
+  # and admins. Omitted entirely for other viewers rather than rendered empty.
+  attribute :assessment_results, if: :assessment_results_visible?
+
   belongs_to :user
   has_many :documents
   has_many :job_applications
@@ -34,5 +38,24 @@ class TechnicianProfileSerializer < ActiveModel::Serializer
 
   def trade_qualifications
     object.effective_trade_qualifications.as_json
+  end
+
+  def assessment_results
+    assessment_results_presenter.payload(include_categories: false)
+  end
+
+  def assessment_results_visible?
+    assessment_results_presenter.visible?
+  end
+
+  private
+
+  # List/card contexts omit category scores to keep directory payloads small;
+  # the detail serializer includes them.
+  def assessment_results_presenter
+    @assessment_results_presenter ||= Assessments::ProfileResultsPresenter.new(
+      technician_profile: object,
+      viewer: scope
+    )
   end
 end 

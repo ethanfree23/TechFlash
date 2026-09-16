@@ -12,6 +12,7 @@ module Api
         technicians = filter_by_rating(technicians)
         technicians = filter_by_verification(technicians)
         technicians = filter_by_badges(technicians)
+        technicians = filter_by_assessment(technicians)
         render json: technicians, each_serializer: TechnicianProfileSerializer, status: :ok
       end
       
@@ -116,10 +117,31 @@ module Api
         profile = @current_user.technician_profile
         if profile
           profile.ensure_map_placement!
-          render json: profile.reload, serializer: TechnicianProfileSerializer, status: :ok
+          payload = TechnicianProfileSerializer.new(profile.reload, scope: @current_user).as_json
+          # Profile strength is informational only and never gates job access;
+          # see TechnicianProfileStrength.
+          payload[:profile_strength] = TechnicianProfileStrength.call(profile)
+          render json: payload, status: :ok
         else
           render json: { error: "Technician profile not found" }, status: :not_found
         end
+      end
+
+      # GET /api/v1/technicians/:id/assessment_results
+      # Company-facing read of a technician's designated public results.
+      # Authorization and payload shape are owned by ProfileResultsPresenter so
+      # this endpoint can never expose more than the profile serializers do.
+      def assessment_results
+        technician = TechnicianProfile.find(params[:id])
+        presenter = Assessments::ProfileResultsPresenter.new(
+          technician_profile: technician,
+          viewer: @current_user
+        )
+        return render json: { error: "Access denied" }, status: :forbidden unless presenter.visible?
+
+        render json: presenter.payload(include_categories: true), status: :ok
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: "Technician not found" }, status: :not_found
       end
 
       private
@@ -206,6 +228,53 @@ module Api
           .where("LOWER(badge_type) = ? OR LOWER(badge_type) = ?", "cert_#{normalized}", normalized)
           .pluck(:user_id)
         scope.where(user_id: user_ids)
+      end
+
+      # Assessment filters operate on technician_assessment_results, the
+      # denormalized projection of each technician's designated public result,
+      # so every filter here is an indexed join rather than a scan of attempts.
+      #
+      # All filters are opt-in: with no assessment params, technicians without
+      # assessments are returned exactly as before.
+      def filter_by_assessment(scope)
+        bool = ActiveModel::Type::Boolean.new
+        results = TechnicianAssessmentResult.all
+        applied = false
+
+        if params[:assessment_slug].present?
+          results = results.joins(:assessment).where(assessments: { slug: params[:assessment_slug].to_s.strip })
+          applied = true
+        end
+
+        if params[:assessment_trade].present?
+          results = results.for_trade(params[:assessment_trade])
+          applied = true
+        end
+
+        if params[:min_assessment_score].present?
+          results = results.min_score(params[:min_assessment_score])
+          applied = true
+        end
+
+        if params[:assessment_band].present?
+          results = results.for_band(params[:assessment_band])
+          applied = true
+        end
+
+        if params[:assessment_category_slug].present? && params[:min_assessment_category_score].present?
+          results = results
+            .joins("INNER JOIN assessment_attempt_category_results acr " \
+                   "ON acr.assessment_attempt_id = technician_assessment_results.assessment_attempt_id")
+            .where("acr.category_slug = ? AND acr.score >= ?",
+                   params[:assessment_category_slug].to_s.strip,
+                   params[:min_assessment_category_score].to_i)
+          applied = true
+        end
+
+        applied = true if bool.cast(params[:assessment_completed])
+        return scope unless applied
+
+        scope.where(id: results.select(:technician_profile_id))
       end
     end
   end
