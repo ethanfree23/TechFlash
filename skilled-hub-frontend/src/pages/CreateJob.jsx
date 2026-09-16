@@ -1,10 +1,13 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { jobsAPI, profilesAPI, crmAPI } from '../api/api';
 import DateTimeInput from '../components/DateTimeInput';
 import JobAddressFields from '../components/JobAddressFields';
 import AlertModal from '../components/AlertModal';
 import WorkScheduleCalendarPopup from '../components/WorkScheduleCalendarPopup';
+import JobTemplatePanel from '../components/jobs/JobTemplatePanel';
+import PotentialFullTimeToggle from '../components/jobs/PotentialFullTimeToggle';
+import ScheduleFlexibilityField from '../components/jobs/ScheduleFlexibilityField';
 import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
 import { TRADE_OPTIONS } from '../constants/trades';
 import { isTechnicianClass, technicianClassSelectOptions, technicianClassLabel, technicianClassSlug } from '../constants/technicianClass';
@@ -120,6 +123,8 @@ const CreateJob = () => {
   const [days, setDays] = useState("");
   const [payBasis, setPayBasis] = useState("actual_hours_worked");
   const [status, setStatus] = useState("open");
+  const [potentialFullTime, setPotentialFullTime] = useState(false);
+  const [scheduleFlexibility, setScheduleFlexibility] = useState("flexible_start");
   const [startMode, setStartMode] = useState("hard_start");
   const [rollingStartRuleType, setRollingStartRuleType] = useState('days_after_acceptance');
   const [rollingStartExactStartAt, setRollingStartExactStartAt] = useState('');
@@ -165,10 +170,10 @@ const CreateJob = () => {
   const location = useLocation();
   const duplicateFrom = location.state?.duplicateFrom;
 
-  useEffect(() => {
-    if (!duplicateFrom) return;
-    const job = duplicateFrom;
-    setTitle(job.title ? `Copy of ${job.title}` : '');
+  // Fills the form from anything shaped like a job: a job being duplicated, or the
+  // attributes a saved template produces for a new start date.
+  const hydrateFromJobShape = useCallback((job, { title: titleOverride } = {}) => {
+    setTitle(titleOverride !== undefined ? titleOverride : String(job.title || ''));
     setDescription(String(job.description || ''));
     setSkillClass(technicianClassSlug(job.skill_class));
     setTradeType(String(job.trade_type || ''));
@@ -196,6 +201,8 @@ const CreateJob = () => {
     setDays(job.days != null ? String(job.days) : '');
     setPayBasis(job.pay_basis === 'guaranteed_job_pay' ? 'guaranteed_job_pay' : 'actual_hours_worked');
     setStatus('open');
+    setPotentialFullTime(Boolean(job.potential_full_time));
+    setScheduleFlexibility(job.schedule_flexibility === 'hard_end' ? 'hard_end' : 'flexible_start');
     setRequireBackgroundCheck(Boolean(job.require_background_check));
     setRequireIdentityVerification(Boolean(job.require_identity_verification));
     setMinimumVerifiedReferences(String(job.minimum_verified_references ?? 0));
@@ -232,7 +239,14 @@ const CreateJob = () => {
       setSelectedCompanyName(job.company_profile?.company_name || '');
       setCompanySelectionLocked(true);
     }
-  }, [duplicateFrom, isAdmin]);
+  }, [isAdmin]);
+
+  useEffect(() => {
+    if (!duplicateFrom) return;
+    hydrateFromJobShape(duplicateFrom, {
+      title: duplicateFrom.title ? `Copy of ${duplicateFrom.title}` : '',
+    });
+  }, [duplicateFrom, hydrateFromJobShape]);
 
   useEffect(() => {
     if (duplicateFrom) return;
@@ -261,6 +275,8 @@ const CreateJob = () => {
       setDays(String(draft.days || ''));
       setPayBasis(draft.payBasis === 'guaranteed_job_pay' ? 'guaranteed_job_pay' : 'actual_hours_worked');
       setStatus(String(draft.status || 'open'));
+      setPotentialFullTime(Boolean(draft.potentialFullTime));
+      setScheduleFlexibility(draft.scheduleFlexibility === 'hard_end' ? 'hard_end' : 'flexible_start');
       setRequireBackgroundCheck(Boolean(draft.requireBackgroundCheck));
       setRequireIdentityVerification(Boolean(draft.requireIdentityVerification));
       setMinimumVerifiedReferences(String(draft.minimumVerifiedReferences ?? '0'));
@@ -313,6 +329,8 @@ const CreateJob = () => {
           days,
           payBasis,
           status,
+          potentialFullTime,
+          scheduleFlexibility,
           requireBackgroundCheck,
           requireIdentityVerification,
           minimumVerifiedReferences,
@@ -361,6 +379,8 @@ const CreateJob = () => {
     days,
     payBasis,
     status,
+    potentialFullTime,
+    scheduleFlexibility,
     requireBackgroundCheck,
     requireIdentityVerification,
     minimumVerifiedReferences,
@@ -499,6 +519,68 @@ const CreateJob = () => {
     overtimeMultiplier,
   });
 
+  // The reusable half of the form, keyed the way the API keys job attributes. Dates,
+  // status, go-live and anything else unique to one posting are deliberately absent -
+  // the template carries the duration and the time of day, and the company picks the
+  // calendar start when they apply it.
+  const templateConfiguration = useCallback(() => {
+    const years = minimumYearsExperience.trim() === '' ? null : parseInt(minimumYearsExperience, 10);
+    const certs = requiredCertifications.filter((c) => c.trim());
+    const startTime = scheduledStartAt ? scheduledStartAt.slice(11, 16) : '08:00';
+    return {
+      title,
+      description,
+      notes: notes.trim() || null,
+      trade_type: tradeType || null,
+      skill_class: skillClass.trim() || null,
+      minimum_years_experience: years != null && !Number.isNaN(years) ? years : null,
+      required_certifications: certs.length ? certs.join(', ') : null,
+      require_background_check: requireBackgroundCheck,
+      require_identity_verification: requireIdentityVerification,
+      require_insurance_verification: requireInsuranceVerification,
+      minimum_verified_references: Math.max(0, parseInt(minimumVerifiedReferences, 10) || 0),
+      hourly_rate_cents: hr > 0 ? Math.round(hr * 100) : null,
+      hours_per_day: hpd,
+      days: d > 0 ? d : null,
+      pay_basis: payBasis,
+      potential_full_time: potentialFullTime,
+      schedule_flexibility: scheduleFlexibility,
+      start_mode: startMode,
+      standard_work_days: standardWorkDays,
+      standard_day_shifts: standardDayShifts,
+      weekend_work_policy: weekendWorkPolicy,
+      saturday_work_policy: saturdayWorkPolicy,
+      sunday_work_policy: sundayWorkPolicy,
+      saturday_multiplier: saturdayWorkPolicy === 'premium_rate' ? Number(saturdayMultiplier) : null,
+      sunday_multiplier: sundayWorkPolicy === 'premium_rate' ? Number(sundayMultiplier) : null,
+      weekend_requires_company_approval: weekendRequiresCompanyApproval,
+      weekend_requires_technician_acceptance: weekendRequiresTechnicianAcceptance,
+      premium_combination_rule: premiumCombinationRule,
+      overtime_enabled: overtimeEnabled,
+      daily_overtime_threshold_hours: overtimeEnabled && dailyOvertimeThresholdHours ? Number(dailyOvertimeThresholdHours) : null,
+      weekly_overtime_threshold_hours: overtimeEnabled && weeklyOvertimeThresholdHours ? Number(weeklyOvertimeThresholdHours) : null,
+      overtime_multiplier: overtimeEnabled ? Number(overtimeMultiplier || 1.5) : null,
+      job_timezone: jobTimezone || 'UTC',
+      address,
+      city,
+      state,
+      zip_code: zipCode,
+      country,
+      schedule_start_time: startTime,
+      schedule_working_day_span: d > 0 ? d : null,
+    };
+  }, [
+    title, description, notes, tradeType, skillClass, minimumYearsExperience,
+    requiredCertifications, requireBackgroundCheck, requireIdentityVerification,
+    requireInsuranceVerification, minimumVerifiedReferences, hr, hpd, d, payBasis,
+    potentialFullTime, scheduleFlexibility, startMode, standardWorkDays, standardDayShifts,
+    weekendWorkPolicy, saturdayWorkPolicy, sundayWorkPolicy, saturdayMultiplier,
+    sundayMultiplier, weekendRequiresCompanyApproval, weekendRequiresTechnicianAcceptance,
+    premiumCombinationRule, overtimeEnabled, dailyOvertimeThresholdHours,
+    weeklyOvertimeThresholdHours, overtimeMultiplier, jobTimezone, address, city, state,
+    zipCode, country, scheduledStartAt,
+  ]);
+
   const patchAddress = (patch) => {
     if (patch.address !== undefined) setAddress(patch.address);
     if (patch.city !== undefined) setCity(patch.city);
@@ -609,6 +691,8 @@ const CreateJob = () => {
         premium_combination_rule: premiumCombinationRule,
         hard_deadline_at: hardDeadlineAt ? new Date(hardDeadlineAt).toISOString() : null,
         job_timezone: jobTimezone || 'UTC',
+        potential_full_time: potentialFullTime,
+        schedule_flexibility: scheduleFlexibility,
       };
       if (isAdmin) {
         payload.skip_card_validation = !enforceCardValidation;
@@ -649,6 +733,11 @@ const CreateJob = () => {
       <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">Create New Job</h1>
       <p className="text-sm text-slate-500 mb-6">Matches web parity fields and posting behavior used in production.</p>
       <form onSubmit={handleSubmit} className="space-y-6">
+        <JobTemplatePanel
+          companyProfileId={companyProfileId}
+          getConfiguration={templateConfiguration}
+          onApply={(jobAttributes) => hydrateFromJobShape(jobAttributes)}
+        />
         <div>
           <label className={labelClass}>Title</label>
           <input
@@ -820,6 +909,11 @@ const CreateJob = () => {
             </select>
           </div>
         </div>
+        <PotentialFullTimeToggle
+          checked={potentialFullTime}
+          onChange={setPotentialFullTime}
+          className={sectionCardClass}
+        />
         <div className={sectionCardClass}>
           <h3 className="font-semibold text-slate-900">Go Live</h3>
           <p className="text-xs text-slate-500">
@@ -1168,6 +1262,12 @@ const CreateJob = () => {
               <input className={fieldClass} value={jobTimezone} onChange={(e) => setJobTimezone(e.target.value)} placeholder="America/Chicago" />
             </div>
           </div>
+          <ScheduleFlexibilityField
+            value={scheduleFlexibility}
+            onChange={setScheduleFlexibility}
+            labelClass={labelClass}
+            fieldClass={fieldClass}
+          />
         </div>
         <div className={sectionCardClass}>
           <h3 className="font-semibold text-slate-900">Weekend work</h3>
