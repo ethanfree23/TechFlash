@@ -132,6 +132,7 @@ export const ROLE_CONFIG = {
       'experience',
       'startDate',
       'payRange',
+      'potentialFullTime',
       'status',
       'sort',
     ],

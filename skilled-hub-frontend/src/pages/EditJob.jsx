@@ -6,6 +6,8 @@ import DateTimeInput from '../components/DateTimeInput';
 import AlertModal from '../components/AlertModal';
 import ConfirmModal from '../components/ConfirmModal';
 import WorkScheduleCalendarPopup from '../components/WorkScheduleCalendarPopup';
+import PotentialFullTimeToggle from '../components/jobs/PotentialFullTimeToggle';
+import ScheduleFlexibilityField from '../components/jobs/ScheduleFlexibilityField';
 import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
 import { TRADE_OPTIONS } from '../constants/trades';
 import { isTechnicianClass, technicianClassSelectOptions, technicianClassLabel, technicianClassSlug } from '../constants/technicianClass';
@@ -76,6 +78,7 @@ const EditJob = () => {
     weekend_requires_company_approval: true, weekend_requires_technician_acceptance: true,
     overtime_enabled: false, daily_overtime_threshold_hours: '', weekly_overtime_threshold_hours: '', overtime_multiplier: '1.5',
     premium_combination_rule: 'highest_applicable', hard_deadline_at: '', job_timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+    potential_full_time: false, schedule_flexibility: 'flexible_start',
   });
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -144,6 +147,8 @@ const EditJob = () => {
           premium_combination_rule: data.premium_combination_rule || 'highest_applicable',
           hard_deadline_at: toDatetimeLocal(data.hard_deadline_at),
           job_timezone: data.job_timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+          potential_full_time: Boolean(data.potential_full_time),
+          schedule_flexibility: data.schedule_flexibility === 'hard_end' ? 'hard_end' : 'flexible_start',
         });
         const currentEnd = data.scheduled_end_at;
         const defaultEnd = currentEnd ? new Date(currentEnd) : new Date(Date.now() + 24 * 60 * 60 * 1000);
@@ -339,6 +344,8 @@ const EditJob = () => {
         premium_combination_rule: form.premium_combination_rule || 'highest_applicable',
         hard_deadline_at: form.hard_deadline_at ? new Date(form.hard_deadline_at).toISOString() : null,
         job_timezone: form.job_timezone || 'UTC',
+        potential_full_time: !!form.potential_full_time,
+        schedule_flexibility: form.schedule_flexibility || 'flexible_start',
       };
       if (jobAmount > 0 && !termsLocked) {
         payload.hourly_rate_cents = Math.round(hr * 100);
@@ -813,7 +820,18 @@ const EditJob = () => {
               <input className={fieldClass} value={form.job_timezone} onChange={(e) => setForm((p) => ({ ...p, job_timezone: e.target.value }))} />
             </div>
           </div>
+          <ScheduleFlexibilityField
+            value={form.schedule_flexibility}
+            onChange={(value) => setForm((p) => ({ ...p, schedule_flexibility: value }))}
+            labelClass={labelClass}
+            fieldClass={fieldClass}
+          />
         </div>
+        <PotentialFullTimeToggle
+          checked={form.potential_full_time}
+          onChange={(value) => setForm((p) => ({ ...p, potential_full_time: value }))}
+          className={sectionCardClass}
+        />
         <div className={sectionCardClass}>
           <h3 className="font-semibold text-slate-900">Weekend work</h3>
           <select className={fieldClass} value={form.weekend_work_policy} onChange={(e) => setForm((p) => ({ ...p, weekend_work_policy: e.target.value }))}>

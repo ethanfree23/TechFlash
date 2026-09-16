@@ -122,6 +122,7 @@ export default function useJobsDashboard() {
     location: '',
     status: statusFromUrl,
     keyword: '',
+    potentialFullTime: false,
   });
   const [searchInput, setSearchInput] = useState('');
   const [clientFilters, setClientFilters] = useState({ ...DEFAULT_CLIENT_FILTERS });
@@ -187,6 +188,7 @@ export default function useJobsDashboard() {
         per_page: JOBS_PER_PAGE,
       };
       if (serverFilters.status) apiFilters.status = serverFilters.status;
+      if (serverFilters.potentialFullTime) apiFilters.potential_full_time = true;
       const data = await jobsAPI.getAll(apiFilters);
       const { jobs: list, meta } = normalizeJobsListResponse(data);
       setJobs(list);
@@ -268,6 +270,7 @@ export default function useJobsDashboard() {
 
   const hasServerFilters = Boolean(
     serverFilters.keyword || serverFilters.location || serverFilters.status
+    || serverFilters.potentialFullTime
   );
   const hasClientFiltersActive = hasActiveClientFilters(clientFilters);
   const resultCount = hasClientFiltersActive
@@ -304,7 +307,7 @@ export default function useJobsDashboard() {
   };
 
   const clearFilters = () => {
-    setServerFilters({ location: '', status: '', keyword: '' });
+    setServerFilters({ location: '', status: '', keyword: '', potentialFullTime: false });
     setSearchInput('');
     setClientFilters({ ...DEFAULT_CLIENT_FILTERS });
     setSearchParams({});
