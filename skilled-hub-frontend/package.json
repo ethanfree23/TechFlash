@@ -20,6 +20,7 @@
     "test:crm-notes": "node scripts/crmNotes.test.mjs",
     "test:data": "node scripts/data.test.mjs",
     "test:api": "node scripts/api.test.mjs",
+    "test:schedule-availability": "node scripts/scheduleAvailability.test.mjs",
     "test:technician-map": "node scripts/technicianMap.test.mjs",
     "test:parse-address": "node scripts/parseUsAddressPaste.test.mjs",
     "test": "node scripts/runFrontendTests.mjs",

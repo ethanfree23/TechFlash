@@ -16,7 +16,9 @@ import JobsCalendarPlaceholder from './JobsCalendarPlaceholder';
 import JobLoadingSkeleton from './JobLoadingSkeleton';
 import JobEmptyState from './JobEmptyState';
 import JobStatusBadge from './JobStatusBadge';
+import ScheduleConflictModal from './ScheduleConflictModal';
 import FeaturedJobCallout from '../demo/FeaturedJobCallout';
+import { scheduleConflictFromError } from '../../utils/scheduleAvailability';
 import AlertModal from '../AlertModal';
 import ReferralModal from '../ReferralModal';
 import MessageModal from '../MessageModal';
@@ -71,6 +73,7 @@ export default function JobsDashboard() {
   const [completedJobs, setCompletedJobs] = useState([]);
   const [loadingCompleted, setLoadingCompleted] = useState(false);
   const [reviewedJobIds, setReviewedJobIds] = useState(new Set());
+  const [scheduleConflict, setScheduleConflict] = useState(null);
 
   const showAlert = useCallback((title, message, variant = 'error') => {
     setAlertModal({ isOpen: true, title, message, variant });
@@ -129,6 +132,12 @@ export default function JobsDashboard() {
       trackTechnicianJobClaimed();
       await refetch();
     } catch (err) {
+      // A clash with existing work is not a refusal: offer the alternate schedules instead.
+      const conflict = scheduleConflictFromError(err);
+      if (conflict) {
+        setScheduleConflict({ job: currentJobs.find((j) => j.id === jobId) || { id: jobId }, conflict });
+        return;
+      }
       showAlert('Unable to claim job', err.message || 'Failed to claim job');
     } finally {
       setClaimingJobId(null);
@@ -414,6 +423,22 @@ export default function JobsDashboard() {
         title={alertModal.title}
         message={alertModal.message}
         variant={alertModal.variant}
+      />
+      <ScheduleConflictModal
+        isOpen={Boolean(scheduleConflict)}
+        onClose={() => setScheduleConflict(null)}
+        job={scheduleConflict?.job}
+        conflict={scheduleConflict?.conflict}
+        onProposalSent={() => {
+          setScheduleConflict(null);
+          showAlert(
+            'Schedule sent to the company',
+            'The company can accept the schedule you offered, decline it, or come back with '
+            + 'different dates. You will see their answer on the job.',
+            'success'
+          );
+          refetch();
+        }}
       />
       <ReferralModal isOpen={showReferralModal} onClose={() => setShowReferralModal(false)} triggerLabel="Send Referral" />
       <MessageModal

@@ -23,6 +23,15 @@ import { trackTechnicianJobClaimed } from '../utils/metaPixel';
 import { FormattedJobDescription } from '../utils/formattedJobText';
 import JobStatusBadge from './jobs/JobStatusBadge';
 import JobTimeEntriesPanel from './jobs/JobTimeEntriesPanel';
+import ScheduleConflictModal from './jobs/ScheduleConflictModal';
+import ScheduleProposalSummary from './jobs/ScheduleProposalSummary';
+import { PotentialFullTimeBadge, ScheduleConflictBadge } from './jobs/JobFlagBadges';
+import {
+  hasScheduleConflict,
+  isScheduleUnavailable,
+  scheduleConflictFromError,
+  unavailableReasonText,
+} from '../utils/scheduleAvailability';
 import { confirmStripeCardPayment } from '../utils/confirmStripePayment';
 import { parseCoordinatePair } from '../utils/coordinates';
 
@@ -120,6 +129,7 @@ const JobDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [claiming, setClaiming] = useState(false);
+  const [scheduleConflict, setScheduleConflict] = useState(null);
   const [user, setUser] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showClaimedModal, setShowClaimedModal] = useState(false);
@@ -368,6 +378,12 @@ const JobDetail = () => {
       trackTechnicianJobClaimed();
       await fetchJobDetails();
     } catch (err) {
+      // A clash with existing work is not a refusal: offer the alternate schedules instead.
+      const conflict = scheduleConflictFromError(err);
+      if (conflict) {
+        setScheduleConflict(conflict);
+        return;
+      }
       const reasons = Array.isArray(err?.details?.verification_reasons) ? err.details.verification_reasons : [];
       const reasonText = reasons.map((r) => `- ${r.message || r.code}`).join('\n');
       const message = reasonText
@@ -875,6 +891,8 @@ const JobDetail = () => {
   );
   const canManageJob = isAdmin || isCompanyOwner;
   const showTopTechOpenActions = currentUser?.role === 'technician' && canTechnicianClaim(job);
+  const technicianScheduleConflict = currentUser?.role === 'technician' && hasScheduleConflict(job);
+  const technicianScheduleBlocked = currentUser?.role === 'technician' && isScheduleUnavailable(job);
   const rollingSummaryText = rollingRuleSummary(job);
   const jobMapUrl = buildMapEmbedUrl(job);
   const workingDaysText = formatWorkingDays(job) || 'Monday, Tuesday, Wednesday, Thursday, Friday';
@@ -949,6 +967,12 @@ const JobDetail = () => {
               </span>
             )}
             <h1 className="text-3xl font-bold text-gray-900 leading-tight">{job.title}</h1>
+            {(job.potential_full_time || technicianScheduleConflict) && (
+              <div className="mt-2 flex flex-wrap gap-1">
+                {job.potential_full_time && <PotentialFullTimeBadge />}
+                {technicianScheduleConflict && <ScheduleConflictBadge />}
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-3 flex-wrap justify-end shrink-0">
             <JobStatusBadge job={job} size="md" />
@@ -975,10 +999,33 @@ const JobDetail = () => {
           </div>
         </div>
 
+        {job.potential_full_time && (
+          <div className="mb-6 rounded-xl border border-indigo-200 bg-indigo-50/70 p-4">
+            <h2 className="text-sm font-semibold text-indigo-900">Potential full-time opportunity</h2>
+            <p className="mt-1 text-sm text-indigo-900">
+              {job.potential_full_time_disclaimer
+                || 'This position may lead to a permanent role with the company. Permanent employment is not guaranteed.'}
+            </p>
+          </div>
+        )}
+
         {showTopTechOpenActions && (
           <div className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
             {rollingSummaryText && (
               <p className="text-sm text-slate-700 mb-3">{rollingSummaryText}</p>
+            )}
+            {technicianScheduleConflict && (
+              <div className="mb-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                This job overlaps work you have already claimed. Claiming will show you the
+                schedules you could actually work and send your choice to the company as a
+                counter offer.
+              </div>
+            )}
+            {technicianScheduleBlocked && (
+              <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                {unavailableReasonText(job)
+                  || 'This job cannot be claimed because it overlaps work you have already committed to.'}
+              </div>
             )}
             <div className="flex flex-wrap gap-3">
               <button
@@ -1378,7 +1425,12 @@ const JobDetail = () => {
                             View profile
                           </Link>
                         ) : null}
-                        {' '}offered ${offer.proposed_hourly_rate_cents ? (offer.proposed_hourly_rate_cents / 100).toFixed(2) : '—'}/hr, {offer.proposed_hours_per_day || '—'}h/day, {offer.proposed_days || '—'} days ({offer.status})
+                        {offer.proposal_kind === 'schedule' ? (
+                          <>{' '}proposed a different schedule ({offer.status})</>
+                        ) : (
+                          <>{' '}offered ${offer.proposed_hourly_rate_cents ? (offer.proposed_hourly_rate_cents / 100).toFixed(2) : '—'}/hr, {offer.proposed_hours_per_day || '—'}h/day, {offer.proposed_days || '—'} days ({offer.status})</>
+                        )}
+                        <ScheduleProposalSummary offer={offer} />
                       </div>
                     ))}
                     {counterOffers.length === 0 && <p className="text-sm text-gray-500">No counter offers yet.</p>}
@@ -2165,6 +2217,26 @@ const JobDetail = () => {
           </div>
         </form>
       </Modal>
+
+      <ScheduleConflictModal
+        isOpen={Boolean(scheduleConflict)}
+        onClose={() => setScheduleConflict(null)}
+        job={job}
+        conflict={scheduleConflict}
+        onProposalSent={async () => {
+          setScheduleConflict(null);
+          await fetchCounterOffers();
+          await fetchJobDetails();
+          setAlertModal({
+            isOpen: true,
+            title: 'Schedule sent to the company',
+            message:
+              'The company can accept the schedule you offered, decline it, or come back with '
+              + 'different dates. Their answer will appear under Counter offers.',
+            variant: 'success',
+          });
+        }}
+      />
 
       <AlertModal
         isOpen={alertModal.isOpen}
