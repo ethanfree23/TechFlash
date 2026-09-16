@@ -32,8 +32,14 @@ class AssessmentAttempt < ApplicationRecord
 
   scope :chronological, -> { order(:started_at, :id) }
   scope :recent_first, -> { order(started_at: :desc, id: :desc) }
-  # Attempts eligible to become a technician's public result.
-  scope :scored, -> { completed.where.not(score: nil) }
+  # Attempts that are over, whether the technician submitted or ran out of time.
+  # Both consume an attempt allowance and both carry a score.
+  scope :finalized, -> { where(status: %i[completed expired]) }
+  # Attempts eligible to become a technician's public result. An expired attempt
+  # counts: it was scored on the answers that were submitted, so discarding it
+  # would throw away a real result the technician earned (and paid an attempt
+  # for).
+  scope :scored, -> { finalized.where.not(score: nil) }
 
   # Wall-clock expiry, independent of the stored status, so a client that was
   # backgrounded past the limit is treated as expired on its next request even

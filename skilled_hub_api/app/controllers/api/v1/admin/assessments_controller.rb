@@ -71,7 +71,8 @@ module Api
         def destroy
           if @assessment.assessment_attempts.exists?
             return render json: {
-              error: "This assessment has recorded attempts and cannot be deleted. Deactivate it instead."
+              error: "This assessment has recorded attempts and cannot be deleted. Deactivate it instead.",
+              code: "assessment_has_attempts"
             }, status: :unprocessable_entity
           end
 

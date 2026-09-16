@@ -80,7 +80,7 @@ module Api
           {
             error: "Version #{version.version_number} is #{version.status} and its content is immutable. " \
                    "Create a new version to change categories.",
-            reason: "version_immutable"
+            code: "version_immutable"
           }
         end
 

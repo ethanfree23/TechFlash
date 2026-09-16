@@ -118,14 +118,17 @@ module Api
           render json: { error: "Assessment question not found" }, status: :not_found
         end
 
+        def submitted_choices
+          permitted = params.permit(choices: %i[external_key body correct position])[:choices]
+          Array(permitted).map { |choice| choice.to_h.stringify_keys }
+        end
+
         # Returns false and annotates the question when the submitted choices
         # would leave it unscoreable, so a broken answer key never reaches the
         # bank in the first place.
         def replace_choices!(question)
-          choices = Array(params[:choices])
-          return true if choices.blank?
-
-          normalized = choices.map { |choice| choice.respond_to?(:to_h) ? choice.to_h.stringify_keys : {} }
+          normalized = submitted_choices
+          return true if normalized.blank?
 
           if normalized.size < 2
             question.errors.add(:base, "At least two answer choices are required")
@@ -160,7 +163,7 @@ module Api
           {
             error: "Version #{version.version_number} is #{version.status} and its content is immutable. " \
                    "Create a new version to change questions.",
-            reason: "version_immutable"
+            code: "version_immutable"
           }
         end
 

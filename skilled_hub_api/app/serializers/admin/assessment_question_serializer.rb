@@ -22,7 +22,9 @@ module Admin
                :created_at,
                :updated_at
 
-    has_many :assessment_answer_choices, serializer: Admin::AssessmentAnswerChoiceSerializer
+    # Keyed as "choices" to match the name used when writing a question and in
+    # the import document, so authors see one vocabulary everywhere.
+    has_many :assessment_answer_choices, key: :choices, serializer: Admin::AssessmentAnswerChoiceSerializer
 
     def category_slug
       object.assessment_category&.slug

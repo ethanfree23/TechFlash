@@ -31,7 +31,7 @@ class AssessmentAttemptResultSerializer < ActiveModel::Serializer
              :category_results,
              :disclaimer
 
-  attribute :question_review, if: :include_review?
+  attribute :review, if: :include_review?
 
   def assessment_slug
     object.assessment.slug
@@ -70,7 +70,7 @@ class AssessmentAttemptResultSerializer < ActiveModel::Serializer
 
   # Post-scoring review. Correctness and the explanation are only meaningful
   # once the attempt can no longer be changed.
-  def question_review
+  def review
     object
       .assessment_attempt_questions
       .ordered

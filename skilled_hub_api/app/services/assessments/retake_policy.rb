@@ -73,15 +73,17 @@ module Assessments
     # finished or let expire. A live in-progress attempt is not counted twice —
     # it is resumed.
     def attempts_used
-      @attempts_used ||= scoped_attempts.where(status: %i[completed expired]).count
+      @attempts_used ||= scoped_attempts.finalized.count
     end
 
     def max_attempts
       version&.max_attempts
     end
 
-    def last_completed_attempt
-      @last_completed_attempt ||= scoped_attempts.completed.order(completed_at: :desc, id: :desc).first
+    # An expired attempt starts the cooling-off clock just like a submitted one,
+    # since both consumed an attempt.
+    def last_finalized_attempt
+      @last_finalized_attempt ||= scoped_attempts.finalized.order(completed_at: :desc, id: :desc).first
     end
 
     # An in-progress attempt this technician can pick up again. Attempts past
@@ -110,7 +112,7 @@ module Assessments
     def wait_until
       return nil if version.retake_wait_hours.to_i <= 0
 
-      completed_at = last_completed_attempt&.completed_at
+      completed_at = last_finalized_attempt&.completed_at
       return nil if completed_at.blank?
 
       completed_at + version.retake_wait_hours.to_i.hours

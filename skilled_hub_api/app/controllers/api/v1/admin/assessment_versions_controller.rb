@@ -62,7 +62,7 @@ module Api
             return render json: {
               error: "Version #{@version.version_number} is #{@version.status} and is immutable. " \
                      "Create a new version from it to make changes.",
-              reason: "version_immutable"
+              code: "version_immutable"
             }, status: :unprocessable_entity
           end
 
@@ -81,7 +81,7 @@ module Api
           unless result.success?
             return render json: {
               error: result.error_message,
-              reason: result.error_code,
+              code: result.error_code,
               problems: result.problems
             }, status: :unprocessable_entity
           end
@@ -96,7 +96,7 @@ module Api
           result = Assessments::VersionPublisher.retire!(@version)
 
           unless result.success?
-            return render json: { error: result.error_message, reason: result.error_code },
+            return render json: { error: result.error_message, code: result.error_code },
                           status: :unprocessable_entity
           end
 
@@ -110,10 +110,21 @@ module Api
         end
 
         # DELETE /api/v1/admin/assessment_versions/:id
+        # Only a draft can be deleted. Once published, a version is a historical
+        # record that attempts point at, so it is retired rather than removed.
         def destroy
+          unless @version.editable?
+            return render json: {
+              error: "Version #{@version.version_number} is #{@version.status} and cannot be deleted. " \
+                     "Retire it instead.",
+              code: "version_immutable"
+            }, status: :unprocessable_entity
+          end
+
           if @version.attempts_recorded?
             return render json: {
-              error: "This version has recorded attempts and cannot be deleted. Retire it instead."
+              error: "This version has recorded attempts and cannot be deleted. Retire it instead.",
+              code: "version_has_attempts"
             }, status: :unprocessable_entity
           end
 

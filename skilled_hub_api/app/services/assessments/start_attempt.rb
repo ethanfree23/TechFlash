@@ -9,7 +9,9 @@ module Assessments
   # (technician_profile_id, assessment_id) WHERE status = 0, so even two
   # simultaneous requests cannot produce two live attempts.
   class StartAttempt
-    Result = Struct.new(:success, :attempt, :resumed, :error_code, :error_message, keyword_init: true) do
+    # `decision` is carried on failures so callers can tell the technician how
+    # many attempts they have used and when the next one opens up.
+    Result = Struct.new(:success, :attempt, :resumed, :decision, :error_code, :error_message, keyword_init: true) do
       def success?
         success
       end
@@ -43,8 +45,10 @@ module Assessments
         version: version
       ).decision
 
-      return Result.new(success: true, attempt: decision.resumable_attempt, resumed: true) if decision.resumable_attempt.present?
-      return failure(decision.reason, decision.message) unless decision.allowed?
+      if decision.resumable_attempt.present?
+        return Result.new(success: true, attempt: decision.resumable_attempt, resumed: true, decision: decision)
+      end
+      return failure(decision.reason, decision.message, decision: decision) unless decision.allowed?
 
       create_attempt(version)
     rescue QuestionSelector::InsufficientQuestions => e
@@ -146,8 +150,11 @@ module Assessments
         .first
     end
 
-    def failure(code, message)
-      Result.new(success: false, attempt: nil, resumed: false, error_code: code, error_message: message)
+    def failure(code, message, decision: nil)
+      Result.new(
+        success: false, attempt: nil, resumed: false, decision: decision,
+        error_code: code, error_message: message
+      )
     end
   end
 end

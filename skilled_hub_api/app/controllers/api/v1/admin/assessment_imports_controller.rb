@@ -32,14 +32,16 @@ module Api
             }, status: :unprocessable_entity
           end
 
-          render json: {
-            dry_run: dry_run,
-            published: result.published,
-            problems: result.problems,
-            stats: result.stats,
-            assessment: result.assessment && ::Admin::AssessmentSerializer.new(result.assessment).as_json,
-            version: result.version && ::Admin::AssessmentVersionSerializer.new(result.version.reload).as_json
-          }, status: dry_run ? :ok : :created
+          # A dry run rolls its transaction back, so the records it built no
+          # longer exist by the time the response is rendered — report the
+          # validated stats only.
+          payload = { dry_run: dry_run, published: result.published, problems: result.problems, stats: result.stats }
+          unless dry_run
+            payload[:assessment] = ::Admin::AssessmentSerializer.new(result.assessment).as_json
+            payload[:version] = ::Admin::AssessmentVersionSerializer.new(result.version.reload).as_json
+          end
+
+          render json: payload, status: dry_run ? :ok : :created
         end
 
         # GET /api/v1/admin/assessment_imports/schema
@@ -54,17 +56,19 @@ module Api
             public_result_rules: Assessment::PUBLIC_RESULT_RULES,
             trade_options: TradeCatalog::OPTIONS,
             documentation: "docs/ASSESSMENTS.md",
+            fields: Assessments::ImportSchema.fields,
             example: Assessments::ImportSchema.example
           }, status: :ok
         end
 
         private
 
-        # Accepts a nested "assessment_document" object, a raw JSON string, or
-        # the document at the top level of the request body.
+        # Accepts a nested "document" object, a raw JSON string (so an admin can
+        # paste a file's contents straight into a textarea), or the document at
+        # the top level of the request body.
         def import_document
-          if params[:assessment_document].present?
-            raw = params[:assessment_document]
+          if params[:document].present?
+            raw = params[:document]
             return parse_string(raw) if raw.is_a?(String)
 
             return raw.respond_to?(:to_unsafe_h) ? raw.to_unsafe_h : raw.to_h

@@ -29,7 +29,7 @@ module Api
       # Accepts either the numeric id or the slug, so clients can deep-link to
       # "hvac_knowledge" without first resolving an id.
       def show
-        assessment = find_assessment
+        assessment = Assessments::Lookup.active(params[:id])
         return render json: { error: "Assessment not found" }, status: :not_found if assessment.blank?
 
         entry = Assessments::TechnicianCatalog
@@ -46,14 +46,6 @@ module Api
         return if @technician_profile.present?
 
         render json: { error: "Technician profile not found" }, status: :not_found
-      end
-
-      def find_assessment
-        identifier = params[:id].to_s
-        scope = Assessment.active
-        return scope.find_by(id: identifier.to_i) if identifier.match?(/\A\d+\z/)
-
-        scope.find_by(slug: identifier)
       end
 
       def catalog_payload(entry)

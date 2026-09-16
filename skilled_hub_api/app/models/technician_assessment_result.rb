@@ -32,8 +32,4 @@ class TechnicianAssessmentResult < ApplicationRecord
   def category_scores_list
     Array(category_scores).map { |entry| entry.to_h.stringify_keys }
   end
-
-  def retake_improved?
-    best_score.present? && latest_score.present? && latest_score > best_score
-  end
 end

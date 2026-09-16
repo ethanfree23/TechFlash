@@ -28,10 +28,19 @@ module Assessments
 
     def initialize(attempt:, answers:)
       @attempt = attempt
-      @answers = Array(answers)
+      @raw_answers = answers
     end
 
     def call
+      entries = normalized_entries
+      if entries.nil?
+        return failure("invalid_answers",
+                       "answers must be a list of { question_id, answer_choice_id } entries.")
+      end
+
+      # Expiry is reported with its own code — whoever noticed the clock first —
+      # so a client can say "time is up" rather than a generic "attempt closed".
+      return failure("attempt_expired", "Time is up for this attempt.") if attempt.expired?
       return failure("attempt_not_in_progress", "This attempt is no longer open.") unless attempt.in_progress?
 
       if attempt.past_time_limit?
@@ -41,8 +50,7 @@ module Assessments
 
       saved = 0
       ActiveRecord::Base.transaction do
-        answers.each do |raw|
-          entry = raw.respond_to?(:to_h) ? raw.to_h.stringify_keys : {}
+        entries.each do |entry|
           attempt_question = attempt_questions[entry["question_id"].to_i]
           next if attempt_question.blank?
 
@@ -64,6 +72,25 @@ module Assessments
     end
 
     private
+
+    # Returns nil for a payload that is not a list of hashes, so a malformed
+    # request is reported rather than silently saving nothing.
+    def normalized_entries
+      return [] if @raw_answers.nil?
+      return nil unless @raw_answers.is_a?(Array)
+
+      @raw_answers.map do |raw|
+        hash =
+          if raw.respond_to?(:to_unsafe_h)
+            raw.to_unsafe_h
+          elsif raw.is_a?(Hash)
+            raw
+          end
+        return nil if hash.nil?
+
+        hash.stringify_keys
+      end
+    end
 
     def attempt_questions
       @attempt_questions ||= attempt

@@ -46,7 +46,7 @@ module Assessments
 
     private
 
-    # The most recent completed attempt per technician whose waiting period just
+    # The most recent finalized attempt per technician whose waiting period just
     # elapsed. A one-day trailing window keeps this idempotent enough for a
     # daily task without needing extra state.
     def eligible_attempts(assessment, wait_hours)
@@ -55,17 +55,17 @@ module Assessments
 
       AssessmentAttempt
         .where(assessment_id: assessment.id)
-        .completed
+        .finalized
         .where(completed_at: window_start...window_end)
         .includes(:technician_profile)
-        .select { |attempt| latest_completed_id(assessment, attempt.technician_profile_id) == attempt.id }
+        .select { |attempt| latest_finalized_id(assessment, attempt.technician_profile_id) == attempt.id }
     end
 
-    def latest_completed_id(assessment, technician_profile_id)
-      @latest_completed ||= {}
-      @latest_completed[[assessment.id, technician_profile_id]] ||= AssessmentAttempt
+    def latest_finalized_id(assessment, technician_profile_id)
+      @latest_finalized ||= {}
+      @latest_finalized[[assessment.id, technician_profile_id]] ||= AssessmentAttempt
         .where(assessment_id: assessment.id, technician_profile_id: technician_profile_id)
-        .completed
+        .finalized
         .order(completed_at: :desc, id: :desc)
         .limit(1)
         .pick(:id)
