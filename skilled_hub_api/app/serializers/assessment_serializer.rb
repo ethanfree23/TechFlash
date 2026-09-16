@@ -21,6 +21,7 @@ class AssessmentSerializer < ActiveModel::Serializer
              :allow_resume,
              :allow_back_navigation,
              :score_bands,
+             :topics,
              :disclaimer
 
   def live_version
@@ -79,6 +80,16 @@ class AssessmentSerializer < ActiveModel::Serializer
   # context. Thresholds are not secret; the answer key is.
   def score_bands
     live_version&.score_bands_config&.as_json || []
+  end
+
+  # What the assessment covers, so a technician can see the subject areas
+  # before starting. Names and counts only — no question content.
+  def topics
+    return [] if live_version.blank?
+
+    live_version.assessment_categories.ordered.map do |category|
+      { slug: category.slug, name: category.name, question_count: category.question_count }
+    end
   end
 
   def disclaimer
