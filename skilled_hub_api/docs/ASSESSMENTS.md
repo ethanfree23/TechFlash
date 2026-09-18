@@ -376,6 +376,19 @@ skipped by `import_seeds`. The same contract is served by
 
 No engine code needs to change.
 
+Version 1 banks are checked in as unpublished seed documents:
+
+* `db/assessment_seeds/hvac_knowledge.json`
+* `db/assessment_seeds/plumbing_knowledge.json`
+* `db/assessment_seeds/electrical_knowledge.json`
+
+Each is a 120-question bank with an 8-question-per-category blueprint (40-question
+sitting), a 30-minute time limit, a 14-day retake wait, and knowledge-only score
+bands. `publish` is `false` so an environment import does not automatically go
+live. Validate with `bin/rails assessments:validate FILE=...` (or
+`bundle exec rake assessments:validate FILE=...`). Publish from admin after
+review, or re-import with `"publish": true` when you intend to serve them.
+
 ---
 
 ## 11. API surface

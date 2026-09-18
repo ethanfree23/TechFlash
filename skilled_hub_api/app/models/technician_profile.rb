@@ -24,6 +24,8 @@ class TechnicianProfile < ApplicationRecord
   has_many :saved_job_searches, dependent: :destroy
   has_many :favorite_technician_entries, class_name: 'FavoriteTechnician', dependent: :destroy
   has_many :companies_that_favorited, through: :favorite_technician_entries, source: :company_profile
+  has_many :assessment_attempts, dependent: :destroy
+  has_many :technician_assessment_results, dependent: :destroy
 
   validate :membership_level_must_be_configured
   validate :skill_class_must_be_catalog_value
