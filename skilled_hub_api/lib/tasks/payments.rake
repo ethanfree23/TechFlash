@@ -4,8 +4,10 @@ namespace :payments do
   desc "Release settled, eligible job payouts (reviews or 72h). Idempotent."
   task release_eligible: :environment do
     result = PaymentsReleaseRunner.call
+    puts "Auto-completed #{result.dig(:auto_completed, :completed).to_i} expired job(s)"
     puts "Released #{result[:released]} payment(s)"
     result[:failed].each { |row| puts "Job #{row[:job_id]}: FAILED #{row[:error]}" }
+    result.dig(:auto_completed, :failed)&.each { |row| puts "Job #{row[:job_id]}: AUTO-COMPLETE FAILED #{row[:error]}" }
     result[:skipped].each { |row| puts "Job #{row[:job_id]}: skipped #{row[:reason]}" if ENV["VERBOSE"] }
   end
 

@@ -6,6 +6,8 @@
 
 # Ignore bundler config.
 /.bundle
+/vendor/bundle
+/vendor/ruby
 
 # Ignore all environment files (except templates).
 /.env*

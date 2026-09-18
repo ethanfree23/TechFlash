@@ -164,6 +164,23 @@ class UserMailer < ApplicationMailer
     mail(to: @technician_user.email, subject: "Job marked complete: #{job.title}")
   end
 
+  def assignment_ended_for_technician(job, termination)
+    assign_termination_context(job, termination)
+    @technician_user = termination.technician_profile&.user ||
+                       job.job_applications.find_by(status: :accepted)&.technician_profile&.user
+    return if @technician_user.blank? || !notifications_enabled_for?(@technician_user, :job_lifecycle)
+
+    mail(to: @technician_user.email, subject: "Assignment ended: #{job.title}")
+  end
+
+  def assignment_ended_for_company(job, termination)
+    assign_termination_context(job, termination)
+    @company_user = job.company_profile&.user
+    return if @company_user.blank? || !notifications_enabled_for?(@company_user, :job_lifecycle)
+
+    mail(to: @company_user.email, subject: "You ended the assignment for #{job.title}")
+  end
+
   def technician_claimed_job_email(job)
     @job = job
     accepted_app = job.job_applications.find_by(status: :accepted)
@@ -358,6 +375,36 @@ class UserMailer < ApplicationMailer
     else
       conv.technician_profile.user
     end
+  end
+
+  def assign_termination_context(job, termination)
+    @job = job
+    @termination = termination
+    @company_name = job.company_profile&.company_name.presence || "The company"
+    @guaranteed_job_pay = termination.pay_basis_guaranteed_job_pay?
+    tz = job.job_timezone.presence || "UTC"
+    @effective_end_display = termination.effective_end_at&.in_time_zone(tz)&.strftime("%b %-d, %Y at %-l:%M %p")
+    @original_end_display = termination.original_scheduled_end_at&.in_time_zone(tz)&.strftime("%b %-d, %Y")
+    @approved_hours_display = format_termination_hours(termination.approved_hours)
+    @canceled_hours_display = format_termination_hours(termination.canceled_scheduled_hours)
+    @approved_pay_display = format_termination_money(termination.approved_gross_labor_cents)
+    @guaranteed_pay_display = format_termination_money(termination.original_agreed_labor_cents)
+    @refund_display = termination.refund_cents.to_i.positive? ? format_termination_money(termination.refund_cents) : nil
+    @reason_label = termination.reason_label
+    @job_url = frontend_url("/jobs/#{job.id}")
+  end
+
+  def format_termination_hours(hours)
+    return nil if hours.blank?
+
+    value = hours.to_d
+    value == value.to_i ? value.to_i.to_s : format("%.2f", value)
+  end
+
+  def format_termination_money(cents)
+    return nil if cents.blank?
+
+    format("$%.2f", cents.to_i / 100.0)
   end
 
   def notifications_enabled_for?(user, category = nil)

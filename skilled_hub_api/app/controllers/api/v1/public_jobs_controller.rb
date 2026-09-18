@@ -6,7 +6,6 @@ module Api
       # Public share preview — no JWT; authorized only by unguessable share_token.
 
       def show
-        Job.auto_complete_expired!
         job = Job.includes(:company_profile).find_by!(share_token: params[:share_token])
         render json: job, serializer: PublicJobPreviewSerializer, adapter: :attributes, status: :ok
       rescue ActiveRecord::RecordNotFound

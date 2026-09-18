@@ -19,6 +19,7 @@ import AdminUserDetailScreen from '../screens/AdminUserDetailScreen';
 import AdminCrmDetailScreen from '../screens/AdminCrmDetailScreen';
 import AdminCreateUserScreen from '../screens/AdminCreateUserScreen';
 import JobDetailScreen from '../screens/JobDetailScreen';
+import EndAssignmentScreen from '../screens/EndAssignmentScreen';
 import CreateJobScreen from '../screens/CreateJobScreen';
 import EditJobScreen from '../screens/EditJobScreen';
 import ConversationScreen from '../screens/ConversationScreen';
@@ -58,6 +59,7 @@ export type AppStackParamList = {
   AdminCrmDetail: { crmLeadId?: number };
   AdminCreateUser: undefined;
   JobDetail: { jobId: number };
+  EndAssignment: { jobId: number };
   CreateJob: undefined;
   EditJob: { jobId: number };
   Conversation: { conversationId: number };
@@ -196,6 +198,11 @@ function AppStackNavigator() {
         name="JobDetail"
         component={JobDetailScreen}
         options={{ title: 'Job detail' }}
+      />
+      <AppStack.Screen
+        name="EndAssignment"
+        component={EndAssignmentScreen}
+        options={{ title: 'End assignment' }}
       />
       <AppStack.Screen
         name="CreateJob"

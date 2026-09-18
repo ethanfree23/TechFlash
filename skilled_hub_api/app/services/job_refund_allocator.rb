@@ -5,8 +5,8 @@ class JobRefundAllocator
   Slice = Struct.new(:payment_intent_id, :amount_cents, keyword_init: true)
   Result = Struct.new(:success, :slices, :error, keyword_init: true)
 
-  COLLECTION_TYPES = %w[initial_job_charge counteroffer_top_up final_hours_top_up].freeze
-  REFUND_TYPES = %w[counteroffer_refund final_hours_refund refund].freeze
+  COLLECTION_TYPES = JobPaymentTransaction::COLLECTION_TYPES
+  REFUND_TYPES = JobPaymentTransaction::REFUND_TYPES
 
   def self.allocate(job:, amount_cents:)
     new(job: job, amount_cents: amount_cents).allocate

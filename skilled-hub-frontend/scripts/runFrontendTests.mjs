@@ -18,6 +18,7 @@ const testFiles = [
   'demoRouting.test.mjs',
   'payBasis.test.mjs',
   'jobStatus.test.mjs',
+  'endAssignmentModal.test.mjs',
   'technicianClass.test.mjs',
   'tradeQualifications.test.mjs',
   'metaPixel.test.mjs',

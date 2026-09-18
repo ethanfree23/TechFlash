@@ -237,14 +237,19 @@ class MembershipPolicy
   def self.technician_completed_jobs_count(technician_profile)
     JobApplication
       .joins(:job)
-      .where(technician_profile_id: technician_profile.id, status: JobApplication.statuses[:accepted], jobs: { status: [Job.statuses[:completed], Job.statuses[:finished]] })
+      .where(technician_profile_id: technician_profile.id, status: JobApplication.statuses[:accepted])
+      .merge(Job.credited_work_history)
       .count
   end
 
   def self.technician_successful_jobs_count(technician_profile)
     JobApplication
       .joins(:job)
-      .where(technician_profile_id: technician_profile.id, status: JobApplication.statuses[:accepted], jobs: { status: Job.statuses[:finished] })
+      .where(
+        technician_profile_id: technician_profile.id,
+        status: JobApplication.statuses[:accepted],
+        jobs: { status: Job.statuses[:finished], terminated_at: nil }
+      )
       .count
   end
 

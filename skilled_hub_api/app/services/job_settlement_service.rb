@@ -3,30 +3,63 @@
 class JobSettlementService
   RELEASE_HOURS = 72
 
-  def self.settle_and_release_if_eligible!(job)
+  def self.settle_and_release_if_eligible!(job, refund_transaction_type: :final_hours_refund, allow_zero_labor: false)
     return { skipped: true, reason: "Job is not finished" } unless job.finished? && job.finished_at.present?
 
-    settle_result = settle!(job)
+    if job.terminated_early?
+      refund_transaction_type = :cancellation_refund
+      allow_zero_labor = true
+    end
+
+    settle_result = settle!(job, refund_transaction_type: refund_transaction_type, allow_zero_labor: allow_zero_labor)
     return settle_result unless settle_result[:success]
     return { success: true, settled: true, released: false, reason: "Release conditions not met" } unless release_eligible?(job)
+    if nothing_to_release?(job)
+      return { success: true, settled: true, released: false, reason: "No payable technician amount" }
+    end
 
     PaymentService.release_to_technician(job.payments.order(:id).first)
   end
 
-  def self.settle!(job)
-    labor = settlement_labor_cents(job)
+  def self.nothing_to_release?(job)
+    ledger = JobLedger.for(job)
+    ledger.technician_net_payout_cents.to_i <= 0 || ledger.transferred_cents.positive?
+  rescue JobLedger::MissingCommissionSnapshotError
+    false
+  end
+
+  def self.settle!(job, refund_transaction_type: :final_hours_refund, allow_zero_labor: false)
     due_cents = 0
     refundable_cents = 0
     revision = nil
 
     Job.transaction do
       locked = Job.lock.find(job.id)
-      if locked.actual_hours_worked? && labor.nil?
-        locked.update!(settlement_status: :settlement_blocked)
-        return { success: false, error: "Approved time entries are required before settling an Actual Hours Worked job." }
+      allow_zero = allow_zero_labor || locked.terminated_early?
+
+      begin
+        current_ledger = JobLedger.for(locked)
+        if locked.settlement_settled? &&
+            current_ledger.amount_due_cents.zero? &&
+            current_ledger.amount_refundable_cents.zero? &&
+            current_ledger.fully_funded
+          return { success: true, settled: true, skipped: true, reason: "Already settled", job: locked }
+        end
+      rescue JobLedger::MissingCommissionSnapshotError
+        current_ledger = nil
       end
 
-      locked.update!(agreed_labor_cents: labor) if locked.actual_hours_worked? && labor.present?
+      labor = settlement_labor_cents(locked)
+      if locked.actual_hours_worked? && labor.nil?
+        unless allow_zero
+          locked.update!(settlement_status: :settlement_blocked)
+          return { success: false, error: "Approved time entries are required before settling an Actual Hours Worked job." }
+        end
+
+        labor = 0
+      end
+
+      locked.update!(agreed_labor_cents: labor) if locked.actual_hours_worked? && !labor.nil?
 
       begin
         ledger = JobLedger.for(locked)
@@ -49,7 +82,6 @@ class JobSettlementService
         transaction_type: :final_hours_top_up,
         revision: revision + 1
       )
-      job.increment!(:financial_revision)
       if result[:requires_action]
         job.update!(funding_status: :adjustment_required, settlement_status: :settlement_blocked)
         return { success: false, requires_action: true, client_secret: result[:client_secret], error: "Additional company payment is required before technician payout." }
@@ -58,18 +90,19 @@ class JobSettlementService
         job.update!(funding_status: :adjustment_required, settlement_status: :settlement_blocked)
         return { success: false, error: result[:error] || "Could not collect the remaining job amount." }
       end
+      job.increment!(:financial_revision)
     elsif refundable_cents.positive?
       result = JobFundingService.refund_delta!(
         job: job,
         amount_cents: refundable_cents,
-        transaction_type: :final_hours_refund,
+        transaction_type: refund_transaction_type,
         revision: revision + 1
       )
-      job.increment!(:financial_revision)
       unless result[:success]
         job.update!(settlement_status: :settlement_blocked)
         return { success: false, error: result[:error] || "Could not refund unused job funding." }
       end
+      job.increment!(:financial_revision)
     end
 
     begin

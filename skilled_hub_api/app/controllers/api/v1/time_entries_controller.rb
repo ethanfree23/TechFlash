@@ -5,6 +5,7 @@ module Api
     class TimeEntriesController < ApplicationController
       before_action :authenticate_user
       before_action :set_job
+      before_action :authorize_job_participant!
 
       def index
         entries = @job.time_entries.includes(:time_entry_pay_line).order(worked_start_at: :desc)
@@ -12,6 +13,10 @@ module Api
       end
 
       def create
+        if (reason = closed_to_new_time_entries_reason)
+          return render json: { error: reason }, status: :unprocessable_entity
+        end
+
         entry = @job.time_entries.new(time_entry_params)
         entry.submitted_by_user = @current_user
         entry.technician_profile = resolve_technician_profile(entry)
@@ -72,6 +77,29 @@ module Api
         render json: { error: "Job not found" }, status: :not_found
       end
 
+      def authorize_job_participant!
+        return if @job.blank?
+        return if can_manage_job?(@job)
+        return if assigned_technician_profile.present? &&
+                  assigned_technician_profile.id == @current_user&.technician_profile&.id
+
+        render_forbidden
+      end
+
+      def assigned_technician_profile
+        return @assigned_technician_profile if defined?(@assigned_technician_profile)
+
+        @assigned_technician_profile = @job.job_applications.find_by(status: :accepted)&.technician_profile
+      end
+
+      def closed_to_new_time_entries_reason
+        return 'This assignment was ended early. Its hours are final.' if @job.terminated_early?
+        return 'This job is complete. Its hours are final.' if @job.finished? || @job.completed?
+        return nil if @job.reserved? || @job.filled?
+
+        'Time can only be logged on a job a technician has claimed.'
+      end
+
       def resolve_technician_profile(entry)
         if @current_user.technician?
           @current_user.technician_profile
@@ -79,14 +107,19 @@ module Api
           if entry.technician_profile_id.present?
             TechnicianProfile.find(entry.technician_profile_id)
           else
-            @job.job_applications.find_by(status: :accepted)&.technician_profile
+            assigned_technician_profile
           end
         end
       end
 
       def time_entry_params
-        params.permit(:technician_profile_id, :weekend_work_request_id, :worked_start_at, :worked_end_at, :worked_on_date, :worked_hours,
-                      :override_applied, :override_reason, :override_by_user_id)
+        permitted = params.permit(:technician_profile_id, :weekend_work_request_id, :worked_start_at, :worked_end_at,
+                                  :worked_on_date, :worked_hours,
+                                  :override_applied, :override_reason, :override_by_user_id)
+        unless can_manage_job?(@job)
+          permitted = permitted.except(:technician_profile_id, :override_applied, :override_reason, :override_by_user_id)
+        end
+        permitted
       end
 
       def create_pay_line!(entry, validator)

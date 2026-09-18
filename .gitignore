@@ -17,6 +17,8 @@ skilled_hub_api/log/*
 skilled_hub_api/tmp/*
 skilled_hub_api/storage/*
 skilled_hub_api/.bundle
+skilled_hub_api/vendor/bundle/
+skilled_hub_api/vendor/ruby/
 skilled_hub_api/.env*
 !skilled_hub_api/.env*.erb
 !skilled_hub_api/.env.example

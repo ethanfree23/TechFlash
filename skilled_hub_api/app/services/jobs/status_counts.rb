@@ -12,6 +12,7 @@ module Jobs
         active: relation.merge(Job.effectively_active).count,
         claimed_unstarted: relation.merge(Job.effectively_claimed).count,
         completed: relation.merge(Job.effectively_completed).count,
+        ended_early: relation.merge(Job.effectively_ended_early).count,
         expired: relation.merge(Job.expired_listings).count,
         counter_pending: relation.merge(Job.with_pending_counter_offer).distinct.count
       }

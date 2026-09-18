@@ -2,7 +2,7 @@
 export const JOB_STATUS_KEYS = ['open', 'reserved', 'accepted', 'completed', 'filled', 'finished', 'pending_funding'];
 
 /** Canonical business lifecycle keys from `Job#effective_status`. */
-export const EFFECTIVE_STATUS_KEYS = ['pending_funding', 'completed', 'active', 'claimed', 'expired', 'open'];
+export const EFFECTIVE_STATUS_KEYS = ['pending_funding', 'completed', 'ended_early', 'active', 'claimed', 'expired', 'open'];
 
 const LABELS = {
   open: 'Open',
@@ -15,6 +15,7 @@ const LABELS = {
   expired: 'Expired',
   claimed: 'Claimed',
   active: 'Active',
+  ended_early: 'Ended early',
 };
 
 const DISPLAY = {
@@ -23,6 +24,7 @@ const DISPLAY = {
   claimed: { label: 'Claimed', tone: 'yellow' },
   active: { label: 'Active', tone: 'green' },
   completed: { label: 'Completed', tone: 'green' },
+  ended_early: { label: 'Ended early', tone: 'gray' },
   pending_funding: { label: 'Pending funding', tone: 'orange' },
 };
 
@@ -49,8 +51,9 @@ export function normalizeJobStatusKey(source) {
  * @returns {string}
  */
 export function canonicalStatusKey(job) {
-  if (job && typeof job === 'object' && !Array.isArray(job) && job.effective_status) {
-    return String(job.effective_status).toLowerCase();
+  if (job && typeof job === 'object' && !Array.isArray(job)) {
+    if (job.ended_early || job.terminated_at) return 'ended_early';
+    if (job.effective_status) return String(job.effective_status).toLowerCase();
   }
   const persisted = normalizeJobStatusKey(job);
   if (persisted === 'finished' || persisted === 'completed') return 'completed';
@@ -88,6 +91,7 @@ export const CARD_ACCENT_CLASSES = {
   claimed: 'border-l-[3px] border-l-amber-500',
   active: 'border-l-[3px] border-l-emerald-600',
   completed: 'border-l-[3px] border-l-emerald-400',
+  ended_early: 'border-l-[3px] border-l-slate-400',
   pending_funding: 'border-l-[3px] border-l-orange-500',
   default: 'border-l-[3px] border-l-slate-200',
 };

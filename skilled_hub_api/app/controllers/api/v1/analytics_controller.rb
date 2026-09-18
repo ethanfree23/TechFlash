@@ -29,7 +29,7 @@ module Api
 
         completed_jobs = Job.joins(:job_applications)
           .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })
-          .where(status: :finished)
+          .merge(Job.effectively_completed)
 
         in_progress_jobs = Job.joins(:job_applications)
           .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })
@@ -141,6 +141,7 @@ module Api
           total_jobs: counts[:total],
           jobs_open: counts[:open],
           jobs_finished: counts[:completed],
+          jobs_ended_early: counts[:ended_early],
           jobs_in_progress: counts[:claimed],
           jobs_expired: counts[:expired],
           jobs_counter_pending: counts[:counter_pending],

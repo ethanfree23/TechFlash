@@ -47,6 +47,7 @@ class Job < ApplicationRecord
   has_many :weekend_work_requests, dependent: :destroy
   has_many :time_entries, dependent: :destroy
   has_many :job_term_change_audits, dependent: :destroy
+  has_one :job_termination, dependent: :destroy
 
   # Total job amount (before platform fees): hourly_rate * hours_per_day * days
   # Falls back to price_cents for legacy jobs
@@ -126,11 +127,14 @@ class Job < ApplicationRecord
   validate :validate_overtime_fields
   validate :validate_shift_time_windows
 
-  # Auto-complete jobs past their scheduled end time
-  def self.auto_complete_expired!
+  # In-progress jobs whose scheduled end has passed and which are therefore due for
+  # auto-completion. Auto-completion itself is an explicit, locked, settling lifecycle
+  # transition — see Jobs::AutoCompleteExpiredService. Never mutate lifecycle state from
+  # a read request.
+  def self.due_for_auto_completion(now: Time.current)
     where(status: [:reserved, :filled])
-      .where('scheduled_end_at IS NOT NULL AND scheduled_end_at <= ?', Time.current)
-      .update_all(status: Job.statuses[:finished], finished_at: Time.current)
+      .where(terminated_at: nil)
+      .where('scheduled_end_at IS NOT NULL AND scheduled_end_at <= ?', now)
   end
 
   def self.publicly_visible

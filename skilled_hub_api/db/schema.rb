@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_09_16_120200) do
+ActiveRecord::Schema[7.1].define(version: 2026_09_18_010000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -688,6 +688,45 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_16_120200) do
     t.index ["job_id"], name: "index_job_term_change_audits_on_job_id"
   end
 
+  create_table "job_terminations", force: :cascade do |t|
+    t.integer "job_id", null: false
+    t.integer "job_application_id"
+    t.integer "technician_profile_id"
+    t.integer "initiated_by_user_id", null: false
+    t.integer "initiated_by_role", default: 0, null: false
+    t.integer "reason", default: 0, null: false
+    t.text "notes"
+    t.datetime "terminated_at", null: false
+    t.datetime "effective_end_at", null: false
+    t.date "last_worked_on_date"
+    t.datetime "original_scheduled_start_at"
+    t.datetime "original_scheduled_end_at"
+    t.decimal "original_estimated_hours", precision: 10, scale: 2
+    t.integer "original_agreed_labor_cents"
+    t.integer "original_net_funded_cents"
+    t.integer "original_company_required_cents"
+    t.integer "pay_basis", default: 0, null: false
+    t.decimal "approved_hours", precision: 8, scale: 2, default: "0.0", null: false
+    t.integer "approved_gross_labor_cents", default: 0, null: false
+    t.decimal "rejected_hours", precision: 8, scale: 2, default: "0.0", null: false
+    t.decimal "canceled_scheduled_hours", precision: 8, scale: 2
+    t.boolean "work_performed", default: false, null: false
+    t.boolean "zero_hour_termination", default: false, null: false
+    t.integer "refund_cents"
+    t.integer "technician_payout_cents"
+    t.string "settlement_status"
+    t.text "settlement_error"
+    t.json "settlement_result", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["initiated_by_user_id"], name: "index_job_terminations_on_initiated_by_user_id"
+    t.index ["job_application_id"], name: "index_job_terminations_on_job_application_id"
+    t.index ["job_id"], name: "index_job_terminations_on_job_id", unique: true
+    t.index ["reason"], name: "index_job_terminations_on_reason"
+    t.index ["technician_profile_id"], name: "index_job_terminations_on_technician_profile_id"
+    t.index ["terminated_at"], name: "index_job_terminations_on_terminated_at"
+  end
+
   create_table "jobs", force: :cascade do |t|
     t.integer "company_profile_id", null: false
     t.string "title"
@@ -757,6 +796,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_16_120200) do
     t.integer "funding_status", default: 0, null: false
     t.integer "settlement_status", default: 0, null: false
     t.integer "financial_revision", default: 1, null: false
+    t.datetime "terminated_at"
     t.index ["company_membership_tier_config_id"], name: "index_jobs_on_company_membership_tier_config_id"
     t.index ["company_profile_id"], name: "index_jobs_on_company_profile_id"
     t.index ["funding_status"], name: "index_jobs_on_funding_status"
@@ -765,6 +805,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_16_120200) do
     t.index ["share_token"], name: "index_jobs_on_share_token", unique: true
     t.index ["start_mode"], name: "index_jobs_on_start_mode"
     t.index ["technician_membership_tier_config_id"], name: "index_jobs_on_technician_membership_tier_config_id"
+    t.index ["terminated_at"], name: "index_jobs_on_terminated_at"
     t.index ["trade_type"], name: "index_jobs_on_trade_type"
   end
 
@@ -1308,6 +1349,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_16_120200) do
   add_foreign_key "job_payment_transactions", "payments"
   add_foreign_key "job_term_change_audits", "jobs"
   add_foreign_key "job_term_change_audits", "users", column: "actor_user_id"
+  add_foreign_key "job_terminations", "job_applications"
+  add_foreign_key "job_terminations", "jobs"
+  add_foreign_key "job_terminations", "technician_profiles"
+  add_foreign_key "job_terminations", "users", column: "initiated_by_user_id"
   add_foreign_key "jobs", "company_profiles"
   add_foreign_key "messages", "conversations"
   add_foreign_key "password_setup_challenges", "users"

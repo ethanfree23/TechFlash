@@ -4,7 +4,6 @@ module Api
       before_action :authenticate_user
 
       def index
-        Job.auto_complete_expired!
         jobs = Job.all
 
         # Companies only see their own jobs; technicians see all open jobs
@@ -39,11 +38,14 @@ module Api
             else
               jobs = base_claimed
             end
-          elsif params[:status].to_s == 'completed' && technician_profile
-            # Completed: jobs they've done (finished)
-            jobs = Job.joins(:job_applications)
+          elsif %w[completed ended_early concluded].include?(params[:status].to_s) && technician_profile
+            history = Job.joins(:job_applications)
               .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })
-              .merge(Job.effectively_completed)
+            jobs = case params[:status].to_s
+                   when 'ended_early' then history.merge(Job.effectively_ended_early)
+                   when 'concluded' then history.merge(Job.effectively_concluded)
+                   else history.merge(Job.effectively_completed)
+                   end
           else
             # Browse: when "All" show available + the tech's own claimed/completed work.
             jobs = jobs.where.not(status: :pending_funding)
@@ -80,7 +82,7 @@ module Api
         end
 
         # Order: most recent first (by created_at, or finished_at for completed)
-        jobs = if params[:status].to_s == 'completed'
+        jobs = if %w[completed ended_early concluded].include?(params[:status].to_s)
           jobs.order(Arel.sql('COALESCE(jobs.finished_at, jobs.updated_at, jobs.created_at) DESC'))
         else
           jobs.reorder('jobs.created_at DESC')
@@ -88,7 +90,7 @@ module Api
 
         # Apply filters
         jobs = jobs.where(location: params[:location]) if params[:location].present?
-        if params[:status].present? && !(@current_user&.technician? && %w[active reserved completed].include?(params[:status].to_s))
+        if params[:status].present? && !(@current_user&.technician? && %w[active reserved completed ended_early concluded].include?(params[:status].to_s))
           case params[:status].to_s
           when 'active'
             jobs = jobs.merge(Job.effectively_active)
@@ -98,6 +100,10 @@ module Api
             jobs = jobs.merge(Job.in_progress)
           when 'completed'
             jobs = jobs.merge(Job.effectively_completed)
+          when 'ended_early'
+            jobs = jobs.merge(Job.effectively_ended_early)
+          when 'concluded'
+            jobs = jobs.merge(Job.effectively_concluded)
           when 'expired'
             jobs = jobs.merge(Job.expired_listings)
           when 'open'
@@ -135,7 +141,6 @@ module Api
       end
       
       def show
-        Job.auto_complete_expired!
         job = Job.includes(:company_profile, :payments, job_applications: { technician_profile: :user }).find(params[:id])
         if @current_user&.technician? && (tp = @current_user.technician_profile)
           ActiveRecord::Associations::Preloader.new(records: [tp], associations: [:documents]).call
@@ -229,10 +234,18 @@ module Api
         unless can_manage_job?(job)
           return render json: { error: 'Access denied' }, status: :forbidden
         end
+        if job.terminated_early?
+          return render json: {
+            error: 'This assignment was ended early and can no longer be edited.'
+          }, status: :unprocessable_entity
+        end
         previous_weekend_policy = job.weekend_work_policy
         previous_sat_multiplier = job.saturday_multiplier
         previous_sun_multiplier = job.sunday_multiplier
         incoming = job_params
+        if (status_error = disallowed_status_change_error(job, incoming))
+          return render json: { error: status_error }, status: :unprocessable_entity
+        end
         if job.funded_terms_locked?
           locked = %w[hourly_rate_cents hours_per_day days pay_basis price_cents]
           changed_locked = locked.select { |attr| incoming.key?(attr) && incoming[attr].to_s != job.public_send(attr).to_s }
@@ -283,6 +296,9 @@ module Api
         unless can_manage_job?(job)
           return render json: { error: 'Access denied' }, status: :forbidden
         end
+        if (reason = undeletable_reason(job))
+          return render json: { error: reason, errors: [reason] }, status: :unprocessable_entity
+        end
         unless job.destroy
           return render json: {
             errors: job.errors.full_messages.presence || ['Unable to delete job']
@@ -294,7 +310,6 @@ module Api
       end
 
       def dashboard_jobs
-        Job.auto_complete_expired!
         unless @current_user&.company?
           return render json: { error: 'Access denied. Company role required.' }, status: :forbidden
         end
@@ -311,11 +326,13 @@ module Api
         unclaimed_scope = base.merge(Job.effectively_open)
         expired_listings_scope = base.merge(Job.expired_listings)
         completed_scope = base.merge(Job.effectively_completed)
+        ended_early_scope = base.merge(Job.effectively_ended_early)
 
         claimed = claimed_scope.includes(:job_applications).order(recency).limit(limit)
         unclaimed = unclaimed_scope.includes(:job_applications).order(recency).limit(limit)
         expired_listings = expired_listings_scope.includes(:job_applications).order(recency).limit(limit)
         completed = completed_scope.includes(:job_applications).order(recency).limit(limit)
+        ended_early = ended_early_scope.includes(:job_applications, :job_termination).order(recency).limit(limit)
 
         completed_payload = ActiveModel::Serializer::CollectionSerializer.new(completed, serializer: JobSerializer)
         render json: {
@@ -323,6 +340,7 @@ module Api
             requested: claimed_scope.count,
             unrequested: unclaimed_scope.count,
             completed: completed_scope.count,
+            ended_early: ended_early_scope.count,
             expired_listings: expired_listings_scope.count,
             total: base.count
           },
@@ -330,6 +348,7 @@ module Api
           unrequested: ActiveModel::Serializer::CollectionSerializer.new(unclaimed, serializer: JobSerializer),
           expired_listings: ActiveModel::Serializer::CollectionSerializer.new(expired_listings, serializer: JobSerializer),
           completed: completed_payload,
+          ended_early: ActiveModel::Serializer::CollectionSerializer.new(ended_early, serializer: JobSerializer),
           expired: completed_payload
         }, status: :ok
       end
@@ -349,6 +368,12 @@ module Api
           return render json: { error: 'No technician to deny' }, status: :unprocessable_entity
         end
 
+        if job.time_entries.where(status: [:approved, :paid]).exists?
+          return render json: {
+            error: 'This technician already has approved hours on the job. Use "End Assignment" so their approved work is paid and your remaining funds are refunded.'
+          }, status: :unprocessable_entity
+        end
+
         accepted_app.update!(status: :rejected)
         JobFundingService.clear_technician_snapshot!(job)
         job.update!(status: :open, go_live_at: Time.current)
@@ -357,17 +382,57 @@ module Api
         render json: { error: 'Job not found' }, status: :not_found
       end
 
+      def terminate
+        job = Job.find(params[:id])
+        result = Jobs::TerminateAssignmentService.call(
+          job: job,
+          actor_user: @current_user,
+          reason: params[:reason],
+          notes: params[:notes],
+          effective_end_at: params[:effective_end_at]
+        )
+
+        unless result.success?
+          return render json: { error: result.error, blockers: result.blockers }.compact, status: (result.status || :unprocessable_entity)
+        end
+
+        render json: {
+          job: JobSerializer.new(result.job, scope: @current_user).as_json,
+          termination: JobTerminationSerializer.new(result.termination).as_json,
+          idempotent: !!result.idempotent
+        }, status: :ok
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: 'Job not found' }, status: :not_found
+      end
+
+      def termination_preview
+        job = Job.find(params[:id])
+        unless can_manage_job?(job)
+          return render json: { error: 'Access denied' }, status: :forbidden
+        end
+
+        summary = Jobs::TerminationSummary.call(job: job, effective_end_at: params[:effective_end_at])
+        render json: { termination_preview: summary.as_json }, status: :ok
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: 'Job not found' }, status: :not_found
+      end
+
       def finish
         job = Job.find(params[:id])
         can_finish = false
-        if @current_user.company? && job.company_profile_id == @current_user.company_profile&.id
+        if @current_user.admin?
+          can_finish = true
+        elsif @current_user.company? && job.company_profile_id == @current_user.company_profile&.id
           can_finish = true
         elsif @current_user.technician? && (job.reserved? || job.filled?)
           accepted_app = job.job_applications.find_by(status: :accepted)
           can_finish = accepted_app&.technician_profile&.user_id == @current_user.id
         end
+        if job.terminated_early?
+          return render json: { error: 'This assignment was already ended early.' }, status: :unprocessable_entity
+        end
         if can_finish
-          job.update!(status: :finished, finished_at: Time.current)
+          job.update!(status: :finished, finished_at: Time.current) unless job.finished? || job.completed?
           JobSettlementService.settle_and_release_if_eligible!(job)
           ReferralRewardMarker.mark_for_finished_job!(job)
           MailDelivery.safe_deliver do
@@ -408,7 +473,6 @@ module Api
       end
 
       def technician_dashboard_jobs
-        Job.auto_complete_expired!
         unless @current_user&.technician?
           return render json: { error: 'Access denied. Technician role required.' }, status: :forbidden
         end
@@ -437,6 +501,8 @@ module Api
             location: j.location,
             status: j.status,
             effective_status: j.effective_status,
+            ended_early: j.terminated_early?,
+            terminated_at: j.terminated_at,
             created_at: j.created_at,
             updated_at: j.updated_at,
             finished_at: j.finished_at,
@@ -576,6 +642,47 @@ module Api
       def can_manage_job?(job)
         return true if @current_user&.admin?
         @current_user&.company? && job.company_profile_id == @current_user.company_profile&.id
+      end
+
+      UPDATABLE_STATUSES = %w[open pending_funding].freeze
+
+      def disallowed_status_change_error(job, incoming)
+        return nil unless incoming.key?("status") || incoming.key?(:status)
+
+        requested = incoming[:status].presence || incoming["status"].presence
+        return nil if requested.blank?
+        return nil if requested.to_s == job.status.to_s
+        return nil if UPDATABLE_STATUSES.include?(requested.to_s)
+
+        action = case requested.to_s
+                 when "finished", "completed" then 'Use "Mark Complete" or "End Assignment" instead.'
+                 when "reserved", "filled", "accepted" then "A technician must claim the job."
+                 else "Use the dedicated job action instead."
+                 end
+        "Job status cannot be changed to \"#{requested}\" from this endpoint. #{action}"
+      end
+
+      def undeletable_reason(job)
+        return 'Ended assignments are kept for payment and review records and cannot be deleted.' if job.terminated_early?
+        return 'Completed jobs are kept for payment and review records and cannot be deleted.' if job.finished? || job.completed?
+        return 'This job has time entries and cannot be deleted. End the assignment instead.' if job.time_entries.exists?
+        if job.job_applications.where(status: :accepted).exists?
+          return 'A technician has claimed this job. Deny the technician or end the assignment first.'
+        end
+        if job.job_payment_transactions.status_succeeded.exists?
+          return 'This job has payment activity. Unpublish it to refund the company before removing it.'
+        end
+        if job_holds_funds?(job)
+          return 'This job is funded. Unpublish it to refund the company before removing it.'
+        end
+
+        nil
+      end
+
+      def job_holds_funds?(job)
+        JobLedger.for(job).net_funded_cents.positive?
+      rescue JobLedger::MissingCommissionSnapshotError
+        false
       end
 
       def render_paginated_jobs(jobs)

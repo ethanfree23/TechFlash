@@ -2,7 +2,9 @@
 
 # Single source of truth for a job's current business lifecycle status.
 # Persisted `status` remains the workflow enum; expiration is derived from
-# scheduled_end_at while the row stays `open`.
+# scheduled_end_at while the row stays `open`, and an early-ended assignment is
+# derived from `terminated_at` while the row stays `finished` (so settlement,
+# payout and review eligibility all behave exactly like a normal completion).
 module JobEffectiveStatus
   extend ActiveSupport::Concern
 
@@ -26,7 +28,22 @@ module JobEffectiveStatus
         .where("scheduled_start_at IS NOT NULL AND scheduled_start_at <= ?", Time.current)
     }
     scope :in_progress, -> { where(status: %i[reserved filled]) }
-    scope :effectively_completed, -> { where(status: JobEffectiveStatus::COMPLETED_STATUSES) }
+
+    scope :effectively_concluded, -> { where(status: JobEffectiveStatus::COMPLETED_STATUSES) }
+    scope :effectively_completed, lambda {
+      where(status: JobEffectiveStatus::COMPLETED_STATUSES).where(terminated_at: nil)
+    }
+    scope :effectively_ended_early, lambda {
+      where(status: JobEffectiveStatus::COMPLETED_STATUSES).where.not(terminated_at: nil)
+    }
+
+    # Concluded assignments the technician should get work-history credit for: normal
+    # completions, plus early-ended assignments where they actually performed approved work.
+    scope :credited_work_history, lambda {
+      where(status: JobEffectiveStatus::COMPLETED_STATUSES)
+        .where("jobs.terminated_at IS NULL OR jobs.id IN (#{JobTermination.work_performed.select(:job_id).to_sql})")
+    }
+
     scope :with_pending_counter_offer, lambda {
       where(
         id: JobCounterOffer.where(status: JobEffectiveStatus::PENDING_COUNTER_OFFER_STATUSES).select(:job_id)
@@ -46,8 +63,17 @@ module JobEffectiveStatus
     effectively_open?
   end
 
+  def terminated_early?
+    terminated_at.present?
+  end
+
+  def lifecycle_terminal?
+    finished? || completed? || terminated_early?
+  end
+
   def effective_status
     return "pending_funding" if pending_funding?
+    return "ended_early" if terminated_early?
     return "completed" if finished? || completed?
     if reserved? || filled? || accepted?
       return "active" if scheduled_start_at.present? && scheduled_start_at <= Time.current

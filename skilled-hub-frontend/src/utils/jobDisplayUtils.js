@@ -1,4 +1,4 @@
-import { getJobDisplayStatus, normalizeJobStatusKey } from './jobStatus';
+import { getJobDisplayStatus, canonicalStatusKey, normalizeJobStatusKey } from './jobStatus';
 import { formatWeekdayList, toMultiplierLabel } from './workSchedule';
 
 export const haversineMiles = (lat1, lon1, lat2, lon2) => {
@@ -163,7 +163,10 @@ export const isJobClaimedByTechnician = (job, technicianProfile) => {
   );
 };
 
-export const isJobEditable = (job) => normalizeJobStatusKey(job) !== 'finished';
+export const isJobEditable = (job) => {
+  const key = canonicalStatusKey(job);
+  return key !== 'finished' && key !== 'completed' && key !== 'ended_early';
+};
 
 export const canTechnicianClaim = (job) => {
   if (!job) return false;
@@ -177,6 +180,7 @@ export const getTechnicianUnavailableReason = (job, technicianProfile) => {
   const status = normalizeJobStatusKey(job);
   if (status === 'reserved' || status === 'filled') return 'This job has already been claimed.';
   if (status === 'finished') return 'This job has been completed.';
+  if (canonicalStatusKey(job) === 'ended_early') return 'This assignment ended early.';
   return null;
 };
 

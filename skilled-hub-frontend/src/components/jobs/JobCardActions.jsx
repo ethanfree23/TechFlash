@@ -48,7 +48,7 @@ export default function JobCardActions({
       if (role === 'company' && job.status === 'filled') {
         await jobsAPI.finish(job.id);
       } else if (role === 'admin') {
-        await jobsAPI.update(job.id, { status: 'finished' });
+        await jobsAPI.finish(job.id);
       } else if (onCloseJob) {
         await onCloseJob(job);
       }
@@ -110,7 +110,7 @@ export default function JobCardActions({
             Msg Company
           </button>
         )}
-        {job.status !== 'finished' && (
+        {job.status !== 'finished' && !job.ended_early && (
           <button
             type="button"
             disabled={closing}
@@ -162,15 +162,23 @@ export default function JobCardActions({
             </button>
           </>
         )}
-        {(job.status === 'filled' || job.status === 'reserved') && job.status !== 'finished' && (
-          <button
-            type="button"
-            disabled={closing}
-            onClick={() => setConfirmClose(true)}
-            className={`${compact ? `${btnCompact} bg-amber-600 text-white` : `${btnBase} bg-amber-600 text-white hover:bg-amber-700 px-3 py-2 font-semibold`} ${fullWidth}`}
-          >
-            {job.status === 'filled' ? 'Mark Complete' : 'Close Job'}
-          </button>
+        {(job.status === 'filled' || job.status === 'reserved') && job.status !== 'finished' && !job.ended_early && (
+          <>
+            <Link
+              to={`/jobs/${job.id}?endAssignment=1`}
+              className={`${compact ? `${btnCompact} bg-slate-800 text-white` : `${btnBase} bg-slate-800 text-white hover:bg-slate-900 px-3 py-2 font-semibold`} ${fullWidth} text-center`}
+            >
+              End Assignment
+            </Link>
+            <button
+              type="button"
+              disabled={closing}
+              onClick={() => setConfirmClose(true)}
+              className={`${compact ? `${btnCompact} bg-amber-600 text-white` : `${btnBase} bg-amber-600 text-white hover:bg-amber-700 px-3 py-2 font-semibold`} ${fullWidth}`}
+            >
+              {job.status === 'filled' ? 'Mark Complete' : 'Close Job'}
+            </button>
+          </>
         )}
         <ConfirmModal
           isOpen={confirmClose}

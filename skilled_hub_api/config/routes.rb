@@ -45,6 +45,8 @@ Rails.application.routes.draw do
           patch :deny
           patch :finish
           patch :extend
+          patch :terminate
+          get :termination_preview
           post :confirm_funding
           post :unpublish
         end

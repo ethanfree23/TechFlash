@@ -1,0 +1,27 @@
+<h1 style="margin: 0 0 24px 0; font-size: 28px; font-weight: 800; color: #1a1a1a; line-height: 1.2;">Assignment ended</h1>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">Hi,</p>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">You ended the assignment on <strong style="color: #FE6711;">"<%= @job.title %>"</strong> early<% if @effective_end_display.present? %>, effective <strong><%= @effective_end_display %></strong><% end %>. Reason recorded: <strong><%= @reason_label %></strong>.</p>
+
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin: 0 0 24px 0; border: 1px solid #e5e7eb; border-radius: 8px; border-collapse: separate;">
+  <tr>
+    <td style="padding: 16px 20px;">
+      <p style="margin: 0 0 8px 0; font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #6b7280;">Summary</p>
+      <% if @guaranteed_job_pay %>
+        <p style="margin: 0 0 8px 0; font-size: 16px; color: #374151; line-height: 1.6;">This job is <strong>Guaranteed Job Pay</strong>. The technician's agreed job pay<% if @guaranteed_pay_display.present? %> of <strong><%= @guaranteed_pay_display %></strong><% end %> still applies, so there is no refund for the unworked portion.</p>
+      <% else %>
+        <p style="margin: 0 0 8px 0; font-size: 16px; color: #374151; line-height: 1.6;">Approved work: <strong><%= @approved_hours_display || '0' %> hours</strong><% if @approved_pay_display.present? %> (<strong><%= @approved_pay_display %></strong> of labor)<% end %>. Approved hours remain payable to the technician.</p>
+        <% if @refund_display.present? %>
+          <p style="margin: 0 0 8px 0; font-size: 16px; color: #374151; line-height: 1.6;">A refund of <strong><%= @refund_display %></strong> for the unworked funded portion is being processed back to your original payment method. It can take several business days to appear.</p>
+        <% else %>
+          <p style="margin: 0 0 8px 0; font-size: 16px; color: #374151; line-height: 1.6;">No refund is due for this assignment.</p>
+        <% end %>
+      <% end %>
+    </td>
+  </tr>
+</table>
+
+<p style="margin: 0 0 16px 0; font-size: 16px; color: #374151; line-height: 1.6;">Please leave a review for the technician's work on this assignment. Reviews are double-blind and help the next company hiring for a job like yours.</p>
+
+<%= render partial: 'user_mailer/cta_button', locals: { text: 'Review Technician', url: @job_url } %>
