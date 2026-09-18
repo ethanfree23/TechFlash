@@ -27,12 +27,22 @@ class JobLedger
     new(job).summary
   end
 
+  # Read-only projection using an explicit labor amount (settlement labor) while
+  # still reading collected/refunded/snapshot percents from the job. Does not write.
+  def self.projection(job, labor_cents:)
+    new(job).summary_for_labor(labor_cents)
+  end
+
   def initialize(job)
     @job = job
   end
 
   def summary
-    labor = current_labor_cents
+    summary_for_labor(current_labor_cents)
+  end
+
+  def summary_for_labor(labor)
+    labor = labor.to_i
     company_pct = company_commission_percent!
     tech_pct = technician_commission_percent_or_nil
     required = JobMoney.company_charge_cents(labor, company_pct)

@@ -67,6 +67,7 @@ export default function EndAssignmentModal({ job, isOpen, onClose, onEnded }) {
   const [step, setStep] = useState(1);
   const [preview, setPreview] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [financialsStale, setFinancialsStale] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [effectiveEndLocal, setEffectiveEndLocal] = useState('');
@@ -81,6 +82,7 @@ export default function EndAssignmentModal({ job, isOpen, onClose, onEnded }) {
       const data = await jobsAPI.terminationPreview(job.id, effectiveEndIso);
       const next = data?.termination_preview || data;
       setPreview(next);
+      setFinancialsStale(false);
       if (!effectiveEndLocal && next?.default_effective_end_at) {
         setEffectiveEndLocal(toDatetimeLocal(next.default_effective_end_at));
       }
@@ -99,6 +101,7 @@ export default function EndAssignmentModal({ job, isOpen, onClose, onEnded }) {
     setError('');
     setPreview(null);
     setEffectiveEndLocal('');
+    setFinancialsStale(false);
     loadPreview();
   }, [isOpen, job?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -107,10 +110,25 @@ export default function EndAssignmentModal({ job, isOpen, onClose, onEnded }) {
     await loadPreview(iso);
   };
 
+  const goNext = async () => {
+    if (step === 3) {
+      setFinancialsStale(true);
+      setError('');
+      setStep(4);
+      await refreshWithEnd();
+      return;
+    }
+    if (step === 1) {
+      await refreshWithEnd();
+    }
+    setStep((current) => current + 1);
+  };
+
   const submittedCount = preview?.time_entries?.submitted_count || 0;
   const blockers = preview?.blockers || [];
   const otherNeedsNotes = reason === 'other' && !notes.trim();
-  const canConfirm = preview?.terminable && reason && !otherNeedsNotes && submittedCount === 0 && !preview?.effective_end_at_error;
+  const financialsCurrent = Boolean(preview) && !loading && !financialsStale;
+  const canConfirm = financialsCurrent && preview?.terminable && reason && !otherNeedsNotes && submittedCount === 0 && !preview?.effective_end_at_error;
 
   const nextDisabled = useMemo(() => {
     if (loading || !preview) return true;
@@ -174,7 +192,11 @@ export default function EndAssignmentModal({ job, isOpen, onClose, onEnded }) {
       </ol>
 
       {error && <p className="mb-3 text-sm text-red-600">{error}</p>}
-      {loading && !preview && <p className="text-sm text-slate-500">Loading assignment summary…</p>}
+      {((loading && !preview) || (step === 4 && !financialsCurrent && !error)) && (
+        <p className="text-sm text-slate-500">
+          {step === 4 ? 'Loading current financial summary…' : 'Loading assignment summary…'}
+        </p>
+      )}
 
       {preview && step === 1 && (
         <div className="space-y-3">
@@ -247,7 +269,7 @@ export default function EndAssignmentModal({ job, isOpen, onClose, onEnded }) {
         </div>
       )}
 
-      {preview && step === 4 && (
+      {financialsCurrent && step === 4 && (
         <div className="space-y-3 text-sm text-slate-700">
           <div className="rounded-lg border border-slate-200 divide-y">
             <div className="px-3 py-2 flex justify-between gap-3"><span>Original assignment</span><span>{formatWhen(preview.original?.scheduled_start_at)} – {formatWhen(preview.original?.scheduled_end_at)}</span></div>
@@ -289,11 +311,11 @@ export default function EndAssignmentModal({ job, isOpen, onClose, onEnded }) {
           {step === 1 ? 'Cancel' : 'Back'}
         </button>
         {step < 4 ? (
-          <button type="button" onClick={() => { refreshWithEnd(); setStep(step + 1); }} disabled={nextDisabled} className="px-4 py-2 bg-slate-900 text-white rounded-md text-sm disabled:opacity-50">
+          <button type="button" onClick={goNext} disabled={nextDisabled} className="px-4 py-2 bg-slate-900 text-white rounded-md text-sm disabled:opacity-50">
             Continue
           </button>
         ) : (
-          <button type="button" onClick={handleConfirm} disabled={nextDisabled || submitting} className="px-4 py-2 bg-amber-600 text-white rounded-md text-sm font-semibold disabled:opacity-50">
+          <button type="button" onClick={handleConfirm} disabled={nextDisabled || submitting || !financialsCurrent} className="px-4 py-2 bg-amber-600 text-white rounded-md text-sm font-semibold disabled:opacity-50">
             {submitting ? 'Ending assignment…' : 'End assignment'}
           </button>
         )}

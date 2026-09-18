@@ -32,7 +32,10 @@ module Jobs
       return reason_error if reason_error
 
       existing = JobTermination.find_by(job_id: @job.id)
-      return Result.new(success: true, termination: existing, job: @job.reload, idempotent: true) if existing
+      if existing
+        settle_and_record!(existing) unless settlement_complete?
+        return Result.new(success: true, termination: existing.reload, job: @job.reload, idempotent: true)
+      end
 
       termination = nil
       early = nil
@@ -70,7 +73,7 @@ module Jobs
         mark_terminal!(locked, summary, termination)
       end
 
-      return early if early
+      return retry_existing_termination!(early) if early
 
       @job.reload
       settle_and_record!(termination)
@@ -215,6 +218,24 @@ module Jobs
       )
     end
 
+    def retry_existing_termination!(result)
+      return result unless result.success?
+
+      termination = result.termination
+      settle_and_record!(termination) unless settlement_complete?
+      Result.new(success: true, termination: termination.reload, job: @job.reload, idempotent: true)
+    end
+
+    def settlement_complete?(job = @job)
+      job = job.reload
+      return false unless job.settlement_settled?
+
+      ledger = safe_ledger(job)
+      return false if ledger.nil?
+
+      ledger.amount_due_cents.zero? && ledger.amount_refundable_cents.zero? && ledger.fully_funded
+    end
+
     def settle_and_record!(termination)
       job = @job.reload
       result =
@@ -259,7 +280,7 @@ module Jobs
     def refund_cents_for(job)
       job.job_payment_transactions
         .status_succeeded
-        .where(transaction_type: :cancellation_refund)
+        .where(transaction_type: JobPaymentTransaction::SETTLEMENT_REFUND_TYPES)
         .sum(:amount_cents)
         .to_i
     end

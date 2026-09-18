@@ -132,6 +132,15 @@ module Api
         assert_equal 8.0, preview.dig("time_entries", "approved_hours")
         assert preview["reasons"].any? { |row| row["value"] == "other" }
 
+        labor = JobSettlementService.settlement_labor_cents(job)
+        labor = 0 if labor.nil?
+        projected = JobLedger.projection(job, labor_cents: labor)
+        assert_equal projected.labor_cents, preview.dig("projected", "labor_cents")
+        assert_equal projected.amount_refundable_cents, preview.dig("projected", "refund_cents")
+        assert_equal projected.technician_net_payout_cents, preview.dig("projected", "technician_payout_cents")
+        assert_equal projected.company_required_cents, preview.dig("projected", "company_required_cents")
+        assert_equal "filled", job.reload.status
+
         terminate_via_api!(job, reason: "company_schedule_changed")
         assert_response :ok
         body = JSON.parse(response.body)

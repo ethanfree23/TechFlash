@@ -29,7 +29,7 @@ module Api
 
         completed_jobs = Job.joins(:job_applications)
           .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })
-          .where(status: :finished)
+          .merge(Job.effectively_completed)
 
         in_progress_jobs = Job.joins(:job_applications)
           .where(job_applications: { technician_profile_id: technician_profile.id, status: :accepted })

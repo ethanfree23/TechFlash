@@ -268,7 +268,7 @@ module Jobs
       assert second.success?
       assert second.idempotent
       assert_equal 1, JobTermination.where(job_id: job.id).count
-      assert_equal refund_count, job.reload.job_payment_transactions.cancellation_refund.status_succeeded.count
+      assert_equal refund_count, job.reload.job_payment_transactions.status_succeeded.where(transaction_type: JobPaymentTransaction::SETTLEMENT_REFUND_TYPES).count
     end
 
     test "future weekend work requests after the effective end are cancelled" do

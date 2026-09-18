@@ -151,33 +151,34 @@ module Jobs
     end
 
     def projected_labor_cents
-      guaranteed_job_pay? ? original_agreed_labor_cents : approved_gross_labor_cents
+      labor = JobSettlementService.settlement_labor_cents(job)
+      labor.nil? ? 0 : labor
+    end
+
+    def projected_ledger
+      return @projected_ledger if defined?(@projected_ledger)
+
+      @projected_ledger = begin
+        JobLedger.projection(job, labor_cents: projected_labor_cents)
+      rescue JobLedger::MissingCommissionSnapshotError
+        nil
+      end
     end
 
     def projected_company_required_cents
-      return nil if company_commission_percent.nil?
-
-      JobMoney.company_charge_cents(projected_labor_cents, company_commission_percent)
+      projected_ledger&.company_required_cents
     end
 
     def projected_refund_cents
-      required = projected_company_required_cents
-      return nil if required.nil?
-
-      [original_net_funded_cents - required, 0].max
+      projected_ledger&.amount_refundable_cents
     end
 
     def projected_additional_charge_cents
-      required = projected_company_required_cents
-      return nil if required.nil?
-
-      [required - original_net_funded_cents, 0].max
+      projected_ledger&.amount_due_cents
     end
 
     def projected_technician_payout_cents
-      return nil if technician_commission_percent.nil?
-
-      JobMoney.technician_payout_cents(projected_labor_cents, technician_commission_percent)
+      projected_ledger&.technician_net_payout_cents
     end
 
     def company_commission_percent

@@ -79,6 +79,63 @@ module Api
         assert body["released_earnings_by_day"].first.key?("date")
         assert body["released_earnings_by_day"].first.key?("amount_cents")
       end
+
+      test "technician jobs_completed excludes ended-early and still counts normal finished jobs" do
+        company_user = User.create!(
+          email: "co-analytics-#{SecureRandom.hex(4)}@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        company_profile = CompanyProfile.create!(user: company_user, membership_level: "basic")
+        company_user.update_column(:company_profile_id, company_profile.id)
+
+        tech_user = User.create!(
+          email: "tech-completed-#{SecureRandom.hex(4)}@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        technician_profile = TechnicianProfile.create!(
+          user: tech_user,
+          trade_type: "General",
+          availability: "Full-time",
+          membership_level: "basic"
+        )
+
+        finished = Job.create!(
+          company_profile: company_profile,
+          title: "Normally completed",
+          description: "desc",
+          status: :finished,
+          finished_at: 1.day.ago,
+          terminated_at: nil,
+          hourly_rate_cents: 5_000,
+          hours_per_day: 8,
+          days: 2
+        )
+        JobApplication.create!(job: finished, technician_profile: technician_profile, status: :accepted)
+
+        ended = Job.create!(
+          company_profile: company_profile,
+          title: "Ended early",
+          description: "desc",
+          status: :finished,
+          finished_at: 1.day.ago,
+          terminated_at: 1.day.ago,
+          hourly_rate_cents: 5_000,
+          hours_per_day: 8,
+          days: 2
+        )
+        JobApplication.create!(job: ended, technician_profile: technician_profile, status: :accepted)
+
+        get "/api/v1/dashboard/analytics", headers: auth_header_for(tech_user), as: :json
+
+        assert_response :ok
+        body = response.parsed_body
+        assert_equal 1, body["jobs_completed"]
+      end
     end
   end
 end
+

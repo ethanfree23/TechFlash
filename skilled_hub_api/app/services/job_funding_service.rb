@@ -289,31 +289,106 @@ class JobFundingService
     end
   end
 
+  def self.refund_idempotency_key(job_id:, amount_cents:, payment_intent_id:, transaction_type:, revision:)
+    if JobPaymentTransaction::SETTLEMENT_REFUND_TYPES.include?(transaction_type.to_s)
+      canonical_settlement_refund_key(
+        job_id: job_id,
+        amount_cents: amount_cents,
+        payment_intent_id: payment_intent_id,
+        revision: revision
+      )
+    else
+      typed_refund_idempotency_key(
+        job_id: job_id,
+        amount_cents: amount_cents,
+        payment_intent_id: payment_intent_id,
+        transaction_type: transaction_type,
+        revision: revision
+      )
+    end
+  end
+
+  def self.canonical_settlement_refund_key(job_id:, amount_cents:, payment_intent_id:, revision:)
+    "tf_job_#{job_id}_settlement_refund_r#{revision}_#{payment_intent_id}_#{amount_cents}"
+  end
+
+  def self.typed_refund_idempotency_key(job_id:, amount_cents:, payment_intent_id:, transaction_type:, revision:)
+    "tf_job_#{job_id}_txn_#{transaction_type}_r#{revision}_#{payment_intent_id}_#{amount_cents}"
+  end
+
+  # Canonical key plus pre-fix typed keys so an in-flight final_hours_refund or
+  # cancellation_refund cannot be retried as a second Stripe economic identity.
+  def self.settlement_refund_identity_keys(job_id:, amount_cents:, payment_intent_id:, revision:)
+    typed = JobPaymentTransaction::SETTLEMENT_REFUND_TYPES.map do |type|
+      typed_refund_idempotency_key(
+        job_id: job_id,
+        amount_cents: amount_cents,
+        payment_intent_id: payment_intent_id,
+        transaction_type: type,
+        revision: revision
+      )
+    end
+    [
+      canonical_settlement_refund_key(
+        job_id: job_id,
+        amount_cents: amount_cents,
+        payment_intent_id: payment_intent_id,
+        revision: revision
+      ),
+      *typed
+    ].uniq
+  end
+
   def self.refund_slice!(job:, amount_cents:, payment_intent_id:, transaction_type:, revision:)
-    key = "tf_job_#{job.id}_txn_#{transaction_type}_r#{revision}_#{payment_intent_id}_#{amount_cents}"
+    canonical_key = refund_idempotency_key(
+      job_id: job.id,
+      amount_cents: amount_cents,
+      payment_intent_id: payment_intent_id,
+      transaction_type: transaction_type,
+      revision: revision
+    )
+    lookup_keys =
+      if JobPaymentTransaction::SETTLEMENT_REFUND_TYPES.include?(transaction_type.to_s)
+        settlement_refund_identity_keys(
+          job_id: job.id,
+          amount_cents: amount_cents,
+          payment_intent_id: payment_intent_id,
+          revision: revision
+        )
+      else
+        [canonical_key]
+      end
     payment = nil
     txn = nil
     early = nil
+    stripe_key = canonical_key
 
     Job.transaction do
       locked_job = Job.lock.find(job.id)
       payment = ensure_header!(locked_job)
-      existing = JobPaymentTransaction.lock.find_by(idempotency_key: key)
+      existing = JobPaymentTransaction.lock.where(idempotency_key: lookup_keys).order(:id).first
       if existing&.status_succeeded?
         early = { success: true, transaction: existing }
       else
-        txn = existing || JobPaymentTransaction.create!(
-          payment: payment,
-          job: locked_job,
-          transaction_type: transaction_type,
-          direction: :outbound,
-          amount_cents: amount_cents,
-          currency: "usd",
-          status: :pending,
-          idempotency_key: key,
-          revision: revision,
-          metadata_json: { "payment_intent_id" => payment_intent_id }
-        )
+        begin
+          txn = existing || JobPaymentTransaction.create!(
+            payment: payment,
+            job: locked_job,
+            transaction_type: transaction_type,
+            direction: :outbound,
+            amount_cents: amount_cents,
+            currency: "usd",
+            status: :pending,
+            idempotency_key: canonical_key,
+            revision: revision,
+            metadata_json: { "payment_intent_id" => payment_intent_id }
+          )
+          stripe_key = txn.idempotency_key
+        rescue ActiveRecord::RecordNotUnique
+          txn = JobPaymentTransaction.lock.where(idempotency_key: lookup_keys).order(:id).first!
+          stripe_key = txn.idempotency_key
+          early = { success: true, transaction: txn } if txn.status_succeeded?
+        end
       end
     end
     return early if early
@@ -322,7 +397,7 @@ class JobFundingService
       amount_cents: amount_cents,
       payment_intent_id: payment_intent_id,
       metadata: stripe_metadata(job, txn),
-      idempotency_key: key
+      idempotency_key: stripe_key
     )
 
     Job.transaction do

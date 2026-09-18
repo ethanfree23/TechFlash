@@ -19,6 +19,10 @@ class JobPaymentTransaction < ApplicationRecord
 
   COLLECTION_TYPES = %w[initial_job_charge counteroffer_top_up final_hours_top_up].freeze
   REFUND_TYPES = %w[counteroffer_refund final_hours_refund refund cancellation_refund].freeze
+  # Same leftover-funding refund, whether it was booked as a normal settlement
+  # refund or a company-initiated assignment termination. Reporting type must not
+  # create a second Stripe economic identity.
+  SETTLEMENT_REFUND_TYPES = %w[final_hours_refund cancellation_refund].freeze
   TRANSFER_TYPES = %w[technician_transfer].freeze
   TRANSFER_REVERSAL_TYPES = %w[transfer_reversal].freeze
 

@@ -16,7 +16,7 @@ class CompanyMetrics
     jobs = @company_profile.jobs
     counts = Jobs::StatusCounts.for(jobs)
 
-    total_spent_cents = jobs.merge(Job.effectively_concluded).to_a.sum(&:company_charge_cents)
+    total_spent_cents = jobs.merge(Job.effectively_concluded).sum { |job| retained_spend_cents(job) }
 
     unique_technicians = JobApplication
       .joins(:job)
@@ -60,5 +60,13 @@ class CompanyMetrics
       total_jobs: 0,
       jobs_created_by_day: DashboardTrends.counts_per_day_by_created_at(Job.none)
     }
+  end
+
+  private
+
+  def retained_spend_cents(job)
+    JobLedger.for(job).net_funded_cents.to_i
+  rescue JobLedger::MissingCommissionSnapshotError
+    0
   end
 end
