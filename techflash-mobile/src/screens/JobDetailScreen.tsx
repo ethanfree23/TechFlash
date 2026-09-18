@@ -170,6 +170,12 @@ export default function JobDetailScreen() {
       : [];
   const statusText = String(job.effective_status || job.status || 'unknown');
   const canClaim = String(job.effective_status || job.status || '') === 'open';
+  const inProgress = ['reserved', 'filled', 'accepted'].includes(String(job.status || ''))
+    && String(job.effective_status || '') !== 'ended_early'
+    && String(job.effective_status || '') !== 'completed'
+    && !job.ended_early
+    && !job.terminated_at;
+  const displayStatus = String(job.effective_status || '') === 'ended_early' ? 'Ended early' : statusText;
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
@@ -180,7 +186,7 @@ export default function JobDetailScreen() {
       ) : null}
       <Card style={styles.mainCard}>
         <View style={styles.statusPill}>
-          <Text style={styles.statusPillText}>{statusText}</Text>
+          <Text style={styles.statusPillText}>{displayStatus}</Text>
         </View>
         <Text style={styles.title}>{String(job.title || `Job #${job.id}`)}</Text>
         <View style={styles.timelineBox}>
@@ -276,9 +282,11 @@ export default function JobDetailScreen() {
             <Text style={styles.btnText}>{saving ? 'Working...' : 'Claim job'}</Text>
           </Pressable>
           ) : null}
+          {inProgress ? (
           <Pressable style={styles.btnGhost} onPress={onFinish} disabled={saving}>
             <Text style={styles.btnGhostText}>Finish job</Text>
           </Pressable>
+          ) : null}
         </Card>
       ) : null}
 
@@ -288,12 +296,19 @@ export default function JobDetailScreen() {
           <Pressable style={styles.btnGhost} onPress={() => navigation.navigate('EditJob', { jobId })}>
             <Text style={styles.btnGhostText}>Edit job</Text>
           </Pressable>
+          {inProgress ? (
+            <>
+          <Pressable style={styles.btn} onPress={() => navigation.navigate('EndAssignment', { jobId })} disabled={saving}>
+            <Text style={styles.btnText}>End assignment</Text>
+          </Pressable>
           <Pressable style={styles.btnGhost} onPress={onFinish} disabled={saving}>
             <Text style={styles.btnGhostText}>Finish job</Text>
           </Pressable>
           <Pressable style={styles.btnGhost} onPress={onDeny} disabled={saving}>
             <Text style={styles.btnGhostText}>Deny claim</Text>
           </Pressable>
+            </>
+          ) : null}
           <TextInput
             value={extendEndAt}
             onChangeText={setExtendEndAt}

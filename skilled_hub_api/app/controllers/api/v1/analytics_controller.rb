@@ -141,6 +141,7 @@ module Api
           total_jobs: counts[:total],
           jobs_open: counts[:open],
           jobs_finished: counts[:completed],
+          jobs_ended_early: counts[:ended_early],
           jobs_in_progress: counts[:claimed],
           jobs_expired: counts[:expired],
           jobs_counter_pending: counts[:counter_pending],

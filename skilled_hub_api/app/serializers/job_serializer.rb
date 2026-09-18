@@ -15,13 +15,26 @@ class JobSerializer < ActiveModel::Serializer
              :premium_combination_rule, :overtime_enabled, :daily_overtime_threshold_hours, :weekly_overtime_threshold_hours,
              :overtime_multiplier, :hard_deadline_at, :job_timezone, :standard_day_shifts, :weekend_day_shifts,
              :schedule_and_pay_summary,
-             :timeline_events, :pending_counter_offer
+             :timeline_events, :pending_counter_offer,
+             :terminated_at, :ended_early
 
   belongs_to :company_profile
   has_many :job_applications
 
   attribute :payment_summary, if: :participant_on_job?
   attribute :certification_match, if: :cert_match_requested?
+  attribute :termination, if: :participant_on_job?
+
+  def ended_early
+    object.terminated_early?
+  end
+
+  def termination
+    record = object.job_termination
+    return nil if record.blank?
+
+    JobTerminationSerializer.new(record).as_json
+  end
 
   def timeline_events
     ev = []
@@ -34,7 +47,9 @@ class JobSerializer < ActiveModel::Serializer
       ev << { key: 'payment_secured', label: 'Payment secured (escrow)', at: pay.held_at.iso8601 }
     end
 
-    if object.finished_at
+    if object.terminated_at
+      ev << { key: 'ended_early', label: 'Assignment ended early', at: object.terminated_at.iso8601 }
+    elsif object.finished_at
       ev << { key: 'completed', label: 'Marked complete', at: object.finished_at.iso8601 }
     end
 

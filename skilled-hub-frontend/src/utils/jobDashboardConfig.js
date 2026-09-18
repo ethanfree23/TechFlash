@@ -19,6 +19,7 @@ const ADMIN_STATUS_OPTIONS = [
   { value: 'active', label: 'Active (Live)' },
   { value: 'reserved', label: 'Claimed (upcoming)' },
   { value: 'completed', label: 'Completed' },
+  { value: 'ended_early', label: 'Ended early' },
   { value: 'expired', label: 'Expired' },
 ];
 
@@ -28,6 +29,7 @@ const COMPANY_STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'reserved', label: 'Claimed' },
   { value: 'completed', label: 'Completed' },
+  { value: 'ended_early', label: 'Ended early' },
   { value: 'expired', label: 'Expired' },
 ];
 
@@ -37,6 +39,7 @@ const TECH_STATUS_OPTIONS = [
   { value: 'active', label: 'Active' },
   { value: 'reserved', label: 'Claimed' },
   { value: 'completed', label: 'Completed' },
+  { value: 'ended_early', label: 'Ended early' },
 ];
 
 const ADMIN_SORT_OPTIONS = [

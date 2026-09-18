@@ -6,6 +6,8 @@ class PaymentsReleaseRunner
     skipped = []
     failed = []
 
+    auto_completed = Jobs::AutoCompleteExpiredService.call
+
     Job.where(status: :finished).where.not(finished_at: nil).find_each do |job|
       next unless job.payments.any?
 
@@ -19,6 +21,6 @@ class PaymentsReleaseRunner
       end
     end
 
-    { released: released, skipped: skipped, failed: failed }
+    { released: released, skipped: skipped, failed: failed, auto_completed: auto_completed }
   end
 end

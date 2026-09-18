@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { jobsAPI, profilesAPI, ratingsAPI, conversationsAPI, jobIssueReportsAPI } from '../api/api';
 import MessageModal from './MessageModal';
 import AlertModal from './AlertModal';
@@ -23,6 +23,7 @@ import { trackTechnicianJobClaimed } from '../utils/metaPixel';
 import { FormattedJobDescription } from '../utils/formattedJobText';
 import JobStatusBadge from './jobs/JobStatusBadge';
 import JobTimeEntriesPanel from './jobs/JobTimeEntriesPanel';
+import EndAssignmentModal from './jobs/EndAssignmentModal';
 import { confirmStripeCardPayment } from '../utils/confirmStripePayment';
 import { parseCoordinatePair } from '../utils/coordinates';
 
@@ -115,6 +116,7 @@ const buildMapEmbedUrl = (job) => {
 
 const JobDetail = () => {
   const { id } = useParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const [job, setJob] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -170,6 +172,7 @@ const JobDetail = () => {
     job_description_match: '',
   });
   const [submittingReview, setSubmittingReview] = useState(false);
+  const [showEndAssignment, setShowEndAssignment] = useState(false);
   const [markingComplete, setMarkingComplete] = useState(false);
   const [denying, setDenying] = useState(false);
   const [showMessageModal, setShowMessageModal] = useState(false);
@@ -204,6 +207,15 @@ const JobDetail = () => {
   useEffect(() => {
     setUser(auth.getUser());
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get('endAssignment') !== '1') return;
+    if (!job) return;
+    setShowEndAssignment(true);
+    const next = new URLSearchParams(searchParams);
+    next.delete('endAssignment');
+    setSearchParams(next, { replace: true });
+  }, [job, searchParams, setSearchParams]);
 
   const fetchJobDetails = useCallback(async () => {
     try {
@@ -744,10 +756,10 @@ const JobDetail = () => {
 
   const canLeaveReview = () => {
     if (!user || !job) return false;
-    const jobComplete = job.status === 'finished' || job.status === 'filled';
-    if (!jobComplete) return false;
+    const concluded = job.status === 'finished' || job.ended_early || job.effective_status === 'ended_early' || job.effective_status === 'completed';
+    if (!concluded) return false;
     if (user.role === 'company' && job.company_profile_id === companyProfileId) return true;
-    if (user.role === 'technician') return true; // Technician dashboard only shows their completed jobs
+    if (user.role === 'technician') return true;
     return false;
   };
 
@@ -874,6 +886,8 @@ const JobDetail = () => {
     (currentUser?.id && String(job?.company_profile?.user_id) === String(currentUser.id))
   );
   const canManageJob = isAdmin || isCompanyOwner;
+  const assignmentInProgress = ['reserved', 'filled', 'accepted'].includes(job.status) && !job.ended_early && job.effective_status !== 'ended_early' && job.effective_status !== 'completed' && job.status !== 'finished';
+  const assignmentEndedEarly = Boolean(job.ended_early || job.terminated_at || job.effective_status === 'ended_early');
   const showTopTechOpenActions = currentUser?.role === 'technician' && canTechnicianClaim(job);
   const rollingSummaryText = rollingRuleSummary(job);
   const jobMapUrl = buildMapEmbedUrl(job);
@@ -1134,6 +1148,13 @@ const JobDetail = () => {
       {job.status === 'pending_funding' && canManageJob && (
         <div className="mb-6 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
           This job is unpublished until funding is completed.
+        </div>
+      )}
+      {assignmentEndedEarly && (
+        <div className="mb-6 rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-800">
+          This assignment ended early{job.termination?.effective_end_at ? ` on ${new Date(job.termination.effective_end_at).toLocaleString()}` : ''}.
+          {job.termination?.reason_label ? ` Reason: ${job.termination.reason_label}.` : ''}
+          {' '}Approved work remains payable. Remaining scheduled work was canceled.
         </div>
       )}
 
@@ -1710,7 +1731,7 @@ const JobDetail = () => {
             </div>
           )}
 
-          {(job.status === 'finished' || job.status === 'filled') && canLeaveReview() && !hasAlreadyReviewed() && (
+          {(job.status === 'finished' || assignmentEndedEarly) && canLeaveReview() && !hasAlreadyReviewed() && (
             <div className="bg-white border border-gray-200 rounded-lg p-6 sticky top-6">
               <h3 className="text-xl font-semibold text-gray-900 mb-4">Leave a Review</h3>
               {otherPartyHasReviewed && (
@@ -1739,8 +1760,11 @@ const JobDetail = () => {
                     <button onClick={openClaimedModal} className="w-full px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors">
                       View Claimed By
                     </button>
-                    {job.status !== 'finished' && (
+                    {job.status !== 'finished' && !assignmentEndedEarly && (
                       <>
+                        <button onClick={() => setShowEndAssignment(true)} className="w-full px-4 py-2 bg-slate-800 text-white rounded-md hover:bg-slate-900 transition-colors">
+                          End Assignment
+                        </button>
                         <button onClick={handleDenyTechnician} disabled={denying} className="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50">
                           {denying ? 'Denying...' : 'Deny Technician'}
                         </button>
@@ -1756,6 +1780,11 @@ const JobDetail = () => {
                       </>
                     )}
                   </>
+                )}
+                {isAdmin && assignmentInProgress && (
+                  <button onClick={() => setShowEndAssignment(true)} className="w-full px-4 py-2 bg-slate-800 text-white rounded-md hover:bg-slate-900 transition-colors">
+                    End Assignment
+                  </button>
                 )}
                 <button onClick={openEditModal} className="w-full px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
                   Edit Job
@@ -2174,6 +2203,22 @@ const JobDetail = () => {
         variant={alertModal.variant}
       />
 
+      <EndAssignmentModal
+        job={job}
+        isOpen={showEndAssignment}
+        onClose={() => setShowEndAssignment(false)}
+        onEnded={async () => {
+          setShowEndAssignment(false);
+          await fetchJobDetails();
+          setShowReviewForm(true);
+          setAlertModal({
+            isOpen: true,
+            title: 'Assignment ended',
+            message: 'Future work is canceled. Approved hours remain payable. You can leave a review for the technician now.',
+            variant: 'success',
+          });
+        }}
+      />
       <ConfirmModal
         isOpen={showDenyConfirm}
         onClose={() => setShowDenyConfirm(false)}

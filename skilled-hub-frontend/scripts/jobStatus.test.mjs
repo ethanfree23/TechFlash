@@ -39,6 +39,8 @@ function testPersistedFallbackWithoutDates() {
   assert.equal(getJobDisplayStatus({ status: 'finished' }).key, 'completed');
   assert.equal(getJobDisplayStatus({ status: 'filled' }).key, 'claimed');
   assert.equal(getJobDisplayStatus({ status: 'pending_funding' }).key, 'pending_funding');
+  assert.equal(getJobDisplayStatus({ status: 'finished', effective_status: 'ended_early', ended_early: true }).label, 'Ended early');
+  assert.equal(getJobDisplayStatus({ status: 'finished', terminated_at: '2026-09-18T12:00:00Z' }).key, 'ended_early');
 }
 
 testUsesEffectiveStatus();

@@ -101,6 +101,21 @@ export async function finishJob(id: number) {
   });
 }
 
+export async function terminateJob(
+  id: number,
+  payload: { reason: string; notes?: string; effective_end_at?: string }
+) {
+  return apiRequest<Record<string, unknown>>(`/jobs/${id}/terminate`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getTerminationPreview(id: number, effectiveEndAt?: string) {
+  const qs = effectiveEndAt ? `?effective_end_at=${encodeURIComponent(effectiveEndAt)}` : '';
+  return apiRequest<Record<string, unknown>>(`/jobs/${id}/termination_preview${qs}`);
+}
+
 export async function denyJob(id: number) {
   return apiRequest<Record<string, unknown>>(`/jobs/${id}/deny`, {
     method: 'PATCH',

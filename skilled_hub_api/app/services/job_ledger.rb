@@ -36,10 +36,10 @@ class JobLedger
     company_pct = company_commission_percent!
     tech_pct = technician_commission_percent_or_nil
     required = JobMoney.company_charge_cents(labor, company_pct)
-    collected = sum_types(%w[initial_job_charge counteroffer_top_up final_hours_top_up])
-    refunded = sum_types(%w[counteroffer_refund final_hours_refund refund])
+    collected = sum_types(JobPaymentTransaction::COLLECTION_TYPES)
+    refunded = sum_types(JobPaymentTransaction::REFUND_TYPES)
     net = collected - refunded
-    transferred = sum_types(%w[technician_transfer]) - sum_types(%w[transfer_reversal])
+    transferred = sum_types(JobPaymentTransaction::TRANSFER_TYPES) - sum_types(JobPaymentTransaction::TRANSFER_REVERSAL_TYPES)
     company_commission = JobMoney.percent_of(labor, company_pct)
     tech_commission = tech_pct.nil? ? nil : JobMoney.percent_of(labor, tech_pct)
     tech_net = tech_pct.nil? ? nil : JobMoney.technician_payout_cents(labor, tech_pct)
@@ -72,6 +72,7 @@ class JobLedger
     else
       approved = approved_gross_pay_cents
       return approved if approved.positive? && @job.finished?
+      return 0 if @job.finished? && @job.terminated_early?
 
       @job.agreed_labor_cents.to_i.positive? ? @job.agreed_labor_cents.to_i : @job.job_amount_cents.to_i
     end

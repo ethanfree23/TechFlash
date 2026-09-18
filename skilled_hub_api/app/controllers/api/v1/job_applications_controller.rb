@@ -50,6 +50,7 @@ module Api
 
       def create
         job_application = JobApplication.new(job_application_params)
+        job_application.status = :requested
         
         # Ensure the application is associated with the current user's technician profile
         if @current_user.technician?
@@ -92,13 +93,20 @@ module Api
 
       def update
         job_application = JobApplication.find(params[:id])
-        
-        # Check if user has access to this application
+
         unless can_access_job_application?(job_application)
           return render json: { error: "Access denied" }, status: :forbidden
         end
-        
-        if job_application.update(job_application_params)
+        if (reason = immutable_assignment_reason(job_application))
+          return render json: { error: reason }, status: :unprocessable_entity
+        end
+        unless @current_user.technician?
+          return render json: {
+            error: "Companies accept or deny a claim from the job, not by editing the application."
+          }, status: :forbidden
+        end
+
+        if job_application.update(job_application_update_params)
           render json: job_application, serializer: JobApplicationSerializer, status: :ok
         else
           render json: { errors: job_application.errors.full_messages }, status: :unprocessable_entity
@@ -109,12 +117,14 @@ module Api
 
       def destroy
         job_application = JobApplication.find(params[:id])
-        
-        # Check if user has access to this application
+
         unless can_access_job_application?(job_application)
           return render json: { error: "Access denied" }, status: :forbidden
         end
-        
+        if (reason = immutable_assignment_reason(job_application))
+          return render json: { error: reason }, status: :unprocessable_entity
+        end
+
         job_application.destroy
         head :no_content
       rescue ActiveRecord::RecordNotFound
@@ -122,15 +132,10 @@ module Api
       end
 
       def accept
-        job_application = JobApplication.find(params[:id])
-        unless @current_user.company? && job_application.job.company_profile_id == @current_user.company_profile&.id
-          return render json: { error: 'Access denied' }, status: :forbidden
-        end
-        job_application.update(status: :accepted)
-        job_application.job.update(status: :reserved)
-        render json: job_application, serializer: JobApplicationSerializer, status: :ok
-      rescue ActiveRecord::RecordNotFound
-        render json: { error: 'Job application not found' }, status: :not_found
+        render json: {
+          error: "This endpoint has been retired. Technicians claim jobs directly, which funds " \
+                 "the job and snapshots its pay terms. Use the job's claim flow instead."
+        }, status: :gone
       end
 
       def deny
@@ -138,6 +143,13 @@ module Api
         unless @current_user.company? && job_application.job.company_profile_id == @current_user.company_profile&.id
           return render json: { error: 'Access denied' }, status: :forbidden
         end
+        if job_application.accepted?
+          return render json: {
+            error: 'This technician has claimed the job. Use "Deny Technician" on the job, or ' \
+                   '"End Assignment" if work has already been approved.'
+          }, status: :unprocessable_entity
+        end
+
         job_application.update(status: :rejected)
         render json: job_application, serializer: JobApplicationSerializer, status: :ok
       rescue ActiveRecord::RecordNotFound
@@ -147,7 +159,18 @@ module Api
       private
 
       def job_application_params
-        params.permit(:status, :job_id, :technician_profile_id)
+        params.permit(:job_id, :technician_profile_id, :notes)
+      end
+
+      def job_application_update_params
+        params.permit(:notes)
+      end
+
+      def immutable_assignment_reason(job_application)
+        return nil unless job_application.accepted?
+
+        'This claim has been accepted and cannot be changed here. Use the job\'s "Deny Technician" ' \
+        'or "End Assignment" action instead.'
       end
       
       def can_access_job_application?(job_application)

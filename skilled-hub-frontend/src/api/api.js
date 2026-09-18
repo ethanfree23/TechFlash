@@ -681,6 +681,17 @@ export const jobsAPI = {
       method: 'PATCH',
     }),
 
+  terminate: (id, payload = {}) =>
+    apiRequest(`/jobs/${id}/terminate`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+
+  terminationPreview: (id, effectiveEndAt) => {
+    const qs = effectiveEndAt ? `?effective_end_at=${encodeURIComponent(effectiveEndAt)}` : '';
+    return apiRequest(`/jobs/${id}/termination_preview${qs}`);
+  },
+
   extend: (id, { scheduled_end_at }) =>
     apiRequest(`/jobs/${id}/extend`, {
       method: 'PATCH',

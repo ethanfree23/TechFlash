@@ -164,6 +164,72 @@ class JobEffectiveStatusTest < ActiveSupport::TestCase
     end
   end
 
+  test "a finished job with terminated_at reports as ended_early, not completed" do
+    job = create_job(
+      status: :finished,
+      scheduled_start_at: 5.days.ago,
+      scheduled_end_at: 1.day.ago,
+      finished_at: 1.hour.ago,
+      terminated_at: 1.hour.ago
+    )
+    assert job.terminated_early?
+    assert_equal "ended_early", job.effective_status
+    assert_includes Job.effectively_ended_early.ids, job.id
+    refute_includes Job.effectively_completed.ids, job.id
+    counts = Jobs::StatusCounts.for(Job.where(id: job.id))
+    assert_equal 0, counts[:completed]
+    assert_equal 1, counts[:ended_early]
+  end
+
+  test "credited work history includes normal completions and ended-early jobs with approved work" do
+    completed = create_job(
+      status: :finished,
+      scheduled_start_at: 5.days.ago,
+      scheduled_end_at: 1.day.ago,
+      finished_at: 1.hour.ago
+    )
+    zero_hour = create_job(
+      status: :finished,
+      scheduled_start_at: 5.days.ago,
+      scheduled_end_at: 1.day.ago,
+      finished_at: 1.hour.ago,
+      terminated_at: 1.hour.ago
+    )
+    with_work = create_job(
+      status: :finished,
+      scheduled_start_at: 5.days.ago,
+      scheduled_end_at: 1.day.ago,
+      finished_at: 1.hour.ago,
+      terminated_at: 1.hour.ago
+    )
+    JobTermination.create!(
+      job: with_work,
+      initiated_by_user: @company_user,
+      initiated_by_role: :company,
+      reason: :project_canceled,
+      terminated_at: 1.hour.ago,
+      effective_end_at: 1.hour.ago,
+      work_performed: true,
+      approved_hours: 8
+    )
+    JobTermination.create!(
+      job: zero_hour,
+      initiated_by_user: @company_user,
+      initiated_by_role: :company,
+      reason: :project_canceled,
+      terminated_at: 1.hour.ago,
+      effective_end_at: 1.hour.ago,
+      work_performed: false,
+      approved_hours: 0,
+      zero_hour_termination: true
+    )
+
+    credited_ids = Job.credited_work_history.where(id: [completed.id, zero_hour.id, with_work.id]).ids
+    assert_includes credited_ids, completed.id
+    assert_includes credited_ids, with_work.id
+    refute_includes credited_ids, zero_hour.id
+  end
+
   test "expiration comparison uses Time.current not a job timezone override" do
     freeze_at = Time.utc(2026, 8, 17, 18, 0, 0)
     travel_to freeze_at do
