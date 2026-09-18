@@ -69,9 +69,18 @@ module Api
       end
 
       # Returns the job attributes this template produces for a chosen start date, so the
-      # company can review and edit before publishing.
+      # company can review and edit before publishing. A start date is required so an old
+      # posting's calendar cannot slip through.
       def apply
+        if params[:start_date].blank?
+          return render json: { error: "Choose a start date for the new job." }, status: :unprocessable_entity
+        end
+
         result = JobTemplates::Applier.call(template: @template, start_date: params[:start_date])
+        if result.start_at.blank?
+          return render json: { error: "Choose a valid start date for the new job." }, status: :unprocessable_entity
+        end
+
         @template.record_use!
         render json: {
           template: JobTemplateSerializer.new(@template, scope: @current_user).as_json,

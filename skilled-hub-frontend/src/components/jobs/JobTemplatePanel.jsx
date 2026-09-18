@@ -82,11 +82,7 @@ const JobTemplatePanel = ({ companyProfileId, getConfiguration, onApply }) => {
   const handleApply = () => run('use this template', async () => {
     const result = await jobTemplatesAPI.apply(selected.id, { start_date: startDate });
     onApply(result.job_attributes || {});
-    setNotice(
-      result.scheduled_start_at
-        ? `Filled from "${selected.name}". Review the dates and pay before posting.`
-        : `Filled from "${selected.name}". Set a start date before posting.`
-    );
+    setNotice(`Filled from "${selected.name}". Review the dates and pay before posting.`);
     loadTemplates();
   });
 
@@ -219,7 +215,7 @@ const JobTemplatePanel = ({ companyProfileId, getConfiguration, onApply }) => {
 
       {templates.length > 0 && (
         <div className="flex flex-wrap gap-2">
-          <button type="button" className={btnPrimary} disabled={busy || !selected} onClick={handleApply}>
+          <button type="button" className={btnPrimary} disabled={busy || !selected || !startDate} onClick={handleApply}>
             Fill form from template
           </button>
           <button

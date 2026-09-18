@@ -208,6 +208,23 @@ const CreateJob = () => {
     setMinimumVerifiedReferences(String(job.minimum_verified_references ?? 0));
     setRequireInsuranceVerification(Boolean(job.require_insurance_verification));
     setStartMode(String(job.start_mode || 'hard_start'));
+    // Posting-instance datetimes are never reusable. Clear leftovers so a draft
+    // cannot keep an old go-live or exact rolling timestamp after apply/duplicate.
+    setUseCustomGoLiveAt(false);
+    setGoLiveAt(toDatetimeLocal(new Date()));
+    setRollingStartExactStartAt('');
+    if (job.rolling_start_rule_type && job.rolling_start_rule_type !== 'none') {
+      setRollingStartRuleType(String(job.rolling_start_rule_type));
+    }
+    if (job.rolling_start_days_after_acceptance != null) {
+      setRollingStartDaysAfterAcceptance(String(job.rolling_start_days_after_acceptance));
+    }
+    if (job.rolling_start_weekday != null) {
+      setRollingStartWeekday(String(job.rolling_start_weekday));
+    }
+    if (job.rolling_start_weekday_time) {
+      setRollingStartWeekdayTime(String(job.rolling_start_weekday_time));
+    }
     setWeekendWorkPolicy(String(job.weekend_work_policy || 'prohibited'));
     setStandardWorkDays(Array.isArray(job.standard_work_days) && job.standard_work_days.length ? job.standard_work_days : DEFAULT_STANDARD_WORK_DAYS);
     setStandardDayShifts(job.standard_day_shifts || {});
@@ -546,6 +563,16 @@ const CreateJob = () => {
       potential_full_time: potentialFullTime,
       schedule_flexibility: scheduleFlexibility,
       start_mode: startMode,
+      rolling_start_rule_type: startMode === 'rolling_start' ? rollingStartRuleType : 'none',
+      rolling_start_days_after_acceptance: startMode === 'rolling_start' && rollingStartRuleType === 'days_after_acceptance'
+        ? Math.max(1, parseInt(rollingStartDaysAfterAcceptance, 10) || 1)
+        : null,
+      rolling_start_weekday: startMode === 'rolling_start' && rollingStartRuleType === 'following_weekday'
+        ? parseInt(rollingStartWeekday, 10)
+        : null,
+      rolling_start_weekday_time: startMode === 'rolling_start' && rollingStartRuleType === 'following_weekday'
+        ? rollingStartWeekdayTime
+        : null,
       standard_work_days: standardWorkDays,
       standard_day_shifts: standardDayShifts,
       weekend_work_policy: weekendWorkPolicy,
@@ -573,7 +600,9 @@ const CreateJob = () => {
     title, description, notes, tradeType, skillClass, minimumYearsExperience,
     requiredCertifications, requireBackgroundCheck, requireIdentityVerification,
     requireInsuranceVerification, minimumVerifiedReferences, hr, hpd, d, payBasis,
-    potentialFullTime, scheduleFlexibility, startMode, standardWorkDays, standardDayShifts,
+    potentialFullTime, scheduleFlexibility, startMode, rollingStartRuleType,
+    rollingStartDaysAfterAcceptance, rollingStartWeekday, rollingStartWeekdayTime,
+    standardWorkDays, standardDayShifts,
     weekendWorkPolicy, saturdayWorkPolicy, sundayWorkPolicy, saturdayMultiplier,
     sundayMultiplier, weekendRequiresCompanyApproval, weekendRequiresTechnicianAcceptance,
     premiumCombinationRule, overtimeEnabled, dailyOvertimeThresholdHours,
