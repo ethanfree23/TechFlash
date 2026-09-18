@@ -9,7 +9,7 @@ const navActive =
   'px-3 py-2 font-medium text-blue-600 bg-blue-50 rounded-md whitespace-nowrap shrink-0';
 
 /**
- * @param {'dashboard'|'jobs'|'technicians'|'messages'|'crm'|'users'|'reviews'|'trust_safety'|'settings'|'legal'|null|undefined} activePage
+ * @param {'dashboard'|'jobs'|'technicians'|'messages'|'crm'|'users'|'reviews'|'trust_safety'|'assessments'|'settings'|'legal'|null|undefined} activePage
  * @param {'full'|'minimal'} navPreset — minimal: Dashboard, Jobs, Settings (profile pages)
  * @param {boolean} profileAvatar — letter avatar linking to settings; hidden below md
  * @param {'none'|'welcome'|'simple'|'crm'} emailVariant — right-side user info (not used when profileAvatar)
@@ -75,6 +75,9 @@ export default function AppHeader({
                   <NavLink page="trust_safety" to="/admin/trust-safety">
                     Trust & Safety
                   </NavLink>
+                  <NavLink page="assessments" to="/admin/assessments">
+                    Assessments
+                  </NavLink>
                   <NavLink page="settings" to="/settings">
                     Settings
                   </NavLink>
@@ -84,6 +87,11 @@ export default function AppHeader({
                   {(isCompany || isAdmin) && (
                     <NavLink page="technicians" to="/technicians">
                       Technicians
+                    </NavLink>
+                  )}
+                  {user?.role === 'technician' && (
+                    <NavLink page="assessments" to="/assessments">
+                      Assessments
                     </NavLink>
                   )}
                   <NavLink page="messages" to="/messages">

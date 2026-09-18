@@ -6,9 +6,17 @@ const TOKEN_KEY = 'token';
 export class ApiError extends Error {
   status: number;
 
-  constructor(message: string, status: number) {
+  /**
+   * Parsed error body. Endpoints that return a machine-readable `code` (such as
+   * the assessment endpoints, which distinguish "time is up" from "bad
+   * payload") need it to decide what to show, not just the message.
+   */
+  data: Record<string, unknown>;
+
+  constructor(message: string, status: number, data: Record<string, unknown> = {}) {
     super(message);
     this.status = status;
+    this.data = data;
   }
 }
 
@@ -65,7 +73,7 @@ export async function apiRequest<T = unknown>(
         : null) ||
       raw?.slice(0, 200) ||
       `HTTP ${response.status}`;
-    throw new ApiError(msg, response.status);
+    throw new ApiError(msg, response.status, errorData);
   }
 
   if (!raw) return null;
