@@ -53,6 +53,14 @@ module Jobs
       conflict = Schedule::ConflictDetector.call(technician_profile: technician_profile, job: @job)
       if conflict.conflict?
         revert_offer_terms!
+        # Accepting a counter offer is not a new Claim: a leftover overlap is a hard
+        # failure, not another round of alternate-schedule options.
+        if @offer.present?
+          return {
+            error: "This schedule still overlaps another job this technician has claimed.",
+            status: :unprocessable_entity
+          }
+        end
         return schedule_conflict_result(conflict: conflict, technician_profile: technician_profile)
       end
 
@@ -78,7 +86,12 @@ module Jobs
       end
 
       claim = create_claim_atomically!(technician_profile)
-      return claim if claim[:error]
+      if claim[:error]
+        # Do not leave a failed accept sitting on the proposed dates of a job someone
+        # else may already hold.
+        revert_offer_terms!
+        return claim
+      end
 
       JobFundingService.snapshot_technician!(@job, technician_profile)
       MailDelivery.safe_deliver do
@@ -103,6 +116,7 @@ module Jobs
             technician_profile: technician_profile,
             status: :accepted
           )
+          locked.reload
           locked.update!(status: :filled) unless locked.capacity_available?
         else
           result = { error: "Job has already been claimed" }

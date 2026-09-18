@@ -239,6 +239,88 @@ module Api
         refute body["configuration"].key?("share_token")
       end
 
+      test "a template saved from the create-job form round-trips into a postable job" do
+        user, _profile = create_company
+
+        post "/api/v1/job_templates",
+             params: {
+               name: "Weekly maintenance crew",
+               configuration: {
+                 title: "Weekly maintenance",
+                 description: "Routine checks",
+                 notes: nil,
+                 trade_type: "HVAC",
+                 skill_class: "journeyman",
+                 minimum_years_experience: nil,
+                 required_certifications: "EPA 608, OSHA 10",
+                 require_background_check: true,
+                 require_identity_verification: false,
+                 require_insurance_verification: false,
+                 minimum_verified_references: 0,
+                 hourly_rate_cents: 4_500,
+                 hours_per_day: 8,
+                 days: 5,
+                 pay_basis: "actual_hours_worked",
+                 potential_full_time: true,
+                 schedule_flexibility: "hard_end",
+                 start_mode: "hard_start",
+                 standard_work_days: [1, 2, 3, 4, 5],
+                 standard_day_shifts: {},
+                 weekend_work_policy: "prohibited",
+                 saturday_work_policy: "unavailable",
+                 sunday_work_policy: "unavailable",
+                 saturday_multiplier: nil,
+                 sunday_multiplier: nil,
+                 weekend_requires_company_approval: true,
+                 weekend_requires_technician_acceptance: true,
+                 premium_combination_rule: "highest_applicable",
+                 overtime_enabled: false,
+                 daily_overtime_threshold_hours: nil,
+                 weekly_overtime_threshold_hours: nil,
+                 overtime_multiplier: nil,
+                 job_timezone: "UTC",
+                 address: "100 Main St",
+                 city: "Houston",
+                 state: "TX",
+                 zip_code: "77002",
+                 country: "United States",
+                 schedule_start_time: "07:30",
+                 schedule_working_day_span: 5
+               }
+             },
+             headers: auth_header_for(user),
+             as: :json
+
+        assert_response :created
+        template_id = JSON.parse(response.body)["id"]
+        assert_equal "07:30", JSON.parse(response.body)["schedule_start_time"]
+
+        post "/api/v1/job_templates/#{template_id}/apply",
+             params: { start_date: monday(3).to_s },
+             headers: auth_header_for(user),
+             as: :json
+        assert_response :ok
+        applied = JSON.parse(response.body)
+        assert_equal at(monday(3), 7) + 30.minutes, Time.zone.parse(applied["scheduled_start_at"])
+        assert_equal 5, applied["working_dates"].length
+
+        post "/api/v1/jobs",
+             params: applied["job_attributes"],
+             headers: auth_header_for(user),
+             as: :json
+
+        assert_response :created
+        created = JSON.parse(response.body)
+        assert_equal "Weekly maintenance", created["title"]
+        assert_equal 4_500, created["hourly_rate_cents"]
+        assert_equal 5, created["days"]
+        assert_equal true, created["potential_full_time"]
+        assert_equal "hard_end", created["schedule_flexibility"]
+        assert_equal "EPA 608, OSHA 10", created["required_certifications"]
+        assert_equal "Houston", created["city"]
+        assert_equal at(monday(3), 7) + 30.minutes, Time.zone.parse(created["scheduled_start_at"])
+      end
+
       test "templates are scoped to the owning company" do
         owner, owner_profile = create_company(suffix: "owner#{SecureRandom.hex(3)}")
         other, _other_profile = create_company(suffix: "other#{SecureRandom.hex(3)}")

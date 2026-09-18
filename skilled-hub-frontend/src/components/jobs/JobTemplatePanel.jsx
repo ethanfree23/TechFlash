@@ -127,7 +127,14 @@ const JobTemplatePanel = ({ companyProfileId, getConfiguration, onApply }) => {
   });
 
   return (
-    <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 space-y-3">
+    <div
+      className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 space-y-3"
+      // This panel sits inside the create-job form, so Enter in one of its inputs would
+      // otherwise post the job.
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' && e.target.tagName === 'INPUT') e.preventDefault();
+      }}
+    >
       <div className="flex items-start justify-between gap-3">
         <div>
           <h3 className="font-semibold text-slate-900">Job templates</h3>

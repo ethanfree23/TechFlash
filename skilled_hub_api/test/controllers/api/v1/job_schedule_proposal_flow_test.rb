@@ -708,6 +708,43 @@ module Api
         after = job.reload.attributes.slice(*before.keys)
         assert_equal before, after
       end
+
+      test "accepting a proposal that still overlaps is a hard failure, not a new proposal" do
+        commit_existing!
+        job = overlapping_job(schedule_flexibility: :flexible_start)
+
+        post "/api/v1/jobs/#{job.id}/counter_offers",
+             params: { schedule_option: "start_after_conflict" },
+             headers: auth_header_for(@tech_user),
+             as: :json
+        offer_id = JSON.parse(response.body)["id"]
+        proposed_start = Time.zone.parse(JSON.parse(response.body)["schedule_proposal"]["proposed_start_at"])
+
+        # Another assignment now occupies the proposed window, so accepting would double-book.
+        blocker = funded_job(
+          start_at: proposed_start,
+          end_at: proposed_start + 4.days + 9.hours,
+          days: 5,
+          title: "Later blocker"
+        )
+        JobApplication.create!(job: blocker, technician_profile: @tech_profile, status: :accepted)
+        JobFundingService.snapshot_technician!(blocker, @tech_profile)
+        blocker.update!(status: :filled)
+        Schedule::ConflictDetector.reset_commitments_cache!(@tech_profile)
+
+        succeed_stripe! do
+          patch "/api/v1/counter_offers/#{offer_id}/accept",
+                headers: auth_header_for(@company_user),
+                as: :json
+        end
+
+        assert_response :unprocessable_entity
+        body = JSON.parse(response.body)
+        refute body["schedule_conflict"], "company acceptance must not reopen the claim-proposal loop"
+        refute job.reload.filled?
+        assert_equal "pending_company", JobCounterOffer.find(offer_id).status
+        assert_equal 10, job.days
+      end
     end
   end
 end

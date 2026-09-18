@@ -25,6 +25,7 @@ import JobStatusBadge from './jobs/JobStatusBadge';
 import JobTimeEntriesPanel from './jobs/JobTimeEntriesPanel';
 import ScheduleConflictModal from './jobs/ScheduleConflictModal';
 import ScheduleProposalSummary from './jobs/ScheduleProposalSummary';
+import SaveJobTemplateModal from './jobs/SaveJobTemplateModal';
 import { PotentialFullTimeBadge, ScheduleConflictBadge } from './jobs/JobFlagBadges';
 import {
   hasScheduleConflict,
@@ -130,6 +131,7 @@ const JobDetail = () => {
   const [error, setError] = useState(null);
   const [claiming, setClaiming] = useState(false);
   const [scheduleConflict, setScheduleConflict] = useState(null);
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
   const [user, setUser] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showClaimedModal, setShowClaimedModal] = useState(false);
@@ -1813,6 +1815,13 @@ const JobDetail = () => {
                   Edit Job
                 </button>
                 <button
+                  type="button"
+                  onClick={() => setShowSaveTemplate(true)}
+                  className="w-full px-4 py-2 bg-white border border-slate-300 text-slate-800 rounded-md hover:bg-slate-50 transition-colors"
+                >
+                  Save as template
+                </button>
+                <button
                   onClick={handleDeleteJob}
                   disabled={deletingJob}
                   className="w-full px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 transition-colors disabled:opacity-50"
@@ -2217,6 +2226,20 @@ const JobDetail = () => {
           </div>
         </form>
       </Modal>
+
+      <SaveJobTemplateModal
+        isOpen={showSaveTemplate}
+        onClose={() => setShowSaveTemplate(false)}
+        job={job}
+        onSaved={(created) => {
+          setAlertModal({
+            isOpen: true,
+            title: 'Template saved',
+            message: `"${created.name}" is ready to reuse from Create Job.`,
+            variant: 'success',
+          });
+        }}
+      />
 
       <ScheduleConflictModal
         isOpen={Boolean(scheduleConflict)}

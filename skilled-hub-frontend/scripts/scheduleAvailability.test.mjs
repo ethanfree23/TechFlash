@@ -79,6 +79,13 @@ function testOptionTitles() {
   );
   assert.equal(scheduleOptionTitle({ kind: 'unknown' }), 'Alternate schedule');
   assert.equal(scheduleOptionTitle(null), 'Alternate schedule');
+
+  // A stored counter-offer proposal names the same choice `option` rather than `kind`.
+  assert.equal(scheduleOptionTitle({ option: 'start_after_conflict' }), 'Start after your current job');
+  assert.equal(
+    scheduleOptionTitle({ option: 'keep_original_end' }),
+    'Keep the original end date and work the remaining days'
+  );
 }
 
 function testOptionDescriptions() {

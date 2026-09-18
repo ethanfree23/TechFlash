@@ -42,8 +42,12 @@ export const SCHEDULE_OPTION_TITLES = {
   keep_original_end: 'Keep the original end date and work the remaining days',
 };
 
+/**
+ * Accepts either an alternate-schedule option (which names the choice `kind`) or a stored
+ * counter-offer proposal (which names it `option`).
+ */
 export const scheduleOptionTitle = (option) =>
-  SCHEDULE_OPTION_TITLES[option?.kind] || 'Alternate schedule';
+  SCHEDULE_OPTION_TITLES[option?.kind ?? option?.option] || 'Alternate schedule';
 
 const dateFormatter = new Intl.DateTimeFormat(undefined, {
   month: 'short',
