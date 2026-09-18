@@ -26,6 +26,10 @@ import ConversationScreen from '../screens/ConversationScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import AdminSystemControlsScreen from '../screens/AdminSystemControlsScreen';
 import AdminJobAccessScreen from '../screens/AdminJobAccessScreen';
+import SkillsAssessmentsScreen from '../screens/SkillsAssessmentsScreen';
+import AssessmentAttemptScreen from '../screens/AssessmentAttemptScreen';
+import AssessmentResultScreen from '../screens/AssessmentResultScreen';
+import AssessmentHistoryScreen from '../screens/AssessmentHistoryScreen';
 
 export type AuthStackParamList = {
   Welcome: undefined;
@@ -62,6 +66,10 @@ export type AppStackParamList = {
   Settings: undefined;
   AdminSystemControls: undefined;
   AdminJobAccess: undefined;
+  SkillsAssessments: undefined;
+  AssessmentAttempt: { attemptId: number };
+  AssessmentResult: { attemptId: number; notice?: string };
+  AssessmentHistory: { assessmentSlug?: string } | undefined;
 };
 const AppStack = createNativeStackNavigator<AppStackParamList>();
 
@@ -225,6 +233,26 @@ function AppStackNavigator() {
         name="AdminJobAccess"
         component={AdminJobAccessScreen}
         options={{ title: 'Job access' }}
+      />
+      <AppStack.Screen
+        name="SkillsAssessments"
+        component={SkillsAssessmentsScreen}
+        options={{ title: 'Skills Assessments' }}
+      />
+      <AppStack.Screen
+        name="AssessmentAttempt"
+        component={AssessmentAttemptScreen}
+        options={{ title: 'Assessment', headerBackTitle: 'Save & exit', gestureEnabled: false }}
+      />
+      <AppStack.Screen
+        name="AssessmentResult"
+        component={AssessmentResultScreen}
+        options={{ title: 'Your result' }}
+      />
+      <AppStack.Screen
+        name="AssessmentHistory"
+        component={AssessmentHistoryScreen}
+        options={{ title: 'My attempts' }}
       />
     </AppStack.Navigator>
   );

@@ -6,6 +6,9 @@ import {
   jobsAPI,
   conversationsAPI,
   settingsAPI,
+  assessmentsAPI,
+  adminAssessmentsAPI,
+  profilesAPI,
 } from '../src/api/api.js';
 
 function makeStorage() {
@@ -125,6 +128,34 @@ async function testSettingsFallbackBaseUrl() {
   assert.strictEqual(capturedBody.base_url, 'http://localhost:5173');
 }
 
+async function testAssessmentsApiRoutes() {
+  setupEnv();
+  const captured = [];
+  await withMockedFetch(async (url, config) => {
+    captured.push({ url, method: config.method || 'GET', body: config.body });
+    return okJson({ assessments: [], id: 9, attempts: [] });
+  }, async () => {
+    await assessmentsAPI.catalog();
+    await assessmentsAPI.start('hvac_knowledge');
+    await assessmentsAPI.saveAnswers(9, [{ question_id: 1, answer_choice_id: 2 }]);
+    await assessmentsAPI.submit(9);
+    await assessmentsAPI.getAttempt(9, { includeReview: true });
+    await adminAssessmentsAPI.publishVersion(4);
+    await adminAssessmentsAPI.import({ assessment: { slug: 'x' } }, { dryRun: true });
+    await profilesAPI.getTechnicianAssessmentResults(12);
+  });
+
+  assert.ok(captured[0].url.endsWith('/assessments'));
+  assert.strictEqual(captured[1].method, 'POST');
+  assert.ok(captured[1].url.endsWith('/assessments/hvac_knowledge/attempts'));
+  assert.strictEqual(captured[2].method, 'PATCH');
+  assert.ok(captured[3].url.endsWith('/assessment_attempts/9/submit'));
+  assert.ok(captured[4].url.endsWith('/assessment_attempts/9?include=review'));
+  assert.ok(captured[5].url.endsWith('/admin/assessment_versions/4/publish'));
+  assert.strictEqual(JSON.parse(captured[6].body).dry_run, true);
+  assert.ok(captured[7].url.endsWith('/technicians/12/assessment_results'));
+}
+
 async function run() {
   await testAuthLoginRequestShape();
   await testCrmSearchEncodesQuery();
@@ -133,6 +164,7 @@ async function run() {
   await testJobsFilterSerialization();
   await testConversationsNormalization();
   await testSettingsFallbackBaseUrl();
+  await testAssessmentsApiRoutes();
   console.log('api tests passed');
 }
 

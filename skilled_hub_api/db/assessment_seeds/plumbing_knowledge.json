@@ -1,0 +1,3585 @@
+{
+  "assessment": {
+    "slug": "plumbing_knowledge",
+    "title": "Plumbing Knowledge Assessment",
+    "description": "A knowledge assessment of plumbing safety, water supply, DWV, fixtures, and service. Scores are not a license or certification.",
+    "trade_type": "Plumber",
+    "company_disclaimer": null,
+    "active": true,
+    "position": 2,
+    "public_result_rule": "best_valid"
+  },
+  "version": {
+    "version_number": 1,
+    "publish": false,
+    "instructions": "Answer each question to the best of your knowledge. You can go back and change answers before submitting. This is a knowledge assessment, not a license or certification.",
+    "time_limit_minutes": 30,
+    "passing_score": null,
+    "max_attempts": null,
+    "retake_wait_hours": 336,
+    "randomize_questions": true,
+    "randomize_answer_choices": true,
+    "allow_resume": true,
+    "allow_back_navigation": true,
+    "scoring_strategy": "normalized_percent",
+    "score_bands": [
+      {
+        "slug": "foundational",
+        "label": "Foundational",
+        "min_score": 0,
+        "max_score": 39
+      },
+      {
+        "slug": "developing",
+        "label": "Developing",
+        "min_score": 40,
+        "max_score": 59
+      },
+      {
+        "slug": "apprentice_knowledge",
+        "label": "Apprentice Knowledge",
+        "min_score": 60,
+        "max_score": 74
+      },
+      {
+        "slug": "advanced_apprentice_knowledge",
+        "label": "Advanced Apprentice Knowledge",
+        "min_score": 75,
+        "max_score": 89
+      },
+      {
+        "slug": "strong_trade_knowledge",
+        "label": "Strong Trade Knowledge",
+        "min_score": 90,
+        "max_score": 100
+      }
+    ]
+  },
+  "categories": [
+    {
+      "slug": "safety_tools_materials",
+      "name": "Safety, Tools & Materials",
+      "description": "Jobsite safety, tools, and plumbing materials.",
+      "question_count": 8,
+      "weight": 1.0,
+      "questions": [
+        {
+          "difficulty": "easy",
+          "prompt": "Before cutting into a water supply line, what should the technician do first?",
+          "explanation": "Locate and close the correct isolation valves, relieve pressure, and verify the line is depressurized. Cutting a live, pressurized line creates flooding and injury hazards.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Isolate the water, relieve pressure, and verify the line is depressurized",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Cut quickly so less water can escape",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Open all fixtures to increase pressure, then cut",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Heat the pipe with a torch first so water boils away",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-001"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Why is eye protection required when cutting, soldering, or driving fittings?",
+          "explanation": "Chips, flux, solder splatter, and snapping plastic or copper can injure eyes. Safety glasses are basic PPE for those tasks.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Flying chips, flux, and solder splatter can injure the eyes",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Eye protection is only for electrical work",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Soldering flux is harmless to eyes by design",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A baseball cap is sufficient eye protection",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-002"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "When working in a trench, which action should a technician avoid?",
+          "explanation": "Unprotected trench walls can collapse. Use required cave-in protection, keep spoil back from the edge, and provide a safe way in and out. Do not enter an unprotected deep trench.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Entering an unprotected trench that is deep enough for a cave-in hazard",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Keeping excavated soil back from the trench edge",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Using a ladder or other safe means of egress",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Following the required cave-in protection for the trench",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-003"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A solvent-cemented PVC joint should be made in a ventilated area because:",
+          "explanation": "Primer and cement vapors are flammable and irritating. Ventilate, avoid ignition sources, and use the product SDS for PPE.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Primer and cement vapors are hazardous and can be flammable",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The vapors increase water pressure in the pipe",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Cement only works in a sealed, unventilated room",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Ventilation makes the joint cure more slowly on purpose",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-004"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Why must a technician know the difference between a potable-water pipe and a DWV pipe before cutting?",
+          "explanation": "Cutting the wrong system can contaminate drinking water or open a soil pipe. Identify the system by location, markings, and isolation before cutting.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Cutting the wrong system can contaminate drinking water or release sewage",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "All pipes in a dwelling carry only potable water",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "DWV and potable lines are interchangeable if the diameter matches",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Color of the pipe wrench determines the system",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-005"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "What is the safest way to check for a leak after a soldered copper joint cools?",
+          "explanation": "Pressurize with the appropriate test method and inspect. Do not use an open flame as a leak detector on a water system, and do not leave a joint untested.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Pressurize the system and inspect the joint for leaks",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Pass an open flame around the joint to dry any moisture",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Hit the joint with a hammer to seat it",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Cover the joint with tape so leaks cannot be seen",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-006"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "When lifting a water heater, which practice reduces injury risk?",
+          "explanation": "Use help or mechanical advantage, lift with the legs, and plan the path. Water heaters are heavy and awkward; rushing a one-person lift is a common injury pattern.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Use help or equipment and lift with good body mechanics",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Twist at the waist while holding the tank at arm\u2019s length",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Walk the tank down stairs without a helper because it is round",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Pull the tank by the T&P valve as a handle",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-007"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A torch is used to solder copper near wood framing. What control is appropriate?",
+          "explanation": "Shield combustibles, keep an extinguisher ready, and watch for smoldering after the flame is out. Water-soaking live electrical boxes or leaving immediately is not adequate.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Shield nearby combustibles and maintain a fire watch after soldering",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Increase oxygen so the solder finishes before wood can ignite",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Leave as soon as the last joint is made; residual heat is never a risk",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Soak nearby electrical devices with water before lighting the torch",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-008"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why should a technician confirm that a pipe is not a gas line before cutting what looks like a water pipe?",
+          "explanation": "Gas and water piping can look similar in some installations. Cutting a live gas line is a fire and explosion hazard. Identify the system, isolate, and verify.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "A misidentified gas line can release fuel and create a fire or explosion hazard",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Gas piping is harmless if the odorant is present",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Any metal pipe can be cut first and identified later",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Gas lines always use the same insulation as PEX",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-009"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "What is a primary hazard of using a chemical drain cleaner in a fixture the technician will then open?",
+          "explanation": "Chemical cleaners can cause severe chemical burns and react with other products. If a drain must be opened, avoid mixing chemicals and use PPE; mechanical clearing is often safer for the technician.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The chemical can burn skin and eyes and may still be in the pipe",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The chemical always makes solder joints stronger",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The chemical converts sewage to potable water",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The chemical eliminates the need for PPE",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-010"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "When using a drain-cleaning machine, which practice is essential?",
+          "explanation": "Use a properly guarded machine, PPE, and control of the cable. Forcing a spinning cable with loose clothing or bypassing guards causes entanglement injuries.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Keep guards in place, wear PPE, and control the rotating cable",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Remove the belt guard so the cable spins faster",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Wrap the cable around the forearm for better feel",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Wear loose gloves that can catch on the cable",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-011"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why is confined-space awareness important in a sewage lift-station pit or similar space?",
+          "explanation": "These spaces can have oxygen deficiency, hydrogen sulfide, or methane. Entry may require atmospheric testing and confined-space procedures\u2014not just a longer job.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The atmosphere may be oxygen-deficient or contain toxic or flammable gases",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Pits are always safe if the pump is off",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Sewage gases are harmless because they smell",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A paper dust mask is complete confined-space protection",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-012"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Lead-containing solder is not used on potable water piping because:",
+          "explanation": "Lead can leach into drinking water. Potable joints use lead-free solder/alloys and listed materials. This is a health requirement, not a cosmetic preference.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Lead can contaminate drinking water",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Lead solder is too strong for copper",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Lead solder only works on DWV plastic",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Lead-free solder is required only for gas piping",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-013"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A PEX crimp or expansion joint should be made with:",
+          "explanation": "Use the tool and fittings listed for that PEX system. Mixing crimp rings, expansion rings, and brands incorrectly is a leak and listing failure.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The manufacturer\u2019s compatible fittings and the matching listed tool",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Any hose clamp from the hardware aisle",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Electrical tape as the primary seal",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A soldered copper coupling on the PEX without a transition fitting",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-014"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why should a water heater\u2019s T&P relief valve never be plugged or capped?",
+          "explanation": "The T&P valve is a safety device that relieves excessive temperature or pressure. Capping it can cause tank rupture.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "It is a safety device; blocking it can allow the tank to overpressure",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The valve is only decorative",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Capping it improves energy efficiency",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The drain pan already provides overpressure protection",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-015"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "When working with cast-iron DWV, which hazard is commonly overlooked?",
+          "explanation": "Cast iron is heavy and can shatter. Support the pipe, use proper cutters, and protect eyes. Letting an unsupported stack drop is dangerous.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Unsupported sections are heavy and can crush or shatter when cut",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Cast iron is as light as PVC of the same size",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Cast iron dust is a refreshment if inhaled",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Cast iron never needs support after a cut",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-016"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A job requires soldering and a combustible-gas detector. Why test the area before lighting a torch?",
+          "explanation": "A leak from another trade\u2019s work or an existing gas line can create an explosive atmosphere. Test, ventilate, and isolate fuel gas before using an open flame.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "An undetected fuel-gas leak can ignite when the torch is lit",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Torches cannot ignite fuel gas by design",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Gas detectors are only for refrigerant work",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Soldering flux will neutralize any gas leak",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-017"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Which statement about silica dust from cutting concrete or masonry for plumbing sleeves is correct?",
+          "explanation": "Crystalline silica is a serious inhalation hazard. Use wet methods or local exhaust and required respiratory protection\u2014not dry cutting in a closed room without controls.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Control the dust with wet methods or exhaust and appropriate respiratory protection",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Silica dust is only a cleanup nuisance and is not a health concern",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Dry cutting indoors without controls is the preferred method",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A paper shop towel over the nose is full protection",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-018"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why should electrical bonding/grounding connections on metal water piping be treated carefully during repairs?",
+          "explanation": "Metal water piping may be part of the electrical grounding/bonding path. Opening it can energize piping or lose a ground. Coordinate isolation and restore listed bonding as required.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The piping may be part of the electrical grounding or bonding path",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Water pipes never carry electrical current under any fault",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Removing a bonding jumper always improves water quality",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Dielectric unions eliminate all electrical safety concerns permanently without bonding",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-019"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A technician must replace a section of water service that also has an electrical grounding electrode conductor attached. What is the safest approach?",
+          "explanation": "Do not disconnect a grounding electrode path without an electrically safe plan. Coordinate so the electrical grounding/bonding remains intact or is properly transferred, and isolate water before cutting.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Plan the repair so water is isolated and the electrical grounding/bonding path is not left open",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Cut the grounding conductor first and leave it disconnected",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Assume the water pipe is never an electrical path in any building",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Hold both pipe ends by hand to keep continuity while cutting",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-020"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "Hot work is required in a mechanical room with a gas-fired water heater. What is an appropriate precaution sequence?",
+          "explanation": "Check for gas leaks, isolate and verify as needed, ventilate, protect combustibles, and have fire control ready. Lighting a torch beside an odor of gas is unsafe.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Check the atmosphere for fuel gas, control ignition sources, and protect combustibles",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Light the torch immediately to burn off any gas",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Disable the T&P valve so it cannot drip on the torch",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Close the mechanical-room door to keep oxygen in",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-021"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A sewer combination machine will be used on a line that may contain chemical drain cleaner. What should the technician do?",
+          "explanation": "Unknown chemicals plus mechanical agitation can splash caustic product. Identify what was used if possible, use chemical-resistant PPE, flush if appropriate, and do not mix additional chemicals.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Treat the line as chemically contaminated: PPE, avoid mixing products, and control splash",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Add a second chemical cleaner to neutralize by guesswork",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Run the cable with no eye protection because the water will dilute anything",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Heat the pipe with a torch to drive off chemicals",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-022"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A deep excavation for a building sewer is in unstable soil. The crew is behind schedule. What is the correct priority?",
+          "explanation": "Cave-in protection and a safe means of egress are not optional because of schedule. Stop and protect the excavation before anyone enters.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Do not enter until required cave-in protection and safe access are in place",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Send one person in quickly without protection to save time",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Use the pipe itself as a shield by lying under it",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Park the truck on the spoil pile to compact the soil",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-023"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "Press-connect copper fittings are being used near a previously soldered joint. Why must the manufacturer\u2019s temperature and distance limits be respected?",
+          "explanation": "Excess heat can damage O-rings or sealing elements in press fittings. Follow listed clearances and cooling methods rather than soldering immediately against a press fitting.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Heat from soldering can damage the press fitting\u2019s sealing element",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Press fittings are designed to be annealed with a torch after crimping",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Solder flux improves press-fitting O-rings",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Temperature limits only apply to plastic pipe, never copper press",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-SAF-024"
+        }
+      ]
+    },
+    {
+      "slug": "water_supply_systems",
+      "name": "Water Supply Systems",
+      "description": "Potable water distribution, pressure, and protection.",
+      "question_count": 8,
+      "weight": 1.0,
+      "questions": [
+        {
+          "difficulty": "easy",
+          "prompt": "What is the purpose of a shutoff valve on a water-supply branch?",
+          "explanation": "A shutoff lets a fixture or branch be isolated for repair without shutting down the entire building.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To isolate a fixture or branch for service",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To increase water pressure in that branch",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To vent the DWV system",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To mix hot and cold to a safe temperature automatically",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-001"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Why are potable water systems kept separate from sewage and nonpotable sources?",
+          "explanation": "Cross-connections can contaminate drinking water. Backflow prevention and physical separation protect the potable supply.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To prevent contamination of drinking water",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To make pipes easier to paint",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Because sewage pipes cannot be larger than water pipes",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To raise the water heater\u2019s energy factor",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-002"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "What does a pressure-reducing valve (PRV) typically do on a building water service?",
+          "explanation": "A PRV lowers high street pressure to a safer building pressure that protects fixtures, valves, and piping.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Reduce incoming water pressure to a lower building pressure",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Increase street pressure for better shower flow",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Heat the incoming water",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Add chlorine to the water",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-003"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Hot and cold water supplies to a lavatory are typically connected so that:",
+          "explanation": "By convention, hot is on the left and cold on the right for the user. Reversing them is a scald and usability issue.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Hot is on the left and cold is on the right as used by the occupant",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Hot and cold are interchangeable with no user impact",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Both supplies must be hot to meet code",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Cold water must pass through the water heater first",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-004"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "What is water hammer?",
+          "explanation": "Water hammer is a pressure surge from a sudden stop of flow, often heard as banging. Arrestors or other control methods reduce the surge.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "A pressure surge when flowing water is stopped suddenly",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A type of pipe thread",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A vent fitting used on a stack",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A chemical used to solder copper",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-005"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Why is dielectric isolation often used when joining copper and galvanized steel water piping?",
+          "explanation": "Dissimilar metals in water can corrode galvanically. A listed dielectric union or isolating fitting reduces that corrosion.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To reduce galvanic corrosion between dissimilar metals",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To increase electrical current through the pipe",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To make the joint easier to solder",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To raise water pressure",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-006"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "What is the function of an expansion tank on a closed, heated potable-water system?",
+          "explanation": "When water is heated it expands. In a closed system the expansion tank provides space for that expansion so pressure does not rise excessively.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Absorb expanded water volume so system pressure does not rise excessively",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Store extra sewage",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Increase incoming street pressure",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Replace the T&P relief valve",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-007"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A hose bibb without backflow protection is a concern because:",
+          "explanation": "A hose submerged in a dirty bucket or pool can siphon contaminants into the potable system when pressure drops. Use a listed vacuum breaker or other backflow device.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "A submerged hose can siphon contaminants into the potable water",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Hose bibbs cannot freeze",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Backflow devices reduce pipe diameter only for appearance",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Hoses always flow in one direction regardless of pressure",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-008"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "What is the difference between a vacuum breaker and a reduced-pressure-zone (RPZ) backflow preventer at a high level?",
+          "explanation": "An atmospheric vacuum breaker protects against back-siphonage under limited conditions. An RPZ is used for higher-hazard backpressure/back-siphonage applications. Selection follows the hazard and listing\u2014not whichever is cheapest.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "They are used for different backflow hazards and installation conditions",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "They are identical devices with different paint colors",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "An RPZ is only for DWV, never potable water",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A vacuum breaker is designed to replace a water heater T&P valve",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-009"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why might a recirculation line be installed on a domestic hot-water system?",
+          "explanation": "Recirc keeps hot water near fixtures to reduce wait time and wasted water. It must be balanced and controlled so it does not overheat piping or waste energy continuously without need.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To deliver hot water to distant fixtures with less wait and waste",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To mix sewage with hot water for faster draining",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To replace the building\u2019s cold-water service",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To reduce water-heater temperature below a safe storage range as the only goal",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-010"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A water-service pipe is being installed below a slab. Why does material listing and protection matter?",
+          "explanation": "Buried potable pipe must be listed for the location, protected from damage, and installed to prevent contamination. Random indoor tubing may not be rated for burial.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The pipe must be listed for burial and protected from damage and contamination",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Any indoor drain pipe can be used as a water service",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Burial depth never matters if the pipe is copper-colored",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Water service pipe should be perforated like a French drain",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-011"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "What is a common reason to install a water hammer arrestor at a quick-closing valve, such as a washing machine box?",
+          "explanation": "Quick-closing valves stop flow suddenly. An arrestor absorbs the surge that would otherwise bang and stress piping.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To absorb the pressure surge from sudden valve closure",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To heat the cold water",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To vent sewer gas",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To reduce pipe diameter",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-012"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why should a water heater\u2019s cold inlet often include a dip tube (or equivalent design)?",
+          "explanation": "The dip tube sends incoming cold water to the bottom so hot water is drawn from the top. A failed dip tube can cause lukewarm water at fixtures.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To deliver incoming cold water to the bottom of the tank",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To prevent the T&P valve from ever opening",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To mix flue gases into the potable water",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To increase anode rod consumption on purpose",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-013"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "An anode rod in a steel water heater is intended to:",
+          "explanation": "The anode is sacrificial protection for the tank steel. Inspect/replace per condition; it is not a mixing valve.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Corrode preferentially so the tank steel lasts longer",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Set the exact outlet temperature",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Increase incoming pressure",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Replace the need for a T&P valve",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-014"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Balancing a multi-branch potable system is done so that:",
+          "explanation": "Reasonable flow is available at fixtures without starving distant branches or creating excessive velocity/noise on short runs.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Fixtures receive adequate flow without excessive velocity on short runs",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "One bathroom gets all available pressure",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Hot water is eliminated from the farthest fixture",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The water heater bypasses the PRV",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-015"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why is a listed thermal expansion control method needed when a check valve or PRV creates a closed system?",
+          "explanation": "Heated water in a closed system has nowhere to go, so pressure rises and can drip T&P valves or damage tanks. An expansion tank or listed equivalent is the usual control.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Heating water in a closed system raises pressure that must be absorbed",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Closed systems cannot be heated, so expansion control is decorative",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "T&P valves are intended to operate on every heater cycle as the expansion method",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Expansion tanks are only for hydronic heating, never potable water",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-016"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A pressure gauge on a water heater reads well above the T&P rating during a heating cycle on a closed system. What should be checked?",
+          "explanation": "Excessive pressure on a closed system often means missing, waterlogged, or undersized expansion control, or a faulty PRV/check arrangement. Do not plug the T&P.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Thermal expansion control and whether the system is closed by a check or PRV",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Whether the T&P discharge was capped to stop dripping",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Whether the anode rod is too new",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Whether the shower head is WaterSense labeled",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-017"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "What is the usual purpose of a thermostatic mixing valve at a water heater or fixture group?",
+          "explanation": "It blends hot and cold to a safer delivered temperature to reduce scald risk while allowing the tank to store water hot enough to limit bacterial growth, per design. It is not a backflow preventer.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Limit delivered hot-water temperature to reduce scald risk",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Increase street pressure",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Replace the building sewer vent",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Add disinfectant to the cold-water service",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-018"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "PEX, copper, and CPVC can all be used for potable water when:",
+          "explanation": "Each material must be listed for potable water and installed with compatible fittings, support, temperature/pressure ratings, and protection from UV, freeze, and damage.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "They are listed for the use and installed with compatible fittings and support",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "They are mixed in any combination without transition fittings",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "They are used only for DWV, never potable water",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "They are glued with PVC drain cement regardless of material",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-019"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A building has low flow at upper-floor fixtures only when several lower fixtures run. Street pressure is adequate at the water meter. What is a logical early investigation?",
+          "explanation": "The pattern suggests distribution friction, undersized piping, a failing PRV, a partially closed valve, or a clogged strainer\u2014not automatically a bad faucet washer on every upper fixture. Measure pressures at rest and under load at several points.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Measure pressure at rest and under load at the meter, PRV, and upper floors",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Replace every upper-floor faucet cartridge as the first step",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Remove the building PRV permanently to raise pressure without evaluation",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Cap the main vent stack to increase water pressure",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-020"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A reduced-pressure-zone backflow preventer is discharging from the relief port. What is the appropriate response?",
+          "explanation": "Relief discharge can mean a fouled check, backpressure, or a failing device. It is protecting the potable system; do not cap the relief. Diagnose and repair/replace the assembly per listing and testing requirements.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Do not cap the relief; diagnose whether the assembly is fouled or seeing backpressure",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Cap the relief port so water is not wasted",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The discharge always means the device should be removed permanently",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Connect the relief port to the potable cold-water line to recycle the water",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-021"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "Hot-water delay is excessive at a distant fixture, but nearby fixtures are prompt. The water heater recovers normally. What should be evaluated?",
+          "explanation": "The heater is producing hot water; the issue is distribution\u2014pipe length, missing recirc/return, failed recirc pump/check, or a crossover. Do not raise tank temperature to an unsafe level as the first fix.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Distribution path, recirc operation, and possible hot/cold crossover",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Raise the tank to the maximum thermostat stop without investigating distribution",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Replace the building sewer because delay is a DWV symptom",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Remove the mixing valve and leave untempered water as the only solution without evaluating scald risk",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-022"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A copper water system has pinhole leaks in a localized area. Chloride/aggressive water is suspected. What is a sound next step beyond patching one hole?",
+          "explanation": "Repeated pinholes can be corrosion, electrical stray current, or installation damage. Patching one hole without investigating water chemistry, grounding/bonding, and remaining pipe condition is incomplete.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Investigate water chemistry, grounding/bonding, and the condition of remaining pipe",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Keep soldering over holes indefinitely without investigation",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Add a dielectric union on a same-metal copper-to-copper joint as the only fix",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Increase system pressure to keep pinholes in compression",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-023"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A booster pump is being added for upper floors. What control issue must be addressed?",
+          "explanation": "A booster can create excessive pressure, dead-head, or backfeed. It needs proper pressure controls, check valves, and isolation, and must not overpressurize fixtures or the heater.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Pressure control, check/isolation valves, and protection against overpressurizing the building",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Running the pump continuously at full speed with no pressure control",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Connecting the pump discharge to the sewer to relieve extra pressure",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Removing all shutoff valves so the pump cannot be isolated",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-WTR-024"
+        }
+      ]
+    },
+    {
+      "slug": "drain_waste_vent",
+      "name": "Drain, Waste & Vent",
+      "description": "DWV principles, traps, vents, and gravity drainage.",
+      "question_count": 8,
+      "weight": 1.0,
+      "questions": [
+        {
+          "difficulty": "easy",
+          "prompt": "What is the primary purpose of a fixture trap?",
+          "explanation": "A trap holds a water seal that blocks sewer gas from entering the building through the fixture.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To hold a water seal that blocks sewer gas",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To increase water-supply pressure",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To grind solids into the water heater",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To replace the need for a vent in every case",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-001"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Why are DWV systems vented?",
+          "explanation": "Vents protect trap seals from siphonage and backpressure and allow air to enter so waste can flow. Vents are not potable-water air vents.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To protect trap seals and allow air in so waste can flow",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To pressurize sewage for faster flow always",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To add oxygen to potable water",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To heat the waste stack",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-002"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "What is a cleanout for?",
+          "explanation": "A cleanout provides access to clear blockages in DWV piping without cutting the pipe.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To provide access for clearing blockages",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To add makeup water to the water heater",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To connect a hose bibb to the sewer",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To increase trap seal depth without limit",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-003"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Horizontal DWV piping is installed with slope so that:",
+          "explanation": "Slope lets liquids carry solids. Too flat and solids settle; too steep and liquids can outrun solids in some drains. Follow the applicable slope for the pipe size.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Waste can flow by gravity and carry solids",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The pipe can hold water like a supply line",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Sewer gas is forced into fixtures",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Traps are siphoned on every flush as a design goal",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-004"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A toilet (water closet) typically connects to the drain with a:",
+          "explanation": "A closet flange and wax or listed seal connect the toilet to the drain. A trap is integral to the fixture.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Closet flange and a listed seal (such as a wax ring)",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Garden-hose thread only",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Soldered copper stub-out into the bowl",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Direct connection to the water heater T&P drain",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-005"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "What is the waste stack?",
+          "explanation": "The waste or soil stack is the main vertical DWV pipe that receives discharge from branches and carries it toward the building drain.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The main vertical DWV pipe receiving fixture discharge",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The cold-water riser",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The gas vent from a water heater only",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The electrical conduit in a wet wall",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-006"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Why should a trap not be double-trapped without a designed exception?",
+          "explanation": "Two traps in series can cause air lock and poor drainage. Each fixture typically has one trap, properly vented.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Two traps in series can air-lock and drain poorly",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Double trapping always increases vent capacity",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Double traps are required on every lavatory",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A second trap raises water-supply pressure",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-007"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A lavatory gurgles and the trap seal is lost when a nearby toilet is flushed. What is a likely DWV issue?",
+          "explanation": "The symptom is classic siphonage or pressure fluctuation from inadequate venting. It is not a water-heater problem.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Inadequate venting allowing the trap to be siphoned or disturbed",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A failed water-heater anode",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A closed building PRV",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Reversed hot and cold supplies only",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-008"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "What is a wet vent, in general terms?",
+          "explanation": "A wet vent is a pipe that vents one fixture while also serving as a drain for another, under specific size and configuration rules. It is not a potable recirc line.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "A drain pipe that is also used to vent another fixture under allowed configurations",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A water-supply pipe that is intentionally filled with air",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A vent that must remain completely dry in all designs",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A storm leader used as a potable-water riser",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-009"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why are fixture-unit values used in DWV sizing?",
+          "explanation": "Fixture units estimate probable discharge load so pipes and vents can be sized. They are not a measure of water quality.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To estimate probable load for sizing drains and vents",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To measure lead content in solder",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To set water-heater thermostat calibration",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To calculate trench cave-in protection",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-010"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A building drain that is almost flat has repeated stoppages. What is a likely contributing factor?",
+          "explanation": "Insufficient slope lets solids settle. Repair may require correcting grade, not just repeated snaking as the only long-term fix.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Insufficient slope allowing solids to settle",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Too much vent capacity as the only cause",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A water hammer arrestor on the drain",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A mixing valve on the water heater",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-011"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "What is the purpose of a trap primer where one is used?",
+          "explanation": "A trap primer replenishes trap seals that can dry out on rarely used drains, which would otherwise pass sewer gas.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To maintain the trap water seal on infrequently used drains",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To increase potable water pressure",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To grind food waste",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To replace the main building vent",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-012"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "An air-admittance valve (AAV), where permitted, is intended to:",
+          "explanation": "An AAV admits air to protect traps when the system goes negative, but it does not relieve positive pressure like an open vent terminal. Use only where the applicable code and listing allow.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Admit air to protect a trap seal where that method is allowed",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Replace every open vent terminal on a high-rise as a universal rule",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Discharge sewage to the roof",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Connect the water heater flue to the DWV system",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-013"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why should a dishwasher typically discharge through an air gap or a high loop as required by the installation?",
+          "explanation": "An air gap or required high loop helps prevent wastewater from siphoning back into the dishwasher and contaminating it.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To reduce the chance of wastewater siphoning back into the appliance",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To increase wash temperature above the heating element rating",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To vent the water heater",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To reduce trap seal depth",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-014"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A kitchen sink has a garbage disposer. What DWV connection practice is important?",
+          "explanation": "The disposer and sink must drain through a properly sized, trapped, and vented path. Connecting a disposer into a dirty-arm in a way that traps another fixture incorrectly causes backups and leaks.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The discharge must be trapped and vented as a legal fixture connection, not tied in a way that double-traps another fixture",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The disposer should discharge into the water-supply riser",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The disposer can replace the trap seal entirely",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The disposer drain should be smaller than the trap always, even if undersized for the load",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-015"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "What is a common reason to install a backwater valve on a building drain?",
+          "explanation": "A backwater valve can protect fixtures below the next upstream manhole cover (or as required) from sewer surcharge. It must be accessible for maintenance.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To reduce the risk of public-sewer surcharge flooding back into the building",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To increase potable water pressure",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To replace fixture traps",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To mix storm and sanitary without restriction",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-016"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Offsetting a soil stack requires attention because offsets can:",
+          "explanation": "Offsets can create additional load, need extra fittings, and can affect venting and flow. They must follow the applicable sizing and fitting rules\u2014not be made with supply elbows.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Affect flow and venting and must use appropriate fittings and sizing",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Always increase water-supply pressure",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Be made with shutoff valves like a water riser",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Replace the need for a cleanout",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-017"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why is a vertical stack typically larger than some of the horizontal branches that feed it?",
+          "explanation": "The stack can receive combined load from multiple branches. Sizing follows fixture units and code tables, not matching the smallest branch for convenience.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "It may carry the combined load of multiple fixtures and branches",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Vertical pipes must always be smaller than branches",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Stack size is chosen only to match tile holes, not load",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Stacks carry pressurized potable water",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-018"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A floor drain in a mechanical room keeps losing its trap seal. What are logical causes to consider?",
+          "explanation": "Evaporation, siphonage from poor venting, or a leaky primer line can lose the seal. Pouring water is a temporary check; the cause still needs correction.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Evaporation, siphonage, or a failed trap primer",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A water-heater anode only",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A closed hose-bibb vacuum breaker only",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Reversed lavatory supplies only",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-019"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A new branch drain was tied into a stack with a sanitary tee on its back (side inlet used incorrectly as a horizontal combination). The fixture drains slowly and other fixtures gurgle. What should be suspected?",
+          "explanation": "Fitting orientation matters. A sanitary tee is generally for vertical flow into a stack, not as a horizontal drain combination. Wrong fittings create turbulence, siphonage, and stoppages. Investigate the connection geometry before replacing the water heater.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "An improper fitting or orientation at the stack connection",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A failed expansion tank as the first DWV cause",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A mixing valve set too low",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A PRV set too high",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-020"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "After a heavy rain, lower-level fixtures overflow with sewage even though they were not used. What is a logical system-level concern?",
+          "explanation": "This pattern suggests sewer surcharge, a blocked building sewer, or a combined-sewer issue\u2014not a dripping faucet. Check the building sewer, backwater protection, and whether storm water is illegally tied in.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Public or building sewer surcharge, blockage, or improper storm connections",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A dripping lavatory faucet as the only cause",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A water hammer arrestor on the washer box",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A new water-heater anode",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-021"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A long, undervented horizontal branch serves several lavatories. Traps are being pulled. What is the most appropriate correction path?",
+          "explanation": "Protect trap seals with proper venting (or an allowed alternative) and correct pipe size/length. Installing AAVs or reventing must follow what the applicable code allows. Do not reduce trap size below listing to \u201cspeed flow.\u201d",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Provide code-allowed venting and correct the branch sizing/layout",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Remove all traps so air can flow freely",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Cap the roof vent to keep sewer gas in the pipe",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Connect the branch to the water-service pipe for extra flow",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-022"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A combination waste-and-vent system, where allowed, depends on:",
+          "explanation": "Combination waste-and-vent designs are tightly limited: fixture types, pipe size, slope, and cleanouts. They are not a universal substitute for conventional venting on every fixture.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Specific allowed fixtures, oversizing, and layout limits\u2014not a universal vent substitute",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Using it on water closets and kitchen sinks in every jurisdiction without restriction",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Eliminating all cleanouts",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Running it at a steep slope to replace pipe diameter",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-023"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "Smoke or peppermint testing a DWV system is used primarily to:",
+          "explanation": "These tests help find leaks and dry traps that would admit sewer gas. They are not potable-water disinfection methods.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Locate leaks or failed trap seals that can admit sewer gas",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Increase water-heater efficiency",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Calibrate a PRV",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Remove hard-water scale from copper",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DWV-024"
+        }
+      ]
+    },
+    {
+      "slug": "fixtures_installation_fundamentals",
+      "name": "Fixtures, Installation & Fundamentals",
+      "description": "Fixture setting, water heaters, and installation fundamentals.",
+      "question_count": 8,
+      "weight": 1.0,
+      "questions": [
+        {
+          "difficulty": "easy",
+          "prompt": "Why is a toilet supply stop installed below the tank?",
+          "explanation": "The stop isolates the toilet for repair without shutting down the building water.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To isolate the toilet for repair",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To vent the soil stack",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To grind solids",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To mix drain cleaner into the supply",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-001"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "What is the usual purpose of an aerator on a lavatory faucet?",
+          "explanation": "An aerator mixes air into the stream, controls splash, and often limits flow. It is a common clog point for debris.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To shape the stream, reduce splash, and often limit flow",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To increase trap seal depth",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To heat the water electrically",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To prevent the need for a shutoff valve",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-002"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A shower valve that is not scald-protected can be dangerous because:",
+          "explanation": "A sudden drop in cold-water pressure can send water to unsafe temperatures. Pressure-balancing or thermostatic valves reduce that risk.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "A loss of cold water can send scalding water to the outlet",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Shower valves cannot exceed room temperature",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Scald protection is only for outdoor hose bibbs",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Hot water is always limited by the aerator",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-003"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Why should a water heater have a drain pan where leakage could damage the structure?",
+          "explanation": "Tanks leak. A pan with a drain outlet can limit water damage. It does not replace the T&P valve.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To catch leakage and route it away from finished structure",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To store extra potable water for drinking",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To replace the T&P relief valve",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To increase recovery rate",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-004"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A listed flexible water-heater connector is used because:",
+          "explanation": "It provides a practical, listed transition and some vibration isolation. It must be the correct material for potable water and not a random washing-machine hose if not listed for that use.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "It is a listed way to connect the heater to the piping with some flexibility",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Any garden hose is an acceptable permanent connector",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Flexible connectors replace dielectric isolation in all cases",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "They eliminate the need for shutoff valves",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-005"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "What is a fixture rough-in?",
+          "explanation": "Rough-in is the installation of piping and supports to the correct locations and heights before fixtures are set.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Installing piping to the correct locations before setting fixtures",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Painting the fixtures",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The final disinfection of the water service only",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Setting the water-heater thermostat",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-006"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Why are supply stops installed at most fixtures?",
+          "explanation": "Local stops allow repair of a single fixture. They are not DWV cleanouts.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To allow fixture repair without shutting down the whole water system",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To vent the fixture trap",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To increase sewer capacity",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To hold the trap primer charge",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-007"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A pressure-balancing shower valve is primarily intended to:",
+          "explanation": "It compensates for pressure changes between hot and cold so outlet temperature stays more stable. It is not a trap primer.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Reduce temperature swing when supply pressures change",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Increase flow without limit",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Replace the water heater",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Vent the shower drain",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-008"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "When setting a toilet, a common leak path is:",
+          "explanation": "The closet-flange seal (wax or listed alternative) and closet bolts/flange height are frequent leak sources. Do not over-tighten the tank bolts to the point of cracking porcelain.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The closet-flange seal or an improperly set flange height",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The roof vent cap only",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The water-heater anode",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The building PRV screen only",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-009"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A kitchen faucet with a pull-down sprayer needs backflow protection because:",
+          "explanation": "The sprayer can be left in a dirty sink. Without protection, contaminated water could be siphoned into the supply.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The sprayer can be submerged in a contaminated sink",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Kitchen faucets never connect to potable water",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Sprayers increase DWV slope",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Backflow protection heats the water",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-010"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why must a garbage disposer be electrically isolated and cord-connected or hardwired per its listing?",
+          "explanation": "It is an appliance in a wet location. Follow the listing for cord, strain relief, and a local disconnect/switch. Do not use the dishwasher drain hose as a grounding path.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "It is an electrical appliance that must be installed per its listing in a wet area",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The disposer grounds through the drain hose",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Disposers are pneumatic and never use electricity",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Any extension cord is an acceptable permanent connection",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-011"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Accessible fixture connections matter because:",
+          "explanation": "Stops, traps, and supply risers need service access. Concealing a trap with no access panel makes future repair destructive.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Stops, traps, and risers will need future service",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Access is only for appearance during inspection photos",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Concealed unaccessible traps never clog",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Codes prohibit all access panels",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-012"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A bidet or similar fixture with submerged inlets requires backflow protection because:",
+          "explanation": "Submerged inlets are a direct cross-connection risk. Use the listed vacuum breaker or air gap the manufacturer specifies.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Contaminated fixture water could enter the potable supply",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "These fixtures do not use potable water",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Backflow protection is only for outdoor hose bibbs",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A trap primer prevents all backflow",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-013"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "When hanging a wall-hung lavatory, the carrier or blocking must:",
+          "explanation": "The fixture load transfers to the structure. Drywall anchors alone are not a substitute for proper blocking or a carrier.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Transfer the fixture load to the building structure",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Hang from the trap arm only",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Be supported by the supply stops",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Use only adhesive on drywall with no blocking",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-014"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A washing-machine standpipe must be tall enough and trapped/vented because:",
+          "explanation": "The standpipe receives a pumped discharge. Too short and it overflows; missing trap/vent creates sewer-gas and drainage problems.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "It must accept the pumped discharge without overflowing and must be trapped and vented",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Standpipes are connected to the water heater flue",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Standpipes replace the need for a water-supply stop",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Standpipes should discharge onto the floor as a design",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-015"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why is an ice-maker supply often required to have a saddle-valve-free, listed shutoff and appropriate tubing?",
+          "explanation": "Old saddle valves leak and fail. Use a listed shutoff and tubing rated for potable water, with protection against kinks and freeze.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Saddle valves are failure-prone; use a listed shutoff and rated tubing",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Any automotive fuel hose is acceptable",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Ice makers should be teed into the DWV stack",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Ice-maker lines must be left unvalved",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-016"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A water-heater T&P discharge pipe should be installed so that:",
+          "explanation": "Discharge must be routed to a safe location, full-size, without a thread cap, and without traps that can block the valve. Exact termination rules vary; the principle is unobstructed, visible, safe discharge.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Relief water can leave unobstructed to a safe, visible location",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The pipe is capped so the valve cannot drip",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The pipe is smaller than the valve outlet to increase velocity",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The pipe is trapped like a fixture to hold a seal",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-017"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Offset closet flanges are used when:",
+          "explanation": "The drain is not centered on the finished wall location. They are not a fix for an undersized drain or a missing vent.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The rough-in location does not align with the finished toilet location",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The vent stack is too large",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The water heater recovery is low",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The PRV is set too high",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-018"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A fixture trap arm that is too long for its vent location can:",
+          "explanation": "An overly long trap arm can siphon the trap. Length limits exist for a reason; do not extend with extra pipe as a convenience.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Lose its trap seal to siphonage",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Increase potable water pressure",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Replace the need for a cleanout",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Convert the drain to a supply line",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-019"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A newly set toilet rocks and seeps at the base. The flange is below the finished floor. What is the appropriate correction?",
+          "explanation": "The flange should be at the proper height relative to the finished floor, with a listed seal. Stacking extra wax as the only fix on a low, broken, or poorly supported flange is unreliable. Repair the flange height/support.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Repair flange height and support so the seal is compressed evenly",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Keep adding wax rings indefinitely without repairing the flange",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Over-tighten closet bolts until the porcelain cracks to stop the rock",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Caulk the entire base with no path to notice a future leak, without fixing the flange",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-020"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A thermostatic mixing valve hunts and the shower temperature swings. Supply pressures are stable. What should be inspected next?",
+          "explanation": "Thermostatic valves need minimum flow, correct cartridge orientation, inlet screens, and sometimes check stops. Hunting can be debris or a failed cartridge\u2014not a DWV vent issue.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Inlet screens, check stops, cartridge condition, and minimum flow",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The main building sewer vent only",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The water-heater anode color only",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The lavatory trap arm slope only",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-021"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A commercial fixture battery is being roughed with a carrier system. Why must carrier ratings and alignment be followed?",
+          "explanation": "Carriers support the fixture load and align the waste connection. An undersized or misaligned carrier leaks and can pull fixtures off the wall.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The carrier supports the fixture and must align with the waste outlet",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Carriers are only decorative escutcheons",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Alignment does not matter if extra wax is used on a wall-hung water closet",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Carriers replace the need for fixture traps",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-022"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "An electric water heater shows scorch marks at a terminal and the element does not heat. What is the safest early step?",
+          "explanation": "Treat it as an electrical failure: isolate power, verify de-energized, inspect terminations and element resistance. Do not work the electrical section wet, and do not raise the thermostat with damaged wiring.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Isolate power, verify it is de-energized, then inspect terminations and the element",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Tighten the terminal while the heater is energized",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Bypass the high-limit (ECO) permanently so it will heat",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Fill the T&P discharge with a cap so drips cannot reach the wiring",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-023"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A kitchen island sink cannot take a conventional vent through a cabinet to the ceiling. What should the designer/technician do?",
+          "explanation": "Use an allowed island-vent configuration (loop vent or other permitted method) per the applicable code. Do not omit the trap or tie the drain to a supply line. AAVs are only a solution where specifically permitted.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Use a code-allowed island-vent or other permitted method for that fixture",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Omit the trap because island sinks do not produce sewer gas",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Pump the sink into the water heater drain pan",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Run an untrapped pipe into a nearby floor drain as the only method without checking code",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-FIX-024"
+        }
+      ]
+    },
+    {
+      "slug": "troubleshooting_service",
+      "name": "Troubleshooting & Service",
+      "description": "Systematic plumbing diagnosis and service.",
+      "question_count": 8,
+      "weight": 1.0,
+      "questions": [
+        {
+          "difficulty": "easy",
+          "prompt": "A fixture has no water. Nearby fixtures work. What should be checked first?",
+          "explanation": "The local stop may be closed, the supply riser kinked, or the faucet cartridge clogged. Do not shut down and drain the whole building first.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The fixture shutoff, supply risers, and the faucet/cartridge inlet screens",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The municipal treatment plant chlorine level",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The building sewer slope across town",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The water-heater anode immediately",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-001"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A toilet runs continuously. What is a common cause to inspect first?",
+          "explanation": "A leaking flapper, misadjusted fill valve, or tank water level above the overflow are common. This is not a sewer-main problem by itself.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Flapper, fill-valve adjustment, and tank water level relative to the overflow",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The roof flashing on the vent stack as the first interior check",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The water-service corporation stop",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The building PRV strainer only",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-002"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A customer reports a sewer smell at a floor drain. What is a simple early check?",
+          "explanation": "A dry trap is a common cause. Add water (and then find why it dried). Do not pour chemical cleaner as the first diagnostic step.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Whether the trap seal is dry and needs water (and why it dried)",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Whether the water heater is in vacation mode",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Whether the shower valve is pressure-balancing",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Whether the expansion tank precharge is 100 psi",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-003"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A faucet drips from the spout when closed. What is a likely cause?",
+          "explanation": "A worn cartridge, seat, or washer lets pressure past the seal. This is not a venting problem.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "A worn cartridge, seat, or washer",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A missing roof vent only",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A long trap arm only",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A dirty air filter on an HVAC system",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-004"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Low flow at one faucet with good flow at others often points to:",
+          "explanation": "An aerator screen full of debris after service, or a failing cartridge. Cleaning the aerator is a common first check.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "A clogged aerator or debris in that faucet",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A city-wide pressure outage",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A blocked building sewer",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A failed T&P valve as the usual cause",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-005"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A water heater produces no hot water. The tank is full. For a gas heater, what should be verified early?",
+          "explanation": "Fuel, ignition/pilot or electronic ignition, and that the thermostat is calling. Do not start by replacing the T&P valve.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Fuel supply, ignition, and that the control is calling for heat",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The lavatory aerator",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The closet flange wax ring",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The dishwasher air gap as the first heater check",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-006"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A clogged lavatory that still overflows into the other bowl of a double sink suggests:",
+          "explanation": "The blockage is downstream of the common waste or the tee, not only in one pop-up. Clear the common path.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The stoppage is in the common waste path, not just one pop-up",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The water-supply PRV has failed",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The water heater dip tube has failed",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The expansion tank is waterlogged as the usual cause",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-007"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Hot water is rusty but cold water is clear on a tank water heater. What is a likely source?",
+          "explanation": "The tank or dip tube/anode area is a common source of rust in hot water only. If both hot and cold are rusty, look to the service or well instead.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Corrosion or sediment in the water heater",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The municipal cold-water main only, because hot and cold always look identical",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A dry floor-drain trap",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A missing toilet flapper",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-008"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A customer has lukewarm water only. The heater is firing or drawing current. What should be checked on a tank heater?",
+          "explanation": "A failed dip tube mixes incoming cold into the hot outlet. Elements (electric) or stacking/thermostat issues also matter. Raising temperature to an unsafe level is not the first step.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Dip tube condition, thermostat/element operation, and mixing/crossover",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The roof vent cap as the primary cause of lukewarm water",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The shower-valve trim finish",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The brand of toilet paper",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-009"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A toilet flushes weakly. The tank fills to the correct level. What should be evaluated?",
+          "explanation": "Partial clog in the trapway or drain, low supply to the fill valve (if refill is poor), or a restricted flush valve. Since the tank level is correct, look at the flush path and drain, not just the supply stop.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Trapway/drain restriction and the flush-valve opening",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The water-heater T&P setting",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The PRV as the only cause if nearby fixtures flow well",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The dishwasher high loop",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-010"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A sewage ejector pump runs but the basement fixtures still back up. What should be checked?",
+          "explanation": "A failed check valve can let discharge fall back; a blocked discharge or vent can also prevent pumping out. Confirm check valve, discharge path, and venting before replacing the water heater.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Check valve, discharge piping, and the pump basin vent",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The kitchen faucet aerator only",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The ice-maker saddle valve",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The shower scald-protection cartridge as the first sewer-pump check",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-011"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A water-logged expansion tank can cause:",
+          "explanation": "If the tank is full of water (lost air charge), it cannot absorb expansion, so pressure rises and the T&P may drip on each heat cycle.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Rising pressure on each heat cycle and T&P dribbling",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A dry trap at a distant floor drain as the usual result",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Increased sewer capacity",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Lower water-heater recovery by doubling the tank volume with air",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-012"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A customer reports banging pipes when the washing machine fills. What is a logical service direction?",
+          "explanation": "Quick-closing valves cause water hammer. Check arrestors, loose straps, and high pressure. Do not start by replacing the water heater anode.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Water hammer arrestors, pipe strapping, and supply pressure",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The closet-flange wax ring",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The AAV listing sticker",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The color of the P-trap",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-013"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Both bowls of a bathroom sink drain slowly, and a toilet on the same wall gurgles. What is the next place to look after the local traps?",
+          "explanation": "A common branch or vent problem can affect several fixtures. Snake the branch and evaluate venting rather than only plunging one bowl repeatedly.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The common branch drain and venting for that bathroom group",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The water meter strainer only",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The water-heater element only",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The outdoor hose-bibb vacuum breaker only",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-014"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A gas water heater has a yellow, lifting flame and soot. What should the technician do?",
+          "explanation": "This can indicate incomplete combustion, lack of air, or venting problems and can produce CO. Shut down and correct combustion air and venting; do not keep running it.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Take the heater out of service until combustion air and venting are corrected",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Close the combustion-air openings to yellow the flame on purpose",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Ignore soot because yellow flames are more efficient",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Cap the T&P valve to raise efficiency",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-015"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A customer has no cold water in the building but the water heater still has water. What does that suggest?",
+          "explanation": "The cold service is interrupted, but the heater tank still holds water that may feed some hot-side fixtures. Look at the service, meter, PRV, or a closed main valve\u2014not the heater first.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The incoming cold-water service is interrupted upstream of the heater",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The heater dip tube has failed as the only explanation",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The building sewer is blocked as the only explanation",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The toilet flapper is leaking as the only explanation",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-016"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A pop-up lavatory drain leaks at the pivot rod. What is a typical repair?",
+          "explanation": "The pivot-ball seal/nut is a common leak. Re-gasket or replace the pop-up assembly. This is not a stack vent problem.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Service the pivot-ball seal or replace the pop-up assembly",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Replace the main building PRV as the first step",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Add a second P-trap in series",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Increase water-heater temperature",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-017"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "After replacing a water heater, the hot water smells like rotten eggs. What is a recognized contributing factor?",
+          "explanation": "Sulfate-reducing bacteria can react with a sacrificial anode and produce hydrogen sulfide odor. Treatment may include anode type change and disinfection\u2014not ignoring combustion safety. Confirm it is not a sewer-gas smell from DWV.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Reaction at the sacrificial anode in the presence of sulfate-reducing bacteria",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A missing wax ring as the usual cause of hot-water odor",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A clogged aerator as the usual cause of sulfur odor in the tank",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A high PRV setting as the usual cause of odor",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-018"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A customer complains of scalding at a lavatory after a water-heater replacement. What should be verified?",
+          "explanation": "Confirm tank temperature, mixing valve operation, and that hot/cold are not reversed at the faucet. Do not leave storage temperature in an unsafe delivered range at the fixture.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Stored water temperature, mixing valve, and hot/cold orientation at the faucet",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The sewer cleanout plug tightness only",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The dishwasher high loop only",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The trap primer line only",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-019"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A building has simultaneous low hot-water flow and rumbling in the water heater. Cold-water flow is normal. What is a coherent explanation to investigate?",
+          "explanation": "Rumbling often means sediment on the tank bottom. Combined with poor hot flow, dip tube, tank outlet, or a partially closed hot-side valve/mixing valve could also be involved. Flush/inspect the tank and the hot outlet path\u2014do not just raise the thermostat.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Sediment in the tank and restrictions on the hot outlet/mixing path",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A blocked building sewer as the first explanation of rumbling",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A dry floor drain as the first explanation of rumbling",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A missing vent through the roof as the first explanation of rumbling",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-020"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "Several fixtures on one wet wall drain slowly after a remodel. New 2-inch pipe was reduced to 1-1/4 inch to sneak past a stud. What should the technician conclude?",
+          "explanation": "An illegal or undersized reduction will keep clogging. Restore proper size and fittings; repeated snaking is not a repair. Do not enlarge the water-supply PRV to fix a drain.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The undersized section must be corrected; snaking will not repair the layout",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Keep snaking weekly as the permanent design",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Increase street water pressure to push waste through",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Remove fixture traps to compensate for the small pipe",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-021"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A sewage pump cycles rapidly. The basin fills quickly after each pump-down. What are likely causes?",
+          "explanation": "A failed check valve, a leaking discharge, or a failed-open float can short-cycle. Confirm check-valve direction/condition and float operation before replacing the whole building sewer.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "A failed check valve letting water return, or a defective float/control",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A clogged lavatory aerator",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A water-logged expansion tank",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A reversed shower hot/cold cartridge as the usual cause",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-022"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "After a winter freeze, a hose bibb split and a section of interior copper is ballooned. What is the correct repair philosophy?",
+          "explanation": "Freeze damage can appear where the ice expanded, but weakened pipe may exist nearby. Replace damaged sections, open stops that were frozen, and add freeze protection; do not just clamp a split and leave the rest uninspected.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Replace freeze-damaged pipe and fittings and inspect adjacent sections; add freeze protection",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Close the split with electrical tape as a permanent repair",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Raise water pressure to round the ballooned pipe back into shape",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Solder a cap over the T&P valve in case it froze",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-023"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A customer has repeating drain backups at a kitchen sink after grease-heavy use. The line snakes easily but clogs again. What is the most complete service approach?",
+          "explanation": "Grease coats pipe walls and re-clogs. Mechanical cleaning that scrapes the wall, plus use changes and possible treatment, beats a quick water jet that only pokes a hole. Do not pour leftover fryer oil into the cleanout as treatment.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Remove the grease film from the pipe wall and address the usage that deposits it",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Pour additional grease to lubricate the pipe",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Remove the trap permanently so grease cannot collect",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Connect the sink to the water-heater drain pan",
+              "correct": false
+            }
+          ],
+          "external_key": "PLMB-DIAG-024"
+        }
+      ]
+    }
+  ]
+}

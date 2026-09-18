@@ -917,6 +917,9 @@ export const profilesAPI = {
   
   getTechnicianById: (id) =>
     apiRequest(`/technicians/${id}`),
+
+  getTechnicianAssessmentResults: (id) =>
+    apiRequest(`/technicians/${id}/assessment_results`),
   mergeTechnicianProfile: (sourceId, targetTechnicianProfileId, mergeDirection = 'into_target') =>
     apiRequest(`/technicians/${sourceId}/merge`, {
       method: 'POST',
@@ -1089,6 +1092,109 @@ export const adminTrustSafetyAPI = {
     apiRequest(`/admin/trust_safety/documents/${id}/review`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
+    }),
+};
+
+// Technician skills assessments.
+//
+// Scoring is entirely server-side. No technician endpoint returns which answer
+// is correct while an attempt is open, so the browser cannot score or reveal
+// answers early. The per-question review is opt-in and only served after submit.
+export const assessmentsAPI = {
+  catalog: () => apiRequest('/assessments'),
+  get: (slugOrId) => apiRequest(`/assessments/${encodeURIComponent(slugOrId)}`),
+  start: (slugOrId) =>
+    apiRequest(`/assessments/${encodeURIComponent(slugOrId)}/attempts`, { method: 'POST' }),
+  getAttempt: (attemptId, { includeReview = false } = {}) =>
+    apiRequest(`/assessment_attempts/${attemptId}${includeReview ? '?include=review' : ''}`),
+  saveAnswers: (attemptId, answers) =>
+    apiRequest(`/assessment_attempts/${attemptId}/answers`, {
+      method: 'PATCH',
+      body: JSON.stringify({ answers }),
+    }),
+  submit: (attemptId, answers = []) =>
+    apiRequest(`/assessment_attempts/${attemptId}/submit`, {
+      method: 'POST',
+      body: JSON.stringify(answers.length ? { answers } : {}),
+    }),
+  history: (assessmentSlug) => {
+    const query = assessmentSlug ? `?assessment_slug=${encodeURIComponent(assessmentSlug)}` : '';
+    return apiRequest(`/assessment_attempts${query}`);
+  },
+};
+
+// Admin authoring. The only surface in the app that can see or set the answer key.
+export const adminAssessmentsAPI = {
+  list: () => apiRequest('/admin/assessments'),
+  get: (id) => apiRequest(`/admin/assessments/${id}`),
+  create: (payload) =>
+    apiRequest('/admin/assessments', { method: 'POST', body: JSON.stringify(payload) }),
+  update: (id, payload) =>
+    apiRequest(`/admin/assessments/${id}`, { method: 'PATCH', body: JSON.stringify(payload) }),
+  destroy: (id) => apiRequest(`/admin/assessments/${id}`, { method: 'DELETE' }),
+
+  listVersions: (assessmentId) => apiRequest(`/admin/assessments/${assessmentId}/versions`),
+  createVersion: (assessmentId, payload = {}) =>
+    apiRequest(`/admin/assessments/${assessmentId}/versions`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  getVersion: (versionId) => apiRequest(`/admin/assessment_versions/${versionId}`),
+  updateVersion: (versionId, payload) =>
+    apiRequest(`/admin/assessment_versions/${versionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  destroyVersion: (versionId) =>
+    apiRequest(`/admin/assessment_versions/${versionId}`, { method: 'DELETE' }),
+  publishVersion: (versionId) =>
+    apiRequest(`/admin/assessment_versions/${versionId}/publish`, { method: 'POST' }),
+  retireVersion: (versionId) =>
+    apiRequest(`/admin/assessment_versions/${versionId}/retire`, { method: 'POST' }),
+  cloneVersion: (versionId) =>
+    apiRequest(`/admin/assessment_versions/${versionId}/clone`, { method: 'POST' }),
+
+  listCategories: (versionId) =>
+    apiRequest(`/admin/assessment_versions/${versionId}/categories`),
+  createCategory: (versionId, payload) =>
+    apiRequest(`/admin/assessment_versions/${versionId}/categories`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateCategory: (categoryId, payload) =>
+    apiRequest(`/admin/assessment_categories/${categoryId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  destroyCategory: (categoryId) =>
+    apiRequest(`/admin/assessment_categories/${categoryId}`, { method: 'DELETE' }),
+
+  listQuestions: (versionId, params = {}) => {
+    const query = new URLSearchParams(
+      Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && String(v) !== ''))
+    );
+    return apiRequest(
+      `/admin/assessment_versions/${versionId}/questions${query.toString() ? `?${query}` : ''}`
+    );
+  },
+  createQuestion: (versionId, payload) =>
+    apiRequest(`/admin/assessment_versions/${versionId}/questions`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateQuestion: (questionId, payload) =>
+    apiRequest(`/admin/assessment_questions/${questionId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  destroyQuestion: (questionId) =>
+    apiRequest(`/admin/assessment_questions/${questionId}`, { method: 'DELETE' }),
+
+  importSchema: () => apiRequest('/admin/assessment_imports/schema'),
+  import: (document, { dryRun = false } = {}) =>
+    apiRequest('/admin/assessment_imports', {
+      method: 'POST',
+      body: JSON.stringify({ document, dry_run: dryRun }),
     }),
 };
 

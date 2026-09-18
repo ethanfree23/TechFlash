@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { jobsAPI, ratingsAPI, feedbackAPI, profilesAPI, techPresenceAPI, conversationsAPI } from '../api/api';
+import { jobsAPI, ratingsAPI, feedbackAPI, profilesAPI, techPresenceAPI, conversationsAPI, assessmentsAPI } from '../api/api';
 import AlertModal from '../components/AlertModal';
 import AppHeader from '../components/AppHeader';
 import AppFooter from '../components/layout/AppFooter';
@@ -1192,6 +1192,7 @@ const TechnicianDashboardContent = ({
   const [nearbyPreviewLoading, setNearbyPreviewLoading] = useState(false);
   const [nearbyPreviewError, setNearbyPreviewError] = useState(null);
   const [reviewedJobIds, setReviewedJobIds] = useState(new Set());
+  const [assessmentCatalog, setAssessmentCatalog] = useState(null);
   /** Incremented when the user explicitly focuses a job so the map pans/zooms (fitBounds alone is often invisible). */
   const [mapPanNonce, setMapPanNonce] = useState(0);
   const searchRadiusMiles = 100;
@@ -1249,6 +1250,9 @@ const TechnicianDashboardContent = ({
       ratingsAPI.getReviewedJobIds()
         .then((res) => setReviewedJobIds(new Set(res.job_ids || [])))
         .catch(() => setReviewedJobIds(new Set()));
+      assessmentsAPI.catalog()
+        .then(setAssessmentCatalog)
+        .catch(() => setAssessmentCatalog(null));
     }
   }, [user?.role]);
 
@@ -1290,6 +1294,55 @@ const TechnicianDashboardContent = ({
             {placementHasZip ? 'Check ZIP in Settings' : 'Add ZIP in Settings'}
           </Link>
         </div>
+      )}
+
+      {assessmentCatalog?.assessments?.length > 0 && (
+        <section className="mb-6 rounded-2xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-gray-900">Skills Assessments</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Optional knowledge assessments — not licenses or certifications. Skipping them never limits job access.
+              </p>
+            </div>
+            <Link
+              to="/assessments"
+              className="inline-flex items-center rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700"
+            >
+              View assessments
+            </Link>
+          </div>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2">
+            {assessmentCatalog.assessments.slice(0, 2).map((assessment) => {
+              const inProgress = assessment.in_progress_attempt;
+              return (
+                <Link
+                  key={assessment.slug}
+                  to={inProgress ? `/assessments/attempts/${inProgress.id}` : '/assessments'}
+                  className="rounded-lg border border-gray-200 p-3 hover:border-gray-300"
+                >
+                  <p className="font-medium text-gray-900">{assessment.title}</p>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {`${assessment.question_count} questions · ${
+                      assessment.estimated_minutes
+                        ? assessment.time_limit_minutes
+                          ? `${assessment.estimated_minutes} min limit`
+                          : `about ${assessment.estimated_minutes} min`
+                        : 'no time limit'
+                    }`}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-orange-600">
+                    {inProgress
+                      ? `Resume — ${inProgress.answered_questions} of ${inProgress.total_questions} answered`
+                      : assessment.result
+                      ? `Your score: ${assessment.result.score}`
+                      : 'Take Assessment'}
+                  </p>
+                </Link>
+              );
+            })}
+          </div>
+        </section>
       )}
 
       <section className="mb-8 rounded-2xl border border-gray-200 bg-white shadow-sm overflow-hidden">

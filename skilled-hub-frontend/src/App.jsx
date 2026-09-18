@@ -21,6 +21,12 @@ import AdminUsersPage from './pages/AdminUsersPage';
 import AdminUserDetailPage from './pages/AdminUserDetailPage';
 import AdminReviewsPage from './pages/AdminReviewsPage';
 import AdminTrustSafetyPage from './pages/AdminTrustSafetyPage';
+import SkillsAssessmentsPage from './pages/SkillsAssessmentsPage';
+import AssessmentAttemptPage from './pages/AssessmentAttemptPage';
+import AssessmentResultPage from './pages/AssessmentResultPage';
+import AssessmentHistoryPage from './pages/AssessmentHistoryPage';
+import AdminAssessmentsPage from './pages/AdminAssessmentsPage';
+import AdminAssessmentDetailPage from './pages/AdminAssessmentDetailPage';
 import LegalPage from './pages/LegalPage';
 import TermsOfServicePage from './pages/TermsOfServicePage';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage';
@@ -358,6 +364,68 @@ function App() {
               <ProtectedRoute isAuthenticated={isAuthenticated}>
                 {user?.role === 'admin' ? (
                   <AdminTrustSafetyPage user={user} onLogout={handleLogout} />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )}
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assessments"
+            element={
+              <ProtectedRoute isAuthenticated={isAuthenticated}>
+                {user?.role === 'technician' ? (
+                  <SkillsAssessmentsPage user={user} onLogout={handleLogout} />
+                ) : user?.role === 'admin' ? (
+                  <Navigate to="/admin/assessments" replace />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )}
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assessments/attempts/:attemptId"
+            element={
+              <ProtectedRoute isAuthenticated={isAuthenticated && user?.role === 'technician'}>
+                <AssessmentAttemptPage user={user} onLogout={handleLogout} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assessments/results/:attemptId"
+            element={
+              <ProtectedRoute isAuthenticated={isAuthenticated && user?.role === 'technician'}>
+                <AssessmentResultPage user={user} onLogout={handleLogout} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/assessments/:assessmentSlug/attempts"
+            element={
+              <ProtectedRoute isAuthenticated={isAuthenticated && user?.role === 'technician'}>
+                <AssessmentHistoryPage user={user} onLogout={handleLogout} />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/assessments/:id"
+            element={
+              <ProtectedRoute isAuthenticated={isAuthenticated}>
+                {user?.role === 'admin' ? (
+                  <AdminAssessmentDetailPage user={user} onLogout={handleLogout} />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )}
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/assessments"
+            element={
+              <ProtectedRoute isAuthenticated={isAuthenticated}>
+                {user?.role === 'admin' ? (
+                  <AdminAssessmentsPage user={user} onLogout={handleLogout} />
                 ) : (
                   <Navigate to="/dashboard" replace />
                 )}

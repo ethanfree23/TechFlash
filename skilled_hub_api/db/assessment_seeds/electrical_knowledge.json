@@ -1,0 +1,3585 @@
+{
+  "assessment": {
+    "slug": "electrical_knowledge",
+    "title": "Electrical Knowledge Assessment",
+    "description": "A knowledge assessment of electrical safety, theory, circuits, installation, and diagnostics. Scores are not a license or certification.",
+    "trade_type": "Electrician",
+    "company_disclaimer": null,
+    "active": true,
+    "position": 3,
+    "public_result_rule": "best_valid"
+  },
+  "version": {
+    "version_number": 1,
+    "publish": false,
+    "instructions": "Answer each question to the best of your knowledge. You can go back and change answers before submitting. This is a knowledge assessment, not a license or certification.",
+    "time_limit_minutes": 30,
+    "passing_score": null,
+    "max_attempts": null,
+    "retake_wait_hours": 336,
+    "randomize_questions": true,
+    "randomize_answer_choices": true,
+    "allow_resume": true,
+    "allow_back_navigation": true,
+    "scoring_strategy": "normalized_percent",
+    "score_bands": [
+      {
+        "slug": "foundational",
+        "label": "Foundational",
+        "min_score": 0,
+        "max_score": 39
+      },
+      {
+        "slug": "developing",
+        "label": "Developing",
+        "min_score": 40,
+        "max_score": 59
+      },
+      {
+        "slug": "apprentice_knowledge",
+        "label": "Apprentice Knowledge",
+        "min_score": 60,
+        "max_score": 74
+      },
+      {
+        "slug": "advanced_apprentice_knowledge",
+        "label": "Advanced Apprentice Knowledge",
+        "min_score": 75,
+        "max_score": 89
+      },
+      {
+        "slug": "strong_trade_knowledge",
+        "label": "Strong Trade Knowledge",
+        "min_score": 90,
+        "max_score": 100
+      }
+    ]
+  },
+  "categories": [
+    {
+      "slug": "safety_tools_work_practices",
+      "name": "Safety, Tools & Work Practices",
+      "description": "Electrical safety, tools, and professional work practices.",
+      "question_count": 8,
+      "weight": 1.0,
+      "questions": [
+        {
+          "difficulty": "easy",
+          "prompt": "Before touching conductors in a panel, what is the safest sequence?",
+          "explanation": "Identify the circuit, de-energize, lock out/tag out, and verify absence of voltage with a meter that has been tested on a known live source.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "De-energize, lock out/tag out, and verify with a meter",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Grab the conductor quickly to see if it shocks",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Rely only on a breaker handle position without testing",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Remove the equipment grounding conductor first so the circuit cannot return",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-001"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Why is eye protection required when cutting, drilling, or pulling wire in occupied walls?",
+          "explanation": "Metal shavings, masonry dust, and snapping conductors can injure eyes. Safety glasses are basic PPE.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Debris and snapping conductors can injure the eyes",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Eye protection is only for welding",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Electrical work cannot produce flying particles",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A paper dust mask is complete eye protection",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-002"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A GFCI device is intended primarily to protect against:",
+          "explanation": "A GFCI opens when it detects imbalance between the ungrounded and grounded conductors, reducing shock hazard. It is not an overcurrent device for conductor ampacity.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Shock from ground-fault current through a person or leakage path",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Overloaded conductors the same way a breaker does",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "High utility voltage sags",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Low transformer impedance",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-003"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Why should jewelry and conductive watches be removed around energized equipment?",
+          "explanation": "Metal jewelry can bridge live parts and cause burns. De-energize when possible; do not wear conductive jewelry around live work.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Metal jewelry can short live parts and cause burns",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Jewelry improves grip on insulated tools",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Conductive jewelry is required PPE",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Watches protect against arc flash",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-004"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "What is the purpose of an insulated hand tool rated for electrical work?",
+          "explanation": "The insulation is a barrier if contact with an energized part occurs. It is not a substitute for de-energizing, and damaged insulation must not be used.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To provide a dielectric barrier if a live part is contacted",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To magnetize fasteners",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To increase torque beyond the tool\u2019s mechanical rating",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To replace lockout/tagout",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-005"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A ladder used near overhead electrical lines should be:",
+          "explanation": "Use nonconductive ladders and maintain safe approach distances. Metal ladders near overhead lines are a shock hazard.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Nonconductive and kept a safe distance from overhead lines",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Aluminum, because metal is safer near power lines",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Placed so the rails rest on the conductors for stability",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Wet, so it cannot conduct",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-006"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Why must a circuit be identified before it is opened for repair?",
+          "explanation": "The wrong breaker can leave the circuit live. Trace, identify, de-energize, and verify. Guessing among similar breakers is unsafe.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "So the correct circuit is de-energized and verified dead",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Identification is only for billing the utility",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Any breaker in the panel de-energizes every circuit",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Neutral bars cannot remain energized if one breaker is off",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-007"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "What is lockout/tagout intended to prevent?",
+          "explanation": "LOTO prevents unexpected re-energization while someone is working. A note on a phone is not a lockout.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Unexpected energization or startup while work is in progress",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Utility brownouts",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "GFCI nuisance trips only",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Voltage drop in long feeders",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-008"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "An arc-flash hazard exists when:",
+          "explanation": "A fault can release intense heat and light. De-energize when possible and use appropriate PPE and procedures when live work is justified. Cotton street clothes are not arc-rated PPE.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "A fault can release a high-energy electrical explosion of heat and light",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Only when working on fiber-optic cable",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Only on extra-low-voltage doorbells",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Never on 208/240-volt equipment",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-009"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why should a meter be checked on a known live source before and after proving a circuit dead?",
+          "explanation": "A failed meter can read zero on a live circuit. Live-dead-live verification confirms the instrument works.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To confirm the meter is working so a zero reading is trustworthy",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Because meters cannot be trusted on known live sources",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To drain the meter\u2019s internal battery faster",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "To magnetize the probes",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-010"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A confined space with electrical equipment may also have atmospheric hazards. What should be considered before extended work?",
+          "explanation": "Vaults and pits can have oxygen deficiency or toxic gases in addition to shock hazards. Assess the atmosphere and electrical isolation together.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Atmospheric hazards as well as electrical hazards",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Only noise, never atmosphere",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "That vaults are always safe if a flashlight works",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "That a paper mask is complete confined-space protection",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-011"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Damaged insulation on a flexible cord should be:",
+          "explanation": "Damaged cords are a shock and fire hazard. Take them out of service. Tape is not a permanent repair for portable cord on a construction site.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Taken out of service and replaced or properly repaired",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Wrapped with a single layer of masking tape as a permanent repair",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Used only in wet locations so the water cools the copper",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Overfused so the cord can carry more current",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-012"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "When drilling into a wall, why is looking for existing cables, pipes, and a safe boring location important?",
+          "explanation": "Drilling into concealed conductors can cause shock and arc. Use detectors, open a visual inspection where needed, and follow boring/notching rules.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Concealed conductors can be punctured, creating shock and arc hazards",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Cables are never run in walls",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Drill bits cannot cut copper",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A metal fish tape in a live conduit is the preferred locator",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-013"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why is standing on a wet floor while working in a panel a concern even if the panel cover is on?",
+          "explanation": "Moisture lowers contact resistance to ground and increases shock severity. Dry, stable footing and de-energized work reduce risk.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Water lowers resistance to ground and increases shock risk",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Water is an insulator at panel voltages",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Wet floors reduce arc-flash energy",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "GFCI on a lighting circuit makes wet-floor panel work risk-free",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-014"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Temporary jobsite lighting and cords should be arranged so that:",
+          "explanation": "Cords should be protected from damage, not create trip hazards, and be suitable for the location. Daisy-chaining damaged strips is a common fire/trip hazard.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "They are protected from damage and do not create trip or shock hazards",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "They run through doorways un-protected so they are visible",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "They are covered with carpet in a wet walkway",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "They are fused above the cord\u2019s ampacity so they do not trip",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-015"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A live-front panelboard with the cover off should be treated as:",
+          "explanation": "Exposed energized parts require work practices and PPE appropriate to the hazard, and work should be de-energized when possible. Casual clothing is not adequate.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "An exposed-energized-parts hazard until it is de-energized and verified",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Safe because the breakers have handles",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Safe if the worker is wearing a cotton hoodie",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Safe for jewelry because the bus is recessed",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-016"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why must unused openings in boxes and enclosures be closed?",
+          "explanation": "Openings expose live parts, allow debris entry, and can violate listing. Use listed closures, not cardboard.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To prevent exposure of live parts and keep the enclosure\u2019s protection intact",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To increase ventilation around breakers as a design goal",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Because openings improve GFCI function",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "So rodents can inspect splices",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-017"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A helper is about to reset a breaker that tripped while someone is still working downstream. What should happen?",
+          "explanation": "Never re-energize a circuit until it is confirmed clear and people are clear. Investigate the trip. Communication is part of LOTO.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Do not re-energize until the circuit is clear and the cause is understood",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Reset immediately so work can continue under load",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Tape the breaker on so it cannot trip again",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Install a larger breaker without investigation",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-018"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Voltage-rated gloves must be:",
+          "explanation": "Inspected, used within rating and date requirements, and paired with leather protectors as required. Damaged gloves must be removed from service.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Inspected and used within their rating; damaged gloves taken out of service",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Used after cutting off the leather protectors for better feel as a standard practice",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Held together with tape after a puncture",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Used as the only control while standing in water on an unidentified circuit",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-019"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A 480-volt motor disconnect is tagged out, but a separate control-power transformer still energizes a 120-volt circuit in the same enclosure. What is the lesson?",
+          "explanation": "Equipment can have multiple energy sources. Isolating the motor feeder does not isolate control power, heaters, or foreign voltage. Identify all sources and verify each.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "All energy sources in the enclosure must be identified, isolated, and verified",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Motor disconnects always isolate every voltage in the cabinet",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "120-volt control circuits cannot shock",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Tags without energy isolation are sufficient if they say DANGER",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-020"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "An electrician must work near an overhead line that cannot be de-energized. What is the appropriate approach?",
+          "explanation": "Maintain required approach distances, use spotters, nonconductive equipment, and utility coordination. Do not guess distances from the ground with a metal tape.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Maintain required clearances, use nonconductive equipment, and coordinate with the utility",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Touch the line with a metal fish tape to see if it is live",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Assume insulated service drop covering is touch-safe for a ladder",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Raise a metal scaffold until it is just below the conductors",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-021"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A fault occurs and a worker is frozen to a live part. What is the correct first priority for a rescuer?",
+          "explanation": "Do not grab the person with bare hands. De-energize or use an insulating rescue method. Then call emergency services. This is about not becoming a second victim.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "De-energize or separate the person with insulating means; do not touch them with bare hands",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Pull the person free with bare hands as fast as possible",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Pour water on both people to cool the burn while they remain in contact",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Reset the breaker so the circuit can help let go",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-022"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "Infrared scanning of a loaded panel is planned. Why is removing the dead-front without a work plan a problem?",
+          "explanation": "Removing covers exposes live parts. Scanning should follow electrical safety procedures, appropriate PPE, and closed-cover IR windows when used. Do not casually open a loaded 480-volt board in street clothes.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Removing covers exposes live parts and requires an electrical-safety work plan",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "IR scans are harmless because cameras are plastic",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Loaded panels cannot arc if the camera is battery powered",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Street clothes are arc-rated if they are dark-colored",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-023"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A generator is backfeeding a building during an outage through a dryer receptacle. Why is this unsafe?",
+          "explanation": "Backfeeding can energize service conductors and kill a lineworker, and it can overpower cords and transfer equipment. Use a listed transfer switch or interlock that prevents utility and generator interconnection.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "It can energize utility lines and overloads unlisted cords/connections",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Portable generators cannot produce lethal voltage",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Backfeeding through a receptacle is the listed transfer method",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Utility transformers block all backfeed by design in every case",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-SAF-024"
+        }
+      ]
+    },
+    {
+      "slug": "electrical_theory",
+      "name": "Electrical Theory",
+      "description": "Voltage, current, resistance, power, and magnetic fundamentals.",
+      "question_count": 8,
+      "weight": 1.0,
+      "questions": [
+        {
+          "difficulty": "easy",
+          "prompt": "Ohm\u2019s law relates voltage, current, and resistance as:",
+          "explanation": "E = I \u00d7 R (or V = I R). Power is a different quantity (P = I \u00d7 E).",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Voltage equals current times resistance",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Voltage equals current divided by resistance always",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Current equals voltage times resistance",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Resistance equals voltage times current",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-001"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Current in a circuit is:",
+          "explanation": "Current is the flow of electric charge, measured in amperes.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The flow of electric charge",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Opposition to flow, measured in ohms",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Electrical pressure, measured in volts",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Energy stored in a capacitor only",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-002"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Resistance is measured in:",
+          "explanation": "Resistance is measured in ohms. Conductance is measured in siemens; inductance in henries; capacitance in farads.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Ohms",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Amperes",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Volts",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Watts",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-003"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "In a series circuit, current is:",
+          "explanation": "Series current is the same through each component. Voltage divides across resistances.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The same through each component",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Different through each resistor and lowest at the source",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Always zero after the first lamp",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Inversely proportional to voltage only, never resistance",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-004"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "In a parallel circuit, voltage across each branch is:",
+          "explanation": "Parallel branches share the same voltage; currents add.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The same across each branch",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Split so each branch gets a fraction of the source voltage always",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Zero on all but one branch",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Equal to the sum of the branch voltages",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-005"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Power in a DC circuit can be calculated as:",
+          "explanation": "P = I \u00d7 E, also P = I\u00b2R and P = E\u00b2/R for resistive circuits.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Volts times amperes",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Volts divided by amperes only",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Ohms times volts only",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Amperes divided by ohms only",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-006"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A transformer\u2019s primary function is to:",
+          "explanation": "A transformer transfers AC power between circuits, typically changing voltage by the turns ratio. It does not create DC without additional components.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Change AC voltage (and current) between circuits by magnetic coupling",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Convert AC to chemical energy",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Store energy like a battery",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Increase frequency from 60 Hz to 400 Hz automatically",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-007"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A 120-volt heater draws 10 amperes. What is the power?",
+          "explanation": "P = 120 \u00d7 10 = 1,200 watts.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "1,200 watts",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "12 watts",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "1.2 watts",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "120 kilowatts",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-008"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Two 10-ohm resistors in parallel have an equivalent resistance of:",
+          "explanation": "Equal parallel resistors: R/n = 10/2 = 5 ohms.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "5 ohms",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "20 ohms",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "10 ohms",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "100 ohms",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-009"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A conductor\u2019s resistance increases when:",
+          "explanation": "Resistance rises with length, with higher temperature (for copper), and with smaller cross-section. It is not reduced by using a longer wire.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "It is longer, smaller in cross-section, or hotter (for copper)",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "It is shorter and thicker",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "It is cooled and shortened",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Its circular mil area is increased while length stays the same",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-010"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Inductive loads such as motors cause current to:",
+          "explanation": "Inductance makes current lag voltage. Power factor is less than 1. This is why motor circuits can have higher current than a same-wattage resistive heater.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Lag the voltage",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Lead the voltage like a capacitor always does in every motor",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Remain exactly in phase regardless of inductance",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Stop at the first winding",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-011"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A capacitor stores energy in:",
+          "explanation": "A capacitor stores energy in an electric field between plates. An inductor stores energy in a magnetic field.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "An electric field",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A magnetic field only, like an inductor",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A chemical reaction like a primary battery as its main mechanism",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A rotating magnetic field in the rotor bars",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-012"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Kirchhoff\u2019s current law states that:",
+          "explanation": "The algebraic sum of currents at a node is zero: current in equals current out.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The currents entering a node equal the currents leaving it",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Voltage is the same on every series component",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Power is always conserved as heat only",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Resistance is independent of temperature for all metals",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-013"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A 3-ohm and a 6-ohm resistor are in series on 18 volts. Current is:",
+          "explanation": "Rt = 9 ohms; I = 18/9 = 2 A.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "2 amperes",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "6 amperes",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "9 amperes",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "0.5 ampere",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-014"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "RMS voltage for a sine wave is significant because:",
+          "explanation": "RMS is the effective value that produces the same heating in a resistor as a DC voltage of that value. Meters typically display RMS for AC power circuits.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "It is the effective value related to heating in a resistive load",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "It is always 0.5 times peak for a sine wave",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "It is the same as average voltage for all waveforms",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "It only applies to batteries",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-015"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A motor nameplate lists FLA. This is most nearly:",
+          "explanation": "Full-load amperes is the current at rated load, voltage, and frequency. LRA is locked-rotor (starting) current, which is much higher.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Current at rated load and voltage",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Locked-rotor current at start",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The branch-circuit breaker rating always",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The grounding-electrode conductor size",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-016"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Power factor is:",
+          "explanation": "Power factor is real power divided by apparent power (W/VA). It is 1.0 for a pure resistor and lower for inductive motors.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Real power divided by apparent power",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Voltage divided by current",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Resistance times current squared only",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The transformer turns ratio",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-017"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "In a balanced 208Y/120-volt system, the voltage from line to neutral is:",
+          "explanation": "Line-to-neutral is 120 volts; line-to-line is 208 volts.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "120 volts",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "208 volts",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "240 volts",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "480 volts",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-018"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A short circuit differs from an overload because a short circuit is:",
+          "explanation": "A short is an unintended low-resistance path and very high current. An overload is excess current within the load path, often modestly above rating.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "An unintended low-resistance path that can produce very high current",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A slight increase in load current above FLA only",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Always a high-resistance leakage through a person",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A transformer with too many secondary turns",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-019"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A 240-volt single-phase load draws 20 A at a power factor of 0.80. Approximate real power is:",
+          "explanation": "P = E \u00d7 I \u00d7 PF = 240 \u00d7 20 \u00d7 0.80 = 3,840 W.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "3,840 watts",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "4,800 watts",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "240 watts",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "16 watts",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-020"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A transformer is 480 V primary to 120 V secondary. If primary current is 5 A (ignoring losses), secondary current is about:",
+          "explanation": "Ampere-turns/power balance: 480\u00d75 \u2248 120\u00d7Is \u2192 Is \u2248 20 A. Current inverses with voltage.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "20 amperes",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "5 amperes",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "1.25 amperes",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "480 amperes",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-021"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "Skin effect at higher frequency causes AC current to:",
+          "explanation": "Current crowds toward the conductor surface, raising effective resistance. It is more relevant at higher frequencies than at 60 Hz for typical small building wire, but the principle is still tested in theory.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Crowd toward the conductor surface, raising effective resistance",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Travel only in the steel conduit, never the copper",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Stop entirely above 60 Hz",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Become DC automatically",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-022"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A three-phase motor runs with one supply phase lost (single-phasing). What is a likely result?",
+          "explanation": "The motor may try to run with excessive current in the remaining windings, overheating. It should be protected and taken off line; it will not produce full torque.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Overheating and reduced torque in the remaining windings",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Higher efficiency than on three phases",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "No current in any winding",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Automatic conversion to a generator at higher voltage",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-023"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "Why can a high-impedance voltmeter show voltage on an open, parallel-run conductor?",
+          "explanation": "Capacitive coupling can impress a phantom voltage. A low-impedance meter or a small load collapses it. Treat unknown readings carefully; verify with an appropriate method.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Capacitive coupling can create a phantom voltage that cannot supply much current",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The conductor must be solidly connected to the utility",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Phantom voltage only exists on fiber",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "High-impedance meters cannot display AC",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-THY-024"
+        }
+      ]
+    },
+    {
+      "slug": "wiring_circuits_components",
+      "name": "Wiring, Circuits & Components",
+      "description": "Branch circuits, devices, and electrical components.",
+      "question_count": 8,
+      "weight": 1.0,
+      "questions": [
+        {
+          "difficulty": "easy",
+          "prompt": "A typical branch circuit consists of:",
+          "explanation": "Ungrounded (hot) conductors, a grounded (neutral) conductor when required, an equipment grounding conductor, and an overcurrent device.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Circuit conductors, an overcurrent device, and an equipment grounding path as required",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Only a transformer with no overcurrent device",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Only a grounding electrode with no ungrounded conductor",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A water pipe used as the only circuit conductor",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-001"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A switch is generally installed in the:",
+          "explanation": "Switches interrupt the ungrounded conductor. Switching the grounded (neutral) conductor alone can leave equipment energized.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Ungrounded (hot) conductor",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Equipment grounding conductor only",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Grounding electrode conductor only",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Neutral only, leaving the hot continuous as a standard lighting practice",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-002"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "The equipment grounding conductor is intended to:",
+          "explanation": "Bond non-current-carrying metal so fault current can return and open the overcurrent device.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Provide a low-impedance path for fault current",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Carry normal load current in place of the neutral",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Increase voltage at the load",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Replace the overcurrent device",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-003"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A receptacle\u2019s grounding slot (U-shape or green screw) connects to:",
+          "explanation": "The equipment grounding conductor, which bonds the yoke and downstream metal.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The equipment grounding conductor",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The ungrounded hot only",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A satellite dish mast as the only required path",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The utility meter\u2019s potential coil",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-004"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Overcurrent devices are selected to protect:",
+          "explanation": "Conductors and equipment from overload and fault current, within their listings and the circuit design.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Conductors and equipment from excessive current",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Only the utility transformer primary",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The grounding electrode from lightning exclusively",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Fiber-optic cables from light overload",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-005"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A three-way switch loop is used to:",
+          "explanation": "Control a lighting load from two locations. It is not a series heater circuit.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Control a load from two locations",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Increase voltage from 120 to 240",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Create a separately derived system",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Bond a water pipe",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-006"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A fuse or breaker that opens frequently on a circuit may indicate:",
+          "explanation": "Overload, a fault, or a device mismatch. Replacing it with a larger rating without investigation is unsafe.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Overload, a short/ground fault, or an incorrectly sized device",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "That the circuit needs a larger unlisted fuse as the first action",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "That the grounding conductor is too large",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "That GFCI protection should be removed",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-007"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A multiwire branch circuit shares a neutral. A key safety practice is:",
+          "explanation": "The ungrounded conductors should be on different phases/legs so the neutral carries difference current, and a means to simultaneously disconnect them is required in many installations. Disconnecting the neutral under load can overvoltage loads.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Keep the ungrounded conductors on different legs and do not open the shared neutral under load",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Land both hots on the same bus stab so the neutral carries 2\u00d7 current as a design",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Use the equipment grounding conductor as the shared neutral",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Size the shared neutral as a signaling pair",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-008"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Voltage drop in a long feeder is a concern because:",
+          "explanation": "Excessive drop causes motors to run hot, lights to dim, and electronics to misbehave. Increasing conductor size or reducing length/load are typical remedies.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Loads may overheat or perform poorly at reduced voltage",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Voltage drop increases conductor ampacity",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Voltage drop is required to operate GFCIs",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Motors always need at least 20% drop to start",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-009"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A GFCI receptacle protecting downstream receptacles does so through:",
+          "explanation": "The load-side terminals feed downstream devices through the GFCI\u2019s current transformer. Line and load reversed will not protect downstream (and may not reset).",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Its load-side terminals feeding those devices",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The equipment grounding conductor only",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A wireless signal to the panel",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The water piping",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-010"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "An AFCI is intended to protect against:",
+          "explanation": "Arc-faults that can ignite nearby materials. It is complementary to, not the same as, GFCI personnel protection.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Arcing faults that can start fires",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Only utility high voltage",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Only motor inrush as a design",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Only harmonic currents in LEDs",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-011"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A contactor or relay coil is on a control circuit, while its contacts may switch:",
+          "explanation": "Coils are often lower voltage; contacts can switch line-voltage loads. Treat both as possible shock hazards.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "A separate, possibly higher-voltage load circuit",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Only the same extra-low voltage as the coil in every case",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Only fiber-optic signals",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Only DC when the coil is AC, always",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-012"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why are white conductors used as hots in switch loops required to be reidentified?",
+          "explanation": "So the next electrician does not treat an ungrounded conductor as a neutral. Reidentify with marking where required.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To show that the conductor is being used as an ungrounded conductor, not a neutral",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "To increase ampacity",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "To allow the white wire to be used as a grounding conductor",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Reidentification is only for fiber jackets",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-013"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A motor starter\u2019s overload relay is intended to protect against:",
+          "explanation": "Sustained overcurrent in the motor from mechanical overload. Short-circuit/ground-fault protection is a different function, usually fuses or a breaker.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Sustained motor overcurrent from overload",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Only lightning on the utility line",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Only the control transformer primary inrush as its sole job",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The grounding electrode resistance",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-014"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Dimming an LED lighting load with an incompatible dimmer often causes:",
+          "explanation": "Flicker, buzzing, overheating, or failure. Match the dimmer to the load type and listing.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Flicker, noise, or overheating",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "An automatic increase in conductor ampacity",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Conversion of the branch circuit to three-phase",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A listed substitute for AFCI protection",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-015"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A transformer supplying a 120/240-volt panel is a separately derived system when:",
+          "explanation": "When there is no direct electrical connection between primary and secondary (typical isolation transformer) and the secondary is grounded as required. The bonding/grounding arrangement must be made at the derived system.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The secondary is not electrically derived through a direct conductive path from the primary and is grounded/bonded as a new system",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A receptacle is added on a branch circuit",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A GFCI is installed",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A three-way switch is added",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-016"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Why should aluminum branch-circuit terminations be made with listed connectors and proper torque?",
+          "explanation": "Aluminum oxide and creep can cause high-resistance heating. Use listed connectors (often CO/ALR or Al-rated) and torque. Do not put unmarked aluminum under a copper-only device.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "To reduce high-resistance heating from oxidation and conductor creep",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Aluminum never needs torque because it is soft",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Any copper-only device is acceptable on aluminum",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Oil from a refrigeration compressor is the listed antioxidant for all aluminum splices",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-017"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A photocell or occupancy sensor that switches the hot should not switch the equipment grounding conductor because:",
+          "explanation": "The EGC must remain a continuous fault path. Switching a ground can leave equipment unbonded.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The equipment grounding path must remain continuous",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Grounding conductors are supposed to be switched for three-way control",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Photocells only work on neutrals",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "EGCs carry normal load current and must be switched like hots",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-018"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Inrush current of an incandescent or motor load can:",
+          "explanation": "Briefly exceed running current. Overcurrent devices must be able to handle inrush without nuisance trip while still protecting the conductors.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Exceed running current for a short time",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Never exceed FLA",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Only occur on fiber circuits",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Reduce conductor heating below continuous load",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-019"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A shared neutral on two ungrounded conductors landed on the same phase will:",
+          "explanation": "The neutral can carry the sum of both load currents and overheat. Multiwire circuits must be on opposite legs/phases.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Carry the sum of the two load currents and can overheat",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Carry zero current because the currents cancel on the same phase",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Operate as an equipment grounding conductor",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Increase the breaker interrupting rating",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-020"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A 120-volt load is connected line-to-line on a 240-volt single-phase service by mistake (across two hots). What happens?",
+          "explanation": "The load sees 240 volts and can be destroyed or become a fire hazard. Verify voltage before connecting.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The load is subjected to 240 volts and can be damaged",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The load still sees 120 volts because of the neutral",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The breaker will always prevent any damage in every case",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The equipment grounding conductor will drop the voltage to 120",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-021"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A control transformer secondary should be fused (or otherwise protected) because:",
+          "explanation": "A shorted coil or wiring can overheat the transformer. Protection is sized to the transformer and conductors, not to 'whatever is in the truck.'",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "A secondary short can overheat the transformer and wiring",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Fusing the secondary prevents all primary shocks",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Control transformers cannot produce hazardous voltage",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Secondary protection replaces lockout of the line side",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-022"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "Electronic loads with high harmonic content can overheat a shared neutral because:",
+          "explanation": "Triplen harmonics add in the neutral rather than canceling. Neutral current can exceed any phase current. This is why some feeders need an oversized neutral.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Triplen harmonics can add in the neutral instead of canceling",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Harmonics cancel all neutral current to zero",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Harmonics only affect fiber-optic neutrals",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A GFCI always blocks harmonics",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-023"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A motor circuit includes short-circuit protection and separate overload protection because:",
+          "explanation": "Short-circuit/ground-fault devices clear high-level faults. Overload devices (heaters, dual-element fuses, or electronic overloads) protect from sustained overload. One device may not do both jobs well.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "High-level faults and sustained overloads are different duties",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Motors never need overload protection if a breaker is present",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Overload heaters clear bolted faults faster than any breaker",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The equipment grounding conductor provides overload protection",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-CIR-024"
+        }
+      ]
+    },
+    {
+      "slug": "installation_code_fundamentals",
+      "name": "Installation & Code Fundamentals",
+      "description": "Broadly applicable installation and electrical-code principles.",
+      "question_count": 8,
+      "weight": 1.0,
+      "questions": [
+        {
+          "difficulty": "easy",
+          "prompt": "Conductors in a box must have enough free length so that:",
+          "explanation": "There must be sufficient free conductor to make up devices without strain. This is a workmanship and code principle, not a manufacturer quirk.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Splices and devices can be made up without straining the conductors",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The box can be overfilled without limit",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Insulation can be stripped back to the clamp as a goal",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Grounding conductors can be omitted if the box is plastic",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-001"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "NM cable passing through wood studs is protected by:",
+          "explanation": "Steel plates or sufficient setback from the edge so nails do not puncture the cable.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Setback from the edge or nail plates as required",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Paint only",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Duct tape",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Leaving the cable on the face of the stud",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-002"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A receptacle in a wet location generally needs:",
+          "explanation": "A weather-resistant device and an enclosure/cover suitable for the location (often extra-duty while in use, depending on the installation). Do not use an indoor device outdoors unsheltered.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "A device and cover rated for the wet location",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "An indoor duplex with no cover because rain is grounding",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A cardboard cover",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "No GFCI consideration ever in wet locations",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-003"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Equipment must be installed with working space in front so that:",
+          "explanation": "A worker can operate and service the equipment safely. Blocking a panel with storage is a common violation of that principle.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "A worker can access and operate the equipment safely",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The panel can be used as a shelf",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Doors can swing into the worker with no path out",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The working space can be used as a storage closet",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-004"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Splices must be made in:",
+          "explanation": "Listed boxes or enclosures with covers, not buried open in plaster or in a wall without access.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "An accessible box or listed enclosure",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Open wall cavities without a box",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Underground without a listed method",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Inside a fuel-gas furnace heat exchanger",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-005"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "The grounded (neutral) conductor in typical US AC wiring is identified by:",
+          "explanation": "White or gray is the standard identification for grounded conductors. Green or bare is equipment grounding.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "White or gray identification",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Green or green with yellow stripe as the preferred neutral",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Orange always",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Bare copper as the preferred neutral on NM cable",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-006"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Equipment grounding conductors are typically identified by:",
+          "explanation": "Green, green with yellow stripe, or bare.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Green, green with yellow, or bare",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "White only",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Gray only",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Red only",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-007"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Box fill must be calculated because:",
+          "explanation": "Overfilled boxes overheat, damage insulation, and make devices up unsafely. Count conductors, devices, and fittings as required.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Overfilling can damage insulation and create heat and shock hazards",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Boxes are allowed unlimited conductors if the cover goes on",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Fill only matters for fiber",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Device yokes never count",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-008"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Torque marks on a breaker lug matter because:",
+          "explanation": "Under-torque causes heating; over-torque damages the lug or conductor. Use a torque tool to the listing.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Correct torque reduces high-resistance heating and damage",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Breakers are designed to be tightened until the handle breaks",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Torque values are only for automotive work",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Aluminum and copper use any random tightness",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-009"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A continuous load is often calculated at 125% for overcurrent and conductor sizing because:",
+          "explanation": "Continuous operation produces more heat. The 125% factor (where applicable) keeps conductors and devices within temperature limits. Exact applications are in the electrical code; the principle is thermal.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Heat from long-duration current requires extra capacity",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Continuous loads produce no heat",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "125% reduces voltage to the load",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The factor replaces equipment grounding",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-010"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "SE cable used as a service-entrance method must be:",
+          "explanation": "Listed, supported, protected from physical damage, and terminated with suitable fittings. Interior routing must follow the rules for the cable type.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Listed for the use, supported, and protected from damage",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Stripped of its covering and fished like fixture wire as a standard",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Run across a sharp roof edge without protection",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Used as a flexible jumper on a motor shaft",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-011"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A grounding electrode system is intended to:",
+          "explanation": "Connect the electrical system to earth for lightning, surge, and earth-fault reference. It is not a substitute for the equipment grounding conductor that clears faults.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Connect the system to earth; it does not replace the equipment grounding conductor",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Carry all normal ungrounded load current",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Replace overcurrent devices",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Allow omission of EGC to receptacles",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-012"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "When two grounding electrode types are present (for example rod and metal water pipe), they are typically:",
+          "explanation": "Bonded together to form one grounding electrode system so they are not at different potentials.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Bonded together into one grounding electrode system",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Left isolated so they cannot interact",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Connected only to isolated equipment grounds, never the service",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Used as spare neutrals",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-013"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Kitchen small-appliance branch circuits (where used) are intended to:",
+          "explanation": "Serve receptacle loads in kitchen/dining areas so lighting or other circuits are not overloaded. Exact required numbers are code-edition specific; the principle is dedicated capacity for those loads.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Provide capacity for kitchen/dining receptacle loads rather than sharing randomly with lighting only",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Replace the service grounding electrode",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Feed only hardwired ranges as their sole use in every dwelling",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Be wired with speaker cable",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-014"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A bathroom receptacle near a basin is commonly GFCI-protected because:",
+          "explanation": "Water and grounded surfaces increase shock risk. GFCI is a personnel-protection practice in wet areas. Specific locations can vary by code edition; the hazard principle is stable.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Water and grounded surfaces increase shock hazard",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "GFCI increases voltage to hair dryers",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Bathroom receptacles cannot be used for portable loads",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "GFCI replaces the equipment grounding conductor in all bathrooms",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-015"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Conduit fill is limited so that:",
+          "explanation": "Conductors can dissipate heat and be pulled without damaging insulation. Exceeding fill also makes future pulls destructive.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Heat can dissipate and conductors can be installed without damage",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The conduit can be used as a water pipe",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Fill limits only apply to fiber",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "More conductors always cool each other",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-016"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A disconnecting means for a motor or appliance should be located so that:",
+          "explanation": "A worker can shut off the equipment. Within sight is a common requirement for many motors/appliances; the principle is ready isolation.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The equipment can be isolated for service, often within sight",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "It is hidden in a locked remote closet with no identification",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "It only opens the equipment grounding conductor",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "It is the utility meter\u2019s potential tap",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-017"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Cable clamps and connectors must be listed for the cable because:",
+          "explanation": "An unlisted clamp can cut insulation or fail to provide strain relief and grounding continuity on metal boxes.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "They provide strain relief and must not damage the cable",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Any hose clamp is listed for NM cable",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Clamps are optional if the sheath is stripped long",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Plastic boxes require metal AC-cable connectors as the only method",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-018"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Identifying a spare or unnamed circuit in a panel is important because:",
+          "explanation": "Future work and emergencies require accurate directories. 'Lighting' on every breaker is not identification.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Accurate circuit directories support safe isolation later",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Directories are only for the utility\u2019s billing software",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Unidentified breakers are safer because nobody will turn them off",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Markers are prohibited on residential panels",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-019"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A feeder is installed in a hot attic. Why might ampacity need adjustment?",
+          "explanation": "Elevated ambient temperature and bundling reduce allowable current. Use correction/adjustment factors from the electrical code rather than the 30\u00b0C column blindly.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "High ambient temperature and grouping can reduce allowable current",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Attics always increase ampacity because heat thins copper",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Ampacity is independent of temperature",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Only underground feeders ever need adjustment",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-020"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A metal water pipe is used as a grounding electrode. A dielectric union is later installed for plumbing reasons. What electrical issue can appear?",
+          "explanation": "The electrode or bonding path can be opened. Bonding jumpers around insulating fittings may be required so the electrical system remains connected to the electrode and metal piping is not left unbonded.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The grounding/bonding path may be interrupted and may need a jumper",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Dielectric unions always improve fault clearing",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Plumbing changes cannot affect electrical safety",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The union replaces the need for an equipment grounding conductor",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-021"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A service with a high available fault current requires overcurrent devices with adequate interrupting rating because:",
+          "explanation": "If the available fault exceeds the device\u2019s AIC, the device can explode or fail to clear. Match interrupting ratings (or series ratings) to the available current.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The device must be able to safely clear the available fault current",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Interrupting rating only needs to exceed the load FLA",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Any 10 kA breaker is adequate on every service",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Grounding electrodes reduce available fault current to zero",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-022"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "When installing a separately derived generator with a bonded neutral at the generator, the transfer equipment must:",
+          "explanation": "Avoid paralleling neutrals incorrectly. A four-pole switched-neutral transfer (or equivalent design) is used when both sources have bonded neutrals so that objectionable current and multiple bonds do not occur. Follow the system design; do not add a second bond casually at the downstream panel.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Switch the neutral (or otherwise prevent paralleled bonds) according to the grounding scheme",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Always solid-neutral transfer with two bonded sources as a universal rule",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Disconnect the equipment grounding conductor during transfer as a standard",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Bond generator frame to the utility hot as a substitute transfer",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-023"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A rooftop HVAC unit\u2019s disconnect is installed so it can be opened while standing on wet roofing next to unguarded edges. What installation principles are in conflict?",
+          "explanation": "Electrical working space, weather, and fall protection all apply. Relocate or protect the disconnect so it can be operated without an unnecessary fall or shock hazard.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "The disconnect must be usable without forcing a fall or wet-shock hazard",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Rooftop equipment is exempt from working-space and fall concerns",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Wet roofing makes panels safer",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A disconnect is optional if the thermostat can be set to off",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-INS-024"
+        }
+      ]
+    },
+    {
+      "slug": "troubleshooting_diagnostics",
+      "name": "Troubleshooting & Diagnostics",
+      "description": "Systematic electrical diagnosis.",
+      "question_count": 8,
+      "weight": 1.0,
+      "questions": [
+        {
+          "difficulty": "easy",
+          "prompt": "A receptacle has no power. Nearby receptacles on the same wall work. What should be checked early?",
+          "explanation": "A tripped GFCI, an open downstream feed, or a bad device. Check GFCI reset and voltage at the device before replacing the service panel.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "GFCI devices that may feed it, and voltage at that receptacle",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The utility substation first",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The grounding electrode rod length first",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The transformer turns ratio first",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-001"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A lighting circuit is dead. The breaker is on. What is a logical next measurement?",
+          "explanation": "Verify voltage at the breaker terminals, then at the first device. A tripped GFCI, open splice, or failed breaker can all present as a dead circuit.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Voltage at the breaker and then at the first device in the circuit",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Megger the utility primary as the first residential step",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Replace the grounding electrode",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Add a larger unlisted fuse at the fixture",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-002"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A motor hums but does not start. What should be considered early?",
+          "explanation": "Mechanical lock, failed start component, or single-phasing. Do not keep resetting a breaker without investigation.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Whether the load is locked, start components have failed, or a supply phase is missing",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Whether the equipment grounding conductor is too long as the usual cause of humming",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Whether the device is unlisted for color",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Whether the nameplate is in metric",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-003"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A GFCI receptacle will not reset. What is a sound first check?",
+          "explanation": "A standing ground fault on the load side, line/load reversed, or a failed device. Remove load-side connections and retry before condemning the entire panel.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Whether a load-side fault exists or line/load leads are reversed",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Whether the water heater anode is spent",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Whether the service drop is aluminum",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Whether the panel directory uses pencil",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-004"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "Lights dim when a compressor or well pump starts. What is a likely electrical explanation?",
+          "explanation": "Voltage drop from inrush on a high-impedance supply path. Investigate connections, conductor size, and source capacity\u2014not a smaller breaker.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Voltage drop from starting current on a weak or high-resistance supply path",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A GFCI that is too sensitive to light",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "An AFCI that increases voltage",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A grounding rod that is too short as the usual lighting cause",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-005"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A three-way lighting circuit works from one switch but not the other. What is a common issue?",
+          "explanation": "A traveler is open or misidentified. Confirm travelers and common terminals rather than replacing the fixture first.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "An open or miswired traveler or common terminal",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A missing grounding electrode as the usual three-way symptom",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A water-logged expansion tank",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A failed water-heater T&P valve",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-006"
+        },
+        {
+          "difficulty": "easy",
+          "prompt": "A breaker trips immediately when turned on, with nothing plugged in. What does that suggest?",
+          "explanation": "A short or ground fault on the circuit conductors or a failed device already connected. Do not keep resetting; isolate and find the fault.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "A short or ground fault on the circuit",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A normal inrush that should be ignored",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "That the breaker is definitely too small for 14 AWG as the only explanation",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "That the utility voltage is too low as the usual immediate-trip cause",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-007"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Voltage is 120 V with no load at a receptacle but sags to 95 V when a heater is plugged in. What should be investigated?",
+          "explanation": "High-resistance connections, undersized conductors, or a poor backstab. Measure voltage at the panel under the same load to localize.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "High-resistance connections or an undersized/poor path in that circuit",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A utility overvoltage as the usual sag explanation",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A missing blank in the panel dead-front as the usual sag explanation",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A white conductor that was reidentified correctly",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-008"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A motor runs hot at about nameplate FLA. Supply voltage is 10% low. What is a likely contributor?",
+          "explanation": "Low voltage increases current for many motors and reduces cooling effectiveness. Correct the voltage problem before replacing the motor.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Low supply voltage causing extra current and heat",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "High voltage as the measured 10% low condition",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A grounding electrode that is too conductive",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A GFCI on a lighting circuit in another building",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-009"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "An AFCI breaker trips when a vacuum cleaner is used, but a standard breaker did not. What is a reasonable approach?",
+          "explanation": "Verify the AFCI is listed and connected correctly, then determine whether the vacuum is producing an arc signature or the circuit has a real arcing fault. Do not replace AFCI with a standard breaker as a 'repair.'",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Confirm wiring and whether a real arc-fault or a problematic load signature is present",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Replace the AFCI with a higher-amp standard breaker",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Remove the equipment grounding conductor to stop trips",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Tape the breaker handle on",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-010"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A customer reports a tingle from a washing machine. What should be done first?",
+          "explanation": "Treat it as a shock hazard: take the equipment out of service, then check grounding/bonding and leakage/fault current. Do not tell the customer to keep using it with shoes on.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Take the appliance out of service and investigate grounding and leakage",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Advise standing on a wet floor for a better ground",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Remove the equipment grounding conductor so it cannot tingle",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Install a larger ungrounded conductor only",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-011"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A three-phase motor is tripping on overload after a recent reconnect. Rotation is wrong and current is unequal. What should be verified?",
+          "explanation": "Phase sequence, tap configuration, and connections. Unequal current can be a lost phase or a misconnect. Do not upsize overloads to hide it.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Phase connections, supply phases, and overload settings versus nameplate",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Whether the grounding rod is copper-coated",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Whether the disconnect handle is red or black",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Whether NM cable was used on the 5 kV utility line",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-012"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A fluorescent or LED fixture hums and flickers after a ballast/driver replacement. Voltage is normal. What should be checked?",
+          "explanation": "Incompatible dimmer, failed driver, poor lampholders, or a shared-neutral issue. Replacing the panel is not the first step.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Driver/ballast compatibility, dimming controls, and connections",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The water-heater dip tube",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The building sewer slope",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The closet-flange wax ring",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-013"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A circuit reads 120 V hot-to-neutral and 120 V hot-to-ground, but 80 V neutral-to-ground under load. What does this suggest?",
+          "explanation": "A high-resistance neutral path can lift the neutral. Investigate the grounded conductor connections. This can damage 120-volt loads on a multiwire circuit.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "A poor neutral connection causing the grounded conductor to shift under load",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A perfect circuit with no further checks",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A utility overvoltage on the grounding electrode only",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A GFCI that is working normally as the only explanation",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-014"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Which situation is inappropriate for insulation-resistance (megger) testing?",
+          "explanation": "High test voltage can damage solid-state equipment and some surge devices, and a live circuit must never be meggared. Isolate sensitive devices and prove the circuit de-energized first.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "A live circuit, or equipment that can be damaged by the test voltage unless isolated",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "De-energized motor windings that are isolated and suitable for the test",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A disconnected piece of NM cable with devices removed",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "An empty spare conduit",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-015"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A heat pump outdoor unit has 240 V at the disconnect but 0 V at the contactor line side. What is a likely path issue?",
+          "explanation": "Fuses, a whip, or a local switch between disconnect and unit. Measure along the path rather than replacing the compressor.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "An open in the conductors or fuses between the disconnect and the contactor",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A failed thermostat battery as the source of 240 V",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "A missing grounding electrode rod as the usual open",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A water-logged expansion tank",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-016"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "Nuisance GFCI trips on a circuit with a snow-melt or long outdoor run may be caused by:",
+          "explanation": "Leakage from moisture, damaged insulation, or cumulative leakage of many loads. Find the leakage; do not replace GFCI with a standard receptacle in a location that requires GFCI.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Leakage from moisture, damaged insulation, or accumulated load leakage",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A perfectly dry, undamaged circuit as the usual cause",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Too large an equipment grounding conductor as the usual cause",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Correct torque on lugs as the usual cause",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-017"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A customer\u2019s lights went bright and dim on different circuits, then some devices failed. What is a classic cause?",
+          "explanation": "A lost utility or service neutral can impress abnormal voltages on 120-volt legs. This is an emergency: unstable voltages can destroy equipment and start fires. Investigate the grounded conductor at the service/utility.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "An open incoming neutral causing the 120-volt legs to shift",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "A GFCI in a bathroom as the usual whole-house brightness swing",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "An AFCI that is too new",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "A dimmer on a single lamp as the usual house-wide cause",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-018"
+        },
+        {
+          "difficulty": "medium",
+          "prompt": "A clamp meter on a bundled NM cable reads near zero with the load on. Why?",
+          "explanation": "Equal and opposite currents in hot and neutral cancel in the clamp window. Clamp a single conductor.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Hot and neutral currents cancel when both are inside the clamp",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "The circuit is definitely de-energized",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Clamp meters cannot read 60 Hz",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The grounding conductor carries all the load current in a healthy circuit",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-019"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A 208Y/120-volt panel has 208 V between phases, 120 V A-N and B-N, but 208 V C-N. What is a coherent interpretation?",
+          "explanation": "Phase C may be open and backfed through loads, or a high-impedance connection exists on C-N. Do not energize sensitive 120-volt loads on C until the unbalance is explained. Measure at the source and at the lugs.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Phase C\u2019s connection to the source/neutral is not intact; investigate that path before loading it",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "This is normal for a wye and needs no investigation",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The grounding electrode is too long",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Replace all A-phase breakers first",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-020"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A motor trips its overload after running 20 minutes, not at start. Supply voltage is stable and rotation is correct. What should be evaluated?",
+          "explanation": "Mechanical overload, high ambient, dirty cooling fins, overlapping starts, or an overload heater mismatch. Starting components are less likely if it starts and runs for 20 minutes.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Mechanical load, cooling, ambient, and overload-heater selection",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Only the start capacitor, because overloads never trip from mechanical load",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Utility frequency as the first residential 60 Hz concern",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "The color of the disconnect handle",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-021"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "Intermittent operation of a feeder coincides with heat on a lug that is discolored. What is the correct priority?",
+          "explanation": "A high-resistance connection is a fire hazard. De-energize, repair the termination, and inspect conductor damage. Do not keep resetting a breaker into a glowing lug.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "De-energize and repair the high-resistance termination before further loading",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Apply more load to burn the connection clean",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Spray water on the lug while energized to cool it",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Increase breaker size so it cannot trip",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-022"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A listed surge-protective device has failed open after a storm, and some electronics died. Service voltage is now normal. What should be checked besides replacing the SPD?",
+          "explanation": "Look for a damaged grounded conductor, loose service connections, and other surge paths. Replacing only the SPD without inspecting the service can leave a degraded neutral or damaged insulation in place.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Service/neutral connections and other damage from the surge event",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Only the bathroom GFCI, because surges only enter there",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "The water-heater anode as the surge path of record",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Whether NM sheath color matches the paint",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-023"
+        },
+        {
+          "difficulty": "hard",
+          "prompt": "A 480-volt VFD-driven motor has bearing failures and the EGC shows electrical noise. What is a recognized concern to evaluate?",
+          "explanation": "VFD common-mode voltages can pass through motor bearings. Shaft grounding, proper cabling, and manufacturer-recommended filters are typical mitigations\u2014not removing the EGC.",
+          "active": true,
+          "choices": [
+            {
+              "key": "a",
+              "body": "Common-mode voltage from the drive affecting motor bearings; follow the drive maker\u2019s grounding and mitigation methods",
+              "correct": true
+            },
+            {
+              "key": "b",
+              "body": "Removing the equipment grounding conductor to reduce noise",
+              "correct": false
+            },
+            {
+              "key": "c",
+              "body": "Replacing the VFD output with NM cable as a universal fix",
+              "correct": false
+            },
+            {
+              "key": "d",
+              "body": "Bonding the motor shaft to a hot phase",
+              "correct": false
+            }
+          ],
+          "external_key": "ELEC-DIAG-024"
+        }
+      ]
+    }
+  ]
+}

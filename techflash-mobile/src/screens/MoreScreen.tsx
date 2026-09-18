@@ -30,6 +30,14 @@ export default function MoreScreen() {
       <Text style={styles.hint}>
         Manage your account, jobs, and messages on mobile. For legal docs and support, use the links below.
       </Text>
+      {user?.role === 'technician' ? (
+        <Pressable
+          style={({ pressed }) => [styles.linkBtn, pressed && { opacity: 0.9 }]}
+          onPress={() => navigation.navigate('SkillsAssessments')}
+        >
+          <Text style={styles.linkBtnText}>Skills Assessments</Text>
+        </Pressable>
+      ) : null}
       <Pressable style={({ pressed }) => [styles.linkBtn, pressed && { opacity: 0.9 }]} onPress={() => Linking.openURL('https://techflash.app/privacy-policy')}>
         <Text style={styles.linkBtnText}>Privacy Policy</Text>
       </Pressable>

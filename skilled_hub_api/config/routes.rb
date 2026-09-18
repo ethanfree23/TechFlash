@@ -100,6 +100,7 @@ Rails.application.routes.draw do
       resources :technicians do
         member do
           post :merge
+          get :assessment_results
         end
       end
       resources :job_seekers
@@ -133,6 +134,18 @@ Rails.application.routes.draw do
       resources :app_notifications, only: %i[index] do
         member do
           patch :mark_read
+        end
+      end
+
+      # Technician skills assessments. Catalog and attempts are technician-only;
+      # companies read results through the technician profile endpoints.
+      resources :assessments, only: %i[index show] do
+        resources :attempts, only: [:create], controller: :assessment_attempts
+      end
+      resources :assessment_attempts, only: %i[index show] do
+        member do
+          patch :answers
+          post :submit
         end
       end
 
@@ -205,6 +218,25 @@ Rails.application.routes.draw do
         post "email_qa/send", to: "email_qa#send_one"
         post "email_qa/send_all", to: "email_qa#send_all"
         post "demo_reset", to: "demo_resets#create"
+
+        # Assessment content management. Question content is only ever editable
+        # on a draft version; publishing freezes it.
+        resources :assessments, only: %i[index show create update destroy] do
+          resources :versions, only: %i[index create], controller: :assessment_versions
+        end
+        resources :assessment_versions, only: %i[show update destroy] do
+          member do
+            post :publish
+            post :retire
+            post :clone
+          end
+          resources :categories, only: %i[index create], controller: :assessment_categories
+          resources :questions, only: %i[index create], controller: :assessment_questions
+        end
+        resources :assessment_categories, only: %i[update destroy]
+        resources :assessment_questions, only: %i[show update destroy]
+        get "assessment_imports/schema", to: "assessment_imports#schema"
+        resources :assessment_imports, only: [:create]
       end
     end
   end

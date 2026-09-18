@@ -96,6 +96,172 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_18_010000) do
     t.index ["user_id"], name: "index_app_notifications_on_user_id"
   end
 
+  create_table "assessment_answer_choices", force: :cascade do |t|
+    t.integer "assessment_question_id", null: false
+    t.string "external_key"
+    t.text "body", null: false
+    t.boolean "correct", default: false, null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assessment_question_id", "correct"], name: "index_assessment_answer_choices_on_question_and_correct"
+    t.index ["assessment_question_id", "position"], name: "index_assessment_answer_choices_on_question_and_position"
+    t.index ["assessment_question_id"], name: "index_assessment_answer_choices_on_assessment_question_id"
+  end
+
+  create_table "assessment_attempt_category_results", force: :cascade do |t|
+    t.integer "assessment_attempt_id", null: false
+    t.integer "assessment_category_id", null: false
+    t.string "category_slug", null: false
+    t.string "category_name", null: false
+    t.integer "questions_count", default: 0, null: false
+    t.integer "correct_count", default: 0, null: false
+    t.integer "score", default: 0, null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assessment_attempt_id", "assessment_category_id"], name: "index_attempt_category_results_on_attempt_and_category", unique: true
+    t.index ["assessment_attempt_id"], name: "idx_on_assessment_attempt_id_2ad31dfcc5"
+    t.index ["assessment_category_id"], name: "idx_on_assessment_category_id_2e75ad9f64"
+    t.index ["category_slug", "score"], name: "index_attempt_category_results_on_slug_and_score"
+  end
+
+  create_table "assessment_attempt_questions", force: :cascade do |t|
+    t.integer "assessment_attempt_id", null: false
+    t.integer "assessment_question_id", null: false
+    t.integer "assessment_category_id", null: false
+    t.integer "position", null: false
+    t.json "choice_order", default: [], null: false
+    t.integer "selected_answer_choice_id"
+    t.boolean "correct"
+    t.datetime "answered_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assessment_attempt_id", "assessment_question_id"], name: "index_assessment_attempt_questions_on_attempt_and_question", unique: true
+    t.index ["assessment_attempt_id", "position"], name: "index_assessment_attempt_questions_on_attempt_and_position", unique: true
+    t.index ["assessment_attempt_id"], name: "index_assessment_attempt_questions_on_assessment_attempt_id"
+    t.index ["assessment_category_id"], name: "index_assessment_attempt_questions_on_assessment_category_id"
+    t.index ["assessment_question_id"], name: "index_assessment_attempt_questions_on_assessment_question_id"
+  end
+
+  create_table "assessment_attempts", force: :cascade do |t|
+    t.integer "technician_profile_id", null: false
+    t.integer "user_id", null: false
+    t.integer "assessment_id", null: false
+    t.integer "assessment_version_id", null: false
+    t.integer "attempt_number", default: 1, null: false
+    t.integer "status", default: 0, null: false
+    t.datetime "started_at", null: false
+    t.datetime "expires_at"
+    t.datetime "submitted_at"
+    t.datetime "completed_at"
+    t.datetime "last_activity_at"
+    t.integer "duration_seconds"
+    t.integer "total_questions", default: 0, null: false
+    t.integer "answered_questions", default: 0, null: false
+    t.integer "correct_answers", default: 0, null: false
+    t.integer "score"
+    t.decimal "raw_score", precision: 9, scale: 4
+    t.string "score_band_slug"
+    t.string "score_band_label"
+    t.boolean "passed"
+    t.integer "time_limit_minutes"
+    t.string "selection_seed"
+    t.json "config_snapshot", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assessment_id", "status", "score"], name: "index_assessment_attempts_on_assessment_status_score"
+    t.index ["assessment_id"], name: "index_assessment_attempts_on_assessment_id"
+    t.index ["assessment_version_id", "status"], name: "index_assessment_attempts_on_version_and_status"
+    t.index ["assessment_version_id"], name: "index_assessment_attempts_on_assessment_version_id"
+    t.index ["completed_at"], name: "index_assessment_attempts_on_completed_at"
+    t.index ["technician_profile_id", "assessment_id", "attempt_number"], name: "index_assessment_attempts_on_tech_assessment_number", unique: true
+    t.index ["technician_profile_id", "assessment_id", "status"], name: "index_assessment_attempts_on_tech_assessment_status"
+    t.index ["technician_profile_id", "assessment_id"], name: "index_assessment_attempts_one_in_progress_per_assessment", unique: true, where: "status = 0"
+    t.index ["technician_profile_id"], name: "index_assessment_attempts_on_technician_profile_id"
+    t.index ["user_id"], name: "index_assessment_attempts_on_user_id"
+  end
+
+  create_table "assessment_categories", force: :cascade do |t|
+    t.integer "assessment_version_id", null: false
+    t.string "slug", null: false
+    t.string "name", null: false
+    t.text "description"
+    t.integer "question_count", default: 0, null: false
+    t.decimal "weight", precision: 8, scale: 4, default: "1.0", null: false
+    t.integer "position", default: 0, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assessment_version_id", "position"], name: "index_assessment_categories_on_version_and_position"
+    t.index ["assessment_version_id", "slug"], name: "index_assessment_categories_on_version_and_slug", unique: true
+    t.index ["assessment_version_id"], name: "index_assessment_categories_on_assessment_version_id"
+  end
+
+  create_table "assessment_questions", force: :cascade do |t|
+    t.integer "assessment_version_id", null: false
+    t.integer "assessment_category_id", null: false
+    t.string "external_key"
+    t.text "prompt", null: false
+    t.text "explanation"
+    t.integer "difficulty", default: 1, null: false
+    t.boolean "active", default: true, null: false
+    t.integer "position", default: 0, null: false
+    t.string "media_url"
+    t.string "media_type"
+    t.string "media_alt_text"
+    t.json "metadata", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assessment_category_id", "active"], name: "index_assessment_questions_on_category_and_active"
+    t.index ["assessment_category_id"], name: "index_assessment_questions_on_assessment_category_id"
+    t.index ["assessment_version_id", "active"], name: "index_assessment_questions_on_version_and_active"
+    t.index ["assessment_version_id", "external_key"], name: "index_assessment_questions_on_version_and_external_key", unique: true, where: "external_key IS NOT NULL"
+    t.index ["assessment_version_id"], name: "index_assessment_questions_on_assessment_version_id"
+  end
+
+  create_table "assessment_versions", force: :cascade do |t|
+    t.integer "assessment_id", null: false
+    t.integer "version_number", default: 1, null: false
+    t.integer "status", default: 0, null: false
+    t.text "instructions"
+    t.integer "question_count", default: 0, null: false
+    t.integer "time_limit_minutes"
+    t.integer "passing_score"
+    t.integer "max_attempts"
+    t.integer "retake_wait_hours"
+    t.boolean "randomize_questions", default: true, null: false
+    t.boolean "randomize_answer_choices", default: true, null: false
+    t.boolean "allow_resume", default: true, null: false
+    t.boolean "allow_back_navigation", default: true, null: false
+    t.string "scoring_strategy", default: "normalized_percent", null: false
+    t.json "score_bands", default: [], null: false
+    t.datetime "published_at"
+    t.datetime "retired_at"
+    t.json "metadata", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assessment_id", "status"], name: "index_assessment_versions_on_assessment_id_and_status"
+    t.index ["assessment_id", "version_number"], name: "index_assessment_versions_on_assessment_id_and_version_number", unique: true
+    t.index ["assessment_id"], name: "index_assessment_versions_on_assessment_id"
+  end
+
+  create_table "assessments", force: :cascade do |t|
+    t.string "slug", null: false
+    t.string "title", null: false
+    t.text "description"
+    t.text "company_disclaimer"
+    t.string "trade_type"
+    t.boolean "active", default: true, null: false
+    t.string "public_result_rule", default: "best_valid", null: false
+    t.integer "position", default: 0, null: false
+    t.json "metadata", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["active"], name: "index_assessments_on_active"
+    t.index ["slug"], name: "index_assessments_on_slug", unique: true
+    t.index ["trade_type"], name: "index_assessments_on_trade_type"
+  end
+
   create_table "auth_rate_limits", force: :cascade do |t|
     t.string "scope", null: false
     t.string "bucket", null: false
@@ -864,6 +1030,34 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_18_010000) do
     t.index ["stripe_event_id"], name: "index_stripe_webhook_events_on_stripe_event_id", unique: true
   end
 
+  create_table "technician_assessment_results", force: :cascade do |t|
+    t.integer "technician_profile_id", null: false
+    t.integer "assessment_id", null: false
+    t.integer "assessment_attempt_id", null: false
+    t.integer "assessment_version_id", null: false
+    t.string "selection_rule", default: "best_valid", null: false
+    t.integer "score", null: false
+    t.string "score_band_slug"
+    t.string "score_band_label"
+    t.boolean "passed"
+    t.datetime "completed_at", null: false
+    t.integer "attempts_count", default: 0, null: false
+    t.integer "best_score"
+    t.integer "latest_score"
+    t.datetime "latest_completed_at"
+    t.json "category_scores", default: [], null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assessment_attempt_id"], name: "index_technician_assessment_results_on_assessment_attempt_id"
+    t.index ["assessment_id", "score"], name: "index_technician_assessment_results_on_assessment_and_score"
+    t.index ["assessment_id"], name: "index_technician_assessment_results_on_assessment_id"
+    t.index ["assessment_version_id"], name: "index_technician_assessment_results_on_assessment_version_id"
+    t.index ["score"], name: "index_technician_assessment_results_on_score"
+    t.index ["score_band_slug"], name: "index_technician_assessment_results_on_score_band_slug"
+    t.index ["technician_profile_id", "assessment_id"], name: "index_technician_assessment_results_on_tech_and_assessment", unique: true
+    t.index ["technician_profile_id"], name: "index_technician_assessment_results_on_technician_profile_id"
+  end
+
   create_table "technician_profiles", force: :cascade do |t|
     t.integer "user_id", null: false
     t.string "trade_type"
@@ -1104,6 +1298,20 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_18_010000) do
   add_foreign_key "ai_sms_sessions", "users"
   add_foreign_key "ai_sms_turns", "ai_sms_sessions"
   add_foreign_key "app_notifications", "users"
+  add_foreign_key "assessment_answer_choices", "assessment_questions"
+  add_foreign_key "assessment_attempt_category_results", "assessment_attempts"
+  add_foreign_key "assessment_attempt_category_results", "assessment_categories"
+  add_foreign_key "assessment_attempt_questions", "assessment_attempts"
+  add_foreign_key "assessment_attempt_questions", "assessment_categories"
+  add_foreign_key "assessment_attempt_questions", "assessment_questions"
+  add_foreign_key "assessment_attempts", "assessment_versions"
+  add_foreign_key "assessment_attempts", "assessments"
+  add_foreign_key "assessment_attempts", "technician_profiles"
+  add_foreign_key "assessment_attempts", "users"
+  add_foreign_key "assessment_categories", "assessment_versions"
+  add_foreign_key "assessment_questions", "assessment_categories"
+  add_foreign_key "assessment_questions", "assessment_versions"
+  add_foreign_key "assessment_versions", "assessments"
   add_foreign_key "background_checks", "company_profiles"
   add_foreign_key "background_checks", "job_applications"
   add_foreign_key "background_checks", "jobs"
@@ -1158,6 +1366,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_18_010000) do
   add_foreign_key "review_flags", "users", column: "reviewed_by_id"
   add_foreign_key "saved_job_searches", "technician_profiles"
   add_foreign_key "sms_delivery_logs", "users"
+  add_foreign_key "technician_assessment_results", "assessment_attempts"
+  add_foreign_key "technician_assessment_results", "assessment_versions"
+  add_foreign_key "technician_assessment_results", "assessments"
+  add_foreign_key "technician_assessment_results", "technician_profiles"
   add_foreign_key "technician_profiles", "users"
   add_foreign_key "time_entries", "jobs"
   add_foreign_key "time_entries", "technician_profiles"

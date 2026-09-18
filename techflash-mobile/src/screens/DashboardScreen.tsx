@@ -14,6 +14,7 @@ import { useAuth } from '../auth/AuthContext';
 import * as jobsApi from '../api/jobsApi';
 import * as adminApi from '../api/adminApi';
 import * as settingsApi from '../api/settingsApi';
+import * as assessmentsApi from '../api/assessmentsApi';
 import { colors, radii, typography } from '../theme';
 import { Card } from '../components/ui/Card';
 import { MapJobsPreview, type MapMarker } from '../components/MapJobsPreview';
@@ -47,6 +48,7 @@ export default function DashboardScreen() {
   const [adminFeedback, setAdminFeedback] = useState<Conversation[]>([]);
   const [adminRecentJobs, setAdminRecentJobs] = useState<Record<string, unknown>[]>([]);
   const [mapMarkers, setMapMarkers] = useState<MapMarker[]>([]);
+  const [assessments, setAssessments] = useState<assessmentsApi.CatalogAssessment[]>([]);
   const [deviceCenter, setDeviceCenter] = useState<{ latitude: number; longitude: number } | null>(null);
 
   const load = useCallback(async () => {
@@ -65,11 +67,15 @@ export default function DashboardScreen() {
         ]);
         setMapMarkers([]);
       } else if (user.role === 'technician') {
-        const [d, openJobsRaw, profile] = await Promise.all([
+        const [d, openJobsRaw, profile, catalog] = await Promise.all([
           jobsApi.getTechnicianDashboardJobs(),
           jobsApi.getJobs({ status: 'open', include_past: 'true' }),
           settingsApi.getTechnicianProfile(),
+          // Assessments are optional, so a failure here must not blank the
+          // dashboard a technician needs for actual work.
+          assessmentsApi.getAssessmentCatalog().catch(() => null),
         ]);
+        setAssessments(catalog?.assessments || []);
         const openJobs = Array.isArray(openJobsRaw)
           ? openJobsRaw.filter((row) => {
               const endAt = row?.scheduled_end_at ? new Date(String(row.scheduled_end_at)).getTime() : null;
@@ -357,6 +363,54 @@ export default function DashboardScreen() {
         </View>
       ) : null}
 
+      {user.role === 'technician' && assessments.length > 0 ? (
+        <View style={styles.openWrap}>
+          <Text style={styles.sectionTitle}>Skills Assessments</Text>
+          {assessments.slice(0, 2).map((assessment) => {
+            const inProgress = assessment.in_progress_attempt;
+            const minutes = assessment.estimated_minutes;
+            const meta = [
+              `${assessment.question_count} questions`,
+              minutes
+                ? assessment.time_limit_minutes
+                  ? `${minutes} min limit`
+                  : `about ${minutes} min`
+                : 'no time limit',
+            ].join(' · ');
+
+            return (
+              <Pressable
+                key={assessment.slug}
+                onPress={() =>
+                  inProgress
+                    ? navigation.navigate('AssessmentAttempt', { attemptId: inProgress.id })
+                    : navigation.navigate('SkillsAssessments')
+                }
+              >
+                <Card style={styles.jobCard}>
+                  <Text style={styles.cardTitle}>{assessment.title}</Text>
+                  <Text style={styles.cardSub}>{meta}</Text>
+                  <Text style={styles.assessmentAction}>
+                    {inProgress
+                      ? `Resume — ${inProgress.answered_questions} of ${inProgress.total_questions} answered`
+                      : assessment.result
+                      ? `Your score: ${assessment.result.score}${
+                          assessment.result.score_band_label
+                            ? ` · ${assessment.result.score_band_label}`
+                            : ''
+                        }`
+                      : 'Take Assessment'}
+                  </Text>
+                </Card>
+              </Pressable>
+            );
+          })}
+          <Pressable onPress={() => navigation.navigate('SkillsAssessments')}>
+            <Text style={styles.assessmentLink}>See all assessments</Text>
+          </Pressable>
+        </View>
+      ) : null}
+
       {user.role === 'technician' ? (
         <View style={styles.openWrap}>
           <Text style={styles.sectionTitle}>Open Jobs Nearby</Text>
@@ -483,5 +537,7 @@ const styles = StyleSheet.create({
   },
   cardTitle: { ...typography.heading, color: colors.text },
   cardSub: { ...typography.body, marginTop: 6, color: colors.muted },
+  assessmentAction: { ...typography.body, marginTop: 8, color: colors.primaryOrange, fontWeight: '700' },
+  assessmentLink: { ...typography.body, color: colors.primaryBlue, fontWeight: '600', paddingVertical: 6 },
   empty: { ...typography.body, textAlign: 'center', color: colors.muted, marginTop: 40, paddingHorizontal: 24 },
 });
