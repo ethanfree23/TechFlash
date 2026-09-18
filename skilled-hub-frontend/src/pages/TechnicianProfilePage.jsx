@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import AppFooter from '../components/layout/AppFooter';
 import { profilesAPI, favoriteTechniciansAPI, adminUsersAPI } from '../api/api';
+import AssessmentResultsPanel from '../components/assessments/AssessmentResultsPanel';
 import ReferralModal from '../components/ReferralModal';
 import AlertModal from '../components/AlertModal';
 import { mediaUrlWithCacheBust } from '../utils/mediaUrl';
@@ -246,6 +247,12 @@ const TechnicianProfilePage = ({ user, onLogout }) => {
                   </span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {profile.assessment_results && (
+            <div className="p-6 border-b border-gray-200">
+              <AssessmentResultsPanel block={profile.assessment_results} />
             </div>
           )}
 

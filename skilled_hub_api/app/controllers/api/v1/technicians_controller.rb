@@ -6,7 +6,7 @@ module Api
       before_action :require_admin, only: [:merge]
       
       def index
-        technicians = TechnicianProfile.includes(:user)
+        technicians = TechnicianProfile.includes(:user, technician_assessment_results: %i[assessment assessment_version])
         technicians = filter_by_query(technicians)
         technicians = filter_by_trade(technicians)
         technicians = filter_by_rating(technicians)

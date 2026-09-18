@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import AppHeader from '../components/AppHeader';
 import AppFooter from '../components/layout/AppFooter';
 import { profilesAPI } from '../api/api';
+import AssessmentResultsPanel from '../components/assessments/AssessmentResultsPanel';
 
 export default function TechnicianDirectoryPage({ user, onLogout }) {
   const [loading, setLoading] = useState(true);
@@ -17,6 +18,10 @@ export default function TechnicianDirectoryPage({ user, onLogout }) {
     references_verified: false,
     insurance_verified: false,
     certification: '',
+    assessment_completed: false,
+    assessment_slug: '',
+    min_assessment_score: '',
+    assessment_band: '',
   });
 
   const load = async (nextFilters = filters) => {
@@ -29,6 +34,7 @@ export default function TechnicianDirectoryPage({ user, onLogout }) {
         identity_verified: nextFilters.identity_verified ? 'true' : '',
         references_verified: nextFilters.references_verified ? 'true' : '',
         insurance_verified: nextFilters.insurance_verified ? 'true' : '',
+        assessment_completed: nextFilters.assessment_completed ? 'true' : '',
       };
       const rows = await profilesAPI.listTechnicians(payload);
       setTechnicians(Array.isArray(rows) ? rows : []);
@@ -63,6 +69,10 @@ export default function TechnicianDirectoryPage({ user, onLogout }) {
       references_verified: false,
       insurance_verified: false,
       certification: '',
+      assessment_completed: false,
+      assessment_slug: '',
+      min_assessment_score: '',
+      assessment_band: '',
     };
     setFilters(reset);
     load(reset);
@@ -74,7 +84,7 @@ export default function TechnicianDirectoryPage({ user, onLogout }) {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 sm:pb-14 space-y-5">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Technician Discovery</h1>
-          <p className="text-sm text-gray-600 mt-1">Filter by trust verification, rating, trade, and certifications.</p>
+          <p className="text-sm text-gray-600 mt-1">Filter by trust verification, rating, trade, certifications, and knowledge assessments.</p>
         </div>
 
         <form onSubmit={applyFilters} className="rounded-xl border border-gray-200 bg-white p-4 space-y-3">
@@ -83,12 +93,16 @@ export default function TechnicianDirectoryPage({ user, onLogout }) {
             <input className="border rounded-lg px-3 py-2 text-sm" name="trade_type" value={filters.trade_type} onChange={onChange} placeholder="Trade (e.g. Electrician)" />
             <input className="border rounded-lg px-3 py-2 text-sm" type="number" min="0" max="5" step="0.1" name="min_rating" value={filters.min_rating} onChange={onChange} placeholder="Min rating" />
             <input className="border rounded-lg px-3 py-2 text-sm" name="certification" value={filters.certification} onChange={onChange} placeholder="Certification (e.g. OSHA 10)" />
+            <input className="border rounded-lg px-3 py-2 text-sm" name="assessment_slug" value={filters.assessment_slug} onChange={onChange} placeholder="Assessment slug (e.g. hvac_knowledge)" />
+            <input className="border rounded-lg px-3 py-2 text-sm" type="number" min="0" max="100" name="min_assessment_score" value={filters.min_assessment_score} onChange={onChange} placeholder="Min assessment score" />
+            <input className="border rounded-lg px-3 py-2 text-sm" name="assessment_band" value={filters.assessment_band} onChange={onChange} placeholder="Score band slug (e.g. strong_knowledge)" />
           </div>
           <div className="flex flex-wrap gap-4 text-sm">
             <Checkbox name="background_verified" checked={filters.background_verified} onChange={onChange} label="Background verified" />
             <Checkbox name="identity_verified" checked={filters.identity_verified} onChange={onChange} label="Identity verified" />
             <Checkbox name="references_verified" checked={filters.references_verified} onChange={onChange} label="References verified" />
             <Checkbox name="insurance_verified" checked={filters.insurance_verified} onChange={onChange} label="Insurance verified" />
+            <Checkbox name="assessment_completed" checked={filters.assessment_completed} onChange={onChange} label="Completed a knowledge assessment" />
           </div>
           <div className="flex gap-2">
             <button type="submit" className="px-4 py-2 text-sm rounded-lg bg-blue-600 text-white hover:bg-blue-700">Apply filters</button>
@@ -126,6 +140,9 @@ export default function TechnicianDirectoryPage({ user, onLogout }) {
                       </span>
                     ))}
                   </div>
+                )}
+                {tech.assessment_results?.primary && (
+                  <AssessmentResultsPanel block={tech.assessment_results} compact />
                 )}
                 <div className="mt-auto">
                   <Link to={`/technicians/${tech.id}`} className="inline-flex px-3 py-2 text-sm font-medium rounded-lg bg-gray-900 text-white hover:bg-gray-800">
