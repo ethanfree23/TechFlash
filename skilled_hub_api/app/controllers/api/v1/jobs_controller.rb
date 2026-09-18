@@ -665,12 +665,12 @@ module Api
       def undeletable_reason(job)
         return 'Ended assignments are kept for payment and review records and cannot be deleted.' if job.terminated_early?
         return 'Completed jobs are kept for payment and review records and cannot be deleted.' if job.finished? || job.completed?
-        if job.job_payment_transactions.status_succeeded.exists?
-          return 'This job has payment activity. Unpublish it to refund the company before removing it.'
-        end
         return 'This job has time entries and cannot be deleted. End the assignment instead.' if job.time_entries.exists?
         if job.job_applications.where(status: :accepted).exists?
           return 'A technician has claimed this job. Deny the technician or end the assignment first.'
+        end
+        if job.job_payment_transactions.status_succeeded.exists?
+          return 'This job has payment activity. Unpublish it to refund the company before removing it.'
         end
         if job_holds_funds?(job)
           return 'This job is funded. Unpublish it to refund the company before removing it.'

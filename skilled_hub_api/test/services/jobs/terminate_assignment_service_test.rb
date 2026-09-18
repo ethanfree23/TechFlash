@@ -382,7 +382,10 @@ module Jobs
 
     test "notifications and mail are sent to both parties" do
       job = claimed_job
-      result = terminate!(job, notes: "Crew no longer needed")
+      result = nil
+      MailDelivery.stub(:safe_deliver, ->(&block) { block&.call }) do
+        result = terminate!(job, notes: "Crew no longer needed")
+      end
       assert result.success?, result.error
 
       assert_equal 2, ActionMailer::Base.deliveries.size
@@ -393,7 +396,7 @@ module Jobs
 
       events = AppNotification.where(category: "job_lifecycle")
       assert_equal 2, events.count
-      assert events.all? { |n| n.metadata["event"] == "assignment_terminated_early" }
+      assert events.all? { |n| n.metadata.to_h["event"] == "assignment_terminated_early" }
     end
   end
 end

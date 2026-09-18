@@ -198,13 +198,14 @@ module Api
         completed = claimed_job
         completed.update!(status: :finished, finished_at: Time.current, terminated_at: nil)
 
-        get "/api/v1/jobs", params: { status: "ended_early" }, headers: auth_header_for(@tech_user), as: :json
+        tech_headers = auth_header_for(@tech_user).merge("Accept" => "application/json")
+        get "/api/v1/jobs", params: { status: "ended_early" }, headers: tech_headers
         assert_response :ok
         ended_ids = JSON.parse(response.body).map { |row| row["id"] }
         assert_includes ended_ids, ended.id
         refute_includes ended_ids, completed.id
 
-        get "/api/v1/jobs", params: { status: "completed" }, headers: auth_header_for(@tech_user), as: :json
+        get "/api/v1/jobs", params: { status: "completed" }, headers: tech_headers
         assert_response :ok
         completed_ids = JSON.parse(response.body).map { |row| row["id"] }
         assert_includes completed_ids, completed.id
