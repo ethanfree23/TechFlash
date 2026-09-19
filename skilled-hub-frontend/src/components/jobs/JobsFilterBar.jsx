@@ -72,7 +72,8 @@ export default function JobsFilterBar({
     fields.includes('experience') ||
     fields.includes('startDate') ||
     fields.includes('payRange') ||
-    fields.includes('distance');
+    fields.includes('distance') ||
+    fields.includes('potentialFullTime');
 
   const handleClientChange = (name, value) => {
     setClientFilters((prev) => ({ ...prev, [name]: value }));
@@ -82,6 +83,7 @@ export default function JobsFilterBar({
     (serverFilters.keyword ? 1 : 0) +
     (serverFilters.location ? 1 : 0) +
     (serverFilters.status ? 1 : 0) +
+    (serverFilters.potentialFullTime ? 1 : 0) +
     (hasActiveClientFilters(clientFilters) ? 1 : 0);
 
   const searchPlaceholder =
@@ -365,6 +367,19 @@ export default function JobsFilterBar({
                   />
                 </label>
               </>
+            )}
+
+            {fields.includes('potentialFullTime') && (
+              <label className="col-span-2 flex items-end pb-1">
+                <span className="inline-flex items-center gap-2 text-xs font-medium text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(serverFilters.potentialFullTime)}
+                    onChange={(e) => onServerFilterChange('potentialFullTime', e.target.checked)}
+                  />
+                  Only jobs that may lead to full-time work
+                </span>
+              </label>
             )}
           </div>
 

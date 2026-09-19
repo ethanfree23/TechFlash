@@ -22,6 +22,15 @@ class JobFundingAdjustmentService
   end
 
   def self.reconcile!(job, source:, transaction_type_prefix:)
+    # Posting already skips Stripe when job funding is waived. Accepting a schedule or
+    # compensation counter offer must do the same: the ledger would otherwise treat the
+    # waived job as uncollected and try to charge a card that was never required.
+    if job.job_funding_waived?
+      job.update!(funding_status: :funded)
+      JobFundingService.record_revision!(job, source: source)
+      return { success: true, job: job, waived: true }
+    end
+
     begin
       ledger = JobLedger.for(job)
     rescue JobLedger::MissingCommissionSnapshotError => e

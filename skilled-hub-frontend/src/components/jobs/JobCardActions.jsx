@@ -8,6 +8,7 @@ import {
   canTechnicianClaim,
 } from '../../utils/jobDisplayUtils';
 import ConfirmModal from '../ConfirmModal';
+import SaveJobTemplateModal from './SaveJobTemplateModal';
 
 const btnBase = 'inline-flex justify-center items-center rounded-lg text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-45 disabled:cursor-not-allowed disabled:pointer-events-none';
 const btnPrimary = `${btnBase} bg-blue-600 text-white hover:bg-blue-700 px-3 py-2 font-semibold`;
@@ -32,6 +33,7 @@ export default function JobCardActions({
   const navigate = useNavigate();
   const [confirmClose, setConfirmClose] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [showSaveTemplate, setShowSaveTemplate] = useState(false);
 
   const acceptedApp = getAcceptedApplication(job);
   const claimedTech = getClaimedTechnician(job);
@@ -79,6 +81,9 @@ export default function JobCardActions({
         </Link>
         <button type="button" onClick={handleDuplicate} className={compact ? `${btnCompact} border border-slate-200` : btnSecondary}>
           Duplicate
+        </button>
+        <button type="button" onClick={() => setShowSaveTemplate(true)} className={compact ? `${btnCompact} border border-slate-200` : btnSecondary}>
+          Save template
         </button>
         {job.company_profile_id && (
           <Link to={`/companies/${job.company_profile_id}`} className={compact ? `${btnCompact} text-blue-600` : btnSecondary}>
@@ -129,6 +134,11 @@ export default function JobCardActions({
           confirmLabel={closing ? 'Closing…' : 'Close Job'}
           variant="destructive"
         />
+        <SaveJobTemplateModal
+          isOpen={showSaveTemplate}
+          onClose={() => setShowSaveTemplate(false)}
+          job={job}
+        />
       </>
     );
   }
@@ -146,6 +156,9 @@ export default function JobCardActions({
         )}
         <button type="button" onClick={handleDuplicate} className={compact ? `${btnCompact} border border-slate-200` : btnSecondary}>
           Duplicate
+        </button>
+        <button type="button" onClick={() => setShowSaveTemplate(true)} className={compact ? `${btnCompact} border border-slate-200` : btnSecondary}>
+          Save template
         </button>
         {techId && (
           <>
@@ -187,6 +200,11 @@ export default function JobCardActions({
           title={job.status === 'filled' ? 'Mark job complete?' : 'Close this job?'}
           message="Confirm you want to update this job's status."
           confirmLabel={closing ? 'Updating…' : 'Confirm'}
+        />
+        <SaveJobTemplateModal
+          isOpen={showSaveTemplate}
+          onClose={() => setShowSaveTemplate(false)}
+          job={job}
         />
       </>
     );

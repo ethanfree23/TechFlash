@@ -28,6 +28,7 @@ const testFiles = [
   'tableColumnPrefs.test.mjs',
   'usAddress.test.mjs',
   'licenseCredentials.test.mjs',
+  'scheduleAvailability.test.mjs',
 ];
 
 let successful = 0;

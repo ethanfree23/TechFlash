@@ -605,10 +605,27 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_18_010000) do
     t.datetime "responded_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.integer "proposal_kind", default: 0, null: false
+    t.integer "proposal_reason", default: 0, null: false
+    t.integer "schedule_option"
+    t.datetime "original_start_at"
+    t.datetime "original_end_at"
+    t.integer "original_days"
+    t.json "proposed_working_dates", default: [], null: false
+    t.json "unavailable_working_dates", default: [], null: false
+    t.json "conflicting_job_ids", default: [], null: false
+    t.datetime "committed_through_at"
+    t.boolean "full_duration_offered", default: false, null: false
+    t.boolean "partial_duration", default: false, null: false
+    t.string "schedule_signature"
+    t.datetime "invalidated_at"
+    t.string "invalidated_reason"
     t.index ["company_profile_id"], name: "index_job_counter_offers_on_company_profile_id"
     t.index ["job_id", "created_at"], name: "index_job_counter_offers_on_job_id_and_created_at"
+    t.index ["job_id", "status"], name: "index_job_counter_offers_on_job_id_and_status"
     t.index ["job_id"], name: "index_job_counter_offers_on_job_id"
     t.index ["parent_offer_id"], name: "index_job_counter_offers_on_parent_offer_id"
+    t.index ["proposal_kind"], name: "index_job_counter_offers_on_proposal_kind"
     t.index ["status"], name: "index_job_counter_offers_on_status"
     t.index ["technician_profile_id"], name: "index_job_counter_offers_on_technician_profile_id"
   end
@@ -669,6 +686,23 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_18_010000) do
     t.index ["stripe_payment_intent_id"], name: "index_job_payment_transactions_on_stripe_payment_intent_id"
     t.index ["stripe_refund_id"], name: "index_job_payment_transactions_on_stripe_refund_id"
     t.index ["stripe_transfer_id"], name: "index_job_payment_transactions_on_stripe_transfer_id"
+  end
+
+  create_table "job_templates", force: :cascade do |t|
+    t.integer "company_profile_id", null: false
+    t.integer "created_by_user_id"
+    t.string "name", null: false
+    t.string "trade_type"
+    t.string "skill_class"
+    t.json "configuration", default: {}, null: false
+    t.integer "use_count", default: 0, null: false
+    t.datetime "last_used_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["company_profile_id", "name"], name: "index_job_templates_on_company_profile_id_and_name"
+    t.index ["company_profile_id", "updated_at"], name: "index_job_templates_on_company_profile_id_and_updated_at"
+    t.index ["company_profile_id"], name: "index_job_templates_on_company_profile_id"
+    t.index ["created_by_user_id"], name: "index_job_templates_on_created_by_user_id"
   end
 
   create_table "job_term_change_audits", force: :cascade do |t|
@@ -797,11 +831,16 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_18_010000) do
     t.integer "settlement_status", default: 0, null: false
     t.integer "financial_revision", default: 1, null: false
     t.datetime "terminated_at"
+    t.boolean "potential_full_time", default: false, null: false
+    t.json "potential_full_time_details", default: {}, null: false
+    t.integer "schedule_flexibility", default: 0, null: false
     t.index ["company_membership_tier_config_id"], name: "index_jobs_on_company_membership_tier_config_id"
     t.index ["company_profile_id"], name: "index_jobs_on_company_profile_id"
     t.index ["funding_status"], name: "index_jobs_on_funding_status"
     t.index ["pay_basis"], name: "index_jobs_on_pay_basis"
+    t.index ["potential_full_time"], name: "index_jobs_on_potential_full_time"
     t.index ["rolling_start_rule_type"], name: "index_jobs_on_rolling_start_rule_type"
+    t.index ["schedule_flexibility"], name: "index_jobs_on_schedule_flexibility"
     t.index ["share_token"], name: "index_jobs_on_share_token", unique: true
     t.index ["start_mode"], name: "index_jobs_on_start_mode"
     t.index ["technician_membership_tier_config_id"], name: "index_jobs_on_technician_membership_tier_config_id"
@@ -1347,6 +1386,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_18_010000) do
   add_foreign_key "job_issue_reports", "users"
   add_foreign_key "job_payment_transactions", "jobs"
   add_foreign_key "job_payment_transactions", "payments"
+  add_foreign_key "job_templates", "company_profiles"
+  add_foreign_key "job_templates", "users", column: "created_by_user_id"
   add_foreign_key "job_term_change_audits", "jobs"
   add_foreign_key "job_term_change_audits", "users", column: "actor_user_id"
   add_foreign_key "job_terminations", "job_applications"

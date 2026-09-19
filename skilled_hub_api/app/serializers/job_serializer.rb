@@ -14,6 +14,8 @@ class JobSerializer < ActiveModel::Serializer
              :saturday_multiplier, :sunday_multiplier, :weekend_requires_company_approval, :weekend_requires_technician_acceptance,
              :premium_combination_rule, :overtime_enabled, :daily_overtime_threshold_hours, :weekly_overtime_threshold_hours,
              :overtime_multiplier, :hard_deadline_at, :job_timezone, :standard_day_shifts, :weekend_day_shifts,
+             :potential_full_time, :potential_full_time_details, :potential_full_time_disclaimer,
+             :schedule_flexibility, :technicians_needed,
              :schedule_and_pay_summary,
              :timeline_events, :pending_counter_offer,
              :terminated_at, :ended_early
@@ -24,6 +26,7 @@ class JobSerializer < ActiveModel::Serializer
   attribute :payment_summary, if: :participant_on_job?
   attribute :certification_match, if: :cert_match_requested?
   attribute :termination, if: :participant_on_job?
+  attribute :schedule_availability, if: :schedule_availability_visible?
 
   def ended_early
     object.terminated_early?
@@ -34,6 +37,38 @@ class JobSerializer < ActiveModel::Serializer
     return nil if record.blank?
 
     JobTerminationSerializer.new(record).as_json
+  end
+
+  def potential_full_time_details
+    object.potential_full_time_details_hash
+  end
+
+  # Always sent alongside the designation so no client can present it as a firm job offer.
+  def potential_full_time_disclaimer
+    object.potential_full_time? ? Job::POTENTIAL_FULL_TIME_DISCLAIMER : nil
+  end
+
+  # Capacity is one accepted claim today; exposed so clients read it from the API rather
+  # than hard-coding the assumption.
+  def technicians_needed
+    object.claim_capacity
+  end
+
+  # available / schedule_conflict / unavailable for the viewing technician, with the
+  # alternate schedules TechFlash can offer.
+  def schedule_availability
+    Schedule::JobAvailabilityClassifier.payload(
+      job: object,
+      technician_profile: scope.technician_profile
+    )
+  end
+
+  # Only meaningful for jobs the technician could still claim.
+  def schedule_availability_visible?
+    return false unless scope&.technician?
+    return false if scope.technician_profile.blank?
+
+    object.open?
   end
 
   def timeline_events

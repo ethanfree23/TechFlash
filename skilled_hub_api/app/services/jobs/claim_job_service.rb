@@ -1,5 +1,10 @@
 module Jobs
   class ClaimJobService
+    SCHEDULE_CONFLICT_MESSAGE = "You already have a job scheduled during part of this job."
+    STALE_PROPOSAL_MESSAGE =
+      "This job's schedule or pay changed after the alternate schedule was proposed. " \
+      "Ask the technician for an updated proposal."
+
     def self.call(job:, technician_user:, offer: nil)
       new(job: job, technician_user: technician_user, offer: offer).call
     end
@@ -30,16 +35,39 @@ module Jobs
         }
       end
 
+      # Never fund or claim against a proposal that was calculated on terms the company has
+      # since changed, and never mutate job terms for a job that is already full.
+      if @offer.present? && (stale = Schedule::ProposalInvalidator.stale_reason(@offer))
+        Schedule::ProposalInvalidator.invalidate_stale_for_job!(@job, reason: stale)
+        return { error: STALE_PROPOSAL_MESSAGE, status: :conflict, schedule_proposal_stale: true }
+      end
+      return { error: "Job has already been claimed" } unless @job.capacity_available?
+
       apply_offer_terms! if @offer.present?
       ensure_schedule_for_start_mode!
-      return { error: schedule_error_message } if schedule_invalid?
-      return { error: "Job has already been claimed" } if @job.job_applications.accepted.any?
-      return { error: overlap_error_message } if overlapping_claim?(technician_profile)
+      if schedule_invalid?
+        revert_offer_terms!
+        return { error: schedule_error_message }
+      end
+
+      conflict = Schedule::ConflictDetector.call(technician_profile: technician_profile, job: @job)
+      if conflict.conflict?
+        revert_offer_terms!
+        # Accepting a counter offer is not a new Claim: a leftover overlap is a hard
+        # failure, not another round of alternate-schedule options.
+        if @offer.present?
+          return {
+            error: "This schedule still overlaps another job this technician has claimed.",
+            status: :unprocessable_entity
+          }
+        end
+        return schedule_conflict_result(conflict: conflict, technician_profile: technician_profile)
+      end
 
       if @offer.present?
         funding = JobFundingAdjustmentService.reconcile!(@job, source: "counteroffer", transaction_type_prefix: "counteroffer")
         if funding[:requires_action]
-          revert_offer_terms! if @previous_terms.present?
+          revert_offer_terms!
           return {
             error: funding[:error] || "Additional payment is required before these terms can be accepted.",
             requires_action: true,
@@ -48,7 +76,7 @@ module Jobs
           }
         end
         unless funding[:success]
-          revert_offer_terms! if @previous_terms.present?
+          revert_offer_terms!
           return { error: funding[:error] || "Could not fund the accepted counteroffer." }
         end
       else
@@ -57,14 +85,15 @@ module Jobs
         end
       end
 
-      job_application = JobApplication.create!(
-        job: @job,
-        technician_profile: technician_profile,
-        status: :accepted
-      )
+      claim = create_claim_atomically!(technician_profile)
+      if claim[:error]
+        # Do not leave a failed accept sitting on the proposed dates of a job someone
+        # else may already hold.
+        revert_offer_terms!
+        return claim
+      end
 
       JobFundingService.snapshot_technician!(@job, technician_profile)
-      @job.update!(status: :filled)
       MailDelivery.safe_deliver do
         UserMailer.job_claimed_email(@job).deliver_now
         UserMailer.technician_claimed_job_email(@job).deliver_now
@@ -75,6 +104,29 @@ module Jobs
 
     private
 
+    # Re-checks capacity while holding a row lock so two simultaneous claims (or a claim
+    # racing a counter-offer acceptance) cannot both succeed.
+    def create_claim_atomically!(technician_profile)
+      result = {}
+      Job.transaction do
+        locked = Job.lock.find(@job.id)
+        if locked.capacity_available?
+          JobApplication.create!(
+            job: locked,
+            technician_profile: technician_profile,
+            status: :accepted
+          )
+          locked.reload
+          locked.update!(status: :filled) unless locked.capacity_available?
+        else
+          result = { error: "Job has already been claimed" }
+        end
+      end
+      @job.reload
+      Schedule::ConflictDetector.reset_commitments_cache!(technician_profile)
+      result
+    end
+
     def create_default_technician_profile!
       TechnicianProfile.create!(
         user: @technician_user,
@@ -82,6 +134,37 @@ module Jobs
         experience_years: 0,
         availability: "Full-time"
       )
+    end
+
+    # Structured conflict payload so the client can turn Claim into an alternate-schedule
+    # proposal without recalculating any dates itself.
+    def schedule_conflict_result(conflict:, technician_profile:)
+      if conflict.indeterminate?
+        return {
+          error: "One of your current assignments has no confirmed schedule, so this job cannot be claimed.",
+          status: :conflict,
+          schedule_conflict: true,
+          schedule_conflict_details: Schedule::JobAvailabilityClassifier.payload(
+            job: @job,
+            technician_profile: technician_profile
+          )
+        }
+      end
+
+      details = Schedule::JobAvailabilityClassifier.payload(job: @job, technician_profile: technician_profile)
+      message =
+        if details[:options].empty?
+          "This job overlaps an assignment you already have and no alternate schedule fits its constraints."
+        else
+          SCHEDULE_CONFLICT_MESSAGE
+        end
+
+      {
+        error: message,
+        status: :conflict,
+        schedule_conflict: true,
+        schedule_conflict_details: details
+      }
     end
 
     def apply_offer_terms!
@@ -97,16 +180,18 @@ module Jobs
         agreed_labor_cents: @job.agreed_labor_cents,
         financial_revision: @job.financial_revision
       }
+      # effective_* falls back to the job's current terms, so a schedule-only proposal does
+      # not wipe the agreed pay (and a pay-only counteroffer does not wipe the schedule).
       JobFundingAdjustmentService.apply_accepted_terms!(
         job: @job,
-        hourly_rate_cents: @offer.proposed_hourly_rate_cents,
-        hours_per_day: @offer.proposed_hours_per_day,
-        days: @offer.proposed_days
+        hourly_rate_cents: @offer.effective_hourly_rate_cents,
+        hours_per_day: @offer.effective_hours_per_day,
+        days: @offer.effective_days
       )
       @job.assign_attributes(
         start_mode: @offer.proposed_start_mode,
-        scheduled_start_at: @offer.proposed_start_at,
-        scheduled_end_at: @offer.proposed_end_at
+        scheduled_start_at: @offer.effective_start_at,
+        scheduled_end_at: @offer.effective_end_at
       )
       if @job.rolling_start? && (@job.rolling_start_rule_type.blank? || @job.rolling_start_rule_type == "none")
         @job.rolling_start_rule_type = :exact_datetime
@@ -119,6 +204,7 @@ module Jobs
       return if @previous_terms.blank?
 
       @job.update!(@previous_terms)
+      @previous_terms = nil
     end
 
     def ensure_schedule_for_start_mode!
@@ -177,29 +263,6 @@ module Jobs
       else
         raise ArgumentError, "This rolling-start job is missing a company-defined start rule. Ask the company to update the job schedule."
       end
-    end
-
-    def overlapping_claim?(technician_profile)
-      technician_profile.job_applications
-        .joins(:job)
-        .where(job_applications: { status: :accepted })
-        .where(jobs: { status: [:reserved, :filled] })
-        .where.not(jobs: { id: @job.id })
-        .any? { |app| jobs_overlap?(app.job, @job) }
-    end
-
-    def overlap_error_message
-      "You cannot claim this job because its scheduled time overlaps with another job you've already claimed."
-    end
-
-    def jobs_overlap?(job_a, job_b)
-      return true if job_a.scheduled_start_at.blank? || job_a.scheduled_end_at.blank? || job_b.scheduled_start_at.blank? || job_b.scheduled_end_at.blank?
-
-      start_a = job_a.scheduled_start_at
-      end_a = job_a.scheduled_end_at
-      start_b = job_b.scheduled_start_at
-      end_b = job_b.scheduled_end_at
-      start_a < end_b && end_a > start_b
     end
   end
 end

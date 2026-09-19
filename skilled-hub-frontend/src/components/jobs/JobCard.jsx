@@ -11,7 +11,13 @@ import {
 } from 'react-icons/fa';
 import JobStatusBadge from './JobStatusBadge';
 import JobCardActions from './JobCardActions';
+import { PotentialFullTimeBadge, ScheduleConflictBadge } from './JobFlagBadges';
 import { getCardSurfaceClasses } from '../../utils/jobStatus';
+import {
+  hasScheduleConflict,
+  isScheduleUnavailable,
+  unavailableReasonText,
+} from '../../utils/scheduleAvailability';
 import { technicianClassLabel } from '../../constants/technicianClass';
 import { isFlagshipDemoJob, sanitizeDemoJobNotes } from '../../utils/demoMode';
 import {
@@ -59,7 +65,13 @@ export default function JobCard({
   const certs = formatCertifications(job);
   const distance = role === 'technician' ? getJobDistance(job, technicianProfile) : null;
   const appCount = getApplicationCount(job);
-  const unavailableReason = role === 'technician' ? getTechnicianUnavailableReason(job, technicianProfile) : null;
+  // A job that clashes with existing work is still shown; it is only blocked when there is
+  // no alternate schedule that fits its constraints.
+  const scheduleConflict = role === 'technician' && hasScheduleConflict(job);
+  const unavailableReason = role === 'technician'
+    ? (getTechnicianUnavailableReason(job, technicianProfile)
+      || (isScheduleUnavailable(job) ? unavailableReasonText(job) : null))
+    : null;
   const claimedByMe = role === 'technician' && isJobClaimedByTechnician(job, technicianProfile);
   const matchesSaved = role === 'technician' && savedSearches.some((s) => matchesSavedSearch(job, s, technicianProfile));
   const isBookmarked = savedJobIds.includes(job.id);
@@ -104,6 +116,13 @@ export default function JobCard({
               <FaStar className="h-2.5 w-2.5 text-orange-500" />
               Featured
             </span>
+          </div>
+        )}
+
+        {(job.potential_full_time || scheduleConflict) && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {job.potential_full_time && <PotentialFullTimeBadge />}
+            {scheduleConflict && <ScheduleConflictBadge />}
           </div>
         )}
 
@@ -188,6 +207,13 @@ export default function JobCard({
         {isUnavailable && (
           <div className="mt-3 rounded-lg bg-slate-100/80 border border-slate-200/80 px-2.5 py-1.5 text-xs text-slate-600 leading-snug">
             {unavailableReason}
+          </div>
+        )}
+
+        {scheduleConflict && !isUnavailable && (
+          <div className="mt-3 rounded-lg bg-amber-50/90 border border-amber-200/80 px-2.5 py-1.5 text-xs text-amber-900 leading-snug">
+            This overlaps a job you have already claimed. Claiming it will offer the company
+            an alternate schedule instead.
           </div>
         )}
       </div>

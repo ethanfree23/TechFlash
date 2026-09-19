@@ -710,6 +710,11 @@ export const jobsAPI = {
   getLocations: () =>
     apiRequest('/jobs/locations'),
 
+  // Whether this job clashes with the technician's existing commitments, plus the
+  // alternate schedules TechFlash can offer. Technician-only.
+  getScheduleAvailability: (id) =>
+    apiRequest(`/jobs/${id}/schedule_availability`),
+
   getCounterOffers: (jobId) =>
     apiRequest(`/jobs/${jobId}/counter_offers`),
 
@@ -765,6 +770,46 @@ export const jobsAPI = {
   rejectTimeEntry: (jobId, timeEntryId) =>
     apiRequest(`/jobs/${jobId}/time_entries/${timeEntryId}/reject`, {
       method: 'PATCH',
+    }),
+};
+
+// Reusable job setups a company can save and post again with a new start date.
+export const jobTemplatesAPI = {
+  list: (params = {}) => {
+    const clean = Object.fromEntries(
+      Object.entries(params).filter(([, v]) => v != null && v !== '')
+    );
+    const query = new URLSearchParams(clean).toString();
+    return apiRequest(`/job_templates${query ? `?${query}` : ''}`);
+  },
+
+  getById: (id) => apiRequest(`/job_templates/${id}`),
+
+  // Save from an existing job (`from_job_id`) or from the form's current values
+  // (`configuration`).
+  create: (payload) =>
+    apiRequest('/job_templates', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
+  // Rename by sending `name`, or overwrite the saved setup by sending `configuration`.
+  update: (id, payload) =>
+    apiRequest(`/job_templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(payload),
+    }),
+
+  remove: (id) =>
+    apiRequest(`/job_templates/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Returns the job attributes this template produces for a chosen start date.
+  apply: (id, { start_date }) =>
+    apiRequest(`/job_templates/${id}/apply`, {
+      method: 'POST',
+      body: JSON.stringify({ start_date }),
     }),
 };
 
