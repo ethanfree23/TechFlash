@@ -128,6 +128,34 @@ module Api
         assert_equal "available", JSON.parse(response.body)["classification"]
       end
 
+      test "Mon-Fri vs Sat-Sun overlapping calendars are available and claim normally" do
+        commit_existing!
+        weekend = funded_job(
+          start_at: at(monday(0) + 5, 8),
+          end_at: at(monday(0) + 6, 17),
+          days: 2,
+          standard_work_days: [6, 7],
+          weekend_work_policy: :required,
+          saturday_work_policy: :normal_rate,
+          sunday_work_policy: :normal_rate
+        )
+
+        get "/api/v1/jobs/#{weekend.id}/schedule_availability", headers: auth_header_for(@tech_user), as: :json
+        assert_response :ok
+        assert_equal "available", JSON.parse(response.body)["classification"]
+
+        get "/api/v1/jobs", params: { page: 1 }, headers: auth_header_for(@tech_user)
+        listed = JSON.parse(response.body)["jobs"].find { |j| j["id"] == weekend.id }
+        assert_not_nil listed
+        assert_equal "available", listed["schedule_availability"]["classification"]
+
+        patch "/api/v1/jobs/#{weekend.id}/claim", headers: auth_header_for(@tech_user), as: :json
+        assert_response :ok
+        assert weekend.reload.filled?
+        refute JSON.parse(response.body)["schedule_conflict"]
+        assert_empty weekend.job_counter_offers.where(proposal_kind: :schedule)
+      end
+
       test "the schedule availability endpoint returns pre-computed dates" do
         commit_existing!
         job = overlapping_job(schedule_flexibility: :hard_end)
@@ -325,6 +353,30 @@ module Api
         assert_equal 400_000, job.agreed_labor_cents
         assert_equal "accepted", JobCounterOffer.find(offer_id).status
         assert_equal @tech_profile.id, job.job_applications.find_by(status: :accepted).technician_profile_id
+      end
+
+      test "a funding-waived company can accept a schedule proposal without a card" do
+        @company_profile.update_columns(job_funding_waived: true)
+        commit_existing!
+        job = overlapping_job(schedule_flexibility: :flexible_start)
+
+        post "/api/v1/jobs/#{job.id}/counter_offers",
+             params: { schedule_option: "start_after_conflict" },
+             headers: auth_header_for(@tech_user),
+             as: :json
+        offer_id = JSON.parse(response.body)["id"]
+
+        patch "/api/v1/counter_offers/#{offer_id}/accept",
+              headers: auth_header_for(@company_user),
+              as: :json
+
+        assert_response :ok
+        job.reload
+        assert job.filled?
+        assert job.funding_funded?
+        assert_equal 10, job.days
+        assert_equal 5_000, job.hourly_rate_cents
+        assert_equal 0, job.job_payment_transactions.where(transaction_type: %w[counteroffer_top_up counteroffer_refund]).count
       end
 
       test "accepting a partial proposal recalculates duration hours and payment" do
