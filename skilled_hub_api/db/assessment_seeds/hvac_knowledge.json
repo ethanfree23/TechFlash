@@ -356,12 +356,12 @@
         {
           "difficulty": "medium",
           "prompt": "A disconnect is open, but the technician has not yet verified voltage. What should be done next?",
-          "explanation": "An open handle does not guarantee isolation. Test the meter on a known live source, check the load side, then re-check the meter. Never trust the handle alone.",
+          "explanation": "An open handle does not prove isolation. Use live-dead-live: prove the meter on a known live source, measure the load-side conductors, then prove the meter on a known live source again. Never trust the handle alone.",
           "active": true,
           "choices": [
             {
               "key": "a",
-              "body": "Verify the absence of voltage with a meter using a known-live test of the meter",
+              "body": "Prove the meter on a known live source, test the load side, then prove the meter live again",
               "correct": true
             },
             {
@@ -1119,17 +1119,17 @@
         {
           "difficulty": "medium",
           "prompt": "A thermostat is calling for cooling. There is 24 volts from Y to C at the outdoor unit, but the contactor does not pull in. What should be checked next?",
-          "explanation": "Control voltage is present, so the next checks are the contactor coil path, coil resistance, and whether the coil is open or mechanically jammed\u2014not immediately the compressor windings.",
+          "explanation": "Y-to-C voltage at the unit is not the same as voltage across the coil. Measure voltage across the coil terminals while it is supposed to be energized. Only after de-energizing should resistance or continuity be used to check for an open coil. Do not put an ohmmeter on a live 24-volt circuit.",
           "active": true,
           "choices": [
             {
               "key": "a",
-              "body": "Contactor coil circuit continuity and whether the coil is open or the armature is jammed",
+              "body": "Voltage across the coil terminals; de-energize before any resistance or continuity check",
               "correct": true
             },
             {
               "key": "b",
-              "body": "Indoor blower wheel balance only",
+              "body": "Coil resistance with the 24-volt circuit still energized",
               "correct": false
             },
             {
@@ -1177,12 +1177,12 @@
         {
           "difficulty": "medium",
           "prompt": "A technician needs to know if a fuse is open. The circuit is de-energized. Which method is appropriate?",
-          "explanation": "With power off and the fuse isolated as required, continuity or resistance across the fuse identifies an open. Measuring ohms on an energized fuse is the wrong tool use.",
+          "explanation": "Lock out power, isolate the fuse from parallel paths as required, then check continuity or resistance. An in-circuit reading can be fooled by a parallel load path. Never measure ohms on an energized fuse.",
           "active": true,
           "choices": [
             {
               "key": "a",
-              "body": "Measure continuity or resistance across the de-energized fuse",
+              "body": "Isolate the fuse as required, then measure continuity or resistance",
               "correct": true
             },
             {
@@ -1379,13 +1379,13 @@
         },
         {
           "difficulty": "hard",
-          "prompt": "A technician reads about 120 volts from each outdoor unit leg to ground on a 240-volt single-phase circuit, but 0 volts across the two legs at the contactor load side while the coil is pulled in. What is the most likely explanation?",
-          "explanation": "Each leg to ground can read ~120 volts even if the contactor is not passing both legs to the load, or if the meter is reading on the line side. 0 volts across the two load terminals with the coil pulled in suggests the contacts are not closing a complete 240-volt path. Do not assume the compressor is shorted without confirming voltage at the compressor terminals.",
+          "prompt": "On a 240-volt single-phase outdoor unit, the contactor coil is pulled in. Voltage across the two line-side terminals is about 240 volts, but voltage across the two load-side terminals is about 0 volts. What is the most likely explanation?",
+          "explanation": "Line-side 240 volts proves supply is present. With the coil pulled in, 0 volts across the load-side terminals means the contacts are not completing a 240-volt path to the compressor. Confirm voltage at the compressor terminals before condemning the compressor. Do not treat the missing load-side 240 volts as a shorted compressor or an open 24-volt transformer.",
           "active": true,
           "choices": [
             {
               "key": "a",
-              "body": "The load-side 240-volt path is open, such as failed contactor contacts",
+              "body": "The contacts are not closing a complete 240-volt path to the load",
               "correct": true
             },
             {
@@ -1795,7 +1795,7 @@
         {
           "difficulty": "medium",
           "prompt": "Sensible heat is heat that:",
-          "explanation": "Sensible heat changes temperature that a thermometer can read. Latent heat changes state (moisture) without changing dry-bulb temperature the same way.",
+          "explanation": "Sensible heat changes a substance\u2019s measurable temperature (dry-bulb). Latent heat is the energy absorbed or released during a phase change\u2014such as refrigerant boiling or condensing, or water evaporating\u2014without a corresponding dry-bulb temperature change. Moisture removal in cooling is one latent effect, not the definition of latent heat.",
           "active": true,
           "choices": [
             {
@@ -1968,13 +1968,13 @@
         },
         {
           "difficulty": "medium",
-          "prompt": "A temperature drop across a liquid-line filter-drier during steady cooling operation most nearly suggests:",
-          "explanation": "A restriction causes a pressure drop and flashing, which shows up as a temperature drop across the drier. It does not prove a bad compressor by itself.",
+          "prompt": "During steady cooling, a liquid-line filter-drier is several degrees colder at the outlet than at the inlet. What does that most nearly suggest?",
+          "explanation": "A small, barely measurable difference can be normal. A drop of several degrees means pressure drop and flashing in the drier\u2014evidence of restriction. It does not by itself prove a failed compressor or a dirty indoor filter.",
           "active": true,
           "choices": [
             {
               "key": "a",
-              "body": "A possible restriction in the drier",
+              "body": "A restriction in the drier",
               "correct": true
             },
             {
@@ -2027,12 +2027,12 @@
         {
           "difficulty": "hard",
           "prompt": "A cooling system with a TXV shows high superheat and high subcooling after airflow is confirmed normal. Which problem is most consistent with those two readings together?",
-          "explanation": "High subcooling means liquid is backing up in the condenser; high superheat means the evaporator is starved. That combination points to a restriction between the condenser outlet and the TXV inlet (often a drier or liquid-line restriction), not a simple undercharge (which usually lowers subcooling).",
+          "explanation": "High subcooling means liquid is backing up in the condenser; high superheat means the evaporator is starved. That pair points to a restriction in the liquid feed\u2014liquid line, filter-drier, or TXV inlet/screen\u2014not a simple undercharge, which usually lowers subcooling. Localize the restriction with component temperature drop and frost location; do not assume it is always the drier.",
           "active": true,
           "choices": [
             {
               "key": "a",
-              "body": "A restriction in the liquid line or filter-drier",
+              "body": "A restriction in the liquid feed (line, drier, or TXV inlet)",
               "correct": true
             },
             {
@@ -2056,12 +2056,12 @@
         {
           "difficulty": "hard",
           "prompt": "A cooling system shows low superheat and low subcooling after indoor airflow has been verified. What is the most appropriate next step?",
-          "explanation": "That pair of readings is not a single-part verdict. Low superheat can mean overfeeding; low subcooling can mean little liquid is stored in the condenser. Re-check probes and gauges first, then evaluate metering-device feed and charge together instead of replacing the compressor or adding refrigerant blindly.",
+          "explanation": "Low superheat plus low subcooling is not a one-part verdict. Confirm probe and gauge accuracy, then compare compressor pressure lift with metering-device feed and charge. A weak compressor can look similar to an overfeeding meter with little liquid in the condenser. Do not add refrigerant or replace the compressor as the first step.",
           "active": true,
           "choices": [
             {
               "key": "a",
-              "body": "Re-verify gauge and temperature measurements, then evaluate metering-device feed and charge together",
+              "body": "Re-verify the readings, then evaluate compressor lift together with metering feed and charge",
               "correct": true
             },
             {
@@ -2731,13 +2731,13 @@
         },
         {
           "difficulty": "hard",
-          "prompt": "An induced-draft gas furnace lights briefly, then locks out. The pressure switch is a suspect. What is the most appropriate early check?",
-          "explanation": "The pressure switch proves the inducer is moving vent products. Check inducer operation, vent/intake obstructions, condensate in the hose, and the hose itself before replacing the gas valve or adding refrigerant.",
+          "prompt": "An induced-draft gas furnace\u2019s inducer runs, but the igniter never energizes and the control reports a pressure-switch fault. What is the most appropriate early check?",
+          "explanation": "If the board never leaves the pressure-switch prove step, the burners should not have lit. Confirm that the inducer develops draft, that the vent/intake and condensate hose are clear, and that the switch actually closes. Jumping the switch permanently, raising manifold pressure, or treating it as a refrigerant problem is unsafe or irrelevant.",
           "active": true,
           "choices": [
             {
               "key": "a",
-              "body": "Confirm inducer operation, vent/intake path, and the pressure-switch hose",
+              "body": "Confirm inducer draft, vent/intake path, condensate/hose, and that the switch closes",
               "correct": true
             },
             {
@@ -3175,18 +3175,18 @@
         },
         {
           "difficulty": "medium",
-          "prompt": "A heat pump blows cool air in heating mode except during a brief outdoor steam-off. What is a logical check?",
-          "explanation": "Cool air during heating can be a defrost event, a reversing-valve issue, or a thermostat O/B configuration problem. Identify whether the unit is in defrost or in the wrong mode before replacing the compressor.",
+          "prompt": "A heat pump is calling for heat. Indoor supply air is briefly cool while the outdoor unit is steaming or shedding melt water. What is the most logical interpretation?",
+          "explanation": "Reverse-cycle defrost sends hot gas to the outdoor coil, so that coil can steam while the indoor coil temporarily absorbs heat and supply air feels cool. Many systems also energize auxiliary heat during defrost. Outdoor steaming with cool indoor air is expected during defrost\u2014not a reason to replace the compressor or add charge before confirming mode.",
           "active": true,
           "choices": [
             {
               "key": "a",
-              "body": "Whether the unit is in defrost or the thermostat reversing-valve setup is wrong",
+              "body": "The unit is in reverse-cycle defrost; cool indoor air during outdoor steaming can be normal",
               "correct": true
             },
             {
               "key": "b",
-              "body": "Replace the compressor immediately",
+              "body": "Replace the compressor immediately because cool supply air always means a failed compressor",
               "correct": false
             },
             {
@@ -3196,7 +3196,7 @@
             },
             {
               "key": "d",
-              "body": "Charge until the suction line is warm in heating without checking mode",
+              "body": "Add refrigerant until the suction line is warm without checking whether the unit is in defrost",
               "correct": false
             }
           ],
@@ -3349,18 +3349,18 @@
         },
         {
           "difficulty": "medium",
-          "prompt": "A customer reports intermittent cooling. Connections at the contactor are discolored and loose. What is the appropriate early repair direction?",
-          "explanation": "Loose, overheated electrical connections cause intermittent operation and are a fire/shock hazard. Repair the electrical issue before a major sealed-system repair.",
+          "prompt": "A customer reports intermittent cooling. Connections at the contactor are discolored, heat-damaged, and loose. What is the appropriate early repair direction?",
+          "explanation": "Heat-damaged lugs and conductors are a fire and shock hazard. De-energize, replace burned terminals/lugs and any damaged conductor, land on clean metal, and torque to spec. Tightening a burned connection is not a repair. Fix the electrical path before a sealed-system repair.",
           "active": true,
           "choices": [
             {
               "key": "a",
-              "body": "Correct the high-resistance electrical connections and re-test operation",
+              "body": "Replace the burned terminals/conductors as needed, then remake and torque the connections",
               "correct": true
             },
             {
               "key": "b",
-              "body": "Ignore the connections and recover the charge first",
+              "body": "Only snug the burned lugs and leave the discolored conductor in place",
               "correct": false
             },
             {
@@ -3465,28 +3465,28 @@
         },
         {
           "difficulty": "hard",
-          "prompt": "High superheat and high subcooling are present, condenser is clean, and indoor airflow is good. What is the most consistent sealed-system interpretation?",
-          "explanation": "Liquid is backing up (high subcooling) while the evaporator is starved (high superheat). That pattern fits a restriction after the condenser, such as a plugged drier or liquid-line restriction\u2014not a simple undercharge.",
+          "prompt": "A TXV cooling system has high superheat and high subcooling. Airflow is good. How should the restriction be localized before parts are replaced?",
+          "explanation": "High SH with high SC means the evaporator is starved while liquid is backing up before the restriction. Compare temperature drop across the filter-drier with frost or drop at the TXV, and check bulb mounting and charge. A several-degree drop across the drier implicates the drier; little drier drop with a cold TXV body points to the valve or its inlet screen.",
           "active": true,
           "choices": [
             {
               "key": "a",
-              "body": "A restriction between the condenser outlet and the metering device",
+              "body": "Compare drier inlet-to-outlet temperature drop with TXV bulb mounting, frost location, and valve drop",
               "correct": true
             },
             {
               "key": "b",
-              "body": "A simple undercharge as the only possibility",
+              "body": "Replace the compressor first because high subcooling always means a failed compressor",
               "correct": false
             },
             {
               "key": "c",
-              "body": "A dirty filter as the only possibility",
+              "body": "Add refrigerant until subcooling falls, without locating the restriction",
               "correct": false
             },
             {
               "key": "d",
-              "body": "A failed crankcase heater as the only possibility",
+              "body": "Replace the indoor blower motor because airflow was already confirmed good",
               "correct": false
             }
           ],
@@ -3552,13 +3552,13 @@
         },
         {
           "difficulty": "hard",
-          "prompt": "A compressor is noisy and running hot. Suction pressure is high and head pressure is low compared with conditions. Superheat is low. What is a consistent concern to evaluate?",
-          "explanation": "High suction, low head, and low superheat can indicate weak compression or a mechanical compressor problem, but also measurement error or a reversing valve leaking through on a heat pump. Confirm gauges, valve position, and then compressor performance\u2014do not just add charge.",
+          "prompt": "A compressor is noisy and running hot. Suction pressure is high and discharge pressure is low for the conditions, so the compressor is developing little pressure lift. Superheat is low. Gauges and, on a heat pump, reversing-valve position have been confirmed. What is the most consistent compressor concern?",
+          "explanation": "Little pressure difference between suction and discharge with a hot, noisy compressor and a flooded evaporator (low superheat) points to weak compression or internal leakage. Undercharge would usually raise superheat and lower suction pressure. Confirm measurements and reversing-valve seating before condemning the compressor; do not add charge as the repair.",
           "active": true,
           "choices": [
             {
               "key": "a",
-              "body": "Weak compression or internal leakage (after confirming measurements and valve position)",
+              "body": "Weak compression or internal leakage through the compressor",
               "correct": true
             },
             {

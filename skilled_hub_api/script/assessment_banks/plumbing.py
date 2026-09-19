@@ -245,11 +245,11 @@ SAFETY = [
     ),
     q(
         "hard",
-        "A deep excavation for a building sewer is in unstable soil. The crew is behind schedule. What is the correct priority?",
-        "Cave-in protection and a safe means of egress are not optional because of schedule. Stop and protect the excavation before anyone enters.",
-        "Do not enter until required cave-in protection and safe access are in place",
+        "After heavy rain, a previously protected sewer trench has sloughed at the edges and spoil has crept closer to the wall. What should happen before anyone re-enters?",
+        "Rain and sloughing change the excavation. Re-inspect, restore cave-in protection, keep spoil set back from the edge, and confirm a safe means of egress. A trench that was acceptable yesterday is not automatically safe after weather or soil movement.",
+        "Re-inspect, restore cave-in protection and spoil setback, and confirm safe egress",
         [
-            "Send one person in quickly without protection to save time",
+            "Re-enter immediately because the trench was protected before the rain",
             "Use the pipe itself as a shield by lying under it",
             "Park the truck on the spoil pile to compact the soil",
         ],
@@ -358,9 +358,9 @@ WATER = [
     ),
     q(
         "medium",
-        "What is the difference between a vacuum breaker and a reduced-pressure-zone (RPZ) backflow preventer at a high level?",
-        "An atmospheric vacuum breaker protects against back-siphonage under limited conditions. An RPZ is used for higher-hazard backpressure/back-siphonage applications. Selection follows the hazard and listing—not whichever is cheapest.",
-        "They are used for different backflow hazards and installation conditions",
+        "What is a practical difference between an atmospheric vacuum breaker and a reduced-pressure-zone (RPZ) backflow preventer?",
+        "An atmospheric vacuum breaker is for back-siphonage only under limited conditions and must not be under continuous pressure or subject to backpressure. An RPZ can protect against both back-siphonage and backpressure on higher-hazard connections. Choose by hazard and listing, not by price.",
+        "A vacuum breaker is for back-siphonage only; an RPZ also protects against backpressure on higher-hazard uses",
         [
             "They are identical devices with different paint colors",
             "An RPZ is only for DWV, never potable water",
@@ -424,13 +424,13 @@ WATER = [
     ),
     q(
         "medium",
-        "Balancing a multi-branch potable system is done so that:",
-        "Reasonable flow is available at fixtures without starving distant branches or creating excessive velocity/noise on short runs.",
-        "Fixtures receive adequate flow without excessive velocity on short runs",
+        "Why is excessive water velocity in a potable-water pipe a concern?",
+        "High velocity causes noise, erosion of fittings, and greater water-hammer surge when valves close. Size piping for required fixture flow without treating a potable system like a hydronic loop that is “balanced” with circuit setters. Distant fixtures still need adequate pressure and flow.",
+        "It can cause noise, erosion, and more severe water hammer",
         [
-            "One bathroom gets all available pressure",
-            "Hot water is eliminated from the farthest fixture",
-            "The water heater bypasses the PRV",
+            "Higher velocity always improves water quality",
+            "Velocity only matters on DWV stacks, never on water pipe",
+            "Codes require the highest possible velocity so pipes can be smaller without limit",
         ],
     ),
     q(
@@ -446,13 +446,13 @@ WATER = [
     ),
     q(
         "medium",
-        "A pressure gauge on a water heater reads well above the T&P rating during a heating cycle on a closed system. What should be checked?",
-        "Excessive pressure on a closed system often means missing, waterlogged, or undersized expansion control, or a faulty PRV/check arrangement. Do not plug the T&P.",
-        "Thermal expansion control and whether the system is closed by a check or PRV",
+        "A water heater’s T&P discharge was capped because the valve dripped during heat-up on a closed system. What is the correct action?",
+        "A T&P valve must never be capped or blocked. Restore an unobstructed discharge immediately. If the tank is overpressured or the valve cannot relieve, shut the heater down and verify that a listed relief path works before returning it to service. Then correct thermal expansion (expansion tank or listed equivalent) so the T&P is not used as a cycling expansion device. Dripping during heat-up is a clue, not a reason to disable the safety.",
+        "Restore the unobstructed T&P path immediately; shut down and verify relief if overpressure exists, then correct expansion",
         [
-            "Whether the T&P discharge was capped to stop dripping",
-            "Whether the anode rod is too new",
-            "Whether the shower head is WaterSense labeled",
+            "Leave the cap on and install a larger dip tube later",
+            "Raise the thermostat so the valve seats more firmly against the cap",
+            "Replace the anode rod only, because dripping T&P valves are always a tank-corrosion issue",
         ],
     ),
     q(
@@ -549,8 +549,8 @@ DWV = [
     q(
         "easy",
         "Why are DWV systems vented?",
-        "Vents protect trap seals from siphonage and backpressure and allow air to enter so waste can flow. Vents are not potable-water air vents.",
-        "To protect trap seals and allow air in so waste can flow",
+        "Vents admit air so waste can flow without siphoning trap seals, and they relieve positive pressure that can blow traps. Both siphonage and blowback protection matter. Vents are not potable-water air vents.",
+        "To protect trap seals from siphonage and positive pressure, and to let waste flow",
         [
             "To pressurize sewage for faster flow always",
             "To add oxygen to potable water",
@@ -571,7 +571,7 @@ DWV = [
     q(
         "easy",
         "Horizontal DWV piping is installed with slope so that:",
-        "Slope lets liquids carry solids. Too flat and solids settle; too steep and liquids can outrun solids in some drains. Follow the applicable slope for the pipe size.",
+        "Gravity slope lets liquids carry solids to the stack or sewer. Insufficient slope lets solids settle and cause stoppages. Follow the required minimum slope for the pipe size. The old claim that a steeper building drain makes liquids “outrun” solids is not a sound basis for flattening a drain.",
         "Waste can flow by gravity and carry solids",
         [
             "The pipe can hold water like a supply line",
@@ -592,13 +592,13 @@ DWV = [
     ),
     q(
         "easy",
-        "What is the waste stack?",
-        "The waste or soil stack is the main vertical DWV pipe that receives discharge from branches and carries it toward the building drain.",
-        "The main vertical DWV pipe receiving fixture discharge",
+        "What is the difference between a soil stack and a waste stack?",
+        "A soil stack receives discharge from water closets (and often other fixtures). A waste stack receives waste from fixtures other than water closets. Both are vertical DWV pipes; the distinction is whether soil (water-closet) waste is included.",
+        "A soil stack carries water-closet discharge; a waste stack does not",
         [
-            "The cold-water riser",
-            "The gas vent from a water heater only",
-            "The electrical conduit in a wet wall",
+            "They are interchangeable names for the cold-water riser",
+            "A waste stack is only the gas vent from a water heater",
+            "A soil stack is electrical conduit in a wet wall",
         ],
     ),
     q(
@@ -746,9 +746,9 @@ DWV = [
     ),
     q(
         "hard",
-        "A new branch drain was tied into a stack with a sanitary tee on its back (side inlet used incorrectly as a horizontal combination). The fixture drains slowly and other fixtures gurgle. What should be suspected?",
-        "Fitting orientation matters. A sanitary tee is generally for vertical flow into a stack, not as a horizontal drain combination. Wrong fittings create turbulence, siphonage, and stoppages. Investigate the connection geometry before replacing the water heater.",
-        "An improper fitting or orientation at the stack connection",
+        "A new horizontal branch was tied into a horizontal drain with a sanitary tee laid on its back. The fixture drains slowly and nearby traps gurgle. What should be suspected?",
+        "A sanitary tee is for vertical drainage into a stack, with the branch entering the upright body. Laid on its back in a horizontal run it creates a poor flow pattern, turbulence, and siphonage. A wye or combination wye-and-eighth bend is the usual horizontal combination. Investigate fitting geometry before blaming the water heater.",
+        "A sanitary tee used on its back instead of a combination fitting in the horizontal run",
         [
             "A failed expansion tank as the first DWV cause",
             "A mixing valve set too low",
@@ -870,13 +870,13 @@ FIXTURES = [
     ),
     q(
         "easy",
-        "Why are supply stops installed at most fixtures?",
-        "Local stops allow repair of a single fixture. They are not DWV cleanouts.",
-        "To allow fixture repair without shutting down the whole water system",
+        "A frost-proof wall hydrant should be installed so that:",
+        "The valve seat is in the heated space and the hydrant pitches down to drain after the handle is shut, so standing water does not freeze in the wall. It is not a DWV cleanout and does not replace backflow protection on the hose thread.",
+        "The seat is in the heated space and the hydrant pitches down to drain",
         [
-            "To vent the fixture trap",
-            "To increase sewer capacity",
-            "To hold the trap primer charge",
+            "The valve seat is in the cold exterior wall with no drain pitch",
+            "The hydrant is used as a DWV cleanout",
+            "The hose thread is permanently capped so it cannot freeze",
         ],
     ),
     q(
@@ -914,13 +914,13 @@ FIXTURES = [
     ),
     q(
         "medium",
-        "Why must a garbage disposer be electrically isolated and cord-connected or hardwired per its listing?",
-        "It is an appliance in a wet location. Follow the listing for cord, strain relief, and a local disconnect/switch. Do not use the dishwasher drain hose as a grounding path.",
-        "It is an electrical appliance that must be installed per its listing in a wet area",
+        "How should a food-waste disposer be electrically connected?",
+        "A disposer is a grounded appliance in a wet location. Install it per its listing: equipment grounding conductor, strain relief, and a local disconnect or switch. Cord-and-plug or hardwired methods are both acceptable only when the listing allows them. Do not “isolate” the appliance from ground, and do not use the drain hose as a grounding path.",
+        "Per its listing, with an equipment grounding conductor and a local disconnect or switch",
         [
-            "The disposer grounds through the drain hose",
-            "Disposers are pneumatic and never use electricity",
-            "Any extension cord is an acceptable permanent connection",
+            "Electrically isolated from ground so it cannot shock anyone",
+            "Grounded through the dishwasher drain hose only",
+            "Fed by any household extension cord as a permanent connection",
         ],
     ),
     q(
@@ -1170,20 +1170,20 @@ SERVICE = [
     ),
     q(
         "medium",
-        "A toilet flushes weakly. The tank fills to the correct level. What should be evaluated?",
-        "Partial clog in the trapway or drain, low supply to the fill valve (if refill is poor), or a restricted flush valve. Since the tank level is correct, look at the flush path and drain, not just the supply stop.",
-        "Trapway/drain restriction and the flush-valve opening",
+        "A toilet flushes weakly. The tank fills to the correct waterline and nearby fixtures flow well. What should be evaluated?",
+        "With a full tank and good building pressure, look at how water leaves the tank and bowl: flapper or flush-valve opening, rim jets and siphon jet, trapway or drain restriction, and venting. A closed supply stop would usually prevent a full tank. Do not start at the water-heater T&P or a dishwasher loop.",
+        "Flush-valve opening, rim/siphon jets, and trapway or drain restriction",
         [
             "The water-heater T&P setting",
-            "The PRV as the only cause if nearby fixtures flow well",
+            "The building PRV as the only cause, since nearby fixtures already flow well",
             "The dishwasher high loop",
         ],
     ),
     q(
         "medium",
-        "A sewage ejector pump runs but the basement fixtures still back up. What should be checked?",
-        "A failed check valve can let discharge fall back; a blocked discharge or vent can also prevent pumping out. Confirm check valve, discharge path, and venting before replacing the water heater.",
-        "Check valve, discharge piping, and the pump basin vent",
+        "A sewage ejector motor runs, but the basin level does not fall and basement fixtures back up. What should be checked?",
+        "A running motor does not prove pumping. Confirm the impeller is moving water, the check valve is not stuck closed, the discharge is not blocked, and the basin is vented. A failed-open check valve usually causes rapid cycling after a pump-down rather than a basin that never empties. Do not start at a kitchen aerator.",
+        "Whether the pump is actually moving water, then check valve, discharge path, and basin vent",
         [
             "The kitchen faucet aerator only",
             "The ice-maker saddle valve",
@@ -1226,11 +1226,11 @@ SERVICE = [
     q(
         "medium",
         "A gas water heater has a yellow, lifting flame and soot. What should the technician do?",
-        "This can indicate incomplete combustion, lack of air, or venting problems and can produce CO. Shut down and correct combustion air and venting; do not keep running it.",
-        "Take the heater out of service until combustion air and venting are corrected",
+        "Yellow, lifting, sooty flame is incomplete combustion and a carbon-monoxide hazard. Shut the heater down, correct combustion air and venting, then restart only after the flame burns stable and blue and venting is confirmed. Do not leave it firing, starve it of air, or cap the T&P valve.",
+        "Shut it down, correct air and venting, and restart only after combustion is verified safe",
         [
             "Close the combustion-air openings to yellow the flame on purpose",
-            "Ignore soot because yellow flames are more efficient",
+            "Keep it running because yellow flames are more efficient",
             "Cap the T&P valve to raise efficiency",
         ],
     ),
@@ -1324,9 +1324,9 @@ SERVICE = [
     ),
     q(
         "hard",
-        "A customer has repeating drain backups at a kitchen sink after grease-heavy use. The line snakes easily but clogs again. What is the most complete service approach?",
-        "Grease coats pipe walls and re-clogs. Mechanical cleaning that scrapes the wall, plus use changes and possible treatment, beats a quick water jet that only pokes a hole. Do not pour leftover fryer oil into the cleanout as treatment.",
-        "Remove the grease film from the pipe wall and address the usage that deposits it",
+        "A customer has repeating drain backups at a kitchen sink after grease-heavy use. A cable snakes through easily, but the line clogs again. What is the most complete service approach?",
+        "A cable often pokes a hole through grease while leaving a coating on the pipe wall. Restore the bore by scraping or properly jetting the film off the wall, then change the usage that deposits grease. Do not pour more grease into the line, and do not treat a quick poke-through as a cleaning.",
+        "Remove the grease film from the pipe wall (cutter or proper jetting) and address the usage that deposits it",
         [
             "Pour additional grease to lubricate the pipe",
             "Remove the trap permanently so grease cannot collect",

@@ -125,10 +125,10 @@ SAFETY = [
     q(
         "medium",
         "Damaged insulation on a flexible cord should be:",
-        "Damaged cords are a shock and fire hazard. Take them out of service. Tape is not a permanent repair for portable cord on a construction site.",
-        "Taken out of service and replaced or properly repaired",
+        "A damaged portable cord is a shock and fire hazard. Take it out of service and replace the cord, or repair it only with a listed cord-repair method. Tape, including electrical tape, is not an acceptable permanent repair for flexible cord.",
+        "Taken out of service and replaced, or repaired only with a listed cord method",
         [
-            "Wrapped with a single layer of masking tape as a permanent repair",
+            "Wrapped with electrical tape as a permanent repair",
             "Used only in wet locations so the water cools the copper",
             "Overfused so the cord can carry more current",
         ],
@@ -703,8 +703,8 @@ CIRCUITS = [
     q(
         "medium",
         "A transformer supplying a 120/240-volt panel is a separately derived system when:",
-        "When there is no direct electrical connection between primary and secondary (typical isolation transformer) and the secondary is grounded as required. The bonding/grounding arrangement must be made at the derived system.",
-        "The secondary is not electrically derived through a direct conductive path from the primary and is grounded/bonded as a new system",
+        "A separately derived system has no direct electrical connection between the derived (secondary) conductors and the supply (primary) conductors other than grounding and bonding. A typical isolation transformer is SDS and must have its secondary grounded and bonded as a new system. An autotransformer is not separately derived because primary and secondary share a conductor.",
+        "There is no direct conductive connection from primary to secondary except grounding/bonding",
         [
             "A receptacle is added on a branch circuit",
             "A GFCI is installed",
@@ -779,13 +779,13 @@ CIRCUITS = [
     ),
     q(
         "hard",
-        "Electronic loads with high harmonic content can overheat a shared neutral because:",
-        "Triplen harmonics add in the neutral rather than canceling. Neutral current can exceed any phase current. This is why some feeders need an oversized neutral.",
-        "Triplen harmonics can add in the neutral instead of canceling",
+        "Electronic loads with high triplen-harmonic content can overheat a shared neutral on which system?",
+        "On a three-phase wye, triplen harmonics (3rd, 9th, …) are in phase on all legs and add in the neutral instead of canceling. Neutral current can exceed any phase current, which is why some feeders need an oversized neutral. This addition does not occur the same way on a single-phase 120/240-volt multiwire circuit.",
+        "A three-phase wye, where triplen harmonics add in the neutral",
         [
-            "Harmonics cancel all neutral current to zero",
-            "Harmonics only affect fiber-optic neutrals",
-            "A GFCI always blocks harmonics",
+            "A single-phase 120/240-volt multiwire circuit, where triplens always cancel in the neutral",
+            "A fiber-optic backbone, because harmonics only affect fiber neutrals",
+            "A circuit protected by GFCI, because a GFCI always blocks harmonics",
         ],
     ),
     q(
@@ -1127,12 +1127,12 @@ DIAGNOSTICS = [
     q(
         "easy",
         "A three-way lighting circuit works from one switch but not the other. What is a common issue?",
-        "A traveler is open or misidentified. Confirm travelers and common terminals rather than replacing the fixture first.",
+        "A traveler is open, landed on the wrong terminal, or the common is misidentified. Confirm travelers and common terminals at both switches before replacing the fixture. This is a traveler/common problem, not a service-neutral or lamp-only failure if one switch still operates the light.",
         "An open or miswired traveler or common terminal",
         [
-            "A missing grounding electrode as the usual three-way symptom",
-            "A water-logged expansion tank",
-            "A failed water-heater T&P valve",
+            "A burned-out lamp, even though one switch still turns the light on",
+            "An open service neutral at the meter",
+            "A missing equipment grounding conductor as the usual three-way symptom",
         ],
     ),
     q(
@@ -1159,11 +1159,11 @@ DIAGNOSTICS = [
     ),
     q(
         "medium",
-        "A motor runs hot at about nameplate FLA. Supply voltage is 10% low. What is a likely contributor?",
-        "Low voltage increases current for many motors and reduces cooling effectiveness. Correct the voltage problem before replacing the motor.",
+        "A motor runs hot and current is above nameplate FLA. Supply voltage at the motor is about 10% below nameplate. What is a likely contributor?",
+        "Many motors draw extra current and run hotter when supply voltage is low for the same mechanical load. Cooling also suffers. Correct the voltage problem (supply, connections, conductor size) before replacing the motor. A reading 10% below nameplate is low voltage, not high voltage.",
         "Low supply voltage causing extra current and heat",
         [
-            "High voltage as the measured 10% low condition",
+            "High voltage as the measured 10% below nameplate condition",
             "A grounding electrode that is too conductive",
             "A GFCI on a lighting circuit in another building",
         ],
@@ -1204,18 +1204,18 @@ DIAGNOSTICS = [
     q(
         "medium",
         "A fluorescent or LED fixture hums and flickers after a ballast/driver replacement. Voltage is normal. What should be checked?",
-        "Incompatible dimmer, failed driver, poor lampholders, or a shared-neutral issue. Replacing the panel is not the first step.",
-        "Driver/ballast compatibility, dimming controls, and connections",
+        "Match the driver or ballast to the lamps and any dimmer, then check lampholders and line/load connections. Shared-neutral issues can also flicker lighting but are less likely right after a single fixture retrofit. Replacing the service panel is not the first step.",
+        "Driver/ballast compatibility with the lamps and dimmer, then connections and lampholders",
         [
-            "The water-heater dip tube",
-            "The building sewer slope",
-            "The closet-flange wax ring",
+            "Replace the service panel as the first step",
+            "Lengthen the grounding electrode rod to stop flicker",
+            "Move the fixture to a three-phase feeder because single-phase lighting cannot be dimmed",
         ],
     ),
     q(
         "medium",
-        "A circuit reads 120 V hot-to-neutral and 120 V hot-to-ground, but 80 V neutral-to-ground under load. What does this suggest?",
-        "A high-resistance neutral path can lift the neutral. Investigate the grounded conductor connections. This can damage 120-volt loads on a multiwire circuit.",
+        "Under load, a 120-volt receptacle reads about 120 V hot-to-ground, 85 V hot-to-neutral, and 35 V neutral-to-ground. What does this suggest?",
+        "Hot-to-ground remaining near 120 V while hot-to-neutral falls and a voltage appears from neutral to ground is a high-resistance grounded-conductor path. The load is dropping voltage on the neutral. Investigate splices, device neutrals, and the panel/neutral bar. This can damage 120-volt loads on a multiwire circuit. Those three readings should add: 85 V + 35 V ≈ 120 V.",
         "A poor neutral connection causing the grounded conductor to shift under load",
         [
             "A perfect circuit with no further checks",
@@ -1236,24 +1236,24 @@ DIAGNOSTICS = [
     ),
     q(
         "medium",
-        "A heat pump outdoor unit has 240 V at the disconnect but 0 V at the contactor line side. What is a likely path issue?",
-        "Fuses, a whip, or a local switch between disconnect and unit. Measure along the path rather than replacing the compressor.",
-        "An open in the conductors or fuses between the disconnect and the contactor",
+        "A heat pump outdoor unit has 240 V on the line side of its local disconnect and 0 V on the load side of that same disconnect. What is a likely path issue?",
+        "Measure both sides of the disconnect. Line-side voltage with no load-side voltage means the switch, fuses, or pullout in that disconnect is open. If load-side voltage were present and the contactor line side were dead, the open would be in the whip or conductors downstream. Do not replace the compressor from this reading.",
+        "An open switch, fuse, or pullout in the disconnect",
         [
             "A failed thermostat battery as the source of 240 V",
             "A missing grounding electrode rod as the usual open",
-            "A water-logged expansion tank",
+            "A failed compressor start capacitor as the usual cause of 0 V on the disconnect load side",
         ],
     ),
     q(
         "medium",
-        "Nuisance GFCI trips on a circuit with a snow-melt or long outdoor run may be caused by:",
-        "Leakage from moisture, damaged insulation, or cumulative leakage of many loads. Find the leakage; do not replace GFCI with a standard receptacle in a location that requires GFCI.",
-        "Leakage from moisture, damaged insulation, or accumulated load leakage",
+        "A snow-melt or deicing branch keeps tripping a Class A GFCI. The cable is long and wet. What distinction should the technician apply?",
+        "Class A GFCIs are personnel protection and typically trip at about 4–6 mA. Fixed snow-melt and deicing often require ground-fault protection of equipment (GFPE) at a higher trip setting specified for that equipment, not a Class A device. Do not replace required personnel GFCI with a standard receptacle where Class A protection is required; also do not assume a Class A device is the correct protector for a deicing feeder.",
+        "Class A GFCI is personnel protection; snow-melt/deicing often uses GFPE at a higher trip threshold",
         [
-            "A perfectly dry, undamaged circuit as the usual cause",
-            "Too large an equipment grounding conductor as the usual cause",
-            "Correct torque on lugs as the usual cause",
+            "Class A GFCI and deicing GFPE are identical 5 mA personnel devices",
+            "A perfectly dry, undamaged circuit is the usual cause of these trips",
+            "Too large an equipment grounding conductor is the usual cause",
         ],
     ),
     q(
@@ -1280,11 +1280,11 @@ DIAGNOSTICS = [
     ),
     q(
         "hard",
-        "A 208Y/120-volt panel has 208 V between phases, 120 V A-N and B-N, but 208 V C-N. What is a coherent interpretation?",
-        "Phase C may be open and backfed through loads, or a high-impedance connection exists on C-N. Do not energize sensitive 120-volt loads on C until the unbalance is explained. Measure at the source and at the lugs.",
-        "Phase C’s connection to the source/neutral is not intact; investigate that path before loading it",
+        "A 120/240-volt three-phase high-leg delta panel shows 240 V between each pair of phases, 120 V A-N, 208 V B-N, and 120 V C-N. What is the correct interpretation?",
+        "On a high-leg (wild-leg) delta, the B-phase to neutral voltage is about 208 V by design. Do not land 120-volt loads on the high leg, and do not treat 120/120/208 to neutral as a broken phase on a 208Y/120-volt wye. Identify and mark the high leg. Those readings are the normal high-leg signature, not a lost phase.",
+        "B is the high leg; this is normal for that system—keep 120-volt loads off B",
         [
-            "This is normal for a wye and needs no investigation",
+            "Phase B is open on a 208Y/120-volt wye and 120/120/208 to neutral is the usual broken-phase pattern",
             "The grounding electrode is too long",
             "Replace all A-phase breakers first",
         ],
