@@ -26,7 +26,10 @@ skilled_hub_api/config/master.key
 
 # SQLite databases (optional - remove if you want to commit dev DB)
 # skilled_hub_api/db/*.sqlite3
-# skilled_hub_api/db/*.sqlite3-*
+# Generated SQLite WAL/SHM/journal files must not be tracked.
+skilled_hub_api/db/*.sqlite3-shm
+skilled_hub_api/db/*.sqlite3-wal
+skilled_hub_api/db/*.sqlite3-journal
 
 # Editor
 .vscode/*

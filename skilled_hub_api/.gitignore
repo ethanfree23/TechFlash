@@ -34,3 +34,8 @@
 
 # Ignore master key for decrypting credentials and more.
 /config/master.key
+
+# Generated SQLite WAL/SHM/journal files (keep tracked *.sqlite3 databases).
+/db/*.sqlite3-shm
+/db/*.sqlite3-wal
+/db/*.sqlite3-journal
