@@ -114,8 +114,8 @@ SAFETY = [
     q(
         "medium",
         "A disconnect is open, but the technician has not yet verified voltage. What should be done next?",
-        "An open handle does not guarantee isolation. Test the meter on a known live source, check the load side, then re-check the meter. Never trust the handle alone.",
-        "Verify the absence of voltage with a meter using a known-live test of the meter",
+        "An open handle does not prove isolation. Use live-dead-live: prove the meter on a known live source, measure the load-side conductors, then prove the meter on a known live source again. Never trust the handle alone.",
+        "Prove the meter on a known live source, test the load side, then prove the meter live again",
         [
             "Begin work because an open disconnect is always de-energized",
             "Remove the thermostat only; that isolates line voltage",
@@ -403,10 +403,10 @@ ELECTRICAL = [
     q(
         "medium",
         "A thermostat is calling for cooling. There is 24 volts from Y to C at the outdoor unit, but the contactor does not pull in. What should be checked next?",
-        "Control voltage is present, so the next checks are the contactor coil path, coil resistance, and whether the coil is open or mechanically jammed—not immediately the compressor windings.",
-        "Contactor coil circuit continuity and whether the coil is open or the armature is jammed",
+        "Y-to-C voltage at the unit is not the same as voltage across the coil. Measure voltage across the coil terminals while it is supposed to be energized. Only after de-energizing should resistance or continuity be used to check for an open coil. Do not put an ohmmeter on a live 24-volt circuit.",
+        "Voltage across the coil terminals; de-energize before any resistance or continuity check",
         [
-            "Indoor blower wheel balance only",
+            "Coil resistance with the 24-volt circuit still energized",
             "The condensate drain slope",
             "The filter-drier for a temperature drop, before checking the coil",
         ],
@@ -425,8 +425,8 @@ ELECTRICAL = [
     q(
         "medium",
         "A technician needs to know if a fuse is open. The circuit is de-energized. Which method is appropriate?",
-        "With power off and the fuse isolated as required, continuity or resistance across the fuse identifies an open. Measuring ohms on an energized fuse is the wrong tool use.",
-        "Measure continuity or resistance across the de-energized fuse",
+        "Lock out power, isolate the fuse from parallel paths as required, then check continuity or resistance. An in-circuit reading can be fooled by a parallel load path. Never measure ohms on an energized fuse.",
+        "Isolate the fuse as required, then measure continuity or resistance",
         [
             "Measure resistance across the fuse while the circuit is live",
             "Look for refrigerant oil on the fuse body",
@@ -501,9 +501,9 @@ ELECTRICAL = [
     ),
     q(
         "hard",
-        "A technician reads about 120 volts from each outdoor unit leg to ground on a 240-volt single-phase circuit, but 0 volts across the two legs at the contactor load side while the coil is pulled in. What is the most likely explanation?",
-        "Each leg to ground can read ~120 volts even if the contactor is not passing both legs to the load, or if the meter is reading on the line side. 0 volts across the two load terminals with the coil pulled in suggests the contacts are not closing a complete 240-volt path. Do not assume the compressor is shorted without confirming voltage at the compressor terminals.",
-        "The load-side 240-volt path is open, such as failed contactor contacts",
+        "On a 240-volt single-phase outdoor unit, the contactor coil is pulled in. Voltage across the two line-side terminals is about 240 volts, but voltage across the two load-side terminals is about 0 volts. What is the most likely explanation?",
+        "Line-side 240 volts proves supply is present. With the coil pulled in, 0 volts across the load-side terminals means the contacts are not completing a 240-volt path to the compressor. Confirm voltage at the compressor terminals before condemning the compressor. Do not treat the missing load-side 240 volts as a shorted compressor or an open 24-volt transformer.",
+        "The contacts are not closing a complete 240-volt path to the load",
         [
             "The compressor is definitely shorted to ground",
             "The control transformer secondary is open",
@@ -659,7 +659,7 @@ REFRIGERATION = [
     q(
         "medium",
         "Sensible heat is heat that:",
-        "Sensible heat changes temperature that a thermometer can read. Latent heat changes state (moisture) without changing dry-bulb temperature the same way.",
+        "Sensible heat changes a substance’s measurable temperature (dry-bulb). Latent heat is the energy absorbed or released during a phase change—such as refrigerant boiling or condensing, or water evaporating—without a corresponding dry-bulb temperature change. Moisture removal in cooling is one latent effect, not the definition of latent heat.",
         "Changes a substance’s temperature",
         [
             "Only changes a substance’s state, never its temperature",
@@ -724,9 +724,9 @@ REFRIGERATION = [
     ),
     q(
         "medium",
-        "A temperature drop across a liquid-line filter-drier during steady cooling operation most nearly suggests:",
-        "A restriction causes a pressure drop and flashing, which shows up as a temperature drop across the drier. It does not prove a bad compressor by itself.",
-        "A possible restriction in the drier",
+        "During steady cooling, a liquid-line filter-drier is several degrees colder at the outlet than at the inlet. What does that most nearly suggest?",
+        "A small, barely measurable difference can be normal. A drop of several degrees means pressure drop and flashing in the drier—evidence of restriction. It does not by itself prove a failed compressor or a dirty indoor filter.",
+        "A restriction in the drier",
         [
             "That the drier is working normally by creating a large temperature drop",
             "That the indoor filter is dirty",
@@ -747,8 +747,8 @@ REFRIGERATION = [
     q(
         "hard",
         "A cooling system with a TXV shows high superheat and high subcooling after airflow is confirmed normal. Which problem is most consistent with those two readings together?",
-        "High subcooling means liquid is backing up in the condenser; high superheat means the evaporator is starved. That combination points to a restriction between the condenser outlet and the TXV inlet (often a drier or liquid-line restriction), not a simple undercharge (which usually lowers subcooling).",
-        "A restriction in the liquid line or filter-drier",
+        "High subcooling means liquid is backing up in the condenser; high superheat means the evaporator is starved. That pair points to a restriction in the liquid feed—liquid line, filter-drier, or TXV inlet/screen—not a simple undercharge, which usually lowers subcooling. Localize the restriction with component temperature drop and frost location; do not assume it is always the drier.",
+        "A restriction in the liquid feed (line, drier, or TXV inlet)",
         [
             "A simple undercharge with no restriction",
             "A dirty evaporator filter as the only cause",
@@ -758,8 +758,8 @@ REFRIGERATION = [
     q(
         "hard",
         "A cooling system shows low superheat and low subcooling after indoor airflow has been verified. What is the most appropriate next step?",
-        "That pair of readings is not a single-part verdict. Low superheat can mean overfeeding; low subcooling can mean little liquid is stored in the condenser. Re-check probes and gauges first, then evaluate metering-device feed and charge together instead of replacing the compressor or adding refrigerant blindly.",
-        "Re-verify gauge and temperature measurements, then evaluate metering-device feed and charge together",
+        "Low superheat plus low subcooling is not a one-part verdict. Confirm probe and gauge accuracy, then compare compressor pressure lift with metering-device feed and charge. A weak compressor can look similar to an overfeeding meter with little liquid in the condenser. Do not add refrigerant or replace the compressor as the first step.",
+        "Re-verify the readings, then evaluate compressor lift together with metering feed and charge",
         [
             "Replace the compressor immediately because those two readings always mean a failed compressor",
             "Add several pounds of refrigerant without measuring because low subcooling always means undercharge only",
@@ -1013,9 +1013,9 @@ EQUIPMENT = [
     ),
     q(
         "hard",
-        "An induced-draft gas furnace lights briefly, then locks out. The pressure switch is a suspect. What is the most appropriate early check?",
-        "The pressure switch proves the inducer is moving vent products. Check inducer operation, vent/intake obstructions, condensate in the hose, and the hose itself before replacing the gas valve or adding refrigerant.",
-        "Confirm inducer operation, vent/intake path, and the pressure-switch hose",
+        "An induced-draft gas furnace’s inducer runs, but the igniter never energizes and the control reports a pressure-switch fault. What is the most appropriate early check?",
+        "If the board never leaves the pressure-switch prove step, the burners should not have lit. Confirm that the inducer develops draft, that the vent/intake and condensate hose are clear, and that the switch actually closes. Jumping the switch permanently, raising manifold pressure, or treating it as a refrigerant problem is unsafe or irrelevant.",
+        "Confirm inducer draft, vent/intake path, condensate/hose, and that the switch closes",
         [
             "Replace the indoor TXV because furnace lockout is a refrigerant problem",
             "Jump the pressure switch permanently so the burners can run",
@@ -1181,13 +1181,13 @@ DIAGNOSTICS = [
     ),
     q(
         "medium",
-        "A heat pump blows cool air in heating mode except during a brief outdoor steam-off. What is a logical check?",
-        "Cool air during heating can be a defrost event, a reversing-valve issue, or a thermostat O/B configuration problem. Identify whether the unit is in defrost or in the wrong mode before replacing the compressor.",
-        "Whether the unit is in defrost or the thermostat reversing-valve setup is wrong",
+        "A heat pump is calling for heat. Indoor supply air is briefly cool while the outdoor unit is steaming or shedding melt water. What is the most logical interpretation?",
+        "Reverse-cycle defrost sends hot gas to the outdoor coil, so that coil can steam while the indoor coil temporarily absorbs heat and supply air feels cool. Many systems also energize auxiliary heat during defrost. Outdoor steaming with cool indoor air is expected during defrost—not a reason to replace the compressor or add charge before confirming mode.",
+        "The unit is in reverse-cycle defrost; cool indoor air during outdoor steaming can be normal",
         [
-            "Replace the compressor immediately",
+            "Replace the compressor immediately because cool supply air always means a failed compressor",
             "Remove the outdoor coil so it cannot frost",
-            "Charge until the suction line is warm in heating without checking mode",
+            "Add refrigerant until the suction line is warm without checking whether the unit is in defrost",
         ],
     ),
     q(
@@ -1247,11 +1247,11 @@ DIAGNOSTICS = [
     ),
     q(
         "medium",
-        "A customer reports intermittent cooling. Connections at the contactor are discolored and loose. What is the appropriate early repair direction?",
-        "Loose, overheated electrical connections cause intermittent operation and are a fire/shock hazard. Repair the electrical issue before a major sealed-system repair.",
-        "Correct the high-resistance electrical connections and re-test operation",
+        "A customer reports intermittent cooling. Connections at the contactor are discolored, heat-damaged, and loose. What is the appropriate early repair direction?",
+        "Heat-damaged lugs and conductors are a fire and shock hazard. De-energize, replace burned terminals/lugs and any damaged conductor, land on clean metal, and torque to spec. Tightening a burned connection is not a repair. Fix the electrical path before a sealed-system repair.",
+        "Replace the burned terminals/conductors as needed, then remake and torque the connections",
         [
-            "Ignore the connections and recover the charge first",
+            "Only snug the burned lugs and leave the discolored conductor in place",
             "Coat the lugs with refrigerant oil for conductivity",
             "Bypass the contactor with wire nuts as a permanent repair",
         ],
@@ -1291,13 +1291,13 @@ DIAGNOSTICS = [
     ),
     q(
         "hard",
-        "High superheat and high subcooling are present, condenser is clean, and indoor airflow is good. What is the most consistent sealed-system interpretation?",
-        "Liquid is backing up (high subcooling) while the evaporator is starved (high superheat). That pattern fits a restriction after the condenser, such as a plugged drier or liquid-line restriction—not a simple undercharge.",
-        "A restriction between the condenser outlet and the metering device",
+        "A TXV cooling system has high superheat and high subcooling. Airflow is good. How should the restriction be localized before parts are replaced?",
+        "High SH with high SC means the evaporator is starved while liquid is backing up before the restriction. Compare temperature drop across the filter-drier with frost or drop at the TXV, and check bulb mounting and charge. A several-degree drop across the drier implicates the drier; little drier drop with a cold TXV body points to the valve or its inlet screen.",
+        "Compare drier inlet-to-outlet temperature drop with TXV bulb mounting, frost location, and valve drop",
         [
-            "A simple undercharge as the only possibility",
-            "A dirty filter as the only possibility",
-            "A failed crankcase heater as the only possibility",
+            "Replace the compressor first because high subcooling always means a failed compressor",
+            "Add refrigerant until subcooling falls, without locating the restriction",
+            "Replace the indoor blower motor because airflow was already confirmed good",
         ],
     ),
     q(
@@ -1324,9 +1324,9 @@ DIAGNOSTICS = [
     ),
     q(
         "hard",
-        "A compressor is noisy and running hot. Suction pressure is high and head pressure is low compared with conditions. Superheat is low. What is a consistent concern to evaluate?",
-        "High suction, low head, and low superheat can indicate weak compression or a mechanical compressor problem, but also measurement error or a reversing valve leaking through on a heat pump. Confirm gauges, valve position, and then compressor performance—do not just add charge.",
-        "Weak compression or internal leakage (after confirming measurements and valve position)",
+        "A compressor is noisy and running hot. Suction pressure is high and discharge pressure is low for the conditions, so the compressor is developing little pressure lift. Superheat is low. Gauges and, on a heat pump, reversing-valve position have been confirmed. What is the most consistent compressor concern?",
+        "Little pressure difference between suction and discharge with a hot, noisy compressor and a flooded evaporator (low superheat) points to weak compression or internal leakage. Undercharge would usually raise superheat and lower suction pressure. Confirm measurements and reversing-valve seating before condemning the compressor; do not add charge as the repair.",
+        "Weak compression or internal leakage through the compressor",
         [
             "A simple undercharge as the only explanation",
             "A dirty filter as the only explanation",
