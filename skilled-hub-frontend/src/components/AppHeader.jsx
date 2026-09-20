@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useEffect, useId, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { FaChevronDown } from 'react-icons/fa';
 import { TECHFLASH_LOGO_NAV } from '../constants/branding';
 import ReferralModal from './ReferralModal';
 
@@ -7,6 +8,79 @@ const navInactive =
   'px-3 py-2 font-medium text-gray-700 hover:text-blue-600 hover:bg-blue-50 rounded-md whitespace-nowrap shrink-0';
 const navActive =
   'px-3 py-2 font-medium text-blue-600 bg-blue-50 rounded-md whitespace-nowrap shrink-0';
+
+const SETTINGS_NESTED_PAGES = ['settings', 'reviews', 'trust_safety', 'assessments'];
+
+const ADMIN_SETTINGS_ITEMS = [
+  { page: 'settings', to: '/settings', label: 'Settings' },
+  { page: 'reviews', to: '/admin/reviews', label: 'Reviews' },
+  { page: 'trust_safety', to: '/admin/trust-safety', label: 'Trust & Safety' },
+  { page: 'assessments', to: '/admin/assessments', label: 'Assessments' },
+];
+
+function SettingsNavMenu({ activePage }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+  const menuId = useId();
+  const active = SETTINGS_NESTED_PAGES.includes(activePage);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPointerDown = (event) => {
+      if (!wrapRef.current?.contains(event.target)) setOpen(false);
+    };
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative shrink-0" ref={wrapRef}>
+      <button
+        type="button"
+        className={`${active ? navActive : navInactive} inline-flex items-center gap-1`}
+        aria-expanded={open}
+        aria-haspopup="menu"
+        aria-controls={menuId}
+        onClick={() => setOpen((value) => !value)}
+      >
+        Settings
+        <FaChevronDown className={`h-3 w-3 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden />
+      </button>
+      {open && (
+        <div
+          id={menuId}
+          role="menu"
+          className="absolute right-0 top-full z-50 mt-1 min-w-[12.5rem] rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+        >
+          {ADMIN_SETTINGS_ITEMS.map((item, index) => (
+            <React.Fragment key={item.page}>
+              {index === 1 && <div className="my-1 border-t border-gray-100" role="separator" />}
+              <Link
+                role="menuitem"
+                to={item.to}
+                onClick={() => setOpen(false)}
+                className={`block px-3 py-2 text-sm font-medium ${
+                  activePage === item.page
+                    ? 'bg-blue-50 text-blue-600'
+                    : 'text-gray-700 hover:bg-blue-50 hover:text-blue-600'
+                }`}
+              >
+                {item.label}
+              </Link>
+            </React.Fragment>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /**
  * @param {'dashboard'|'jobs'|'technicians'|'messages'|'crm'|'users'|'reviews'|'trust_safety'|'assessments'|'settings'|'legal'|null|undefined} activePage
@@ -44,77 +118,71 @@ export default function AppHeader({
           <img src={TECHFLASH_LOGO_NAV} alt="TechFlash" className="h-9 object-contain" />
         </Link>
         <nav
-          className="flex flex-1 min-w-0 items-center gap-1 sm:gap-2 overflow-x-auto overflow-y-hidden py-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden touch-pan-x"
+          className="flex flex-1 min-w-0 items-center gap-1 sm:gap-2 py-1"
           aria-label="Main navigation"
         >
-          <NavLink page="dashboard" to="/dashboard">
-            Dashboard
-          </NavLink>
-          <NavLink page="jobs" to="/jobs" data-demo="jobs-tab">
-            Jobs
-          </NavLink>
-          {navPreset === 'full' && (
-            <>
-              {showCrm ? (
-                <>
-                  <NavLink page="messages" to="/messages">
-                    Messages
+          <div className="flex min-w-0 items-center gap-1 sm:gap-2 overflow-x-auto overflow-y-hidden [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden touch-pan-x">
+            <NavLink page="dashboard" to="/dashboard">
+              Dashboard
+            </NavLink>
+            <NavLink page="jobs" to="/jobs" data-demo="jobs-tab">
+              Jobs
+            </NavLink>
+            {navPreset === 'full' && showCrm && (
+              <>
+                <NavLink page="messages" to="/messages">
+                  Messages
+                </NavLink>
+                <NavLink page="users" to="/admin/users">
+                  Users
+                </NavLink>
+              </>
+            )}
+            {navPreset === 'full' && !showCrm && (
+              <>
+                {(isCompany || isAdmin) && (
+                  <NavLink page="technicians" to="/technicians">
+                    Technicians
                   </NavLink>
-                  <NavLink page="users" to="/admin/users">
-                    Users
-                  </NavLink>
-                  <span className="hidden sm:inline text-gray-300 px-0.5 select-none" aria-hidden>
-                    |
-                  </span>
-                  <NavLink page="crm" to="/crm">
-                    CRM
-                  </NavLink>
-                  <NavLink page="reviews" to="/admin/reviews">
-                    Reviews
-                  </NavLink>
-                  <NavLink page="trust_safety" to="/admin/trust-safety">
-                    Trust & Safety
-                  </NavLink>
-                  <NavLink page="assessments" to="/admin/assessments">
+                )}
+                {user?.role === 'technician' && (
+                  <NavLink page="assessments" to="/assessments">
                     Assessments
                   </NavLink>
-                  <NavLink page="settings" to="/settings">
-                    Settings
-                  </NavLink>
-                </>
-              ) : (
-                <>
-                  {(isCompany || isAdmin) && (
-                    <NavLink page="technicians" to="/technicians">
-                      Technicians
-                    </NavLink>
-                  )}
-                  {user?.role === 'technician' && (
-                    <NavLink page="assessments" to="/assessments">
-                      Assessments
-                    </NavLink>
-                  )}
-                  <NavLink page="messages" to="/messages">
-                    Messages
-                  </NavLink>
-                  <NavLink page="settings" to="/settings">
-                    Settings
-                  </NavLink>
-                  <NavLink page="legal" to="/legal">
-                    Legal
-                  </NavLink>
-                </>
-              )}
-            </>
-          )}
-          {navPreset === 'minimal' && (
+                )}
+                <NavLink page="messages" to="/messages">
+                  Messages
+                </NavLink>
+                <NavLink page="settings" to="/settings">
+                  Settings
+                </NavLink>
+                <NavLink page="legal" to="/legal">
+                  Legal
+                </NavLink>
+              </>
+            )}
+            {navPreset === 'minimal' && (
+              <>
+                <NavLink page="settings" to="/settings">
+                  Settings
+                </NavLink>
+                <NavLink page="legal" to="/legal">
+                  Legal
+                </NavLink>
+              </>
+            )}
+          </div>
+          {navPreset === 'full' && showCrm && (
             <>
-              <NavLink page="settings" to="/settings">
-                Settings
-              </NavLink>
-              <NavLink page="legal" to="/legal">
-                Legal
-              </NavLink>
+              <span className="hidden sm:inline text-gray-300 px-0.5 select-none" aria-hidden>
+                |
+              </span>
+              <div className="flex shrink-0 items-center gap-1 sm:gap-2">
+                <NavLink page="crm" to="/crm">
+                  CRM
+                </NavLink>
+                <SettingsNavMenu activePage={activePage} />
+              </div>
             </>
           )}
         </nav>
