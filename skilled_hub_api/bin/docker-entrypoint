@@ -1,7 +1,10 @@
 #!/bin/bash -e
 
-# If running the rails server then create or migrate existing database
-if [ "${1}" == "./bin/rails" ] && [ "${2}" == "server" ]; then
+# Always migrate on boot. Railway custom start commands (puma, rails s,
+# bundle exec rails server) previously skipped db:prepare because this
+# script only matched ./bin/rails server, so new job columns never landed
+# and authenticated job/dashboard endpoints returned 500.
+if [ "${SKIP_DB_PREPARE:-}" != "1" ]; then
   ./bin/rails db:prepare
 fi
 

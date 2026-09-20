@@ -138,13 +138,21 @@ class Job < ApplicationRecord
 
   # The date/time the work must be finished by, when the company declared a hard end.
   def hard_end_boundary_at
-    return nil unless schedule_hard_end?
+    return nil unless has_attribute?(:schedule_flexibility) && schedule_hard_end?
 
     hard_deadline_at || scheduled_end_at
   end
 
   def potential_full_time_details_hash
-    (potential_full_time_details || {}).to_h
+    return {} unless has_attribute?(:potential_full_time_details)
+
+    raw = potential_full_time_details
+    return {} if raw.blank?
+    return raw.to_h if raw.respond_to?(:to_h) && !raw.is_a?(String)
+
+    JSON.parse(raw.to_s)
+  rescue JSON::ParserError, TypeError
+    {}
   end
 
   before_validation :normalize_job_display_fields
@@ -178,16 +186,19 @@ class Job < ApplicationRecord
   # transition — see Jobs::AutoCompleteExpiredService. Never mutate lifecycle state from
   # a read request.
   def self.due_for_auto_completion(now: Time.current)
-    where(status: [:reserved, :filled])
-      .where(terminated_at: nil)
+    rel = where(status: [:reserved, :filled])
       .where('scheduled_end_at IS NOT NULL AND scheduled_end_at <= ?', now)
+    rel = rel.where(terminated_at: nil) if column_names.include?("terminated_at")
+    rel
   end
 
   def self.publicly_visible
     where.not(status: :pending_funding)
   end
 
-  scope :potential_full_time_only, -> { where(potential_full_time: true) }
+  scope :potential_full_time_only, -> {
+    column_names.include?("potential_full_time") ? where(potential_full_time: true) : none
+  }
 
   private
 

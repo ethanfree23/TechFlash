@@ -2,6 +2,8 @@
 
 class CreateAssessmentContentTables < ActiveRecord::Migration[7.1]
   def change
+    return if table_exists?(:assessments)
+
     create_table :assessments do |t|
       t.string :slug, null: false
       t.string :title, null: false

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_09_18_010000) do
+ActiveRecord::Schema[7.1].define(version: 2026_09_20_124800) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -830,10 +830,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_18_010000) do
     t.integer "funding_status", default: 0, null: false
     t.integer "settlement_status", default: 0, null: false
     t.integer "financial_revision", default: 1, null: false
-    t.datetime "terminated_at"
     t.boolean "potential_full_time", default: false, null: false
     t.json "potential_full_time_details", default: {}, null: false
     t.integer "schedule_flexibility", default: 0, null: false
+    t.datetime "terminated_at"
     t.index ["company_membership_tier_config_id"], name: "index_jobs_on_company_membership_tier_config_id"
     t.index ["company_profile_id"], name: "index_jobs_on_company_profile_id"
     t.index ["funding_status"], name: "index_jobs_on_funding_status"

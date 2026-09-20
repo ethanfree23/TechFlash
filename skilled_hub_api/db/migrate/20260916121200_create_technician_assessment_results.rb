@@ -5,6 +5,8 @@
 # company-facing reads and future technician-search filters stay a simple join.
 class CreateTechnicianAssessmentResults < ActiveRecord::Migration[7.1]
   def change
+    return if table_exists?(:technician_assessment_results)
+
     create_table :technician_assessment_results do |t|
       t.references :technician_profile, null: false, foreign_key: true
       t.references :assessment, null: false, foreign_key: true

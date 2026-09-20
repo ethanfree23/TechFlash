@@ -5,8 +5,10 @@ class AddScheduleFlexibilityToJobs < ActiveRecord::Migration[7.1]
   HARD_END = 1
 
   def up
-    add_column :jobs, :schedule_flexibility, :integer, default: FLEXIBLE_START, null: false
-    add_index :jobs, :schedule_flexibility
+    unless column_exists?(:jobs, :schedule_flexibility)
+      add_column :jobs, :schedule_flexibility, :integer, default: FLEXIBLE_START, null: false
+    end
+    add_index :jobs, :schedule_flexibility unless index_exists?(:jobs, :schedule_flexibility)
 
     # Existing jobs already express "this must finish by a date" through hard_deadline_at.
     # Derive the new setting from it instead of asking companies to re-state it.

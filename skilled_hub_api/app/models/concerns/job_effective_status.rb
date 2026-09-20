@@ -31,17 +31,25 @@ module JobEffectiveStatus
 
     scope :effectively_concluded, -> { where(status: JobEffectiveStatus::COMPLETED_STATUSES) }
     scope :effectively_completed, lambda {
-      where(status: JobEffectiveStatus::COMPLETED_STATUSES).where(terminated_at: nil)
+      rel = where(status: JobEffectiveStatus::COMPLETED_STATUSES)
+      rel = rel.where(terminated_at: nil) if Job.column_names.include?("terminated_at")
+      rel
     }
     scope :effectively_ended_early, lambda {
-      where(status: JobEffectiveStatus::COMPLETED_STATUSES).where.not(terminated_at: nil)
+      rel = where(status: JobEffectiveStatus::COMPLETED_STATUSES)
+      return rel.none unless Job.column_names.include?("terminated_at")
+
+      rel.where.not(terminated_at: nil)
     }
 
     # Concluded assignments the technician should get work-history credit for: normal
     # completions, plus early-ended assignments where they actually performed approved work.
     scope :credited_work_history, lambda {
-      where(status: JobEffectiveStatus::COMPLETED_STATUSES)
-        .where("jobs.terminated_at IS NULL OR jobs.id IN (#{JobTermination.work_performed.select(:job_id).to_sql})")
+      rel = where(status: JobEffectiveStatus::COMPLETED_STATUSES)
+      return rel unless Job.column_names.include?("terminated_at")
+      return rel.where(terminated_at: nil) unless JobTermination.table_exists?
+
+      rel.where("jobs.terminated_at IS NULL OR jobs.id IN (#{JobTermination.work_performed.select(:job_id).to_sql})")
     }
 
     scope :with_pending_counter_offer, lambda {
@@ -64,7 +72,7 @@ module JobEffectiveStatus
   end
 
   def terminated_early?
-    terminated_at.present?
+    has_attribute?(:terminated_at) && terminated_at.present?
   end
 
   def lifecycle_terminal?

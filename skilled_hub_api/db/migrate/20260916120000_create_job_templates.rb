@@ -2,6 +2,8 @@
 
 class CreateJobTemplates < ActiveRecord::Migration[7.1]
   def change
+    return if table_exists?(:job_templates)
+
     create_table :job_templates do |t|
       t.references :company_profile, null: false, foreign_key: true
       t.references :created_by_user, foreign_key: { to_table: :users }
