@@ -180,8 +180,10 @@ class AdminPlatformInsights
     user_ids = profiles.map { |p| p.user_id }
     logins = logins_for_user_ids(user_ids)
 
-    items = profiles.map do |tp|
+    items = profiles.filter_map do |tp|
       u = tp.user
+      next if u.blank?
+
       {
         id: tp.id,
         user_id: u.id,
@@ -220,8 +222,10 @@ class AdminPlatformInsights
     user_ids = profiles.map { |p| p.user_id }
     logins = logins_for_user_ids(user_ids)
 
-    items = profiles.map do |cp|
+    items = profiles.filter_map do |cp|
       u = cp.user
+      next if u.blank?
+
       {
         id: cp.id,
         user_id: u.id,

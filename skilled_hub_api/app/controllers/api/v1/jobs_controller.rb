@@ -12,19 +12,6 @@ module Api
           jobs = company_profile ? company_profile.jobs : Job.none
         elsif @current_user&.technician?
           technician_profile = @current_user.technician_profile
-          # #region agent log
-          debug_log(
-            hypothesis_id: 'B1',
-            location: 'jobs_controller.rb:index:technician_entry',
-            message: 'technician index entry',
-            data: {
-              status_param: params[:status].to_s,
-              include_past: params[:include_past].to_s,
-              technician_profile_id: technician_profile&.id,
-              initial_jobs_count: Job.count
-            }
-          )
-          # #endregion
           if %w[active reserved].include?(params[:status].to_s) && technician_profile
             # Claimed jobs (reserved or filled) - filter by start time for active vs reserved
             base_claimed = Job.joins(:job_applications)
@@ -63,18 +50,6 @@ module Api
                 .where.not(job_applications: { technician_profile_id: technician_profile.id })
                 .select(:id)
               jobs = jobs.where.not(id: claimed_by_others)
-              # #region agent log
-              debug_log(
-                hypothesis_id: 'B2',
-                location: 'jobs_controller.rb:index:pre_membership_filter',
-                message: 'pre membership gating sample',
-                data: {
-                  status_param: params[:status].to_s,
-                  pre_membership_count: jobs.count,
-                  sample_job_ids: jobs.limit(5).pluck(:id)
-                }
-              )
-              # #endregion
 
               jobs = MembershipPolicy.apply_technician_visibility_scope(jobs, technician_profile)
             end
@@ -114,7 +89,7 @@ module Api
         end
         
         if params[:potential_full_time].present? && ActiveModel::Type::Boolean.new.cast(params[:potential_full_time])
-          jobs = jobs.merge(Job.potential_full_time_only)
+          jobs = jobs.merge(Job.potential_full_time_only) if Job.column_names.include?("potential_full_time")
         end
 
         # Apply keyword search in title and description
@@ -140,8 +115,8 @@ module Api
           jobs = jobs.where.not(status: [:filled, :finished, :pending_funding])
             .where.not(id: Job.expired_listings.select(:id))
         end
-        locs = jobs.where.not(location: [nil, '']).distinct.pluck(:location).sort
-        render json: { locations: locs }, status: :ok
+        locs = jobs.where.not(location: [nil, ""]).distinct.pluck(:location)
+        render json: { locations: Array(locs).map { |loc| loc.to_s.strip }.reject(&:blank?).uniq.sort }, status: :ok
       end
       
       def show
@@ -714,7 +689,9 @@ module Api
         per_page = (params[:per_page].presence || default_jobs_per_page).to_i.clamp(1, 100)
 
         if page.present? && page.positive?
-          total = jobs.count
+          count_relation = jobs.except(:includes, :eager_load, :preload, :offset, :limit)
+          total = count_relation.count
+          total = total.values.sum if total.is_a?(Hash)
           records = jobs.offset((page - 1) * per_page).limit(per_page)
           serialized = ActiveModelSerializers::SerializableResource.new(
             records,
@@ -771,22 +748,6 @@ module Api
         sat_changed = previous_sat_multiplier.present? && job.saturday_multiplier.present? && job.saturday_multiplier.to_d < previous_sat_multiplier.to_d
         sun_changed = previous_sun_multiplier.present? && job.sunday_multiplier.present? && job.sunday_multiplier.to_d < previous_sun_multiplier.to_d
         sat_changed || sun_changed
-      end
-
-      def debug_log(hypothesis_id:, location:, message:, data:)
-        File.open(Rails.root.join('..', 'debug-f0f940.log'), 'a') do |f|
-          f.puts({
-            sessionId: 'f0f940',
-            runId: 'initial',
-            hypothesisId: hypothesis_id,
-            location: location,
-            message: message,
-            data: data,
-            timestamp: (Time.now.to_f * 1000).to_i
-          }.to_json)
-        end
-      rescue StandardError
-        nil
       end
 
       def assign_and_validate_trade_type!(job:, company_profile:)

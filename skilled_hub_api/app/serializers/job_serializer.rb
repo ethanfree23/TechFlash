@@ -29,14 +29,35 @@ class JobSerializer < ActiveModel::Serializer
   attribute :schedule_availability, if: :schedule_availability_visible?
 
   def ended_early
-    object.terminated_early?
+    object.has_attribute?(:terminated_at) && object.terminated_at.present?
+  end
+
+  def terminated_at
+    object.has_attribute?(:terminated_at) ? object[:terminated_at] : nil
+  end
+
+  def potential_full_time
+    return false unless object.has_attribute?(:potential_full_time)
+
+    object.potential_full_time
+  end
+
+  def schedule_flexibility
+    return nil unless object.has_attribute?(:schedule_flexibility)
+
+    object.schedule_flexibility
   end
 
   def termination
+    return nil unless object.class.reflect_on_association(:job_termination)
+    return nil unless JobTermination.table_exists?
+
     record = object.job_termination
     return nil if record.blank?
 
     JobTerminationSerializer.new(record).as_json
+  rescue StandardError
+    nil
   end
 
   def potential_full_time_details
@@ -45,7 +66,7 @@ class JobSerializer < ActiveModel::Serializer
 
   # Always sent alongside the designation so no client can present it as a firm job offer.
   def potential_full_time_disclaimer
-    object.potential_full_time? ? Job::POTENTIAL_FULL_TIME_DISCLAIMER : nil
+    potential_full_time ? Job::POTENTIAL_FULL_TIME_DISCLAIMER : nil
   end
 
   # Capacity is one accepted claim today; exposed so clients read it from the API rather
@@ -61,6 +82,19 @@ class JobSerializer < ActiveModel::Serializer
       job: object,
       technician_profile: scope.technician_profile
     )
+  rescue StandardError
+    {
+      classification: "available",
+      reason: nil,
+      requested_start_at: object.scheduled_start_at,
+      requested_end_at: object.scheduled_end_at,
+      requested_days: object.days,
+      conflicting_job_ids: [],
+      conflicting_dates: [],
+      committed_through_at: nil,
+      schedule_flexibility: object.has_attribute?(:schedule_flexibility) ? object.schedule_flexibility : nil,
+      options: []
+    }
   end
 
   # Only meaningful for jobs the technician could still claim.
@@ -141,7 +175,7 @@ class JobSerializer < ActiveModel::Serializer
     u = scope
     return false unless u
     return true if u.admin?
-    return true if u.company? && object.company_profile.user_id == u.id
+    return true if u.company? && object.company_profile&.user_id == u.id
 
     if u.technician?
       app = object.job_applications.find_by(status: :accepted)
@@ -156,6 +190,8 @@ class JobSerializer < ActiveModel::Serializer
     return nil unless offer
 
     JobCounterOfferSerializer.new(offer, scope: scope).as_json
+  rescue StandardError
+    nil
   end
 
   def schedule_and_pay_summary
@@ -172,7 +208,8 @@ class JobSerializer < ActiveModel::Serializer
 
     overtime_line =
       if object.overtime_enabled?
-        "Overtime is enabled at #{object.overtime_multiplier || 1.5}x. When overtime and weekend premium overlap, TechFlash applies the #{object.premium_combination_rule.humanize.downcase} rule."
+        rule = object.premium_combination_rule&.humanize&.downcase || "highest applicable"
+        "Overtime is enabled at #{object.overtime_multiplier || 1.5}x. When overtime and weekend premium overlap, TechFlash applies the #{rule} rule."
       else
         "Overtime is not enabled for this job."
       end

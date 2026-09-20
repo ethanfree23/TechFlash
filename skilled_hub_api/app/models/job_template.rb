@@ -85,6 +85,7 @@ class JobTemplate < ApplicationRecord
     latitude
     longitude
     location
+    terminated_at
   ].freeze
 
   # Schedule shape captured alongside the reusable fields so a template can recreate the
