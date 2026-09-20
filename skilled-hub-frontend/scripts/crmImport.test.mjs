@@ -3,22 +3,8 @@ import {
   buildImportDraftRows,
   autoFixDraftRows,
 } from '../src/utils/crmImport.js';
+import { CRM_STATUSES, CRM_COMPANY_TYPES } from '../src/utils/crmConstants.js';
 
-const CRM_STATUSES = ['lead', 'contacted', 'qualified', 'proposal', 'prospect', 'customer', 'competitor', 'churned', 'lost'];
-const CRM_COMPANY_TYPES = [
-  'hvac',
-  'plumbing',
-  'electrical',
-  'refrigeration',
-  'fire_protection',
-  'general_contracting',
-  'handyman',
-  'roofing',
-  'solar',
-  'appliance_repair',
-  'facility_maintenance',
-  'other',
-];
 
 function testWrappedHeaderlessRows() {
   const pasted = `Infinity Electric,Raul Ortiz,rortiz@infinityelectric.com

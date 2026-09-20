@@ -1,14 +1,16 @@
 /** Shared CRM enums and labels — keep in sync with Rails CrmLead / CrmNote. */
 
+// Must stay in exact sync with CrmLead::STATUSES (skilled_hub_api/app/models/crm_lead.rb).
+// Any value here that Rails rejects will fail server-side validation on save/import.
 export const CRM_STATUSES = [
   'lead',
   'contacted',
+  'qualified',
   'proposal',
   'prospect',
   'customer',
   'competitor',
   'churned',
-  'unqualified',
   'lost',
 ];
 
