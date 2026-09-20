@@ -2,6 +2,8 @@
 
 class CreateAssessmentAttemptTables < ActiveRecord::Migration[7.1]
   def change
+    return if table_exists?(:assessment_attempts)
+
     create_table :assessment_attempts do |t|
       t.references :technician_profile, null: false, foreign_key: true
       t.references :user, null: false, foreign_key: true

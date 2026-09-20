@@ -1,7 +1,11 @@
 class CreateJobTerminations < ActiveRecord::Migration[7.1]
   def change
-    add_column :jobs, :terminated_at, :datetime
-    add_index :jobs, :terminated_at
+    unless column_exists?(:jobs, :terminated_at)
+      add_column :jobs, :terminated_at, :datetime
+    end
+    add_index :jobs, :terminated_at unless index_exists?(:jobs, :terminated_at)
+
+    return if table_exists?(:job_terminations)
 
     create_table :job_terminations do |t|
       t.references :job, null: false, foreign_key: true, index: { unique: true }
