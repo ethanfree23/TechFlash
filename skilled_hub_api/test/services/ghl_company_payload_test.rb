@@ -54,9 +54,13 @@ class GhlCompanyPayloadTest < ActiveSupport::TestCase
 
   test "staffing type aliases" do
     { "Temporary" => "temporary", "temp-to-hire" => "both", "Full Time" => "full_time",
-      "permanent" => "full_time", "BOTH" => "both", nil => nil }.each do |raw, expected|
+      "permanent" => "full_time", "BOTH" => "both" }.each do |raw, expected|
       assert_equal expected, parse("staffing_type" => raw).staffing_intent, raw.inspect
     end
+  end
+
+  test "blank staffing type is nil" do
+    assert_nil parse("staffing_type" => nil).staffing_intent
   end
 
   test "hiring context parses counts, pay, and level" do
