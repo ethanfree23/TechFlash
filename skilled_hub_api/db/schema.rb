@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_09_20_124800) do
+ActiveRecord::Schema[7.1].define(version: 2026_09_21_120000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -386,7 +386,12 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_20_124800) do
     t.json "service_trades", default: [], null: false
     t.string "pending_membership_level"
     t.boolean "job_funding_waived", default: false, null: false
+    t.string "business_zip_code"
+    t.string "staffing_intent"
+    t.json "hiring_context", default: {}, null: false
+    t.json "acquisition_attribution", default: {}, null: false
     t.index ["membership_level"], name: "index_company_profiles_on_membership_level"
+    t.index ["staffing_intent"], name: "index_company_profiles_on_staffing_intent"
     t.index ["state"], name: "index_company_profiles_on_state"
     t.index ["stripe_membership_subscription_id"], name: "index_company_profiles_on_stripe_membership_subscription_id", unique: true
     t.index ["user_id"], name: "index_company_profiles_on_user_id"

@@ -12,6 +12,15 @@ module Api
         render json: result.body, status: result.http_status
       end
 
+      def company_onboarding
+        unless GhlWebhookAuthenticator.authorized?(request)
+          return head :unauthorized
+        end
+
+        result = GhlCompanyOnboardingService.call(company_onboarding_payload)
+        render json: result.body, status: result.http_status
+      end
+
       def inbound_sms
         unless GhlWebhookAuthenticator.authorized?(request)
           return head :unauthorized
@@ -77,6 +86,12 @@ module Api
         ).to_h
         permitted["attachments"] = params[:attachments] if params.key?(:attachments)
         permitted
+      end
+
+      # Scalar keys only; the accepted list lives in GhlCompanyPayload::PERMITTED_KEYS.
+      # trades_needed may also arrive as an array.
+      def company_onboarding_payload
+        params.permit(*GhlCompanyPayload::PERMITTED_KEYS, trades_needed: []).to_h
       end
 
       def inbound_sms_payload

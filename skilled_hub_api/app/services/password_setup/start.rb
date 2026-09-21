@@ -65,7 +65,7 @@ module PasswordSetup
         return send_or_reuse_challenge!(user)
       end
 
-      if user.technician? && user.password_already_established?
+      if (user.technician? || user.ghl_onboarded_company?) && user.password_already_established?
         return Result.new(
           http_status: :ok,
           body: { status: "already_setup", error: ALREADY_SETUP_MESSAGE }
