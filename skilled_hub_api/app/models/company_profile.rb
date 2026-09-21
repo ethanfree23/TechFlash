@@ -6,6 +6,7 @@ class CompanyProfile < ApplicationRecord
   before_validation :normalize_service_trades_list
   before_validation :normalize_membership_level
   before_validation :normalize_state_and_license
+  before_validation :normalize_business_zip_code
   before_save :sync_location_from_service_cities
 
   belongs_to :user, inverse_of: :company_profile
@@ -90,6 +91,14 @@ class CompanyProfile < ApplicationRecord
   def normalize_state_and_license
     self.state = state.to_s.strip.presence
     self.electrical_license_number = electrical_license_number.to_s.strip.presence
+  end
+
+  # The company's own business ZIP (signup form or GHL/Meta onboarding): the first 5-digit
+  # run, or nil. Company-level only; jobs collect their own location.
+  def normalize_business_zip_code
+    return unless has_attribute?(:business_zip_code)
+
+    self.business_zip_code = business_zip_code.to_s[/\b\d{5}\b/]
   end
 
   def membership_level_must_be_configured

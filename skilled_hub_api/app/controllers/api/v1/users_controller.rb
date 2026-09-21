@@ -206,6 +206,8 @@ module Api
               company_name: params[:company_name].to_s.strip,
               industry: industry,
               primary_hiring_need: params[:primary_hiring_need].to_s.strip.presence,
+              # Structured copy of the business ZIP; the location text below is unchanged.
+              business_zip_code: zip_code.presence,
               membership_level: assigned_level,
               phone: phone.presence,
               state: state.presence,

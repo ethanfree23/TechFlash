@@ -64,7 +64,9 @@ Unknown keys are dropped. Values are trimmed. Blank values count as "not sent".
 | `business_zip_code`, `company_zip` | aliases for `business_zip` |
 
 - The first 5-digit run is extracted (`77002-1234` → `77002`). A value with no 5-digit run
-  leaves the field unset and adds a warning.
+  leaves the field unset and adds a warning. `CompanyProfile` applies the same normalization,
+  so company self-signup (`POST /api/v1/users`, `role: company`) fills the same
+  `business_zip_code` column. Self-signup's existing `location` text is unchanged.
 - **`zip`, `zip_code`, and `postal_code` are deliberately not accepted** on this endpoint.
 - **The business ZIP is never copied to a job's `zip_code`, `address`, `city`, `state`,
   `location`, or coordinates, and is not exposed by the company-profile API serializers.**
