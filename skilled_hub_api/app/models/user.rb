@@ -65,8 +65,17 @@ class User < ApplicationRecord
   has_many :sent_referrals, class_name: "ReferralSubmission", foreign_key: :referrer_user_id, dependent: :destroy, inverse_of: :referrer_user
   has_many :received_referrals, class_name: "ReferralSubmission", foreign_key: :referred_user_id, dependent: :nullify, inverse_of: :referred_user
 
+  # Accounts provisioned by the system with an unusable password, which the owner claims via
+  # /create-password: GHL-onboarded technicians, and companies created by the GHL company
+  # onboarding webhook. Companies from any other path (self-signup, admin) never qualify.
   def first_time_password_setup_eligible?
-    technician? && password_set_by == "system"
+    return false unless password_set_by == "system"
+
+    technician? || ghl_onboarded_company?
+  end
+
+  def ghl_onboarded_company?
+    company? && ghl_onboarded_at.present?
   end
 
   def password_already_established?

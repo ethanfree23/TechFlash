@@ -214,6 +214,67 @@ module Api
         assert_match(/77007/i, profile.location.to_s)
       end
 
+      test "company signup sets business_zip_code and keeps the existing location text" do
+        post "/api/v1/users",
+             params: base_signup_params(
+               { email: "company-bizzip@example.com", role: "company", city: "Houston", state: "Texas", zip_code: "77007" }
+                 .merge(company_profile_params)
+             ),
+             as: :json
+
+        assert_response :created
+        profile = User.find_by!(email: "company-bizzip@example.com").company_profile
+        assert_equal "77007", profile.business_zip_code
+        assert_match(/123 Main St/, profile.location.to_s, "location text keeps its existing format")
+        assert_match(/77007/, profile.location.to_s)
+      end
+
+      test "company signup prefers business_zip_code param and normalizes ZIP+4" do
+        post "/api/v1/users",
+             params: base_signup_params(
+               { email: "company-bizzip4@example.com", role: "company", zip_code: "77007", business_zip_code: "77019-4321" }
+                 .merge(company_profile_params)
+             ),
+             as: :json
+
+        assert_response :created
+        assert_equal "77019", User.find_by!(email: "company-bizzip4@example.com").company_profile.business_zip_code
+      end
+
+      test "technician signup creates no company business ZIP" do
+        post "/api/v1/users",
+             params: base_signup_params(email: "tech-nobizzip@example.com", trade_type: "Electrician"),
+             as: :json
+
+        assert_response :created
+        user = User.find_by!(email: "tech-nobizzip@example.com")
+        assert user.technician?
+        assert_nil user.company_profile
+        assert_equal 0, CompanyProfile.where(business_zip_code: "77007").count
+      end
+
+      test "company signup creates no jobs and its business location never reaches a job" do
+        assert_no_difference -> { Job.count } do
+          post "/api/v1/users",
+               params: base_signup_params(
+                 { email: "company-nojobzip@example.com", role: "company", zip_code: "77007" }.merge(company_profile_params)
+               ),
+               as: :json
+        end
+        assert_response :created
+        profile = User.find_by!(email: "company-nojobzip@example.com").company_profile
+        assert_equal "77007", profile.business_zip_code
+
+        job = Job.create!(
+          company_profile: profile, title: "Needs its own location", description: "desc",
+          status: :open, hourly_rate_cents: 5_000, hours_per_day: 8, days: 1
+        )
+
+        %w[zip_code address city state location latitude longitude].each do |field|
+          assert_nil job.public_send(field), "job.#{field} must not come from the company's signup business address/ZIP"
+        end
+      end
+
       test "company signup stores Auto Shop industry and Automobile Technician service trades" do
         post "/api/v1/users",
              params: base_signup_params(

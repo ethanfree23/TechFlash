@@ -126,6 +126,7 @@ Rails.application.routes.draw do
       post 'checkr/webhook', to: 'checkr_webhooks#create'
       post 'webhooks/checkr', to: 'checkr_webhooks#create'
       post 'webhooks/ghl/technician_onboarding', to: 'ghl_webhooks#create'
+      post 'webhooks/ghl/company_onboarding', to: 'ghl_webhooks#company_onboarding'
       post 'webhooks/ghl/inbound_sms', to: 'ghl_webhooks#inbound_sms'
       resource :verification, only: [:show], controller: :verifications do
         post :start_background_check

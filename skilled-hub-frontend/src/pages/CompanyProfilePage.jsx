@@ -6,24 +6,9 @@ import AdminCreateUserModal from '../components/AdminCreateUserModal';
 import AlertModal from '../components/AlertModal';
 import { profilesAPI, crmAPI } from '../api/api';
 import { buildImportDraftRows } from '../utils/crmImport';
+import { CRM_STATUSES, CRM_COMPANY_TYPES } from '../utils/crmConstants';
 import { mediaUrlWithCacheBust } from '../utils/mediaUrl';
 import { FaUserPlus } from 'react-icons/fa';
-
-const CRM_STATUSES = ['lead', 'contacted', 'qualified', 'proposal', 'prospect', 'customer', 'competitor', 'churned', 'lost'];
-const CRM_COMPANY_TYPES = [
-  'hvac',
-  'plumbing',
-  'electrical',
-  'refrigeration',
-  'fire_protection',
-  'general_contracting',
-  'handyman',
-  'roofing',
-  'solar',
-  'appliance_repair',
-  'facility_maintenance',
-  'other',
-];
 
 const CompanyProfilePage = ({ user, onLogout }) => {
   const { id } = useParams();

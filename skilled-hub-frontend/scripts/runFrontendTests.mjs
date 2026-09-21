@@ -7,6 +7,8 @@ const __dirname = path.dirname(__filename);
 
 const testFiles = [
   'crmImport.test.mjs',
+  'crmStatusParity.test.mjs',
+  'businessZipIsolation.test.mjs',
   'phone.test.mjs',
   'auth.test.mjs',
   'crmNotes.test.mjs',

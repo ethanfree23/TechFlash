@@ -92,7 +92,6 @@ export function getStatusBadgeClasses(status) {
     customer: 'bg-emerald-50 text-emerald-800 border-emerald-200',
     competitor: 'bg-slate-200 text-slate-800 border-slate-300',
     churned: 'bg-rose-50 text-rose-800 border-rose-200',
-    unqualified: 'bg-orange-50 text-orange-800 border-orange-200',
     lost: 'bg-red-50 text-red-800 border-red-200',
   };
   return map[s] || map.lead;
