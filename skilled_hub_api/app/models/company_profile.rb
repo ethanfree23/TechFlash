@@ -40,6 +40,22 @@ class CompanyProfile < ApplicationRecord
     fallback.present? ? [fallback] : []
   end
 
+  # Fills a blank location with the ZIP's city and a blank state with the full state name
+  # (77002 → location "Houston", state "Texas"). Does not write the ZIP digits into
+  # location, and does not replace a city or state the company already has.
+  # Returns false only when a ZIP is present but not in the offline table.
+  def apply_business_zip_place!
+    return true if business_zip_code.blank?
+    return true if location.present? && state.present?
+
+    place = UsZipLookup.place_for(business_zip_code)
+    return false if place.nil?
+
+    self.location = place[:city] if location.blank?
+    self.state = GeocodingService.us_full_state_name_from_abbr(place[:state]) if state.blank?
+    true
+  end
+
   private
 
   def normalize_service_cities_list

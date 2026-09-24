@@ -33,4 +33,27 @@ class CompanyProfileBusinessZipTest < ActiveSupport::TestCase
     assert_equal "123 Main St, Houston, Texas 77007", profile.reload.location
     assert_equal "77002", profile.business_zip_code
   end
+
+  test "apply_business_zip_place fills a blank city and full state name" do
+    profile = build_profile("77002")
+    assert profile.apply_business_zip_place!
+    assert_equal "Houston", profile.location
+    assert_equal "Texas", profile.state
+  end
+
+  test "apply_business_zip_place fills only the blank side" do
+    profile = build_profile("77002")
+    profile.location = "Midtown"
+    assert profile.apply_business_zip_place!
+    assert_equal "Midtown", profile.location
+    assert_equal "Texas", profile.state
+  end
+
+  test "apply_business_zip_place leaves an unknown ZIP blank" do
+    profile = build_profile("00000")
+    profile.valid?
+    refute profile.apply_business_zip_place!
+    assert_nil profile.location
+    assert_nil profile.state
+  end
 end

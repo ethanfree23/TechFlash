@@ -303,6 +303,8 @@ module Api
         assert_equal "owner@acmehvac.com", existing.email
         assert_equal "Acme Original", profile.company_name
         assert_equal "78701", profile.business_zip_code
+        assert_equal "Austin", profile.location, "a blank location is filled from the ZIP already stored, not the incoming one"
+        assert_equal "Texas", profile.state
         assert_equal ["Plumber"], profile.service_trades
         assert_equal "both", profile.staffing_intent
         assert_equal "gc_001", existing.ghl_contact_id
@@ -392,13 +394,41 @@ module Api
 
       # --- business ZIP -----------------------------------------------------
 
-      test "business_zip maps to the company profile only" do
+      test "business_zip maps to the company profile city and state, not a job" do
         post_company(valid_payload)
-        profile = CompanyProfile.find(JSON.parse(response.body)["company_profile_id"])
+        body = JSON.parse(response.body)
+        profile = CompanyProfile.find(body["company_profile_id"])
 
         assert_equal "77002", profile.business_zip_code
-        assert_nil profile.location, "business ZIP is not written into the company location string"
+        assert_equal "Houston", profile.location
+        assert_equal "Texas", profile.state
+        refute_includes profile.location, "77002"
+        refute(body["warnings"].any? { |w| w.include?("business_zip") })
         assert_equal 0, Job.where(company_profile_id: profile.id).count
+      end
+
+      test "business ZIP does not overwrite an existing location or state" do
+        existing = create_company!(email: "owner@acmehvac.com", phone: "7135550101", company_name: "Acme Original")
+        existing.company_profile.update_columns(location: "Dallas", state: "Texas")
+
+        post_company(valid_payload)
+
+        profile = existing.company_profile.reload
+        assert_equal "77002", profile.business_zip_code
+        assert_equal "Dallas", profile.location
+        assert_equal "Texas", profile.state
+      end
+
+      test "an unrecognized business ZIP is stored and warned, without inventing a city" do
+        post_company(valid_payload.merge(business_zip: "00000"))
+
+        assert_response :accepted
+        body = JSON.parse(response.body)
+        profile = CompanyProfile.find(body["company_profile_id"])
+        assert_equal "00000", profile.business_zip_code
+        assert_nil profile.location
+        assert_nil profile.state
+        assert(body["warnings"].any? { |w| w.include?("00000") })
       end
 
       test "business_zip_code and company_zip aliases are accepted" do
@@ -410,7 +440,10 @@ module Api
         post_company(valid_payload.except(:business_zip).merge(zip: "77002", zip_code: "77002", postal_code: "77002"))
 
         assert_response :accepted
-        assert_nil CompanyProfile.find(JSON.parse(response.body)["company_profile_id"]).business_zip_code
+        profile = CompanyProfile.find(JSON.parse(response.body)["company_profile_id"])
+        assert_nil profile.business_zip_code
+        assert_nil profile.location
+        assert_nil profile.state
       end
 
       private

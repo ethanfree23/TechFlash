@@ -6,8 +6,10 @@
 # accepts and how each one is normalized. GHL_COMPANY_ONBOARDING.md is written from it.
 #
 # ZIP rule: `business_zip` is the company's business ZIP. It maps to
-# CompanyProfile#business_zip_code only. It is never a job ZIP, job address, or work location;
-# every job collects its own location through the normal job-posting flow.
+# CompanyProfile#business_zip_code. When the profile's location or state is still blank,
+# that ZIP is also resolved to a city and full state name for those settings fields.
+# It is never a job ZIP, job address, or work location; every job collects its own
+# location through the normal job-posting flow.
 class GhlCompanyPayload
   EVENT_TYPE = "company_onboarding"
 

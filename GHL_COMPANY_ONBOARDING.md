@@ -60,13 +60,18 @@ Unknown keys are dropped. Values are trimmed. Blank values count as "not sent".
 
 | Key | Maps to |
 |---|---|
-| `business_zip` (canonical) | `company_profiles.business_zip_code` |
+| `business_zip` (canonical) | `company_profiles.business_zip_code`, and blank `location` / `state` |
 | `business_zip_code`, `company_zip` | aliases for `business_zip` |
 
 - The first 5-digit run is extracted (`77002-1234` → `77002`). A value with no 5-digit run
   leaves the field unset and adds a warning. `CompanyProfile` applies the same normalization,
   so company self-signup (`POST /api/v1/users`, `role: company`) fills the same
   `business_zip_code` column. Self-signup's existing `location` text is unchanged.
+- When `location` or `state` is blank, the ZIP is resolved offline to a city and full state
+  name (`77002` → location `Houston`, state `Texas`). A city or state already on the profile
+  is left as-is. The ZIP digits themselves are not written into `location`. A 5-digit ZIP
+  that is not in the offline table is still stored, with a warning, and location/state stay
+  blank.
 - **`zip`, `zip_code`, and `postal_code` are deliberately not accepted** on this endpoint.
 - **The business ZIP is never copied to a job's `zip_code`, `address`, `city`, `state`,
   `location`, or coordinates, and is not exposed by the company-profile API serializers.**

@@ -108,6 +108,12 @@ class GhlCompanyProvisioner
     fill_blank(profile, :industry, @payload.industry)
     fill_blank(profile, :phone, @payload.phone)
     fill_blank(profile, :business_zip_code, @payload.business_zip_code)
+    # Settings shows location and state, not business_zip_code. Resolve a blank pair from
+    # the company's ZIP. Never overwrite a place the company already saved, and never copy
+    # this ZIP onto a job.
+    unless profile.apply_business_zip_place!
+      @warnings << "business_zip #{profile.business_zip_code} could not be matched to a city and state"
+    end
     profile.service_trades = @payload.service_trades if Array(profile.service_trades).empty? && @payload.service_trades.present?
 
     profile.staffing_intent = @payload.staffing_intent if @payload.staffing_intent.present?
