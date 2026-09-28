@@ -76,6 +76,7 @@ export function isValidUrlLoose(url) {
 
 export function companyTypeLabel(type) {
   if (!type) return '';
+  if (String(type).toLowerCase() === 'hvac') return 'HVAC';
   return String(type)
     .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -181,6 +182,9 @@ export function matchesQuickPipelineFilter(lead, filterId, notesCount = 0) {
   if (filterId === 'unlinked') return !isLinkedToPlatformAccount(lead);
   if (filterId === 'stale') return isStaleLead(lead);
   if (filterId === 'needs_followup') return needsFollowupHeuristic(lead, notesCount);
+  if (filterId === 'qualified_plus') {
+    return ['qualified', 'proposal', 'prospect'].includes(String(lead?.status || '').toLowerCase());
+  }
   return true;
 }
 
@@ -192,8 +196,12 @@ export function textMatchesLeadSearch(lead, q) {
     lead?.contact_name,
     lead?.email,
     lead?.phone,
+    lead?.company_email,
+    lead?.company_phone,
     lead?.website,
     lead?.city,
+    lead?.state,
+    lead?.zip,
     lead?.street_address,
     ...(Array.isArray(lead?.company_types) ? lead.company_types : []),
   ];
@@ -216,6 +224,7 @@ export function filterSidebarLeads(leads, filters) {
     hasNotes = 'all',
     hasContact = 'all',
     hasPhone = 'all',
+    hasEmail = 'all',
     dateRange = 'all',
     market = 'all',
     trade = 'all',
@@ -241,6 +250,9 @@ export function filterSidebarLeads(leads, filters) {
     const phone = String(pc.phone || row.phone || row.company_phone || '').trim();
     if (hasPhone === 'yes' && !phone) return false;
     if (hasPhone === 'no' && phone) return false;
+    const email = String(pc.email || row.email || row.company_email || '').trim();
+    if (hasEmail === 'yes' && !email) return false;
+    if (hasEmail === 'no' && email) return false;
     if (!leadInDateRange(row, dateRange)) return false;
     if (!leadMatchesMarketFilter(row, market)) return false;
     if (!leadMatchesTradeFilter(row, trade)) return false;
@@ -267,7 +279,17 @@ export function sortLeads(list, sortId) {
     case 'created_asc':
       return arr.sort((a, b) => new Date(a.created_at || 0) - new Date(b.created_at || 0));
     case 'name_asc':
-      return arr.sort((a, b) => getCompanyDisplayName(a).localeCompare(getCompanyDisplayName(b)));
+      return arr.sort((a, b) => getCompanyDisplayName(a).localeCompare(getCompanyDisplayName(b)) || (a.id || 0) - (b.id || 0));
+    case 'name_desc':
+      return arr.sort((a, b) => getCompanyDisplayName(b).localeCompare(getCompanyDisplayName(a)) || (a.id || 0) - (b.id || 0));
+    case 'status_asc':
+      return arr.sort((a, b) => String(a.status || '').localeCompare(String(b.status || '')) || byUpdated(a, b));
+    case 'status_desc':
+      return arr.sort((a, b) => String(b.status || '').localeCompare(String(a.status || '')) || byUpdated(a, b));
+    case 'city_asc':
+      return arr.sort((a, b) => String(a.city || '').localeCompare(String(b.city || '')) || byUpdated(a, b));
+    case 'city_desc':
+      return arr.sort((a, b) => String(b.city || '').localeCompare(String(a.city || '')) || byUpdated(a, b));
     case 'unlinked_first':
       return arr.sort((a, b) => {
         const ua = isLinkedToPlatformAccount(a) ? 1 : 0;
@@ -282,7 +304,16 @@ export function sortLeads(list, sortId) {
 }
 
 export function computeCrmStatsStrip(leads, filters) {
-  const baseFilters = { ...filters, quickPipeline: 'all', statusSelect: '', linkedFilter: 'all', hasNotes: 'all', hasContact: 'all', hasPhone: 'all' };
+  const baseFilters = {
+    ...filters,
+    quickPipeline: 'all',
+    statusSelect: '',
+    linkedFilter: 'all',
+    hasNotes: 'all',
+    hasContact: 'all',
+    hasPhone: 'all',
+    hasEmail: 'all',
+  };
   const filtered = filterSidebarLeads(leads, baseFilters);
   const all = Array.isArray(leads) ? leads : [];
   const total = all.length;

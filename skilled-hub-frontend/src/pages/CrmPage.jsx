@@ -28,13 +28,14 @@ import { parseUsAddressPaste } from '../utils/parseUsAddressPaste';
 import { clearableString, clearablePhone } from '../utils/crmPayload';
 import {
   CRM_STATUSES,
+  CRM_MARKET_FILTERS,
+  CRM_TRADE_FILTER_OPTIONS,
+  CRM_DATE_RANGE_OPTIONS,
   CRM_PIPELINE_STORAGE_KEY,
-  CRM_PIPELINE_DEFAULT_COLUMNS,
+  CRM_COMPANY_TABLE_COLUMNS,
   CRM_COMPANY_TYPES,
   CRM_NOTE_CONTACT_METHODS,
   CRM_MERGE_FIELDS,
-  CRM_QUICK_PIPELINE_FILTERS,
-  CRM_SORT_OPTIONS,
   CRM_NOTE_QUICK_TEMPLATES,
   CRM_TIMELINE_SORT_OPTIONS,
   CRM_DETAIL_TABS,
@@ -52,12 +53,15 @@ import {
   isValidEmail,
   isValidPhoneLoose,
   isValidUrlLoose,
-  getPrimaryContactPreview,
   companyTypeLabel,
   formatWebsiteLabel,
 } from '../utils/crmDisplayAdapter';
-import CrmCommandHeader from '../components/crm/CrmCommandHeader';
 import CompanyRecordHeader from '../components/crm/CompanyRecordHeader';
+import CrmWorkspaceHeader from '../components/crm/CrmWorkspaceHeader';
+import CrmMetrics from '../components/crm/CrmMetrics';
+import CrmToolbar from '../components/crm/CrmToolbar';
+import CrmActiveFilters from '../components/crm/CrmActiveFilters';
+import CrmCompanyTable from '../components/crm/CrmCompanyTable';
 import CrmSendEmailModal from '../components/crm/CrmSendEmailModal';
 import CrmRightRail from '../components/crm/CrmRightRail';
 import CrmDetailTabs from '../components/crm/CrmDetailTabs';
@@ -75,17 +79,12 @@ import {
   FaCommentDots,
   FaBriefcase,
   FaDollarSign,
-  FaLink,
   FaPlus,
   FaSearch,
   FaTimes,
   FaTrash,
   FaUserPlus,
   FaFileUpload,
-  FaCog,
-  FaChevronDown,
-  FaChevronLeft,
-  FaChevronRight,
   FaEnvelope,
 } from 'react-icons/fa';
 
@@ -499,7 +498,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   }, []);
   const [pipelineColumns, setPipelineColumns] = useTableColumnPreferences({
     tableId: TABLE_COLUMN_IDS.crmPipeline,
-    defaultColumns: CRM_PIPELINE_DEFAULT_COLUMNS,
+    defaultColumns: CRM_COMPANY_TABLE_COLUMNS,
     user,
     onUserUpdate,
     onSaveError: handlePipelineColumnSaveError,
@@ -564,11 +563,13 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [crmHasNotesFilter, setCrmHasNotesFilter] = useState('all');
   const [crmHasContactFilter, setCrmHasContactFilter] = useState('all');
   const [crmHasPhoneFilter, setCrmHasPhoneFilter] = useState('all');
+  const [crmHasEmailFilter, setCrmHasEmailFilter] = useState('all');
+  const [filtersPanelOpen, setFiltersPanelOpen] = useState(false);
+  const [selectedRowIds, setSelectedRowIds] = useState([]);
   const [timelineFilter, setTimelineFilter] = useState('all');
   const [timelineSort, setTimelineSort] = useState('newest');
   const [linkAccountModalOpen, setLinkAccountModalOpen] = useState(false);
   const [pipelineSidebarCollapsed, setPipelineSidebarCollapsed] = useState(false);
-  const [showProspectFilters, setShowProspectFilters] = useState(true);
   const [reminderModalOpen, setReminderModalOpen] = useState(false);
   const [reminderDraft, setReminderDraft] = useState({ remind_at: '', title: '', body: '' });
   const [reminderSaving, setReminderSaving] = useState(false);
@@ -856,6 +857,48 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [provisionModalOpen, newCompanyModalOpen, provisionSaving, saving, linkAccountModalOpen, reminderModalOpen, reminderSaving, noteComposerOpen, noteSaving]);
+
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== 'Escape' || !selectedId || isCreating) return;
+      if (
+        filtersPanelOpen ||
+        showPipelineColumnConfig ||
+        provisionModalOpen ||
+        newCompanyModalOpen ||
+        linkAccountModalOpen ||
+        reminderModalOpen ||
+        noteComposerOpen ||
+        importModalOpen ||
+        mergeModalOpen ||
+        emailComposerOpen ||
+        profileImportOpen ||
+        reminderQueueOpen ||
+        crmContactUserModalOpen
+      ) {
+        return;
+      }
+      setSelectedId(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [
+    selectedId,
+    isCreating,
+    filtersPanelOpen,
+    showPipelineColumnConfig,
+    provisionModalOpen,
+    newCompanyModalOpen,
+    linkAccountModalOpen,
+    reminderModalOpen,
+    noteComposerOpen,
+    importModalOpen,
+    mergeModalOpen,
+    emailComposerOpen,
+    profileImportOpen,
+    reminderQueueOpen,
+    crmContactUserModalOpen,
+  ]);
 
   const companySocialRows = useMemo(
     () => socialRowsFromForm(form),
@@ -2618,6 +2661,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       hasNotes: crmHasNotesFilter,
       hasContact: crmHasContactFilter,
       hasPhone: crmHasPhoneFilter,
+      hasEmail: crmHasEmailFilter,
       dateRange: crmDateRange,
       market: crmMarketFilter,
       trade: crmTradeFilter,
@@ -2630,6 +2674,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
       crmHasNotesFilter,
       crmHasContactFilter,
       crmHasPhoneFilter,
+      crmHasEmailFilter,
       crmDateRange,
       crmMarketFilter,
       crmTradeFilter,
@@ -2653,8 +2698,9 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     return formatDateTime(new Date(max).toISOString());
   }, [leads]);
 
-  const exportVisibleCsv = () => {
-    const csv = exportLeadsToCsv(filteredLeads);
+  const downloadLeadCsv = (rows, message) => {
+    const list = Array.isArray(rows) ? rows : [];
+    const csv = exportLeadsToCsv(list);
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -2665,10 +2711,63 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     setAlertModal({
       isOpen: true,
       title: 'Export ready',
-      message: `Downloaded ${filteredLeads.length} visible record(s).`,
+      message,
       variant: 'success',
     });
   };
+
+  const exportVisibleCsv = () => {
+    downloadLeadCsv(filteredLeads, `Downloaded ${filteredLeads.length} visible record(s).`);
+  };
+
+  const exportSelectedCsv = () => {
+    const chosen = new Set(selectedRowIds.map(Number));
+    const rows = filteredLeads.filter((lead) => chosen.has(Number(lead.id)));
+    downloadLeadCsv(rows, `Downloaded ${rows.length} selected record(s).`);
+  };
+
+  const deleteSelectedRows = async () => {
+    if (!selectedRowIds.length) return;
+    if (!window.confirm(`Delete ${selectedRowIds.length} CRM record(s)? This does not delete linked platform accounts.`)) return;
+    try {
+      await crmAPI.bulkDelete(selectedRowIds);
+      if (selectedRowIds.some((id) => Number(id) === Number(selectedId))) {
+        setSelectedId(null);
+        setDetail(null);
+      }
+      setSelectedRowIds([]);
+      await loadList();
+    } catch (e) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Delete failed',
+        message: e.message || 'Could not delete the selected records',
+        variant: 'error',
+      });
+    }
+  };
+
+  const clearCrmFilters = () => {
+    setPipelineNameFilter('');
+    setPipelineStatusFilter('');
+    setCrmQuickPipeline('all');
+    setCrmLinkedFilter('all');
+    setCrmHasNotesFilter('all');
+    setCrmHasContactFilter('all');
+    setCrmHasPhoneFilter('all');
+    setCrmHasEmailFilter('all');
+    setCrmDateRange('all');
+    setCrmMarketFilter('all');
+    setCrmTradeFilter('all');
+  };
+
+  useEffect(() => {
+    const visible = new Set(filteredLeads.map((lead) => lead.id));
+    setSelectedRowIds((prev) => {
+      const next = prev.filter((id) => visible.has(id));
+      return next.length === prev.length ? prev : next;
+    });
+  }, [filteredLeads]);
 
   const handleRailAction = (id) => {
     if (id === 'add_phone') {
@@ -2754,63 +2853,6 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     });
     return out;
   }, [filteredLeads]);
-
-  const visiblePipelineColumns = useMemo(() => pipelineColumns.filter((c) => c.visible), [pipelineColumns]);
-
-  const renderPipelineLeadMeta = (row, pipelineItem = null) => {
-    const pc = getPrimaryContactPreview(row);
-    const nc = Number(row.notes_count) || 0;
-    const warn = !pc.name && !pc.email ? 'text-amber-600' : 'text-slate-500';
-    return (
-      <div className="mt-1 space-y-1">
-        {visiblePipelineColumns.length > 0 && (
-          <div className="flex flex-wrap items-center gap-2 text-xs text-gray-500">
-            {visiblePipelineColumns.map((col) => {
-              if (col.key === 'status') {
-                return (
-                  <span key={col.key} className="capitalize px-2 py-0.5 rounded bg-gray-100 text-gray-700">
-                    {row.status}
-                  </span>
-                );
-              }
-              if (col.key === 'linked_account') {
-                if (!row.linked_account) return null;
-                return (
-                  <span key={col.key} className="inline-flex items-center gap-1 text-emerald-700">
-                    <FaLink className="text-emerald-600" aria-hidden /> Linked
-                  </span>
-                );
-              }
-              if (col.key === 'contact_email') {
-                if (!row.email) return null;
-                return <span key={col.key}>{row.email}</span>;
-              }
-              return null;
-            })}
-          </div>
-        )}
-        <div className={`flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] ${warn}`}>
-          <span className="font-medium text-slate-700">{pc.name || 'No contact'}</span>
-          {(row.city || row.state) && (
-            <span className="text-slate-400">
-              {' - '} {String(row.city || '').trim()}
-              {row.city && row.state ? ', ' : ''}
-              {String(row.state || '').trim()}
-            </span>
-          )}
-          <span className="text-slate-400">{' - '} {nc} notes</span>
-          {!row.linked_account && <span className="text-amber-600 font-medium">{' - '} Unlinked</span>}
-        </div>
-        {pipelineItem && pipelineItem.duplicateCrRecordsCount > 1 && (
-          <div className="mt-1.5 flex flex-wrap items-center gap-2">
-            <span className="text-[10px] font-semibold uppercase tracking-wide text-amber-900 bg-amber-50 border border-amber-100 px-2 py-0.5 rounded">
-              {pipelineItem.duplicateCrRecordsCount} CRM records - same linked company
-            </span>
-          </div>
-        )}
-      </div>
-    );
-  };
 
   const movePipelineColumn = (fromKey, toKey) => {
     if (!fromKey || !toKey || fromKey === toKey) return;
@@ -2912,387 +2954,294 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     if (crmDetailTab === 'account' && !showAccountTab) setCrmDetailTab('record');
   }, [crmDetailTab, showAccountTab]);
 
-  const sidebarSpanClass = pipelineSidebarCollapsed ? 'lg:col-span-1' : 'lg:col-span-4';
-  const detailSpanClass = pipelineSidebarCollapsed ? 'lg:col-span-8' : 'lg:col-span-5';
-  const topDetailSpanClass = pipelineSidebarCollapsed ? 'lg:col-span-11' : 'lg:col-span-8';
-  const crmPanelHeightClass = 'min-h-[540px] lg:h-[calc(100vh-15rem)] lg:max-h-[calc(100vh-15rem)]';
-  const missingPhoneCount = filteredLeads.filter((l) => {
-    const phoneValues = [l.phone, l.company_phone, ...(l.contacts || []).map((c2) => c2.phone)]
-      .map((x) => String(x || '').trim())
-      .filter(Boolean);
-    return phoneValues.length === 0;
-  }).length;
-  const missingEmailCount = filteredLeads.filter((l) => {
-    const emailValues = [l.email, l.company_email, ...(l.contacts || []).map((c2) => c2.email)]
-      .map((x) => String(x || '').trim())
-      .filter(Boolean);
-    return emailValues.length === 0;
-  }).length;
-  const unlinkedCount = filteredLeads.filter((l) => !l.linked_user_id && !l.linked_company_profile_id).length;
+  const recordOpen = Boolean(selectedId) && !isCreating;
+  const labelFor = (options, id) => options.find((opt) => opt.id === id)?.label || id;
+  const titleCaseStatus = (status) => {
+    const s = String(status || '');
+    return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+  };
+  const activeMetricIds = [];
+  if (pipelineStatusFilter === 'lead' || crmQuickPipeline === 'lead') activeMetricIds.push('lead');
+  if (pipelineStatusFilter === 'contacted' || crmQuickPipeline === 'contacted') activeMetricIds.push('contacted');
+  if (crmQuickPipeline === 'qualified_plus') activeMetricIds.push('qualified');
+  if (crmQuickPipeline === 'stale') activeMetricIds.push('stale');
+  if (crmQuickPipeline === 'unlinked' || crmLinkedFilter === 'unlinked') activeMetricIds.push('unlinked');
+  if (!pipelineStatusFilter && crmQuickPipeline === 'all' && crmLinkedFilter !== 'unlinked' && activeMetricIds.length === 0) {
+    activeMetricIds.push('total');
+  }
+  const selectMetric = (id) => {
+    if (id === 'total') {
+      setCrmQuickPipeline('all');
+      setPipelineStatusFilter('');
+      return;
+    }
+    const isOn = activeMetricIds.includes(id);
+    if (isOn) {
+      if (id === 'lead' || id === 'contacted') {
+        if (pipelineStatusFilter === id) setPipelineStatusFilter('');
+        if (crmQuickPipeline === id) setCrmQuickPipeline('all');
+      } else if (id === 'qualified' && crmQuickPipeline === 'qualified_plus') {
+        setCrmQuickPipeline('all');
+      } else if (id === 'stale' && crmQuickPipeline === 'stale') {
+        setCrmQuickPipeline('all');
+      } else if (id === 'unlinked') {
+        if (crmQuickPipeline === 'unlinked') setCrmQuickPipeline('all');
+        if (crmLinkedFilter === 'unlinked') setCrmLinkedFilter('all');
+      }
+      return;
+    }
+    if (id === 'lead' || id === 'contacted' || id === 'qualified' || id === 'stale') {
+      setPipelineStatusFilter('');
+    }
+    if (id === 'lead') setCrmQuickPipeline('lead');
+    else if (id === 'contacted') setCrmQuickPipeline('contacted');
+    else if (id === 'qualified') setCrmQuickPipeline('qualified_plus');
+    else if (id === 'stale') setCrmQuickPipeline('stale');
+    else if (id === 'unlinked') setCrmLinkedFilter('unlinked');
+  };
+  const activeFilterChips = [];
+  if (crmMarketFilter !== 'all') {
+    activeFilterChips.push({
+      id: 'market',
+      label: labelFor(CRM_MARKET_FILTERS, crmMarketFilter),
+      onRemove: () => setCrmMarketFilter('all'),
+    });
+  }
+  if (crmTradeFilter !== 'all') {
+    activeFilterChips.push({
+      id: 'trade',
+      label: labelFor(CRM_TRADE_FILTER_OPTIONS, crmTradeFilter),
+      onRemove: () => setCrmTradeFilter('all'),
+    });
+  }
+  const statusChip = pipelineStatusFilter || (CRM_STATUSES.includes(crmQuickPipeline) ? crmQuickPipeline : '');
+  if (statusChip) {
+    activeFilterChips.push({
+      id: 'status',
+      label: titleCaseStatus(statusChip),
+      onRemove: () => {
+        setPipelineStatusFilter('');
+        if (crmQuickPipeline === statusChip) setCrmQuickPipeline('all');
+      },
+    });
+  }
+  if (crmQuickPipeline === 'qualified_plus') {
+    activeFilterChips.push({ id: 'qualified', label: 'Qualified', onRemove: () => setCrmQuickPipeline('all') });
+  }
+  if (crmQuickPipeline === 'stale') {
+    activeFilterChips.push({ id: 'stale', label: 'Stale', onRemove: () => setCrmQuickPipeline('all') });
+  }
+  if (crmQuickPipeline === 'needs_followup') {
+    activeFilterChips.push({ id: 'followup', label: 'Needs follow-up', onRemove: () => setCrmQuickPipeline('all') });
+  }
+  if (crmQuickPipeline === 'unlinked' || crmLinkedFilter === 'unlinked') {
+    activeFilterChips.push({
+      id: 'unlinked',
+      label: 'Unlinked',
+      onRemove: () => {
+        if (crmQuickPipeline === 'unlinked') setCrmQuickPipeline('all');
+        setCrmLinkedFilter('all');
+      },
+    });
+  } else if (crmLinkedFilter === 'linked') {
+    activeFilterChips.push({ id: 'linked', label: 'Linked', onRemove: () => setCrmLinkedFilter('all') });
+  }
+  if (crmHasPhoneFilter === 'yes') activeFilterChips.push({ id: 'phone-yes', label: 'Has phone', onRemove: () => setCrmHasPhoneFilter('all') });
+  if (crmHasPhoneFilter === 'no') activeFilterChips.push({ id: 'phone-no', label: 'Missing phone', onRemove: () => setCrmHasPhoneFilter('all') });
+  if (crmHasEmailFilter === 'yes') activeFilterChips.push({ id: 'email-yes', label: 'Has email', onRemove: () => setCrmHasEmailFilter('all') });
+  if (crmHasEmailFilter === 'no') activeFilterChips.push({ id: 'email-no', label: 'Missing email', onRemove: () => setCrmHasEmailFilter('all') });
+  if (crmHasNotesFilter === 'yes') activeFilterChips.push({ id: 'notes-yes', label: 'Has notes', onRemove: () => setCrmHasNotesFilter('all') });
+  if (crmHasNotesFilter === 'no') activeFilterChips.push({ id: 'notes-no', label: 'No notes', onRemove: () => setCrmHasNotesFilter('all') });
+  if (crmHasContactFilter === 'yes') activeFilterChips.push({ id: 'contact-yes', label: 'Has contact', onRemove: () => setCrmHasContactFilter('all') });
+  if (crmHasContactFilter === 'no') activeFilterChips.push({ id: 'contact-no', label: 'Missing contact', onRemove: () => setCrmHasContactFilter('all') });
+  if (crmDateRange !== 'all') {
+    activeFilterChips.push({
+      id: 'date',
+      label: labelFor(CRM_DATE_RANGE_OPTIONS, crmDateRange),
+      onRemove: () => setCrmDateRange('all'),
+    });
+  }
+  const secondaryFilterCount = [
+    crmDateRange !== 'all',
+    crmLinkedFilter !== 'all',
+    crmHasNotesFilter !== 'all',
+    crmHasContactFilter !== 'all',
+    crmHasPhoneFilter !== 'all',
+    crmHasEmailFilter !== 'all',
+    crmQuickPipeline === 'needs_followup',
+  ].filter(Boolean).length;
+  const openImportModal = () => {
+    setImportSummary(null);
+    setPasteImportText('');
+    setImportDraftRows([]);
+    setImportRowFilter('all');
+    setImportModalOpen(true);
+  };
 
   return (
     <div className="min-h-screen bg-slate-50">
       <AppHeader user={user} onLogout={onLogout} activePage="crm" emailVariant="crm" />
 
-      <main className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 pb-24 sm:pb-14">
+      <main className="mx-auto max-w-[1800px] px-4 py-4 pb-16 sm:px-6 lg:px-8">
         <datalist id="crm-contact-job-titles">
           {CONTACT_JOB_TITLE_SUGGESTIONS.map((t) => (
             <option key={t} value={t} />
           ))}
         </datalist>
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-          <div className={sidebarSpanClass}>
-            <CrmCommandHeader
-              stats={statsForHeader}
-              pipelineHealth={{ missingPhoneCount, missingEmailCount, unlinkedCount }}
-              dateRange={crmDateRange}
-              onDateRange={setCrmDateRange}
+        <CrmWorkspaceHeader
+          lastUpdatedLabel={lastListRefreshLabel}
+          onAddCompany={openCreate}
+          onMoreAction={(action) => {
+            if (action === 'import') openImportModal();
+            if (action === 'create-platform') {
+              setNewCompanyModalOpen(false);
+              setIsCreating(false);
+              if (selectedId && form.linked_company_profile_id) openAddCompanyLoginForLinkedLead();
+              else openProvisionFromCrmRecord();
+            }
+            if (action === 'export') exportVisibleCsv();
+            if (action === 'merge') openMergeModal();
+          }}
+        />
+        <CrmMetrics stats={statsForHeader} activeIds={activeMetricIds} onSelect={selectMetric} />
+        <div className={recordOpen ? 'flex flex-col xl:flex-row xl:items-stretch xl:gap-3' : ''}>
+          <section className={recordOpen ? 'flex min-w-0 flex-col xl:h-[calc(100vh-13.5rem)] xl:max-h-[calc(100vh-13.5rem)] xl:w-[58%]' : 'min-w-0'}>
+            <CrmToolbar
+              search={pipelineNameFilter}
+              onSearch={setPipelineNameFilter}
               market={crmMarketFilter}
               onMarket={setCrmMarketFilter}
               trade={crmTradeFilter}
               onTrade={setCrmTradeFilter}
-              lastUpdatedLabel={lastListRefreshLabel}
-              onImport={() => {
-                setImportSummary(null);
-                setPasteImportText('');
-                setImportDraftRows([]);
-                setImportRowFilter('all');
-                setImportModalOpen(true);
-              }}
-              onAddCompany={openCreate}
-              onCreatePlatform={() => {
-                setNewCompanyModalOpen(false);
-                setIsCreating(false);
-                if (selectedId && form.linked_company_profile_id) {
-                  openAddCompanyLoginForLinkedLead();
-                } else {
-                  openProvisionFromCrmRecord();
+              status={pipelineStatusFilter}
+              onStatus={(value) => {
+                setPipelineStatusFilter(value);
+                if (value && (CRM_STATUSES.includes(crmQuickPipeline) || crmQuickPipeline === 'qualified_plus')) {
+                  setCrmQuickPipeline('all');
                 }
               }}
-              onMerge={openMergeModal}
+              sort={crmSidebarSort}
+              onSort={setCrmSidebarSort}
+              dateRange={crmDateRange}
+              onDateRange={setCrmDateRange}
+              linkedFilter={crmLinkedFilter}
+              onLinkedFilter={setCrmLinkedFilter}
+              hasNotes={crmHasNotesFilter}
+              onHasNotes={setCrmHasNotesFilter}
+              hasContact={crmHasContactFilter}
+              onHasContact={setCrmHasContactFilter}
+              hasPhone={crmHasPhoneFilter}
+              onHasPhone={setCrmHasPhoneFilter}
+              hasEmail={crmHasEmailFilter}
+              onHasEmail={setCrmHasEmailFilter}
+              needsFollowup={crmQuickPipeline === 'needs_followup'}
+              onNeedsFollowup={(next) => {
+                if (next) {
+                  setCrmQuickPipeline('needs_followup');
+                  setPipelineStatusFilter('');
+                } else if (crmQuickPipeline === 'needs_followup') {
+                  setCrmQuickPipeline('all');
+                }
+              }}
+              filtersOpen={filtersPanelOpen}
+              onFiltersOpenChange={setFiltersPanelOpen}
+              secondaryFilterCount={secondaryFilterCount}
               onExport={exportVisibleCsv}
-              linkedBottom
+              columnsOpen={showPipelineColumnConfig}
+              onColumnsOpenChange={setShowPipelineColumnConfig}
+              columns={pipelineColumns}
+              draggingColumnKey={draggingPipelineColumnKey}
+              onDraggingColumnKey={setDraggingPipelineColumnKey}
+              onToggleColumn={togglePipelineColumnVisible}
+              onMoveColumn={movePipelineColumn}
             />
-          </div>
-          <div className={`${topDetailSpanClass} min-h-[220px]`}>
-            {selectedId && !isCreating ? (
-              <CompanyRecordHeader
-                form={form}
-                detailLead={c}
-                onCall={() => {
-                  const tel = String(form.phone || form.company_phone || '').replace(/\D/g, '');
-                  if (tel) window.location.href = `tel:${tel}`;
-                }}
-                onOpenGmail={() => {
-                  const e = String(form.email || form.company_email || '').trim();
-                  if (e) {
-                    window.open(
-                      `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(e)}`,
-                      '_blank',
-                      'noopener,noreferrer',
-                    );
-                  }
-                }}
-                onAddNote={startAddNote}
-                onReminder={openReminder}
-                onEdit={() => {
-                  setCompanyInfoEditing(true);
-                  setCrmDetailTab('record');
-                }}
-                onMerge={openMergeModal}
-                onDelete={removeRecord}
-                onCreateJob={() => navigate('/create-job')}
-                onCreatePlatformAccount={openProvisionFromCrmRecord}
-                onAddCompanyLogin={openAddCompanyLoginForLinkedLead}
-                onLinkAccount={() => setLinkAccountModalOpen(true)}
-                onSendEmail={(templateKey) => {
-                  setEmailComposerTemplateKey(templateKey || 'sales_call_follow_up');
-                  setEmailComposerOpen(true);
-                }}
-              />
-            ) : (
-              <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-10 text-center text-gray-500 h-full flex items-center justify-center">
-                Select a company on the left or use Add company to start a CRM record.
-              </div>
-            )}
-          </div>
-        </div>
+            <CrmActiveFilters filters={activeFilterChips} onClearAll={clearCrmFilters} />
+            <CrmCompanyTable
+              className={recordOpen ? 'min-h-0 flex-1' : 'h-[calc(100vh-16.5rem)] min-h-[28rem]'}
+              loading={loading}
+              totalCount={leads.length}
+              rows={pipelineDisplayGroups}
+              columns={pipelineColumns}
+              sortId={crmSidebarSort}
+              onSort={setCrmSidebarSort}
+              selectedId={recordOpen ? selectedId : null}
+              selectedIds={selectedRowIds}
+              onToggleRow={(id) =>
+                setSelectedRowIds((prev) => (prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id]))
+              }
+              onToggleAll={(ids, checked) =>
+                setSelectedRowIds((prev) => {
+                  const next = new Set(prev);
+                  ids.forEach((id) => {
+                    if (checked) next.add(id);
+                    else next.delete(id);
+                  });
+                  return Array.from(next);
+                })
+              }
+              onOpen={selectLead}
+              onMerge={(id, siblingId) => {
+                selectLead(id);
+                openMergeModal(siblingId);
+              }}
+              onClearFilters={clearCrmFilters}
+              onExportSelected={exportSelectedCsv}
+              onDeleteSelected={deleteSelectedRows}
+              onAddCompany={openCreate}
+              onImport={openImportModal}
+              emptyBecauseFilters={leads.length > 0}
+            />
+          </section>
 
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
-          <div
-            className={`-mt-px bg-white rounded-b-2xl rounded-t-none shadow-sm border border-slate-200/80 border-t-0 overflow-hidden ${sidebarSpanClass} ${crmPanelHeightClass} flex flex-col min-h-0`}
-          >
-            {pipelineSidebarCollapsed ? (
-              <div className="hidden lg:flex flex-col items-center py-6 gap-3 border-b border-slate-100">
+          {recordOpen ? (
+            <section className="mt-4 flex min-h-[540px] min-w-0 flex-col xl:mt-0 xl:h-[calc(100vh-13.5rem)] xl:max-h-[calc(100vh-13.5rem)] xl:w-[42%]">
+              <div id="crm-detail-panel" className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <button
                   type="button"
-                  onClick={() => setPipelineSidebarCollapsed(false)}
-                  className="p-2 rounded-lg border border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
-                  title="Show prospect list"
-                  aria-label="Show prospect list"
+                  onClick={() => setSelectedId(null)}
+                  className="absolute right-2 top-2 z-20 inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-tf-blue/30"
+                  aria-label="Close company"
+                  title="Close"
                 >
-                  <FaChevronRight className="w-4 h-4" />
+                  <FaTimes className="h-4 w-4" />
                 </button>
-                <span
-                  className="text-[10px] font-bold uppercase tracking-widest text-slate-500"
-                  style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }}
-                >
-                  Prospects
-                </span>
-              </div>
-            ) : null}
-            <div className={`${pipelineSidebarCollapsed ? 'max-lg:flex lg:hidden' : 'flex'} min-h-0 flex-1 flex-col`}>
-            <div className="px-4 py-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white shrink-0">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h2 className="text-sm font-bold text-slate-800 tracking-tight">Prospect command list</h2>
-                  <p className="text-[11px] text-slate-500 mt-0.5">{filteredLeads.length} in view - {leads.length} total</p>
-                </div>
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => setShowProspectFilters((v) => !v)}
-                    className="inline-flex items-center gap-1.5 px-2 py-1 text-xs border border-slate-200 bg-white rounded-lg hover:bg-slate-50 text-slate-700"
-                    aria-label={showProspectFilters ? 'Hide prospect filters' : 'Show prospect filters'}
-                    title={showProspectFilters ? 'Hide filters' : 'Show filters'}
-                  >
-                    <FaChevronDown className={`w-3.5 h-3.5 transition-transform ${showProspectFilters ? '' : '-rotate-90'}`} aria-hidden />
-                    Filters
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPipelineSidebarCollapsed((v) => !v)}
-                    className="hidden lg:inline-flex items-center justify-center p-2 text-xs border border-slate-200 bg-white rounded-lg hover:bg-slate-50 text-slate-700"
-                    title={pipelineSidebarCollapsed ? 'Expand list' : 'Collapse list'}
-                    aria-label={pipelineSidebarCollapsed ? 'Expand prospect list' : 'Collapse prospect list'}
-                  >
-                    {pipelineSidebarCollapsed ? <FaChevronRight className="w-3.5 h-3.5" /> : <FaChevronLeft className="w-3.5 h-3.5" />}
-                  </button>
-                  <div className="relative shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setShowPipelineColumnConfig((v) => !v)}
-                      className="inline-flex items-center gap-1.5 px-2 py-1 text-xs border border-slate-200 bg-white rounded-lg hover:bg-slate-50 text-slate-700"
-                    >
-                      <FaCog className="w-3.5 h-3.5" aria-hidden />
-                      Columns
-                    </button>
-                  {showPipelineColumnConfig && (
-                    <div className="absolute right-0 top-8 z-30 w-72 bg-white border border-gray-200 rounded-xl shadow-lg p-3">
-                      <div className="text-xs text-gray-500 mb-2">
-                        Toggle visibility and drag to reorder pipeline fields.
-                      </div>
-                      <ul className="space-y-2 max-h-56 overflow-auto">
-                        {pipelineColumns.map((col) => (
-                          <li
-                            key={col.key}
-                            draggable
-                            onDragStart={() => setDraggingPipelineColumnKey(col.key)}
-                            onDragOver={(e) => e.preventDefault()}
-                            onDrop={() => {
-                              movePipelineColumn(draggingPipelineColumnKey, col.key);
-                              setDraggingPipelineColumnKey(null);
-                            }}
-                            className="flex items-center justify-between gap-2 rounded-lg border border-gray-200 px-2 py-1.5 bg-gray-50"
-                          >
-                            <label className="inline-flex items-center gap-2 text-xs text-gray-700">
-                              <input
-                                type="checkbox"
-                                checked={col.visible}
-                                onChange={() => togglePipelineColumnVisible(col.key)}
-                              />
-                              <span>{col.label}</span>
-                            </label>
-                            <span className="text-gray-400 text-xs">drag</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </div>
-              </div>
-              {showProspectFilters ? (
-                <>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    {CRM_QUICK_PIPELINE_FILTERS.map((chip) => (
-                      <button
-                        key={chip.id}
-                        type="button"
-                        onClick={() => {
-                          setCrmQuickPipeline(chip.id);
-                          if (CRM_STATUSES.includes(chip.id)) setPipelineStatusFilter('');
-                        }}
-                        className={`rounded-full border px-2.5 py-0.5 text-[10px] font-semibold transition-colors ${
-                          crmQuickPipeline === chip.id
-                            ? 'border-blue-600 bg-blue-600 text-white'
-                            : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        {chip.label}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <label className="text-[10px] font-semibold text-slate-500 uppercase col-span-2">Sort</label>
-                    <select
-                      value={crmSidebarSort}
-                      onChange={(e) => setCrmSidebarSort(e.target.value)}
-                      className="col-span-2 border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white text-slate-800"
-                    >
-                      {CRM_SORT_OPTIONS.map((o) => (
-                        <option key={o.id} value={o.id}>
-                          {o.label}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={crmLinkedFilter}
-                      onChange={(e) => setCrmLinkedFilter(e.target.value)}
-                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
-                    >
-                      <option value="all">Linked: any</option>
-                      <option value="linked">Linked only</option>
-                      <option value="unlinked">Unlinked only</option>
-                    </select>
-                    <select
-                      value={crmHasNotesFilter}
-                      onChange={(e) => setCrmHasNotesFilter(e.target.value)}
-                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
-                    >
-                      <option value="all">Notes: any</option>
-                      <option value="yes">Has notes</option>
-                      <option value="no">No notes</option>
-                    </select>
-                    <select
-                      value={crmHasContactFilter}
-                      onChange={(e) => setCrmHasContactFilter(e.target.value)}
-                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
-                    >
-                      <option value="all">Contact: any</option>
-                      <option value="yes">Has contact</option>
-                      <option value="no">Missing contact</option>
-                    </select>
-                    <select
-                      value={crmHasPhoneFilter}
-                      onChange={(e) => setCrmHasPhoneFilter(e.target.value)}
-                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs bg-white"
-                    >
-                      <option value="all">Phone: any</option>
-                      <option value="yes">Has phone</option>
-                      <option value="no">Missing phone</option>
-                    </select>
-                  </div>
-                  <div className="mt-2 grid grid-cols-1 gap-2">
-                    <input
-                      type="search"
-                      value={pipelineNameFilter}
-                      onChange={(e) => setPipelineNameFilter(e.target.value)}
-                      placeholder="Search name, email, phone, city, trade…"
-                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white"
-                    />
-                    <select
-                      value={pipelineStatusFilter}
-                      onChange={(e) => setPipelineStatusFilter(e.target.value)}
-                      className="w-full border border-gray-300 rounded-lg px-2 py-1.5 text-xs bg-white capitalize"
-                    >
-                      <option value="">All statuses</option>
-                      {CRM_STATUSES.map((s) => (
-                        <option key={s} value={s} className="capitalize">
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </>
-              ) : null}
-            </div>
-            <div className="flex-1 min-h-0 overflow-y-auto">
-              {loading ? (
-                <div className="p-4 space-y-3 animate-pulse" aria-busy="true">
-                  {[1, 2, 3, 4, 5].map((k) => (
-                    <div key={k} className="h-14 rounded-lg bg-slate-100" />
-                  ))}
-                </div>
-              ) : pipelineDisplayGroups.length === 0 ? (
-                <div className="p-8 text-center">
-                  {leads.length === 0 ? (
-                    <>
-                      <p className="text-sm font-semibold text-slate-800">Start building your company pipeline</p>
-                      <p className="text-xs text-slate-500 mt-2 max-w-sm mx-auto">
-                        Import contractor lists, add local companies manually, create platform accounts, and track calls and follow-ups.
-                      </p>
-                      <div className="mt-4 flex flex-wrap justify-center gap-2">
-                        <button
-                          type="button"
-                          className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-semibold text-white"
-                          onClick={() => {
-                            setImportSummary(null);
-                            setPasteImportText('');
-                            setImportDraftRows([]);
-                            setImportRowFilter('all');
-                            setImportModalOpen(true);
-                          }}
-                        >
-                          Import prospects
-                        </button>
-                        <button type="button" className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-semibold text-white" onClick={openCreate}>
-                          Add company
-                        </button>
-                      </div>
-                      <p className="mt-4 text-[10px] text-slate-400 font-mono break-all">
-                        name,contact_name,email,phone,website,company_types,status,notes
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <p className="text-sm font-semibold text-slate-800">No companies match filters</p>
-                      <p className="text-xs text-slate-500 mt-2">Try clearing search, pipeline chips, or advanced filters.</p>
-                    </>
-                  )}
-                </div>
-              ) : (
-                <ul className="divide-y divide-gray-100">
-                  {pipelineDisplayGroups.map((item) => {
-                    const row = item.lead;
-                    const dup = item.duplicateCrRecordsCount > 1 && item.mergeSiblingLeadId != null;
-                    return (
-                      <li key={row.id} className="flex items-stretch">
-                        <button
-                          type="button"
-                          onClick={() => selectLead(row.id)}
-                          className={`min-w-0 flex-1 text-left px-4 py-3 hover:bg-blue-50/60 transition-colors ${
-                            selectedId === row.id && !isCreating ? 'bg-blue-50 border-l-4 border-blue-600' : 'border-l-4 border-transparent'
-                          }`}
-                        >
-                          <div className="font-medium text-gray-900">{row.name}</div>
-                          {renderPipelineLeadMeta(row, item)}
-                        </button>
-                        {dup ? (
-                          <button
-                            type="button"
-                            title="Open merge with the other CRM record for this company"
-                            onClick={() => {
-                              selectLead(row.id);
-                              openMergeModal(item.mergeSiblingLeadId);
-                            }}
-                            className="shrink-0 self-stretch px-3 py-2 text-xs font-semibold text-amber-800 bg-amber-50/90 hover:bg-amber-100 border-l border-amber-100"
-                          >
-                            Merge…
-                          </button>
-                        ) : null}
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-            </div>
-          </div>
-
-          <div className={`${detailSpanClass} ${crmPanelHeightClass} min-h-0`}>
-            {selectedId && !isCreating && (
-              <div id="crm-detail-panel" className="bg-white rounded-2xl shadow border border-gray-100 overflow-hidden h-full min-h-0 flex flex-col">
+                <CompanyRecordHeader
+                  embedded
+                  form={form}
+                  detailLead={c}
+                  onCall={() => {
+                    const tel = String(form.phone || form.company_phone || '').replace(/\D/g, '');
+                    if (tel) window.location.href = `tel:${tel}`;
+                  }}
+                  onOpenGmail={() => {
+                    const email = String(form.email || form.company_email || '').trim();
+                    if (email) {
+                      window.open(
+                        `https://mail.google.com/mail/?view=cm&to=${encodeURIComponent(email)}`,
+                        '_blank',
+                        'noopener,noreferrer',
+                      );
+                    }
+                  }}
+                  onAddNote={startAddNote}
+                  onReminder={openReminder}
+                  onEdit={() => {
+                    setCompanyInfoEditing(true);
+                    setCrmDetailTab('record');
+                  }}
+                  onMerge={openMergeModal}
+                  onDelete={removeRecord}
+                  onCreateJob={() => navigate('/create-job')}
+                  onCreatePlatformAccount={openProvisionFromCrmRecord}
+                  onAddCompanyLogin={openAddCompanyLoginForLinkedLead}
+                  onLinkAccount={() => setLinkAccountModalOpen(true)}
+                  onSendEmail={(templateKey) => {
+                    setEmailComposerTemplateKey(templateKey || 'sales_call_follow_up');
+                    setEmailComposerOpen(true);
+                  }}
+                />
+                <div className="flex min-h-0 flex-1 flex-col min-[1500px]:flex-row">
+                  <div className="min-h-0 min-w-0 flex-1">
                 <CrmDetailTabs
                   tabs={crmDetailTabList}
                   activeTab={crmDetailTab}
@@ -4615,35 +4564,63 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     return null;
                   }}
                 />
+                  </div>
+                  <div className="hidden min-h-0 overflow-y-auto border-slate-100 min-[1500px]:block min-[1500px]:w-60 min-[1500px]:shrink-0 min-[1500px]:border-l">
+                    <div className="p-3">
+                      <CrmRightRail
+                        form={form}
+                        metrics={metrics}
+                        crmNotesLength={crmNotes.length}
+                        isLinked={Boolean(form.linked_user_id || form.linked_company_profile_id)}
+                        onAction={handleRailAction}
+                        outreachSnapshot={outreachSnapshot}
+                        operationalInsights={operationalInsights}
+                        formatDateTime={formatDateTime}
+                        statusEditing={statusRailEditing}
+                        onStatusEdit={() => setStatusRailEditing(true)}
+                        onStatusChange={(status) => setForm((f) => ({ ...f, status }))}
+                        onStatusSave={async () => {
+                          await saveRecord();
+                          setStatusRailEditing(false);
+                        }}
+                        onStatusCancel={() => {
+                          setStatusRailEditing(false);
+                          if (detail?.crm_lead) hydrateFormFromCrmLead(detail.crm_lead);
+                        }}
+                        statusSaving={saving}
+                      />
+                    </div>
+                  </div>
+                  <details className="shrink-0 border-t border-slate-100 min-[1500px]:hidden">
+                    <summary className="cursor-pointer px-4 py-2 text-xs font-semibold text-slate-600">Insights and next actions</summary>
+                    <div className="max-h-72 overflow-y-auto px-3 pb-3">
+                      <CrmRightRail
+                        form={form}
+                        metrics={metrics}
+                        crmNotesLength={crmNotes.length}
+                        isLinked={Boolean(form.linked_user_id || form.linked_company_profile_id)}
+                        onAction={handleRailAction}
+                        outreachSnapshot={outreachSnapshot}
+                        operationalInsights={operationalInsights}
+                        formatDateTime={formatDateTime}
+                        statusEditing={statusRailEditing}
+                        onStatusEdit={() => setStatusRailEditing(true)}
+                        onStatusChange={(status) => setForm((f) => ({ ...f, status }))}
+                        onStatusSave={async () => {
+                          await saveRecord();
+                          setStatusRailEditing(false);
+                        }}
+                        onStatusCancel={() => {
+                          setStatusRailEditing(false);
+                          if (detail?.crm_lead) hydrateFormFromCrmLead(detail.crm_lead);
+                        }}
+                        statusSaving={saving}
+                      />
+                    </div>
+                  </details>
+                </div>
               </div>
-            )}
-          </div>
-
-          {selectedId && !isCreating ? (
-            <div className={`hidden lg:block lg:col-span-3 ${crmPanelHeightClass} min-h-0`}>
-              <CrmRightRail
-                form={form}
-                metrics={metrics}
-                crmNotesLength={crmNotes.length}
-                isLinked={Boolean(form.linked_user_id || form.linked_company_profile_id)}
-                onAction={handleRailAction}
-                outreachSnapshot={outreachSnapshot}
-                operationalInsights={operationalInsights}
-                formatDateTime={formatDateTime}
-                statusEditing={statusRailEditing}
-                onStatusEdit={() => setStatusRailEditing(true)}
-                onStatusChange={(status) => setForm((f) => ({ ...f, status }))}
-                onStatusSave={async () => {
-                  await saveRecord();
-                  setStatusRailEditing(false);
-                }}
-                onStatusCancel={() => {
-                  setStatusRailEditing(false);
-                  if (detail?.crm_lead) hydrateFormFromCrmLead(detail.crm_lead);
-                }}
-                statusSaving={saving}
-              />
-            </div>
+            </section>
           ) : null}
         </div>
 
