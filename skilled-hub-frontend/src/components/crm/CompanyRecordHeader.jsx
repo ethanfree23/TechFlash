@@ -35,6 +35,7 @@ export default function CompanyRecordHeader({
   onLinkAccount,
   onOpenGmail,
   onSendEmail,
+  embedded = false,
 }) {
   const [sendMenuOpen, setSendMenuOpen] = useState(false);
   const sendMenuRef = useRef(null);
@@ -68,9 +69,13 @@ export default function CompanyRecordHeader({
 
   return (
     <div
-      className={`rounded-2xl border border-slate-200 bg-white shadow-sm mb-6${sendMenuOpen ? ' relative z-30' : ''}`}
+      className={`${
+        embedded
+          ? 'border-b border-slate-200 bg-white'
+          : 'mb-6 rounded-2xl border border-slate-200 bg-white shadow-sm'
+      }${sendMenuOpen || accountMenuOpen ? ' relative z-30' : ''}`}
     >
-      <div className="border-b border-slate-100 bg-gradient-to-br from-white to-slate-50 px-4 py-4 sm:px-6">
+      <div className={`bg-gradient-to-br from-white to-slate-50 ${embedded ? 'px-4 py-3 pr-12' : 'border-b border-slate-100 px-4 py-4 sm:px-6'}`}>
         {/* Always stack meta above actions so the center column never squeezes text to one character wide */}
         <div className="flex flex-col gap-4">
           <div className="w-full min-w-0 space-y-2">

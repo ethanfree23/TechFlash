@@ -65,7 +65,7 @@ export default function CrmDetailTabs({ tabs, activeTab, onTabChange, renderPane
             role="tabpanel"
             aria-labelledby={`crm-detail-tab-${tab.id}`}
             hidden={!isActive}
-            className={isActive ? 'block flex-1 min-h-0 overflow-y-auto p-6' : 'hidden'}
+            className={isActive ? 'block flex-1 min-h-0 overflow-y-auto p-4' : 'hidden'}
           >
             {isActive && typeof renderPanel === 'function' ? renderPanel(tab.id) : null}
           </div>

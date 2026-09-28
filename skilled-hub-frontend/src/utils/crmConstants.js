@@ -84,6 +84,19 @@ export const CRM_PIPELINE_DEFAULT_COLUMNS = [
   { key: 'contact_email', label: 'Email preview', visible: true },
 ];
 
+/** Company table on /crm. Saved under the permitted ui_preferences key `crm_pipeline`. Company name stays pinned and is not in this list. */
+export const CRM_COMPANY_TABLE_COLUMNS = [
+  { key: 'contact', label: 'Primary contact', visible: true },
+  { key: 'status', label: 'Status', visible: true },
+  { key: 'trade', label: 'Trade', visible: true },
+  { key: 'market', label: 'Market / City', visible: true },
+  { key: 'phone', label: 'Phone', visible: true },
+  { key: 'email', label: 'Email', visible: true },
+  { key: 'linked_account', label: 'TechFlash account', visible: true },
+  { key: 'notes', label: 'Notes', visible: true },
+  { key: 'updated', label: 'Updated', visible: true },
+];
+
 /** UI-only market buckets (Texas metros + other) inferred from city/state text. */
 export const CRM_MARKET_FILTERS = [
   { id: 'all', label: 'All markets' },
@@ -121,6 +134,11 @@ export const CRM_SORT_OPTIONS = [
   { id: 'created_desc', label: 'Newest' },
   { id: 'created_asc', label: 'Oldest' },
   { id: 'name_asc', label: 'Name A–Z' },
+  { id: 'name_desc', label: 'Name Z–A' },
+  { id: 'status_asc', label: 'Status A–Z' },
+  { id: 'status_desc', label: 'Status Z–A' },
+  { id: 'city_asc', label: 'City A–Z' },
+  { id: 'city_desc', label: 'City Z–A' },
   { id: 'unlinked_first', label: 'Unlinked first' },
 ];
 
