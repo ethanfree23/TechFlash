@@ -3240,7 +3240,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     setEmailComposerOpen(true);
                   }}
                 />
-                <div className="flex min-h-0 flex-1 flex-col min-[1500px]:flex-row">
+                <div className="flex min-h-0 flex-1 flex-col">
                   <div className="min-h-0 min-w-0 flex-1">
                 <CrmDetailTabs
                   tabs={crmDetailTabList}
@@ -4565,34 +4565,8 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                   }}
                 />
                   </div>
-                  <div className="hidden min-h-0 overflow-y-auto border-slate-100 min-[1500px]:block min-[1500px]:w-60 min-[1500px]:shrink-0 min-[1500px]:border-l">
-                    <div className="p-3">
-                      <CrmRightRail
-                        form={form}
-                        metrics={metrics}
-                        crmNotesLength={crmNotes.length}
-                        isLinked={Boolean(form.linked_user_id || form.linked_company_profile_id)}
-                        onAction={handleRailAction}
-                        outreachSnapshot={outreachSnapshot}
-                        operationalInsights={operationalInsights}
-                        formatDateTime={formatDateTime}
-                        statusEditing={statusRailEditing}
-                        onStatusEdit={() => setStatusRailEditing(true)}
-                        onStatusChange={(status) => setForm((f) => ({ ...f, status }))}
-                        onStatusSave={async () => {
-                          await saveRecord();
-                          setStatusRailEditing(false);
-                        }}
-                        onStatusCancel={() => {
-                          setStatusRailEditing(false);
-                          if (detail?.crm_lead) hydrateFormFromCrmLead(detail.crm_lead);
-                        }}
-                        statusSaving={saving}
-                      />
-                    </div>
-                  </div>
-                  <details className="shrink-0 border-t border-slate-100 min-[1500px]:hidden">
-                    <summary className="cursor-pointer px-4 py-2 text-xs font-semibold text-slate-600">Insights and next actions</summary>
+                  <details className="shrink-0 border-t border-slate-100">
+                    <summary className="cursor-pointer px-4 py-2 text-xs font-semibold text-slate-600">Insights</summary>
                     <div className="max-h-72 overflow-y-auto px-3 pb-3">
                       <CrmRightRail
                         form={form}
