@@ -554,6 +554,14 @@ export function applyZipProximity(rows, filters = {}, proximity = null) {
     if (maxMiles != null && (miles == null || miles > maxMiles)) continue;
     next.push({ ...row, distanceMiles: miles });
   }
+  next.sort((a, b) => {
+    const aMissing = a.distanceMiles == null;
+    const bMissing = b.distanceMiles == null;
+    if (aMissing && bMissing) return 0;
+    if (aMissing) return 1;
+    if (bMissing) return -1;
+    return a.distanceMiles - b.distanceMiles;
+  });
   return next;
 }
 
