@@ -94,6 +94,7 @@ const CRM_LIST_SPLIT_MIN = 32;
 const CRM_LIST_SPLIT_MAX = 74;
 
 function clampListSplit(value) {
+  if (value == null || value === '') return CRM_LIST_SPLIT_DEFAULT;
   const n = Number(value);
   if (!Number.isFinite(n)) return CRM_LIST_SPLIT_DEFAULT;
   return Math.min(CRM_LIST_SPLIT_MAX, Math.max(CRM_LIST_SPLIT_MIN, n));
