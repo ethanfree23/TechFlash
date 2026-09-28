@@ -1,3 +1,6 @@
+// Rebuild db/data/us_zip_centroids.json.gz from the Census ZCTA gazetteer.
+// Source: https://www2.census.gov/geo/docs/maps-data/data/gazetteer/
+// Usage from skilled_hub_api: node script/build_zip_centroids.mjs <gazetteer.zip> db/data/us_zip_centroids.json.gz
 import { execSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';

@@ -25,7 +25,7 @@ export async function lookupUsZip(zip) {
           longitude: hasCoords ? longitude : null,
         }
       : null;
-    cache.set(zip5, place);
+    if (place) cache.set(zip5, place);
     return place;
   } catch {
     return null;
