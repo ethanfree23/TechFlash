@@ -179,6 +179,40 @@ module Api
           assert_equal ["Houston", "Katy"], company_row.fetch("service_cities")
         end
 
+        test "index includes technician coordinates from the profile pin or zip centroid" do
+          admin = create_admin_user!("admin-index-coords@example.com")
+          pinned = create_technician!(
+            email: "tech-pinned-coords@example.com",
+            first_name: "Near",
+            last_name: "Pin",
+            phone: "915-555-0101",
+            trade_type: "Electrician",
+            zip_code: "77002"
+          )
+          pinned.technician_profile.update_columns(latitude: 31.7612, longitude: -106.4853, country: "United States")
+          zip_only = create_technician!(
+            email: "tech-zip-centroid@example.com",
+            first_name: "Zip",
+            last_name: "Only",
+            phone: "915-555-0102",
+            trade_type: "Plumber",
+            zip_code: "79901"
+          )
+          zip_only.technician_profile.update_columns(latitude: nil, longitude: nil)
+
+          get "/api/v1/admin/users", headers: auth_header_for(admin)
+          assert_response :ok
+          rows = JSON.parse(response.body).fetch("users").index_by { |r| r.fetch("id") }
+
+          pin_row = rows.fetch(pinned.id)
+          assert_in_delta 31.7612, pin_row.fetch("latitude"), 0.0001
+          assert_in_delta(-106.4853, pin_row.fetch("longitude"), 0.0001)
+
+          zip_row = rows.fetch(zip_only.id)
+          assert_in_delta 31.76, zip_row.fetch("latitude"), 0.2
+          assert_in_delta(-106.48, zip_row.fetch("longitude"), 0.2)
+        end
+
         test "index fills city and state from zip when those fields are blank" do
           admin = create_admin_user!("admin-index-zip-place@example.com")
           technician = create_technician!(

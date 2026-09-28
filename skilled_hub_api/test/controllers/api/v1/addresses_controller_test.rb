@@ -120,6 +120,8 @@ module Api
         assert_equal "Houston", body["city"]
         assert_equal "TX", body["state"]
         assert_equal "Texas", body["state_name"]
+        assert_in_delta 29.76, body["latitude"], 0.2
+        assert_in_delta(-95.37, body["longitude"], 0.2)
       end
 
       test "zip lookup requires a zip" do

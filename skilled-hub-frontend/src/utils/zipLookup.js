@@ -13,7 +13,18 @@ export async function lookupUsZip(zip) {
     const city = String(res?.city || '').trim();
     const state = String(res?.state || '').trim();
     const stateName = String(res?.state_name || '').trim();
-    const place = city || state ? { city, state, stateName } : null;
+    const latitude = Number(res?.latitude);
+    const longitude = Number(res?.longitude);
+    const hasCoords = Number.isFinite(latitude) && Number.isFinite(longitude);
+    const place = city || state || hasCoords
+      ? {
+          city,
+          state,
+          stateName,
+          latitude: hasCoords ? latitude : null,
+          longitude: hasCoords ? longitude : null,
+        }
+      : null;
     cache.set(zip5, place);
     return place;
   } catch {

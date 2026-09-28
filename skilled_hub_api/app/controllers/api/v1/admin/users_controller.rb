@@ -542,6 +542,7 @@ module Api
           tech_profile = user.technician_profile
           company_profile = user.company_profile
           city, state = resolved_city_state(user)
+          latitude, longitude = technician_list_coordinates(tech_profile)
           user_name = [user.first_name, user.last_name].map(&:to_s).map(&:strip).reject(&:blank?).join(" ")
           {
             id: user.id,
@@ -550,6 +551,8 @@ module Api
             last_name: user.last_name,
             phone: user.phone.presence || tech_profile&.phone.presence || company_profile&.phone,
             zip_code: tech_profile&.zip_code,
+            latitude: latitude,
+            longitude: longitude,
             city: city,
             state: state,
             location: UsAddress.strip_country(tech_profile&.location.presence || company_profile&.location),
@@ -611,6 +614,19 @@ module Api
             expires_at: assignment.expires_at,
             auto_renew: assignment.auto_renew
           }
+        end
+
+        def technician_list_coordinates(profile)
+          return [nil, nil] unless profile
+
+          pair = CoordinateValidator.pair(
+            profile.latitude,
+            profile.longitude,
+            country: profile.country.presence || "United States"
+          )
+          return [pair.latitude, pair.longitude] if pair.valid?
+
+          UsZipLookup.coordinates_for(profile.zip_code) || [nil, nil]
         end
 
         def resolved_city_state(user)

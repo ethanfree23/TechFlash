@@ -1,4 +1,4 @@
-import { parseCityState, stripCountryFromAddress } from './usAddress.js';
+import { parseCityState, stripCountryFromAddress, usZip5 } from './usAddress.js';
 import { usStateAbbreviation } from './crmUsState.js';
 
 /** Derived display fields, KPIs, tabs, and filters for Admin Users command center. */
@@ -449,7 +449,7 @@ export function applyTabFilter(enriched, tabId) {
   }
 }
 
-export function applyAdvancedFilters(rows, filters = {}) {
+export function applyAdvancedFilters(rows, filters = {}, proximity = null) {
   let result = rows;
 
   if (filters.userType) {
@@ -507,7 +507,54 @@ export function applyAdvancedFilters(rows, filters = {}) {
     result = result.filter((u) => u.role === 'technician' && u.logins30d === 0);
   }
 
-  return result;
+  return applyZipProximity(result, filters, proximity);
+}
+
+function haversineMiles(lat1, lon1, lat2, lon2) {
+  const R = 3959;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+function positiveMiles(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return n;
+}
+
+export function formatDistanceMiles(miles) {
+  if (miles == null || !Number.isFinite(miles)) return '';
+  if (miles < 10) return `${(Math.round(miles * 10) / 10).toFixed(1)} mi`;
+  return `${Math.round(miles)} mi`;
+}
+
+/** Keep technicians near a ZIP. Blank miles orders everyone; a mile value drops anyone farther. */
+export function applyZipProximity(rows, filters = {}, proximity = null) {
+  const zip = usZip5(filters.nearZip);
+  if (!zip) return rows;
+  if (!proximity || proximity.zip !== zip || proximity.status !== 'ready') return rows;
+
+  const originLat = Number(proximity.latitude);
+  const originLng = Number(proximity.longitude);
+  if (!Number.isFinite(originLat) || !Number.isFinite(originLng)) return rows;
+
+  const maxMiles = positiveMiles(filters.withinMiles);
+  const next = [];
+  for (const row of rows) {
+    if (row.role !== 'technician') continue;
+    const lat = Number(row.latitude);
+    const lng = Number(row.longitude);
+    const known = Number.isFinite(lat) && Number.isFinite(lng);
+    const miles = known ? haversineMiles(originLat, originLng, lat, lng) : null;
+    if (maxMiles != null && (miles == null || miles > maxMiles)) continue;
+    next.push({ ...row, distanceMiles: miles });
+  }
+  return next;
 }
 
 function searchDigitVariants(value) {
@@ -590,6 +637,11 @@ export function getFilterChips(filters) {
   if (filters.riskLevel) add('riskLevel', `${filters.riskLevel} risk`);
   if (filters.company) add('company', filters.company);
   if (filters.location) add('location', filters.location);
+  if (usZip5(filters.nearZip) || String(filters.nearZip || '').trim()) {
+    const zip = usZip5(filters.nearZip) || String(filters.nearZip).trim();
+    const miles = positiveMiles(filters.withinMiles);
+    add('nearZip', miles != null ? `Within ${miles} mi of ${zip}` : `Closest to ${zip}`);
+  }
   if (filters.trade) add('trade', filters.trade);
   if (filters.tradeLevel) add('tradeLevel', tradeLevelLabel(filters.tradeLevel) || filters.tradeLevel);
   if (filters.minExperienceYears) add('minExperienceYears', `${filters.minExperienceYears}+ years`);

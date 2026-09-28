@@ -14,11 +14,14 @@ module Api
         end
 
         place = UsZipLookup.place_for(zip5)
+        latitude, longitude = UsZipLookup.coordinates_for(zip5)
         render json: {
           zip_code: zip5,
           city: place&.dig(:city),
           state: place&.dig(:state),
-          state_name: place ? GeocodingService.us_full_state_name_from_abbr(place[:state]) : nil
+          state_name: place ? GeocodingService.us_full_state_name_from_abbr(place[:state]) : nil,
+          latitude: latitude,
+          longitude: longitude
         }, status: :ok
       end
 
