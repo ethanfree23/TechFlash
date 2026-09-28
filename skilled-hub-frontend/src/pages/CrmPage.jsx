@@ -88,6 +88,17 @@ import {
   FaEnvelope,
 } from 'react-icons/fa';
 
+const CRM_LIST_SPLIT_KEY = 'crm-list-split-percent';
+const CRM_LIST_SPLIT_DEFAULT = 58;
+const CRM_LIST_SPLIT_MIN = 32;
+const CRM_LIST_SPLIT_MAX = 74;
+
+function clampListSplit(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return CRM_LIST_SPLIT_DEFAULT;
+  return Math.min(CRM_LIST_SPLIT_MAX, Math.max(CRM_LIST_SPLIT_MIN, n));
+}
+
 const formatCurrency = (cents) => {
   if (cents == null || cents === 0) return '$0';
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(cents / 100);
@@ -565,6 +576,14 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [crmHasPhoneFilter, setCrmHasPhoneFilter] = useState('all');
   const [crmHasEmailFilter, setCrmHasEmailFilter] = useState('all');
   const [filtersPanelOpen, setFiltersPanelOpen] = useState(false);
+  const listSplitRef = useRef(null);
+  const [listSplitPercent, setListSplitPercent] = useState(() => {
+    try {
+      return clampListSplit(window.localStorage.getItem(CRM_LIST_SPLIT_KEY));
+    } catch {
+      return CRM_LIST_SPLIT_DEFAULT;
+    }
+  });
   const [selectedRowIds, setSelectedRowIds] = useState([]);
   const [timelineFilter, setTimelineFilter] = useState('all');
   const [timelineSort, setTimelineSort] = useState('newest');
@@ -2955,6 +2974,40 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   }, [crmDetailTab, showAccountTab]);
 
   const recordOpen = Boolean(selectedId) && !isCreating;
+  const commitListSplit = (value) => {
+    const next = clampListSplit(value);
+    setListSplitPercent(next);
+    try {
+      window.localStorage.setItem(CRM_LIST_SPLIT_KEY, String(Math.round(next)));
+    } catch {
+      /* ignore */
+    }
+  };
+  const onSplitPointerDown = (event) => {
+    if (event.button !== 0) return;
+    const container = listSplitRef.current;
+    const handle = event.currentTarget;
+    if (!container) return;
+    event.preventDefault();
+    handle.setPointerCapture(event.pointerId);
+    const apply = (clientX, persist) => {
+      const rect = container.getBoundingClientRect();
+      if (!rect.width) return;
+      const pct = ((clientX - rect.left) / rect.width) * 100;
+      if (persist) commitListSplit(pct);
+      else setListSplitPercent(clampListSplit(pct));
+    };
+    const move = (e) => apply(e.clientX, false);
+    const finish = (e) => {
+      handle.removeEventListener('pointermove', move);
+      handle.removeEventListener('pointerup', finish);
+      handle.removeEventListener('pointercancel', finish);
+      apply(e.clientX, true);
+    };
+    handle.addEventListener('pointermove', move);
+    handle.addEventListener('pointerup', finish);
+    handle.addEventListener('pointercancel', finish);
+  };
   const labelFor = (options, id) => options.find((opt) => opt.id === id)?.label || id;
   const titleCaseStatus = (status) => {
     const s = String(status || '');
@@ -3104,8 +3157,12 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           }}
         />
         <CrmMetrics stats={statsForHeader} activeIds={activeMetricIds} onSelect={selectMetric} />
-        <div className={recordOpen ? 'flex flex-col xl:flex-row xl:items-stretch xl:gap-3' : ''}>
-          <section className={recordOpen ? 'flex min-w-0 flex-col xl:h-[calc(100vh-13.5rem)] xl:max-h-[calc(100vh-13.5rem)] xl:w-[58%]' : 'min-w-0'}>
+        <div
+          ref={listSplitRef}
+          style={recordOpen ? { '--crm-list-split': `${listSplitPercent}%` } : undefined}
+          className={recordOpen ? 'flex flex-col xl:flex-row xl:items-stretch' : ''}
+        >
+          <section className={recordOpen ? 'flex min-w-0 flex-col xl:h-[calc(100vh-13.5rem)] xl:max-h-[calc(100vh-13.5rem)] xl:w-[var(--crm-list-split)] xl:shrink-0' : 'min-w-0'}>
             <CrmToolbar
               search={pipelineNameFilter}
               onSearch={setPipelineNameFilter}
@@ -3194,7 +3251,34 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           </section>
 
           {recordOpen ? (
-            <section className="mt-4 flex min-h-[540px] min-w-0 flex-col xl:mt-0 xl:h-[calc(100vh-13.5rem)] xl:max-h-[calc(100vh-13.5rem)] xl:w-[42%]">
+            <div
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Resize company list and record"
+              aria-valuemin={CRM_LIST_SPLIT_MIN}
+              aria-valuemax={CRM_LIST_SPLIT_MAX}
+              aria-valuenow={Math.round(listSplitPercent)}
+              tabIndex={0}
+              title="Drag to resize. Double-click to reset."
+              onPointerDown={onSplitPointerDown}
+              onDoubleClick={() => commitListSplit(CRM_LIST_SPLIT_DEFAULT)}
+              onKeyDown={(event) => {
+                if (event.key === 'ArrowLeft') {
+                  event.preventDefault();
+                  commitListSplit(listSplitPercent - 2);
+                } else if (event.key === 'ArrowRight') {
+                  event.preventDefault();
+                  commitListSplit(listSplitPercent + 2);
+                }
+              }}
+              className="group hidden w-3 shrink-0 cursor-col-resize touch-none items-center justify-center xl:flex focus:outline-none"
+            >
+              <span className="h-12 w-1 rounded-full bg-slate-300 transition-colors group-hover:bg-tf-blue group-focus-visible:bg-tf-blue" />
+            </div>
+          ) : null}
+
+          {recordOpen ? (
+            <section className="mt-4 flex min-h-[540px] min-w-0 flex-1 flex-col xl:mt-0 xl:h-[calc(100vh-13.5rem)] xl:max-h-[calc(100vh-13.5rem)]">
               <div id="crm-detail-panel" className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <button
                   type="button"
