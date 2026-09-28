@@ -286,8 +286,8 @@ export default function UsersFilters({
       {/* Advanced filters panel */}
       {filtersOpen && (
         <>
-          <button type="button" className="fixed inset-0 z-40 bg-slate-900/20 backdrop-blur-[1px]" aria-label="Close filters" onClick={() => setFiltersOpen(false)} />
-          <div className="fixed inset-y-0 right-0 z-50 w-full max-w-sm bg-white border-l border-slate-200 shadow-2xl flex flex-col sm:max-w-xs">
+          <button type="button" className="fixed inset-0 z-[110] bg-slate-900/20 backdrop-blur-[1px]" aria-label="Close filters" onClick={() => setFiltersOpen(false)} />
+          <div className="fixed inset-y-0 right-0 z-[120] w-full max-w-sm bg-white border-l border-slate-200 shadow-2xl flex flex-col sm:max-w-xs">
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 shrink-0">
               <div>
                 <h3 className="text-sm font-semibold text-slate-900">Filters</h3>
