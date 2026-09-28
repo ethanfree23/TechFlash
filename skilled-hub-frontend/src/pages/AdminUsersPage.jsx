@@ -18,6 +18,8 @@ import {
   defaultColumnsForTab,
   resolveEmptyVariant,
 } from '../utils/adminUsersDisplayAdapter';
+import { lookupUsZip } from '../utils/zipLookup';
+import { usZip5 } from '../utils/usAddress';
 import { exportUsersToCsv } from '../utils/adminUsersExport';
 import UsersHeader from '../components/admin/users/UsersHeader';
 import UsersKpiCards from '../components/admin/users/UsersKpiCards';
@@ -37,6 +39,16 @@ import { withDemoPath } from '../utils/demoMode';
 
 const COLUMN_STORAGE_KEY = 'admin-users-table-columns-v5';
 
+function columnsWithDistance(columns, active) {
+  if (!active) return columns;
+  const miles = { key: 'distance', label: 'Miles', visible: true, width: 72 };
+  const next = columns.filter((col) => col.key !== 'distance');
+  const stateIdx = next.findIndex((col) => col.key === 'state');
+  if (stateIdx === -1) return [...next, miles];
+  next.splice(stateIdx + 1, 0, miles);
+  return next;
+}
+
 export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('all');
@@ -46,6 +58,7 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const [loadError, setLoadError] = useState(null);
   const [searchQ, setSearchQ] = useState('');
   const [filters, setFilters] = useState({});
+  const [nearPlace, setNearPlace] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [drawerUserId, setDrawerUserId] = useState(null);
   const [sortKey, setSortKey] = useState('user');
@@ -129,14 +142,52 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
 
   const enriched = useMemo(() => list.map((row) => enrichUserRow(row)), [list]);
 
+  useEffect(() => {
+    const zip = usZip5(filters.nearZip);
+    if (!zip) {
+      setNearPlace(null);
+      setSortKey((key) => (key === 'distance' ? 'user' : key));
+      return undefined;
+    }
+
+    let cancelled = false;
+    setNearPlace((prev) => (prev?.zip === zip && prev.status === 'ready' ? prev : { zip, status: 'loading' }));
+    lookupUsZip(zip).then((place) => {
+      if (cancelled) return;
+      const latitude = Number(place?.latitude);
+      const longitude = Number(place?.longitude);
+      if (!place || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+        setNearPlace({ zip, status: 'missing', city: place?.city || '', state: place?.state || '' });
+        return;
+      }
+      setNearPlace({
+        zip,
+        status: 'ready',
+        city: place.city || '',
+        state: place.state || '',
+        latitude,
+        longitude,
+      });
+      setSortKey('distance');
+      setSortDir('asc');
+    });
+
+    return () => { cancelled = true; };
+  }, [filters.nearZip]);
+
   const filteredRows = useMemo(() => {
     let rows = applyTabFilter(enriched, activeTab);
-    rows = applyAdvancedFilters(rows, filters);
+    rows = applyAdvancedFilters(rows, filters, nearPlace);
     if (searchQ.trim()) {
       rows = applyClientSearch(rows, searchQ);
     }
     return rows;
-  }, [enriched, activeTab, filters, searchQ]);
+  }, [enriched, activeTab, filters, searchQ, nearPlace]);
+
+  const tableColumns = useMemo(
+    () => columnsWithDistance(columns, nearPlace?.status === 'ready' && !!usZip5(filters.nearZip)),
+    [columns, nearPlace, filters.nearZip]
+  );
 
   const kpis = useMemo(() => computeKpis(enriched, techInsights), [enriched, techInsights]);
   const tabCounts = useMemo(() => computeTabCounts(enriched), [enriched]);
@@ -397,13 +448,14 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
               activeViewId={activeViewId}
               onSelectView={handleSelectView}
               activeTab={activeTab}
+              nearPlace={nearPlace}
             />
           </div>
 
           <div className="flex-1 min-h-0 flex flex-col">
             <UsersTable
               rows={filteredRows}
-              columns={columns}
+              columns={tableColumns}
               loading={loading}
               loadError={loadError}
               emptyVariant={emptyVariant}

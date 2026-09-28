@@ -3,11 +3,14 @@ import {
   applyAdvancedFilters,
   applyClientSearch,
   applyTabFilter,
+  applyZipProximity,
   computeKpis,
   computeTabCounts,
   defaultColumnsForTab,
   enrichUserRow,
+  formatDistanceMiles,
   formatExperienceYears,
+  getFilterChips,
   tradeLevelLabel,
 } from '../src/utils/adminUsersDisplayAdapter.js';
 
@@ -303,6 +306,75 @@ function testAvatarUrlFromListAndDetail() {
   assert.strictEqual(none.avatarUrl, '');
 }
 
+function testZipProximityOrdersAndLimitsTechnicians() {
+  const origin = { zip: '79901', status: 'ready', latitude: 31.7594, longitude: -106.4801 };
+  const close = enrichUserRow({
+    id: 1,
+    email: 'close@example.com',
+    first_name: 'Ada',
+    last_name: 'Near',
+    role: 'technician',
+    label: 'Electrician',
+    zip_code: '79901',
+    city: 'El Paso',
+    state: 'TX',
+    latitude: 31.8,
+    longitude: -106.5,
+  });
+  const far = enrichUserRow({
+    id: 2,
+    email: 'far@example.com',
+    first_name: 'Bo',
+    last_name: 'Far',
+    role: 'technician',
+    label: 'Plumber',
+    zip_code: '77002',
+    city: 'Houston',
+    state: 'TX',
+    latitude: 29.76,
+    longitude: -95.37,
+  });
+  const unlocated = enrichUserRow({
+    id: 3,
+    email: 'none@example.com',
+    first_name: 'Cy',
+    last_name: 'None',
+    role: 'technician',
+    label: 'Helper',
+  });
+  const company = enrichUserRow({
+    id: 4,
+    email: 'ops@example.com',
+    first_name: 'Dee',
+    last_name: 'Office',
+    role: 'company',
+    company_name: 'FixIt Co',
+    latitude: 31.76,
+    longitude: -106.48,
+  });
+  const rows = [far, company, unlocated, close];
+
+  const ordered = applyZipProximity(rows, { nearZip: '79901' }, origin);
+  assert.deepStrictEqual(ordered.map((u) => u.id), [1, 2, 3]);
+  assert.ok(ordered[0].distanceMiles < 20);
+  assert.ok(ordered[1].distanceMiles > 500);
+  assert.strictEqual(ordered[2].distanceMiles, null);
+  assert.strictEqual(formatDistanceMiles(ordered[0].distanceMiles).endsWith(' mi'), true);
+
+  const nearby = applyAdvancedFilters(rows, { nearZip: '79901', withinMiles: '50' }, origin);
+  assert.deepStrictEqual(nearby.map((u) => u.id), [1]);
+
+  const waiting = applyAdvancedFilters(rows, { nearZip: '79901', withinMiles: '50' }, { zip: '79901', status: 'loading' });
+  assert.strictEqual(waiting.length, 4);
+
+  const chips = getFilterChips({ nearZip: '79901', withinMiles: '50' });
+  assert.strictEqual(chips.length, 1);
+  assert.strictEqual(chips[0].filterKey, 'nearZip');
+  assert.strictEqual(chips[0].label, 'Within 50 mi of 79901');
+  assert.strictEqual(getFilterChips({ nearZip: '79901' })[0].label, 'Closest to 79901');
+}
+
 testKpisStayOnFullCensusWhenTabFilters();
 testAvatarUrlFromListAndDetail();
+testZipProximityOrdersAndLimitsTechnicians();
 console.log('adminUsersSearch tests passed');

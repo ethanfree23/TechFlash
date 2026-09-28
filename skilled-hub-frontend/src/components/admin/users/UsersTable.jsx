@@ -8,7 +8,7 @@ import UserRowActionsMenu from './UserRowActionsMenu';
 import { TradeLicenseCell, ReferencesCell, BackgroundCheckCell } from './VerificationInventoryCells';
 import UsersEmptyState from './UsersEmptyState';
 import { TableRowsSkeleton } from './UsersSkeleton';
-import { displayOrFallback, TRADE_LEVEL_RANK } from '../../../utils/adminUsersDisplayAdapter';
+import { displayOrFallback, formatDistanceMiles, TRADE_LEVEL_RANK } from '../../../utils/adminUsersDisplayAdapter';
 import { mediaUrlWithCacheBust } from '../../../utils/mediaUrl';
 import {
   ADMIN_USERS_PAGE_SIZES,
@@ -279,6 +279,14 @@ function renderCell(col, row, handlers = {}) {
       ) : (
         <Muted title="ZIP not provided">—</Muted>
       );
+    case 'distance': {
+      const label = formatDistanceMiles(row.distanceMiles);
+      return label ? (
+        <CellText className="text-xs text-slate-700 tabular-nums" title={label}>{label}</CellText>
+      ) : (
+        <Muted title="No map point for this technician">—</Muted>
+      );
+    }
     case 'membership_tier':
       return (
         <CellText title={displayOrFallback(row.membershipTier, 'Free')}>
@@ -427,6 +435,11 @@ function UserMobileCard({ row, selected, onSelect, onRowClick, onViewProfile, me
           {row.role === 'technician' && (row.tradeLevelLabel || row.experienceYearsLabel) && (
             <p className="mt-1 text-[11px] text-slate-500">
               {[row.tradeLevelLabel, row.experienceYearsLabel].filter(Boolean).join(' · ')}
+            </p>
+          )}
+          {formatDistanceMiles(row.distanceMiles) && (
+            <p className="mt-1 text-[11px] font-medium text-slate-600 tabular-nums">
+              {formatDistanceMiles(row.distanceMiles)} away
             </p>
           )}
         </div>
@@ -595,6 +608,14 @@ export default function UsersTable({
           default: return '';
         }
       };
+      if (sortKey === 'distance') {
+        const aMissing = a.distanceMiles == null || !Number.isFinite(a.distanceMiles);
+        const bMissing = b.distanceMiles == null || !Number.isFinite(b.distanceMiles);
+        if (aMissing && bMissing) return 0;
+        if (aMissing) return 1;
+        if (bMissing) return -1;
+        return (a.distanceMiles - b.distanceMiles) * dir;
+      }
       const av = getVal(a, sortKey);
       const bv = getVal(b, sortKey);
       if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;

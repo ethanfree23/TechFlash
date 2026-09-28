@@ -117,6 +117,7 @@ export default function UsersFilters({
   activeViewId,
   onSelectView,
   activeTab,
+  nearPlace,
 }) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [columnsOpen, setColumnsOpen] = useState(false);
@@ -153,6 +154,7 @@ export default function UsersFilters({
   const removeChip = (filterKey) => {
     const next = { ...filters };
     delete next[filterKey];
+    if (filterKey === 'nearZip') delete next.withinMiles;
     onFiltersChange(next);
   };
 
@@ -296,6 +298,51 @@ export default function UsersFilters({
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
+              <div className="rounded-md border border-slate-200 bg-slate-50/80 p-2.5 space-y-2">
+                <div>
+                  <p className="text-[11px] font-semibold text-slate-800">Closest technicians</p>
+                  <p className="text-[10px] text-slate-500 mt-0.5">
+                    Enter a ZIP to list technicians nearest that area. Set miles to keep only those inside the radius.
+                  </p>
+                </div>
+                <label className="block">
+                  <span className="text-[11px] font-medium text-slate-600">ZIP code</span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="postal-code"
+                    value={filters.nearZip || ''}
+                    onChange={(e) => updateFilter('nearZip', e.target.value)}
+                    className={`mt-1 ${fieldClass}`}
+                    placeholder="79901"
+                    aria-label="ZIP code to measure distance from"
+                  />
+                </label>
+                <label className="block">
+                  <span className="text-[11px] font-medium text-slate-600">Within miles</span>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={filters.withinMiles || ''}
+                    onChange={(e) => updateFilter('withinMiles', e.target.value)}
+                    className={`mt-1 ${fieldClass}`}
+                    placeholder="Any distance"
+                    aria-label="Maximum miles from ZIP"
+                  />
+                </label>
+                {nearPlace?.status === 'loading' && (
+                  <p className="text-[10px] text-slate-400">Looking up ZIP…</p>
+                )}
+                {nearPlace?.status === 'ready' && (nearPlace.city || nearPlace.state) && (
+                  <p className="text-[10px] text-slate-500">
+                    Ordering by distance from {[nearPlace.city, nearPlace.state].filter(Boolean).join(', ')} {nearPlace.zip}
+                  </p>
+                )}
+                {nearPlace?.status === 'missing' && (
+                  <p className="text-[10px] text-amber-700">That ZIP has no map point, so distance can’t be calculated.</p>
+                )}
+              </div>
               {FILTER_FIELDS.map((field) => (
                 <label key={field.key} className="block">
                   <span className="text-[11px] font-medium text-slate-600">{field.label}</span>

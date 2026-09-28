@@ -1,4 +1,4 @@
-import { getFullName } from './adminUsersDisplayAdapter';
+import { formatDistanceMiles, getFullName } from './adminUsersDisplayAdapter';
 
 const EXPORT_COLUMNS = [
   { key: 'id', header: 'ID' },
@@ -39,11 +39,14 @@ export function exportUsersToCsv(rows, filename = 'techflash-users.csv') {
     backgroundCheck: r.verification?.background_check?.label || '',
   }));
 
-  const header = EXPORT_COLUMNS.map((c) => escapeCsv(c.header)).join(',');
+  const columns = enriched.some((row) => Object.prototype.hasOwnProperty.call(row, 'distanceMiles'))
+    ? [...EXPORT_COLUMNS, { key: 'distanceMilesLabel', header: 'Miles' }]
+    : EXPORT_COLUMNS;
+  const header = columns.map((c) => escapeCsv(c.header)).join(',');
   const body = enriched
-    .map((row) =>
-      EXPORT_COLUMNS.map((c) => escapeCsv(row[c.key])).join(',')
-    )
+    .map((row) => columns.map((c) => escapeCsv(
+      c.key === 'distanceMilesLabel' ? formatDistanceMiles(row.distanceMiles) : row[c.key]
+    )).join(','))
     .join('\n');
 
   const blob = new Blob([`${header}\n${body}`], { type: 'text/csv;charset=utf-8;' });
