@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { FaCog, FaFilter, FaSearch, FaTimes } from 'react-icons/fa';
 import { getFilterChips } from '../../../utils/adminUsersDisplayAdapter';
+import { TRADE_OPTIONS } from '../../../constants/trades';
 import UsersSavedViews from './UsersSavedViews';
 import {
   TABLE_COL_MAX_WIDTH,
@@ -16,15 +17,115 @@ const FILTER_FIELDS = [
   { key: 'loginActivity', label: 'Login activity', type: 'select', options: ['', 'active_30d', 'inactive_30d'] },
   { key: 'company', label: 'Company', type: 'text' },
   { key: 'location', label: 'Location', type: 'text' },
-  { key: 'trade', label: 'Trade / specialty', type: 'text' },
+  { key: 'trade', label: 'Trade specialty', type: 'select', options: ['', ...TRADE_OPTIONS] },
   { key: 'tradeLevel', label: 'Trade level', type: 'select', options: ['', 'helper', 'apprentice', 'journeyman', 'master'] },
   { key: 'minExperienceYears', label: 'Years (min)', type: 'select', options: ['', '1', '2', '3', '5', '8', '10', '15'] },
   { key: 'subscriptionTier', label: 'Tier status', type: 'select', options: ['', 'trial', 'past_due'], disabledNote: 'Best-effort — detail data may be required' },
   { key: 'hasAcceptedJob', label: 'Has accepted job', type: 'select', options: ['', 'yes', 'no'], disabledNote: 'Approximate until index exposes job counts' },
 ];
 
+/** Column this filter should sit beside. Empty keeps it after the column-backed filters. */
+function columnKeysForFilter(key, activeTab, columns) {
+  const hasColumn = (columnKey) => columns.some((col) => col.key === columnKey);
+  switch (key) {
+    case 'userType':
+      return ['type'];
+    case 'status':
+      return ['status'];
+    case 'verificationStatus':
+      return ['trade_license', 'references', 'background_check'];
+    case 'riskLevel':
+      return ['risk'];
+    case 'loginActivity':
+      return hasColumn('activity') ? ['activity'] : ['last_login'];
+    case 'company':
+      return activeTab === 'technicians' ? [] : ['company_trade'];
+    case 'location':
+      return ['city', 'state', 'location'];
+    case 'trade':
+      return activeTab === 'company' ? [] : ['company_trade'];
+    case 'tradeLevel':
+      return ['trade_level'];
+    case 'minExperienceYears':
+      return ['experience_years'];
+    case 'subscriptionTier':
+      return ['membership_tier'];
+    case 'hasAcceptedJob':
+      return ['jobs'];
+    case 'nearZip':
+      return ['zip', 'distance'];
+    default:
+      return [];
+  }
+}
+
+function earliestColumnIndex(columns, keys) {
+  let best = Number.POSITIVE_INFINITY;
+  for (const key of keys) {
+    const index = columns.findIndex((col) => col.key === key);
+    if (index !== -1 && index < best) best = index;
+  }
+  return best;
+}
+
+function orderedFilterEntries(columns, activeTab) {
+  const list = columns || [];
+  const visible = list.filter((col) => col.visible !== false);
+  const entries = [
+    { kind: 'proximity', key: 'nearZip' },
+    ...FILTER_FIELDS.map((field) => ({ kind: 'field', key: field.key, field })),
+  ];
+  const rank = (entry) => {
+    const keys = columnKeysForFilter(entry.key, activeTab, list);
+    const visibleIndex = earliestColumnIndex(visible, keys);
+    if (Number.isFinite(visibleIndex)) return [0, visibleIndex];
+    const hiddenIndex = earliestColumnIndex(list, keys);
+    if (Number.isFinite(hiddenIndex)) return [1, hiddenIndex];
+    return [2, 0];
+  };
+  return entries
+    .map((entry, order) => ({ entry, order, rank: rank(entry) }))
+    .sort((a, b) => a.rank[0] - b.rank[0] || a.rank[1] - b.rank[1] || a.order - b.order)
+    .map((row) => row.entry);
+}
+
 const fieldClass =
   'w-full border border-slate-200 rounded-md px-2.5 py-1.5 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-tf-blue/20 focus:border-tf-blue/40';
+
+function selectOptions(field, value) {
+  if (!value || field.options.includes(value)) return field.options;
+  return [value, ...field.options];
+}
+
+function FilterField({ field, value, onChange }) {
+  return (
+    <label className="block">
+      <span className="text-[11px] font-medium text-slate-600">{field.label}</span>
+      {field.type === 'select' ? (
+        <select
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={`mt-1 ${fieldClass}`}
+        >
+          {selectOptions(field, value).map((opt) => (
+            <option key={opt || 'all'} value={opt}>{optionLabel(opt)}</option>
+          ))}
+        </select>
+      ) : (
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className={`mt-1 ${fieldClass}`}
+          placeholder="Contains..."
+        />
+      )}
+      {field.disabledNote && (
+        <p className="mt-0.5 text-[10px] text-slate-400">{field.disabledNote}</p>
+      )}
+    </label>
+  );
+}
 
 function optionLabel(opt) {
   const map = {
@@ -125,6 +226,10 @@ export default function UsersFilters({
 
   const chips = getFilterChips(filters);
   const hasActive = chips.length > 0 || searchQ.trim();
+  const filterEntries = useMemo(
+    () => orderedFilterEntries(columns, activeTab),
+    [columns, activeTab]
+  );
 
   useEffect(() => {
     if (!filtersOpen) return undefined;
@@ -298,77 +403,61 @@ export default function UsersFilters({
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-4 space-y-3">
-              <div className="rounded-md border border-slate-200 bg-slate-50/80 p-2.5 space-y-2">
-                <div>
-                  <p className="text-[11px] font-semibold text-slate-800">Closest technicians</p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">
-                    Enter a ZIP to list technicians nearest that area. Set miles to keep only those inside the radius.
-                  </p>
-                </div>
-                <label className="block">
-                  <span className="text-[11px] font-medium text-slate-600">ZIP code</span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    autoComplete="postal-code"
-                    value={filters.nearZip || ''}
-                    onChange={(e) => updateFilter('nearZip', e.target.value)}
-                    className={`mt-1 ${fieldClass}`}
-                    placeholder="79901"
-                    aria-label="ZIP code to measure distance from"
+              {filterEntries.map((entry) => (
+                entry.kind === 'proximity' ? (
+                  <div key="nearZip" className="rounded-md border border-slate-200 bg-slate-50/80 p-2.5 space-y-2">
+                    <div>
+                      <p className="text-[11px] font-semibold text-slate-800">Closest technicians</p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        Enter a ZIP to list technicians nearest that area. Set miles to keep only those inside the radius.
+                      </p>
+                    </div>
+                    <label className="block">
+                      <span className="text-[11px] font-medium text-slate-600">ZIP code</span>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="postal-code"
+                        value={filters.nearZip || ''}
+                        onChange={(e) => updateFilter('nearZip', e.target.value)}
+                        className={`mt-1 ${fieldClass}`}
+                        placeholder="79901"
+                        aria-label="ZIP code to measure distance from"
+                      />
+                    </label>
+                    <label className="block">
+                      <span className="text-[11px] font-medium text-slate-600">Within miles</span>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={filters.withinMiles || ''}
+                        onChange={(e) => updateFilter('withinMiles', e.target.value)}
+                        className={`mt-1 ${fieldClass}`}
+                        placeholder="Any distance"
+                        aria-label="Maximum miles from ZIP"
+                      />
+                    </label>
+                    {nearPlace?.status === 'loading' && (
+                      <p className="text-[10px] text-slate-400">Looking up ZIP…</p>
+                    )}
+                    {nearPlace?.status === 'ready' && (nearPlace.city || nearPlace.state) && (
+                      <p className="text-[10px] text-slate-500">
+                        Ordering by distance from {[nearPlace.city, nearPlace.state].filter(Boolean).join(', ')} {nearPlace.zip}
+                      </p>
+                    )}
+                    {nearPlace?.status === 'missing' && (
+                      <p className="text-[10px] text-amber-700">That ZIP has no map point, so distance can’t be calculated.</p>
+                    )}
+                  </div>
+                ) : (
+                  <FilterField
+                    key={entry.field.key}
+                    field={entry.field}
+                    value={filters[entry.field.key] || ''}
+                    onChange={(value) => updateFilter(entry.field.key, value)}
                   />
-                </label>
-                <label className="block">
-                  <span className="text-[11px] font-medium text-slate-600">Within miles</span>
-                  <input
-                    type="number"
-                    min="1"
-                    step="1"
-                    value={filters.withinMiles || ''}
-                    onChange={(e) => updateFilter('withinMiles', e.target.value)}
-                    className={`mt-1 ${fieldClass}`}
-                    placeholder="Any distance"
-                    aria-label="Maximum miles from ZIP"
-                  />
-                </label>
-                {nearPlace?.status === 'loading' && (
-                  <p className="text-[10px] text-slate-400">Looking up ZIP…</p>
-                )}
-                {nearPlace?.status === 'ready' && (nearPlace.city || nearPlace.state) && (
-                  <p className="text-[10px] text-slate-500">
-                    Ordering by distance from {[nearPlace.city, nearPlace.state].filter(Boolean).join(', ')} {nearPlace.zip}
-                  </p>
-                )}
-                {nearPlace?.status === 'missing' && (
-                  <p className="text-[10px] text-amber-700">That ZIP has no map point, so distance can’t be calculated.</p>
-                )}
-              </div>
-              {FILTER_FIELDS.map((field) => (
-                <label key={field.key} className="block">
-                  <span className="text-[11px] font-medium text-slate-600">{field.label}</span>
-                  {field.type === 'select' ? (
-                    <select
-                      value={filters[field.key] || ''}
-                      onChange={(e) => updateFilter(field.key, e.target.value)}
-                      className={`mt-1 ${fieldClass}`}
-                    >
-                      {field.options.map((opt) => (
-                        <option key={opt || 'all'} value={opt}>{optionLabel(opt)}</option>
-                      ))}
-                    </select>
-                  ) : (
-                    <input
-                      type="text"
-                      value={filters[field.key] || ''}
-                      onChange={(e) => updateFilter(field.key, e.target.value)}
-                      className={`mt-1 ${fieldClass}`}
-                      placeholder="Contains..."
-                    />
-                  )}
-                  {field.disabledNote && (
-                    <p className="mt-0.5 text-[10px] text-slate-400">{field.disabledNote}</p>
-                  )}
-                </label>
+                )
               ))}
             </div>
             <div className="shrink-0 flex gap-2 p-3 border-t border-slate-100 bg-slate-50/50">

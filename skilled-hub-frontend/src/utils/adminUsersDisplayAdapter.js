@@ -476,7 +476,12 @@ export function applyAdvancedFilters(rows, filters = {}, proximity = null) {
   }
   if (filters.trade?.trim()) {
     const q = filters.trade.trim().toLowerCase();
-    result = result.filter((u) => (u.label || '').toLowerCase().includes(q));
+    result = result.filter((u) => {
+      const values = [u.label, u.trade_type]
+        .map((value) => String(value || '').trim().toLowerCase())
+        .filter((value) => value && value !== 'not provided');
+      return values.includes(q);
+    });
   }
   if (filters.tradeLevel) {
     const want = normalizeTradeLevel(filters.tradeLevel);
