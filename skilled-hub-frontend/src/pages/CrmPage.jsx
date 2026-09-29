@@ -3163,7 +3163,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           style={recordOpen ? { '--crm-list-split': `${listSplitPercent}%` } : undefined}
           className={recordOpen ? 'flex flex-col xl:flex-row xl:items-stretch' : ''}
         >
-          <section className={recordOpen ? 'flex min-w-0 flex-col xl:h-[calc(100vh-13.5rem)] xl:max-h-[calc(100vh-13.5rem)] xl:w-[var(--crm-list-split)] xl:shrink-0' : 'min-w-0'}>
+          <section className={recordOpen ? 'flex min-w-0 flex-col xl:h-[calc(200vh-13.5rem)] xl:w-[var(--crm-list-split)] xl:shrink-0' : 'min-w-0'}>
             <CrmToolbar
               search={pipelineNameFilter}
               onSearch={setPipelineNameFilter}
@@ -3215,7 +3215,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             />
             <CrmActiveFilters filters={activeFilterChips} onClearAll={clearCrmFilters} />
             <CrmCompanyTable
-              className={recordOpen ? 'min-h-0 flex-1' : 'h-[calc(100vh-16.5rem)] min-h-[28rem]'}
+              className={recordOpen ? 'min-h-0 flex-1' : 'h-[calc(200vh-16.5rem)] min-h-[28rem]'}
               loading={loading}
               totalCount={leads.length}
               rows={pipelineDisplayGroups}
@@ -3279,7 +3279,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           ) : null}
 
           {recordOpen ? (
-            <section className="mt-4 flex min-h-[540px] min-w-0 flex-1 flex-col xl:mt-0 xl:h-[calc(100vh-13.5rem)] xl:max-h-[calc(100vh-13.5rem)]">
+            <section className="mt-4 flex min-h-[85vh] min-w-0 flex-1 flex-col xl:mt-0 xl:h-[calc(200vh-13.5rem)]">
               <div id="crm-detail-panel" className="relative flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                 <button
                   type="button"
