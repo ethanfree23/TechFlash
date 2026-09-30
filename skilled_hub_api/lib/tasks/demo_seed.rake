@@ -17,6 +17,14 @@ namespace :demo do
     puts "Demo reset complete: #{stats.inspect}"
   end
 
+  desc "Re-date existing demo jobs onto the current calendar and add the curated CRM book. Does not create jobs or technicians, and refuses production."
+  task refresh: :environment do
+    Demo::EnvironmentGuard.assert_demo_database!
+    windows = Demo::JobWindowRefresh.call
+    crm = Demo::CrmSeed.call
+    puts "Demo refresh complete. Job windows: #{windows.inspect}. CRM: #{crm.inspect}"
+  end
+
   namespace :db do
     desc "Alias for demo:seed"
     task seed: :environment do

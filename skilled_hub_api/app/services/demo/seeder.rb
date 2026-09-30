@@ -67,6 +67,11 @@ module Demo
       seed_demo_admin_notifications!
       seed_login_events!
       attach_flagship_to_stats!
+      if Demo::EnvironmentGuard.demo_database?
+        crm = Demo::CrmSeed.call
+        @stats[:crm_leads] = crm[:created]
+        @stats[:crm_notes] = crm[:notes]
+      end
       @stats
     end
 
