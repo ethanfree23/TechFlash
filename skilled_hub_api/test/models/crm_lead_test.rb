@@ -20,6 +20,28 @@ class CrmLeadTest < ActiveSupport::TestCase
     assert lead.valid?, lead.errors.full_messages.join(", ")
   end
 
+  test "allows automotive company type" do
+    lead = CrmLead.new(
+      name: "Triplet Diesel",
+      status: "lead",
+      company_types: %w[automotive]
+    )
+
+    assert lead.valid?, lead.errors.full_messages.join(", ")
+    assert_equal %w[automotive], lead.company_types
+  end
+
+  test "rejects unsupported company types" do
+    lead = CrmLead.new(
+      name: "Mystery Co",
+      status: "lead",
+      company_types: %w[hvac spaceships]
+    )
+
+    assert_not lead.valid?
+    assert_match(/unsupported values: spaceships/, lead.errors[:company_types].join)
+  end
+
   test "allows linking crm lead to company profile with multiple company users" do
     owner = User.create!(
       email: "owner+crm_lead_test@example.com",
