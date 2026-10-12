@@ -26,6 +26,7 @@ export const CRM_COMPANY_TYPES = [
   'solar',
   'appliance_repair',
   'facility_maintenance',
+  'automotive',
   'other',
 ];
 
@@ -117,6 +118,7 @@ export const CRM_TRADE_FILTER_OPTIONS = [
   { id: 'maintenance', label: 'Maintenance', types: ['facility_maintenance'] },
   { id: 'roofing', label: 'Roofing', types: ['roofing'] },
   { id: 'refrigeration', label: 'Refrigeration', types: ['refrigeration'] },
+  { id: 'automotive', label: 'Automotive', types: ['automotive'] },
   { id: 'other', label: 'Other', types: ['fire_protection', 'solar', 'appliance_repair', 'other'] },
 ];
 
