@@ -312,7 +312,9 @@ export default function CrmNotesLoaderModal({ isOpen, leads, onClose, onApplied,
                   {' · '}
                   <span className="text-emerald-700">{summary.matched} matched</span>
                   {' · '}
-                  <span className={summary.missing ? 'text-amber-700' : 'text-gray-500'}>{summary.missing} new companies</span>
+                  <span className={summary.missing ? 'text-amber-700' : 'text-gray-500'}>
+                    {summary.missing} new {summary.missing === 1 ? 'company' : 'companies'}
+                  </span>
                   {' · '}
                   <span className={summary.ambiguous ? 'text-red-700' : 'text-gray-500'}>{summary.ambiguous} ambiguous</span>
                   {' · '}
@@ -355,8 +357,8 @@ export default function CrmNotesLoaderModal({ isOpen, leads, onClose, onApplied,
                   <thead className="bg-gray-50 sticky top-0">
                     <tr>
                       <th className="px-2 py-1.5 text-left">Row</th>
-                      <th className="px-2 py-1.5 text-left min-w-[14rem]">Company</th>
-                      <th className="px-2 py-1.5 text-left min-w-[18rem]">Note</th>
+                      <th className="px-2 py-1.5 text-left min-w-[12rem]">Company</th>
+                      <th className="px-2 py-1.5 text-left min-w-[15rem]">Note</th>
                       <th className="px-2 py-1.5 text-left">Method</th>
                       <th className="px-2 py-1.5 text-left">Reached</th>
                       <th className="px-2 py-1.5 text-left">Follow-up</th>
