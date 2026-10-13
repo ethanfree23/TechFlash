@@ -1,4 +1,4 @@
-import { getPrimaryContactPreview } from './crmDisplayAdapter';
+import { getPrimaryContactPreview } from './crmDisplayAdapter.js';
 
 const SALES_CALL_BODY = `Hi {{contact_first_name}},
 
@@ -97,6 +97,17 @@ export const CRM_EMAIL_TEMPLATES = [
   },
 ];
 
+// Shared sales line used in CRM follow-up signatures (not the admin's personal number).
+export const DEFAULT_CRM_SALES_PHONE = '+1-719-339-5617';
+
+export function getSalesPhone() {
+  if (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CRM_SALES_PHONE) {
+    const configured = String(import.meta.env.VITE_CRM_SALES_PHONE).trim();
+    if (configured) return configured;
+  }
+  return DEFAULT_CRM_SALES_PHONE;
+}
+
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
 export function isValidEmail(value) {
@@ -134,7 +145,7 @@ export function buildTemplateContext(form, user) {
     company_name: String(form?.name || '').trim() || 'your company',
     sender_name: senderName,
     sender_email: String(user?.email || '').trim(),
-    sender_phone: String(user?.phone || '').trim(),
+    sender_phone: getSalesPhone(),
     techflash_url: `${base}/for-companies`,
     signup_url: `${base}/login?tab=signup&role=company`,
     post_job_url: `${base}/jobs/create`,

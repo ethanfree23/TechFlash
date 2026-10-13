@@ -12,6 +12,7 @@ const testFiles = [
   'phone.test.mjs',
   'auth.test.mjs',
   'crmNotes.test.mjs',
+  'crmEmailTemplates.test.mjs',
   'data.test.mjs',
   'api.test.mjs',
   'technicianMap.test.mjs',

@@ -3,7 +3,7 @@
  * All functions tolerate null/undefined/missing arrays (no throws from bad CRM rows).
  */
 
-import { CRM_STATUSES, CRM_TRADE_FILTER_OPTIONS } from './crmConstants';
+import { CRM_STATUSES, CRM_TRADE_FILTER_OPTIONS } from './crmConstants.js';
 
 const MS_DAY = 86400000;
 

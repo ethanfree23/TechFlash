@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { FaEnvelope, FaPaperPlane, FaTimes } from 'react-icons/fa';
 import { crmAPI } from '../../api/api';
 import ConfirmModal from '../ConfirmModal';
@@ -12,9 +12,23 @@ import {
   isValidEmail,
 } from '../../utils/crmEmailTemplates';
 
-function PreviewPanel({ loading, preview, draft }) {
+function PreviewPanel({ loading, preview, draft, error, awaitingRecipient }) {
   if (loading) {
     return <p className="text-sm text-slate-500 py-8 text-center">Loading preview…</p>;
+  }
+  if (awaitingRecipient) {
+    return (
+      <p className="text-sm text-slate-500 py-8 text-center">
+        Enter a valid recipient email to load the preview.
+      </p>
+    );
+  }
+  if (error) {
+    return (
+      <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">
+        Preview unavailable: {error}
+      </p>
+    );
   }
   if (!preview?.html_body) {
     return (
@@ -242,6 +256,7 @@ export default function CrmSendEmailModal({
   const [manualTo, setManualTo] = useState(false);
   const [sending, setSending] = useState(false);
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState('');
   const [serverPreview, setServerPreview] = useState(null);
   const [successMessage, setSuccessMessage] = useState('');
   const [confirmNonRecord, setConfirmNonRecord] = useState(false);
@@ -250,6 +265,7 @@ export default function CrmSendEmailModal({
   const recipientOptions = useMemo(() => getRecipientOptions(form), [form]);
   const template = getTemplateByKey(draft.templateKey);
   const missingRecipient = recipientOptions.length === 0 && !draft.to;
+  const hasValidRecipient = isValidEmail(draft.to);
 
   const canSend = useMemo(() => {
     if (sending || !template.enabled) return false;
@@ -266,6 +282,7 @@ export default function CrmSendEmailModal({
     setTab('compose');
     setSuccessMessage('');
     setServerPreview(null);
+    setPreviewError('');
     setManualTo(false);
     setConfirmNonRecord(false);
     setDraft(buildDraftForTemplate(initialTemplateKey, form, user));
@@ -282,29 +299,53 @@ export default function CrmSendEmailModal({
     confirm_non_record_recipient: confirmFlag,
   });
 
-  const loadServerPreview = useCallback(async () => {
-    if (!crmLeadId) return;
-    setPreviewLoading(true);
-    try {
-      const res = await crmAPI.previewEmail(crmLeadId, payloadFromDraft(draft, false, false));
-      setServerPreview(res);
-    } catch (err) {
-      onError?.(err.message || 'Could not load preview.');
-    } finally {
-      setPreviewLoading(false);
-    }
-  }, [crmLeadId, draft, onError]);
+  const { templateKey: previewTemplateKey, subject: previewSubject, body: previewBody, to: previewTo } = draft;
 
+  // Preview errors stay inside the modal. Surfacing them through onError opened a blocking
+  // alert whose dismissal re-rendered the parent and re-triggered this fetch in a loop.
   useEffect(() => {
-    if (!open || !crmLeadId) return;
-    const t = setTimeout(() => loadServerPreview(), 400);
-    return () => clearTimeout(t);
-  }, [open, crmLeadId, draft.templateKey, draft.subject, draft.body, draft.to, loadServerPreview]);
+    if (!open || !crmLeadId) return undefined;
+    if (!isValidEmail(previewTo)) {
+      setServerPreview(null);
+      setPreviewError('');
+      setPreviewLoading(false);
+      return undefined;
+    }
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      setPreviewLoading(true);
+      try {
+        const res = await crmAPI.previewEmail(crmLeadId, {
+          template_key: previewTemplateKey,
+          to: previewTo,
+          subject: previewSubject,
+          body: previewBody,
+          send_test: false,
+          // Preview renders only; the off-record confirmation happens at send time.
+          confirm_non_record_recipient: true,
+        });
+        if (cancelled) return;
+        setServerPreview(res);
+        setPreviewError('');
+      } catch (err) {
+        if (cancelled) return;
+        setServerPreview(null);
+        setPreviewError(err?.message || 'Could not load preview.');
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    }, 400);
+    return () => {
+      cancelled = true;
+      clearTimeout(t);
+    };
+  }, [open, crmLeadId, previewTemplateKey, previewSubject, previewBody, previewTo]);
 
   const applyTemplate = (key) => {
     const next = buildDraftForTemplate(key, form, user);
     setDraft((d) => ({ ...next, cc: d.cc, bcc: d.bcc }));
     setServerPreview(null);
+    setPreviewError('');
   };
 
   const resetToDefault = () => applyTemplate(draft.templateKey);
@@ -442,6 +483,8 @@ export default function CrmSendEmailModal({
                     applyTemplate={applyTemplate}
                     resetToDefault={resetToDefault}
                     previewLoading={previewLoading}
+                    previewError={previewError}
+                    awaitingRecipient={!hasValidRecipient}
                     serverPreview={serverPreview}
                   />
 
@@ -458,7 +501,13 @@ export default function CrmSendEmailModal({
                   <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
                     Live preview
                   </p>
-                  <PreviewPanel loading={previewLoading} preview={serverPreview} draft={draft} />
+                  <PreviewPanel
+                    loading={previewLoading}
+                    preview={serverPreview}
+                    draft={draft}
+                    error={previewError}
+                    awaitingRecipient={!hasValidRecipient}
+                  />
                 </div>
               </div>
             )}
@@ -493,6 +542,8 @@ function ComposeSection({
   applyTemplate,
   resetToDefault,
   previewLoading,
+  previewError,
+  awaitingRecipient,
   serverPreview,
 }) {
   return (
@@ -511,7 +562,13 @@ function ComposeSection({
         />
       </div>
       <div className={`lg:hidden ${tab === 'compose' ? 'hidden' : ''}`}>
-        <PreviewPanel loading={previewLoading} preview={serverPreview} draft={draft} />
+        <PreviewPanel
+          loading={previewLoading}
+          preview={serverPreview}
+          draft={draft}
+          error={previewError}
+          awaitingRecipient={awaitingRecipient}
+        />
       </div>
     </>
   );

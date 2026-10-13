@@ -75,12 +75,67 @@ class CrmLeadSendEmailServiceTest < ActiveSupport::TestCase
     assert_includes result[:preview][:text_body], "here (#{post_job})"
   end
 
-  test "default sales template includes sender phone when set on admin" do
+  test "default sales template signs with the shared sales phone, not the admin's personal phone" do
+    @admin.update!(phone: "(555) 010-9999")
     context = CrmEmailTemplates.build_context(lead: @lead, admin: @admin)
     body = CrmEmailTemplates.interpolate(CrmEmailTemplates.default_body("sales_call_follow_up"), context)
 
-    assert_includes body, "(719) 339-5617"
+    assert_includes body, "+1-719-339-5617"
+    refute_includes body, "(555) 010-9999"
     assert_includes body, "[here]("
+  end
+
+  test "sales phone can be overridden with CRM_SALES_PHONE" do
+    original = ENV["CRM_SALES_PHONE"]
+    ENV["CRM_SALES_PHONE"] = "+1-800-555-0100"
+    context = CrmEmailTemplates.build_context(lead: @lead, admin: @admin)
+
+    assert_equal "+1-800-555-0100", context["sender_phone"]
+  ensure
+    if original.nil?
+      ENV.delete("CRM_SALES_PHONE")
+    else
+      ENV["CRM_SALES_PHONE"] = original
+    end
+  end
+
+  test "preview works for a lead without any recipient email" do
+    lead = CrmLead.create!(name: "No Email Co", contact_name: "Sam", status: "lead")
+
+    result = CrmLeadSendEmailService.call(
+      lead: lead,
+      admin_user: @admin,
+      params: {
+        template_key: "sales_call_follow_up",
+        to: "",
+        subject: "Hi {{contact_first_name}}",
+        body: "Hello {{contact_first_name}}"
+      },
+      deliver: false,
+      log_activity: false
+    )
+
+    assert result[:success]
+    assert_equal @admin.email, result[:preview][:to]
+    assert_includes result[:preview][:subject], "Sam"
+  end
+
+  test "preview does not require confirmation for an off-record recipient" do
+    result = CrmLeadSendEmailService.call(
+      lead: @lead,
+      admin_user: @admin,
+      params: {
+        template_key: "sales_call_follow_up",
+        to: "stranger@example.com",
+        subject: "Hi",
+        body: "Hello there"
+      },
+      deliver: false,
+      log_activity: false
+    )
+
+    assert result[:success]
+    assert_equal "stranger@example.com", result[:preview][:to]
   end
 
   test "rejects unknown template" do
@@ -100,6 +155,9 @@ class CrmLeadSendEmailServiceTest < ActiveSupport::TestCase
   end
 
   test "rejects non-record recipient without confirm" do
+    ActionMailer::Base.delivery_method = :test
+    ActionMailer::Base.deliveries.clear
+
     assert_raises(CrmLeadSendEmailService::Error) do
       CrmLeadSendEmailService.call(
         lead: @lead,
@@ -110,9 +168,11 @@ class CrmLeadSendEmailServiceTest < ActiveSupport::TestCase
           subject: "Hi",
           body: "Hello there"
         },
-        deliver: false
+        deliver: true,
+        log_activity: false
       )
     end
+    assert_equal 0, ActionMailer::Base.deliveries.size
   end
 
   test "allows non-record recipient with confirm flag" do
