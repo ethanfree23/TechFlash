@@ -22,6 +22,7 @@ import {
   noteWasEdited,
 } from '../utils/crmNotes';
 import CrmReminderQueueModal from '../components/crm/CrmReminderQueueModal';
+import CrmNotesLoaderModal from '../components/crm/CrmNotesLoaderModal';
 import { US_STATES } from '../data/statesByCountry';
 import { normalizeToUsStateName } from '../utils/crmUsState';
 import { parseUsAddressPaste } from '../utils/parseUsAddressPaste';
@@ -527,6 +528,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
   const [pasteImportText, setPasteImportText] = useState('');
   const [importDraftRows, setImportDraftRows] = useState([]);
   const [importRowFilter, setImportRowFilter] = useState('all');
+  const [notesLoaderOpen, setNotesLoaderOpen] = useState(false);
 
   const [provision, setProvision] = useState(emptyProvisionState);
   const [provisionSaving, setProvisionSaving] = useState(false);
@@ -890,6 +892,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
         reminderModalOpen ||
         noteComposerOpen ||
         importModalOpen ||
+        notesLoaderOpen ||
         mergeModalOpen ||
         emailComposerOpen ||
         profileImportOpen ||
@@ -913,6 +916,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     reminderModalOpen,
     noteComposerOpen,
     importModalOpen,
+    notesLoaderOpen,
     mergeModalOpen,
     emailComposerOpen,
     profileImportOpen,
@@ -3147,6 +3151,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
           onAddCompany={openCreate}
           onMoreAction={(action) => {
             if (action === 'import') openImportModal();
+            if (action === 'load-notes') setNotesLoaderOpen(true);
             if (action === 'create-platform') {
               setNewCompanyModalOpen(false);
               setIsCreating(false);
@@ -5003,6 +5008,21 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
             setReminderQueueOpen(false);
           }}
           onConvertReminder={(note) => startConvertReminder(note)}
+        />
+
+        <CrmNotesLoaderModal
+          isOpen={notesLoaderOpen}
+          leads={leads}
+          onClose={() => setNotesLoaderOpen(false)}
+          onApplied={async (res) => {
+            await loadList();
+            const touched = res?.crm_lead_ids || [];
+            if (selectedId && touched.includes(selectedId)) await loadDetail(selectedId);
+          }}
+          onOpenCompany={(leadId) => {
+            selectLead(leadId);
+            setCrmDetailTab('activity');
+          }}
         />
 
         {profileImportOpen ? (
