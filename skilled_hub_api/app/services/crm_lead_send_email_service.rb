@@ -74,7 +74,8 @@ class CrmLeadSendEmailService
     bcc = parse_email_list(@params[:bcc])
 
     validate_emails!(to: to, cc: cc, bcc: bcc)
-    validate_recipient_allowed!(to) unless send_test
+    # Previews never deliver, so an off-record recipient only needs confirming at send time.
+    validate_recipient_allowed!(to) if @deliver && !send_test
 
     template_key = @params[:template_key].to_s
     show_ctas = CrmEmailTemplates.show_ctas?(template_key) && template_key != "custom_email"
