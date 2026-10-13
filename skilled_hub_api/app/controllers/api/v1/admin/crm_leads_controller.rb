@@ -140,6 +140,20 @@ module Api
           }, status: :ok
         end
 
+        def import_notes
+          rows = params[:rows]
+          unless rows.is_a?(Array)
+            return render json: { error: "rows must be an array" }, status: :unprocessable_entity
+          end
+
+          result = CrmNotesLoader.call(
+            rows: rows,
+            create_missing: cast_boolean_param(params[:create_missing], false),
+            dry_run: cast_boolean_param(params[:dry_run], false)
+          )
+          render json: result, status: :ok
+        end
+
         def bulk_destroy
           ids = Array(params[:ids]).map(&:to_i).select(&:positive?).uniq
           if ids.empty?

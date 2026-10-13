@@ -208,6 +208,7 @@ Rails.application.routes.draw do
           end
           collection do
             post :import
+            post :import_notes
             post :bulk_destroy
             post :enrich_from_url
             get :reminders
