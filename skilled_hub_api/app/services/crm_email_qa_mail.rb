@@ -13,6 +13,7 @@ class CrmEmailQaMail
       "company_name" => "Rodriguez Electric",
       "sender_name" => sender_name,
       "sender_email" => admin_user.email.to_s.presence || "admin@techflash.app",
+      "sender_phone" => CrmEmailTemplates.sales_phone,
       "techflash_url" => "#{base_url}/for-companies",
       "signup_url" => "#{base_url}/login?tab=signup&role=company",
       "post_job_url" => "#{base_url}/jobs/create",

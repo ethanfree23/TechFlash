@@ -123,9 +123,16 @@ class CrmEmailTemplates
     sender_phone
   ].freeze
 
+  # Shared sales line used in CRM follow-up signatures (not the admin's personal number).
+  DEFAULT_SALES_PHONE = "+1-719-339-5617"
+
   class << self
     def all
       TEMPLATES
+    end
+
+    def sales_phone
+      ENV["CRM_SALES_PHONE"].to_s.strip.presence || DEFAULT_SALES_PHONE
     end
 
     def find(key)
@@ -176,7 +183,7 @@ class CrmEmailTemplates
         "company_name" => lead.name.to_s.strip.presence || "your company",
         "sender_name" => sender_name,
         "sender_email" => admin.email.to_s,
-        "sender_phone" => admin.phone.to_s.strip,
+        "sender_phone" => sales_phone,
         "techflash_url" => "#{base_url}/for-companies",
         "signup_url" => "#{base_url}/login?tab=signup&role=company",
         "post_job_url" => "#{base_url}/jobs/create",
