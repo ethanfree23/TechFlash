@@ -20,7 +20,6 @@ class JobTemplate < ApplicationRecord
     required_certifications
     require_background_check
     require_identity_verification
-    require_insurance_verification
     minimum_verified_references
     hourly_rate_cents
     hours_per_day

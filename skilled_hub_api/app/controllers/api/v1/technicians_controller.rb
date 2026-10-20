@@ -211,10 +211,6 @@ module Api
           refs = VerificationProfile.where(references_status: :verified).pluck(:user_id)
           profile_ids = profile_ids.nil? ? refs : profile_ids & refs
         end
-        if bool.cast(params[:insurance_verified])
-          insured = VerificationProfile.where(insurance_status: :verified).pluck(:user_id)
-          profile_ids = profile_ids.nil? ? insured : profile_ids & insured
-        end
         scope = scope.where(user_id: profile_ids) if profile_ids
         scope
       end

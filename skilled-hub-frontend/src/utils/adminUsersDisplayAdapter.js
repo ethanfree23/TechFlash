@@ -293,7 +293,6 @@ export function computeProfileCompleteness(row, detail) {
         done: !!(profile?.city || profile?.location || profile?.zip_code || row.city || row.location || row.zip_code),
       },
       { key: 'license', label: 'License', done: hasLicense },
-      { key: 'insurance', label: 'Insurance', done: false },
       { key: 'payment', label: 'Payment setup', done: !!profile?.stripe_account_id },
       { key: 'photo', label: 'Profile photo', done: !!profile?.avatar_url }
     );
@@ -690,7 +689,6 @@ export const VERIFICATION_BADGE_VARIANT = {
   Verified: 'success',
   'Pending docs': 'warning',
   'License missing': 'warning',
-  'Insurance missing': 'warning',
   'Company not verified': 'warning',
   'Not verified': 'warning',
   'Identity review': 'warning',

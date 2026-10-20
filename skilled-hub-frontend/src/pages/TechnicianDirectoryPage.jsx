@@ -16,7 +16,6 @@ export default function TechnicianDirectoryPage({ user, onLogout }) {
     background_verified: false,
     identity_verified: false,
     references_verified: false,
-    insurance_verified: false,
     certification: '',
     assessment_completed: false,
     assessment_slug: '',
@@ -33,7 +32,6 @@ export default function TechnicianDirectoryPage({ user, onLogout }) {
         background_verified: nextFilters.background_verified ? 'true' : '',
         identity_verified: nextFilters.identity_verified ? 'true' : '',
         references_verified: nextFilters.references_verified ? 'true' : '',
-        insurance_verified: nextFilters.insurance_verified ? 'true' : '',
         assessment_completed: nextFilters.assessment_completed ? 'true' : '',
       };
       const rows = await profilesAPI.listTechnicians(payload);
@@ -67,7 +65,6 @@ export default function TechnicianDirectoryPage({ user, onLogout }) {
       background_verified: false,
       identity_verified: false,
       references_verified: false,
-      insurance_verified: false,
       certification: '',
       assessment_completed: false,
       assessment_slug: '',
@@ -101,7 +98,6 @@ export default function TechnicianDirectoryPage({ user, onLogout }) {
             <Checkbox name="background_verified" checked={filters.background_verified} onChange={onChange} label="Background verified" />
             <Checkbox name="identity_verified" checked={filters.identity_verified} onChange={onChange} label="Identity verified" />
             <Checkbox name="references_verified" checked={filters.references_verified} onChange={onChange} label="References verified" />
-            <Checkbox name="insurance_verified" checked={filters.insurance_verified} onChange={onChange} label="Insurance verified" />
             <Checkbox name="assessment_completed" checked={filters.assessment_completed} onChange={onChange} label="Completed a knowledge assessment" />
           </div>
           <div className="flex gap-2">

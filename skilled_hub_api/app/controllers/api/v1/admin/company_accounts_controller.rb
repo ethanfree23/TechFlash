@@ -171,6 +171,7 @@ module Api
         end
 
         # GET /api/v1/admin/company_accounts/search_companies?q=
+        # Matches company name or any company login (employee) first/last/email.
         def search_companies
           q = params[:q].to_s.strip
           scope = CompanyProfile.includes(:company_users, :user)
@@ -181,15 +182,7 @@ module Api
               scope.order(:company_name).limit(30)
             end
           render json: {
-            companies: companies.map do |cp|
-              {
-                id: cp.id,
-                company_name: cp.company_name,
-                company_users_count: cp.company_users.where(role: :company).count,
-                contact_first_name: cp.user&.first_name,
-                contact_last_name: cp.user&.last_name
-              }
-            end
+            companies: companies.map { |cp| serialize_company_search_hit(cp) }
           }, status: :ok
         end
 
@@ -258,13 +251,59 @@ module Api
           CrmCompanyContactSync.sync_user_safely!(user: user, company_profile: profile)
         end
 
+        def serialize_company_search_hit(cp)
+          users = company_login_users_for(cp)
+          primary = cp.user
+          {
+            id: cp.id,
+            company_name: cp.company_name,
+            company_users_count: users.length,
+            contact_first_name: primary&.first_name,
+            contact_last_name: primary&.last_name,
+            company_users: users.map do |u|
+              {
+                id: u.id,
+                email: u.email,
+                first_name: u.first_name,
+                last_name: u.last_name
+              }
+            end
+          }
+        end
+
+        def company_login_users_for(cp)
+          by_id = {}
+          Array(cp.company_users).each do |u|
+            next unless u.company?
+
+            by_id[u.id] = u
+          end
+          if cp.user&.company?
+            by_id[cp.user.id] = cp.user
+          end
+          by_id.values.sort_by { |u| [u.first_name.to_s.downcase, u.last_name.to_s.downcase, u.email.to_s.downcase] }
+        end
+
         def rank_company_matches(scope, query)
           q_normalized = normalize_company_name(query)
-          like = "%#{ActiveRecord::Base.sanitize_sql_like(query.downcase)}%"
-          candidate_scope = scope.where("LOWER(company_profiles.company_name) LIKE ?", like)
-          # Pull extra candidates for typo/case-insensitive fuzzy matching.
-          candidate_scope = scope if candidate_scope.limit(1).empty?
-          candidates = candidate_scope.order(:company_name).limit(300).to_a
+          q_lower = query.downcase
+          like = "%#{ActiveRecord::Base.sanitize_sql_like(q_lower)}%"
+          name_ids = scope.where("LOWER(company_profiles.company_name) LIKE ?", like).limit(300).pluck(:id)
+          employee_user_scope = User.company.where(
+            "LOWER(users.email) LIKE :like OR LOWER(COALESCE(users.first_name, '')) LIKE :like OR LOWER(COALESCE(users.last_name, '')) LIKE :like",
+            like: like
+          ).limit(200)
+          user_match_ids = employee_user_scope.where.not(company_profile_id: nil).pluck(:company_profile_id)
+          owner_profile_ids = CompanyProfile.where(user_id: employee_user_scope.pluck(:id)).limit(100).pluck(:id)
+
+          matched_ids = (name_ids + user_match_ids + owner_profile_ids).uniq
+          candidates =
+            if matched_ids.present?
+              scope.where(id: matched_ids).order(:company_name).limit(300).to_a
+            else
+              # Fallback: typo/case-insensitive fuzzy matching across names.
+              scope.order(:company_name).limit(300).to_a
+            end
 
           candidates.map do |cp|
             name = cp.company_name.to_s
@@ -275,10 +314,17 @@ module Api
 
             starts_with = normalized.start_with?(q_normalized) ? 1.0 : 0.0
             includes = normalized.include?(q_normalized) ? 1.0 : 0.0
+            employee_hit = company_login_users_for(cp).any? do |u|
+              full = [u.first_name, u.last_name].map { |x| x.to_s.strip }.reject(&:blank?).join(" ").downcase
+              u.email.to_s.downcase.include?(q_lower) ||
+                u.first_name.to_s.downcase.include?(q_lower) ||
+                u.last_name.to_s.downcase.include?(q_lower) ||
+                full.include?(q_lower)
+            end
 
             {
               company: cp,
-              score: (starts_with * 3.0) + (includes * 1.5) + distance_score
+              score: (starts_with * 3.0) + (includes * 1.5) + distance_score + (employee_hit ? 2.5 : 0.0)
             }
           end.sort_by { |entry| [-entry[:score], entry[:company].company_name.to_s.downcase] }
         end

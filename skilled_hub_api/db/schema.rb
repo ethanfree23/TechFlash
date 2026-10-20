@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_09_21_120000) do
+ActiveRecord::Schema[7.1].define(version: 2026_10_20_163000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -805,7 +805,6 @@ ActiveRecord::Schema[7.1].define(version: 2026_09_21_120000) do
     t.boolean "require_background_check", default: false, null: false
     t.boolean "require_identity_verification", default: false, null: false
     t.integer "minimum_verified_references", default: 0, null: false
-    t.boolean "require_insurance_verification", default: false, null: false
     t.integer "weekend_work_policy", default: 0, null: false
     t.json "standard_work_days", default: [1, 2, 3, 4, 5], null: false
     t.integer "saturday_work_policy", default: 0, null: false
