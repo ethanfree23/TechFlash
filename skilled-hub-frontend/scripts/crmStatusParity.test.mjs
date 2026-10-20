@@ -3,7 +3,12 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import { CRM_STATUSES, CRM_COMPANY_TYPES, CRM_QUICK_PIPELINE_FILTERS } from '../src/utils/crmConstants.js';
+import {
+  CRM_STATUSES,
+  CRM_COMPANY_TYPES,
+  CRM_QUICK_PIPELINE_FILTERS,
+  CRM_TRADE_FILTER_OPTIONS,
+} from '../src/utils/crmConstants.js';
 import { buildImportDraftRows, autoFixDraftRows } from '../src/utils/crmImport.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -118,6 +123,34 @@ function testCompanyTypesMatchRails() {
   );
 }
 
+/** Every selectable company type must be reachable from the Trade filter dropdown. */
+function testTradeFiltersCoverEveryCompanyType() {
+  const covered = new Set(CRM_TRADE_FILTER_OPTIONS.flatMap((opt) => opt.types || []));
+  for (const type of CRM_COMPANY_TYPES) {
+    assert.ok(covered.has(type), `company type '${type}' is not covered by any trade filter`);
+  }
+  for (const type of covered) {
+    assert.ok(CRM_COMPANY_TYPES.includes(type), `trade filter references unknown company type '${type}'`);
+  }
+}
+
+/**
+ * Auto shops (e.g. Triplet Diesel) previously had no company type to land on,
+ * so bulk imports tagged 'automotive' were flagged invalid and stripped by autoFix.
+ */
+function testImportAcceptsAutomotive() {
+  const csv = `name,contact_name,email,phone,website,company_types,status,notes
+Triplet Diesel,Pat,pat@tripletdiesel.com,5125550144,tripletdiesel.com,automotive,lead,Diesel repair shop`;
+
+  const draft = buildImportDraftRows(csv, CRM_STATUSES, CRM_COMPANY_TYPES);
+  assert.strictEqual(draft.length, 1);
+  assert.strictEqual(draft[0].company_types, 'automotive');
+  assert.deepStrictEqual(draft[0]._errors, [], "'automotive' must import without validation errors");
+
+  const fixed = autoFixDraftRows(draft, CRM_STATUSES, CRM_COMPANY_TYPES);
+  assert.strictEqual(fixed[0].company_types, 'automotive', 'autoFix must keep a valid automotive type');
+}
+
 function run() {
   testStatusesMatchRails();
   testPipelineStagesAreValidStatuses();
@@ -126,6 +159,8 @@ function run() {
   testImportAcceptsQualified();
   testImportRejectsUnqualified();
   testCompanyTypesMatchRails();
+  testTradeFiltersCoverEveryCompanyType();
+  testImportAcceptsAutomotive();
   console.log('crmStatusParity tests passed');
 }
 
