@@ -35,6 +35,7 @@ export default function CrmWorkspaceHeader({ lastUpdatedLabel, onAddCompany, onM
         >
           <option value="">More actions</option>
           <option value="import">Import prospects</option>
+          <option value="load-notes">Load notes from spreadsheet</option>
           <option value="create-platform">Create platform account</option>
           <option value="export">Export CRM</option>
           <option value="merge">Dedupe / Merge</option>

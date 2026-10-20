@@ -14,6 +14,7 @@ export const getRoleKey = () => {
 
 const ADMIN_STATUS_OPTIONS = [
   { value: '', label: 'All statuses' },
+  { value: 'draft', label: 'Draft' },
   { value: 'open', label: 'Open' },
   { value: 'in_progress', label: 'Claimed' },
   { value: 'active', label: 'Active (Live)' },
@@ -25,6 +26,7 @@ const ADMIN_STATUS_OPTIONS = [
 
 const COMPANY_STATUS_OPTIONS = [
   { value: '', label: 'All statuses' },
+  { value: 'draft', label: 'Draft' },
   { value: 'open', label: 'Open' },
   { value: 'active', label: 'Active' },
   { value: 'reserved', label: 'Claimed' },

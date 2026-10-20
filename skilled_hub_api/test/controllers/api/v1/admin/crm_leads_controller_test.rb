@@ -97,6 +97,84 @@ module Api
           assert_equal "jamie@northwind.com", lead.contacts.second["email"]
         end
 
+        test "import_notes appends notes and new contacts to leads matched by url" do
+          admin = User.create!(
+            email: "admin+crm_import_notes_test@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+          lead = CrmLead.create!(name: "Acme Plumbing", website: "https://www.acmeplumbing.com", status: "lead")
+
+          post "/api/v1/admin/crm_leads/import_notes",
+               params: {
+                 create_missing: true,
+                 rows: [
+                   {
+                     website: "acmeplumbing.com",
+                     note: "Left voicemail with dispatcher.",
+                     contact_method: "call",
+                     made_contact: false,
+                     contact_name: "Pat Rivera",
+                     contact_email: "pat@acmeplumbing.com",
+                     contact_title: "Dispatcher"
+                   },
+                   { website: "unknown-shop.com", company_name: "Unknown Shop", note: "Cold intro email sent", contact_method: "email" },
+                   { website: "", note: "missing url" }
+                 ]
+               },
+               headers: auth_header_for(admin),
+               as: :json
+
+          assert_response :ok
+          body = JSON.parse(response.body)
+          assert_equal 1, body.fetch("applied_count")
+          assert_equal 1, body.fetch("created_count")
+          assert_equal 1, body.fetch("failed_count")
+          assert_equal 2, body.fetch("notes_added")
+          assert_equal 1, body.fetch("contacts_added")
+          assert_equal 3, body.fetch("results").length
+          assert_equal "applied", body.dig("results", 0, "outcome")
+          assert_equal lead.id, body.dig("results", 0, "crm_lead_id")
+          assert_equal "created", body.dig("results", 1, "outcome")
+          assert_equal "error", body.dig("results", 2, "outcome")
+
+          note = lead.crm_notes.reload.first
+          assert_equal "Left voicemail with dispatcher.", note.body
+          assert_equal "call", note.contact_method
+          assert_equal "Pat Rivera", lead.reload.contacts.first["name"]
+          assert_equal "Dispatcher", lead.contacts.first["job_title"]
+          assert_equal "Pat Rivera", lead.contact_name
+          assert CrmLead.exists?(name: "Unknown Shop", website: "https://unknown-shop.com")
+        end
+
+        test "import_notes rejects non-array rows and non-admins" do
+          admin = User.create!(
+            email: "admin+crm_import_notes_bad@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+          tech = User.create!(
+            email: "tech+crm_import_notes@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :technician
+          )
+
+          post "/api/v1/admin/crm_leads/import_notes",
+               params: { rows: "nope" },
+               headers: auth_header_for(admin),
+               as: :json
+          assert_response :unprocessable_entity
+
+          post "/api/v1/admin/crm_leads/import_notes",
+               params: { rows: [] },
+               headers: auth_header_for(tech),
+               as: :json
+          assert_includes [401, 403], response.status
+        end
+
         test "bulk destroys crm leads by ids" do
           admin = User.create!(
             email: "admin+crm_bulk_delete_test@example.com",

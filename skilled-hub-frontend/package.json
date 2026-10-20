@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "test:crm-import": "node scripts/crmImport.test.mjs",
+    "test:crm-notes-loader": "node scripts/crmNotesLoader.test.mjs",
     "test:phone": "node scripts/phone.test.mjs",
     "test:auth": "node scripts/auth.test.mjs",
     "test:crm-notes": "node scripts/crmNotes.test.mjs",
@@ -39,7 +40,8 @@
     "react-modal": "^3.16.3",
     "react-router-dom": "^7.6.2",
     "recharts": "^2.15.0",
-    "tesseract.js": "^5.1.1"
+    "tesseract.js": "^5.1.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.2.1",
