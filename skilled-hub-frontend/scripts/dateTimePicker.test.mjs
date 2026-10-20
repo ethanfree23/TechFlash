@@ -16,6 +16,7 @@ import {
   initialDraftFromValue,
   isDateBeforeToday,
   nextMondayDateKey,
+  parseHourMinuteText,
   parseWallDateTime,
   shiftMonth,
   todayDateKey,
@@ -208,6 +209,16 @@ function testGetZonedPartsInvalidZoneFallsBack() {
   assert.equal(typeof parts.day, 'number');
 }
 
+function testParseHourMinuteText() {
+  assert.deepEqual(parseHourMinuteText('10:30'), { hour: 10, minute: 30 });
+  assert.deepEqual(parseHourMinuteText('9:05'), { hour: 9, minute: 5 });
+  assert.deepEqual(parseHourMinuteText('12:00'), { hour: 12, minute: 0 });
+  assert.equal(parseHourMinuteText('0:30'), null);
+  assert.equal(parseHourMinuteText('13:00'), null);
+  assert.equal(parseHourMinuteText('10:60'), null);
+  assert.equal(parseHourMinuteText('abc'), null);
+}
+
 const tests = [
   testParseAndBuildRoundTrip,
   testHourMinuteClamps,
@@ -224,6 +235,7 @@ const tests = [
   testDstFallBackWallClock,
   testAddDaysYearBoundary,
   testGetZonedPartsInvalidZoneFallsBack,
+  testParseHourMinuteText,
 ];
 
 let failed = 0;

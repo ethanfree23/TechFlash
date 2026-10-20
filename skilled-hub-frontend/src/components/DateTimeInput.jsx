@@ -12,6 +12,7 @@ import {
   initialDraftFromValue,
   isDateBeforeToday,
   parseDateKey,
+  parseHourMinuteText,
   shiftMonth,
   todayDateKey,
 } from '../utils/dateTimePicker';
@@ -87,19 +88,8 @@ const DateTimeInput = ({
     setOpen(false);
   }, []);
 
-  const parseTimeText = useCallback((raw) => {
-    const cleaned = String(raw || '').trim();
-    const match = /^(\d{1,2})\s*:\s*(\d{1,2})$/.exec(cleaned);
-    if (!match) return null;
-    const hour = Number(match[1]);
-    const minute = Number(match[2]);
-    if (!Number.isFinite(hour) || hour < 1 || hour > 12) return null;
-    if (!Number.isFinite(minute) || minute < 0 || minute > 59) return null;
-    return { hour, minute };
-  }, []);
-
   const syncDraftFromTimeText = useCallback(() => {
-    const parsed = parseTimeText(timeText);
+    const parsed = parseHourMinuteText(timeText);
     if (!parsed) {
       setTimeTextError('Use h:mm (1–12)');
       setTimeText(`${pad(draft.hour)}:${pad(draft.minute)}`);
@@ -109,13 +99,13 @@ const DateTimeInput = ({
     setDraft((prev) => ({ ...prev, hour: parsed.hour, minute: parsed.minute }));
     setTimeText(`${pad(parsed.hour)}:${pad(parsed.minute)}`);
     return true;
-  }, [draft.hour, draft.minute, parseTimeText, timeText]);
+  }, [draft.hour, draft.minute, timeText]);
 
   const applyAndClose = useCallback(() => {
     if (!draft.date) return;
     let hour = draft.hour;
     let minute = draft.minute;
-    const parsed = parseTimeText(timeText);
+    const parsed = parseHourMinuteText(timeText);
     if (timeText && !parsed) {
       setTimeTextError('Use h:mm (1–12)');
       return;
@@ -134,7 +124,7 @@ const DateTimeInput = ({
     const val = buildWallDateTime(next.date, next.hour, next.minute, next.ampm);
     onChange({ target: { value: val } });
     setOpen(false);
-  }, [allowPast, draft, onChange, parseTimeText, timeText, timeZone]);
+  }, [allowPast, draft, onChange, timeText, timeZone]);
 
   // Position: flip above the trigger when near the bottom of the viewport.
   useLayoutEffect(() => {

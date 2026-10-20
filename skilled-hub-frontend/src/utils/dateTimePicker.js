@@ -357,6 +357,21 @@ export function formatDisplayValue(value) {
   return `${label} · ${pad(parts.hour)}:${pad(parts.minute)} ${parts.ampm}`;
 }
 
+/**
+ * Parse a typed 12-hour clock fragment like `10:30` or `9:05`.
+ * @returns {{ hour: number, minute: number } | null}
+ */
+export function parseHourMinuteText(raw) {
+  const cleaned = String(raw || '').trim();
+  const match = /^(\d{1,2})\s*:\s*(\d{1,2})$/.exec(cleaned);
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (!Number.isFinite(hour) || hour < 1 || hour > 12) return null;
+  if (!Number.isFinite(minute) || minute < 0 || minute > 59) return null;
+  return { hour, minute };
+}
+
 export const TIME_PRESETS = [
   { label: '8:00 AM', hour: 8, minute: 0, ampm: 'AM' },
   { label: '9:00 AM', hour: 9, minute: 0, ampm: 'AM' },
