@@ -963,6 +963,7 @@ const CreateJob = () => {
                 id="create-job-go-live-at"
                 value={goLiveAt}
                 onChange={(e) => setGoLiveAt(e.target.value)}
+                timeZone={jobTimezone}
                 className="w-full"
               />
             </div>
@@ -1173,6 +1174,7 @@ const CreateJob = () => {
                     id="create-job-rolling-exact-start"
                     value={rollingStartExactStartAt}
                     onChange={(e) => setRollingStartExactStartAt(e.target.value)}
+                    timeZone={jobTimezone}
                     className="w-full"
                   />
                 </div>
@@ -1224,6 +1226,7 @@ const CreateJob = () => {
               id="create-job-start-at"
               value={scheduledStartAt}
               onChange={(e) => setScheduledStartAt(e.target.value)}
+              timeZone={jobTimezone}
               className="w-full"
               disabled={startMode === 'rolling_start'}
             />
@@ -1234,6 +1237,7 @@ const CreateJob = () => {
               id="create-job-end-at"
               value={scheduledEndAt}
               onChange={(e) => setScheduledEndAt(e.target.value)}
+              timeZone={jobTimezone}
               className="w-full"
             />
             <p className="text-xs text-slate-500 mt-0.5">Auto-calculated from days and hours (incl. 1 hr lunch/day). Adjust if needed.</p>
@@ -1283,6 +1287,7 @@ const CreateJob = () => {
                 id="create-job-hard-deadline"
                 value={hardDeadlineAt}
                 onChange={(e) => setHardDeadlineAt(e.target.value)}
+                timeZone={jobTimezone}
                 className="w-full"
               />
             </div>

@@ -1,171 +1,502 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import {
+  TIME_PRESETS,
+  QUICK_SELECTS,
+  applyQuickSelect,
+  buildMonthGrid,
+  buildWallDateTime,
+  clampHour12,
+  clampMinute,
+  formatDisplayValue,
+  formatMonthLabel,
+  initialDraftFromValue,
+  isDateBeforeToday,
+  parseDateKey,
+  shiftMonth,
+  todayDateKey,
+} from '../utils/dateTimePicker';
+
+const WEEKDAYS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+const pad = (n) => String(n).padStart(2, '0');
 
 /**
- * Custom date-time input that shows AM above PM in the time picker.
- * The native datetime-local picker cannot be customized, so we use
- * separate date + time inputs with AM listed first.
+ * Premium date/time picker used across job scheduling fields.
+ * Keeps the existing `{ target: { value } }` onChange contract and
+ * `YYYY-MM-DDTHH:mm` wall-clock value format.
+ *
+ * @param {object} props
+ * @param {string} [props.value]
+ * @param {(e: { target: { value: string } }) => void} props.onChange
+ * @param {string} [props.id]
+ * @param {string} [props.className]
+ * @param {boolean} [props.disabled]
+ * @param {string} [props.timeZone] IANA zone for "today/tomorrow" defaults (does not shift saved wall times)
+ * @param {boolean} [props.allowPast=true] When false, dates before today (in timeZone) cannot be newly selected
+ * @param {string} [props.placeholder]
  */
-const DateTimeInput = ({ value, onChange, id, className = '', disabled = false }) => {
-  const pad = (n) => String(n).padStart(2, '0');
-  
-  const parseValue = (val) => {
-    if (!val) return { date: '', hour: 12, minute: 0, ampm: 'AM' };
-    const d = new Date(val);
-    const hour12 = d.getHours() % 12 || 12;
-    const ampm = d.getHours() < 12 ? 'AM' : 'PM';
-    return {
-      date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
-      hour: hour12,
-      minute: d.getMinutes(),
-      ampm,
-    };
-  };
+const DateTimeInput = ({
+  value,
+  onChange,
+  id,
+  className = '',
+  disabled = false,
+  timeZone,
+  allowPast = true,
+  placeholder = 'Select date & time',
+}) => {
+  const reactId = useId();
+  const panelId = `dtp-panel-${reactId}`;
+  const rootRef = useRef(null);
+  const triggerRef = useRef(null);
+  const panelRef = useRef(null);
+  const hourRef = useRef(null);
 
-  const buildValue = (date, hour, minute, ampm) => {
-    if (!date) return '';
-    let h = hour;
-    if (ampm === 'PM') h = hour === 12 ? 12 : hour + 12;
-    else h = hour === 12 ? 0 : hour;
-    return `${date}T${pad(h)}:${pad(minute)}`;
-  };
-
-  const { date, hour, minute, ampm } = parseValue(value);
   const [open, setOpen] = useState(false);
-  const [draftDate, setDraftDate] = useState(date);
-  const [draftHour, setDraftHour] = useState(hour);
-  const [draftMinute, setDraftMinute] = useState(minute);
-  const [draftAmpm, setDraftAmpm] = useState(ampm);
+  const [draft, setDraft] = useState(() => initialDraftFromValue(value, { timeZone }));
+  const [viewYear, setViewYear] = useState(() => {
+    const p = parseDateKey(initialDraftFromValue(value, { timeZone }).date);
+    return p?.year ?? new Date().getFullYear();
+  });
+  const [viewMonth, setViewMonth] = useState(() => {
+    const p = parseDateKey(initialDraftFromValue(value, { timeZone }).date);
+    return p?.month ?? new Date().getMonth() + 1;
+  });
+  const [placement, setPlacement] = useState('bottom');
+  const [hourText, setHourText] = useState('');
+  const [minuteText, setMinuteText] = useState('');
 
-  const handleChange = (newDate, newHour, newMinute, newAmpm) => {
-    const val = buildValue(newDate || date, newHour ?? hour, newMinute ?? minute, newAmpm || ampm);
-    onChange({ target: { value: val } });
-  };
-
-  const hours = [12, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
-  const minutes = useMemo(() => Array.from({ length: 12 }, (_, i) => i * 5), []);
-
-  const dateOptions = useMemo(() => {
-    const list = [];
-    const now = new Date();
-    for (let i = -30; i <= 180; i += 1) {
-      const d = new Date(now);
-      d.setDate(now.getDate() + i);
-      list.push(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
-    }
-    if (date && !list.includes(date)) list.unshift(date);
-    return list;
-  }, [date]);
+  const syncTimeText = useCallback((next) => {
+    setHourText(pad(next.hour));
+    setMinuteText(pad(next.minute));
+  }, []);
 
   const openEditor = () => {
-    setDraftDate(date || dateOptions[0] || '');
-    setDraftHour(hour);
-    setDraftMinute(minute);
-    setDraftAmpm(ampm);
+    if (disabled) return;
+    const next = initialDraftFromValue(value, { timeZone });
+    setDraft(next);
+    syncTimeText(next);
+    const parsed = parseDateKey(next.date);
+    if (parsed) {
+      setViewYear(parsed.year);
+      setViewMonth(parsed.month);
+    }
     setOpen(true);
   };
 
+  const closeWithoutSaving = useCallback(() => {
+    setOpen(false);
+  }, []);
+
+  const applyAndClose = useCallback(() => {
+    if (!draft.date) return;
+    const hour = clampHour12(hourText === '' ? draft.hour : hourText);
+    const minute = clampMinute(minuteText === '' ? draft.minute : minuteText);
+    const next = {
+      ...draft,
+      hour,
+      minute,
+      ampm: draft.ampm === 'PM' ? 'PM' : 'AM',
+    };
+    if (!allowPast && isDateBeforeToday(next.date, new Date(), timeZone)) return;
+    const val = buildWallDateTime(next.date, next.hour, next.minute, next.ampm);
+    onChange({ target: { value: val } });
+    setOpen(false);
+  }, [allowPast, draft, hourText, minuteText, onChange, timeZone]);
+
+  // Position: flip above the trigger when near the bottom of the viewport.
+  useLayoutEffect(() => {
+    if (!open || !triggerRef.current) return undefined;
+    const update = () => {
+      const rect = triggerRef.current.getBoundingClientRect();
+      const spaceBelow = window.innerHeight - rect.bottom;
+      const estimatedPanel = 440;
+      setPlacement(spaceBelow < estimatedPanel && rect.top > spaceBelow ? 'top' : 'bottom');
+    };
+    update();
+    window.addEventListener('resize', update);
+    window.addEventListener('scroll', update, true);
+    return () => {
+      window.removeEventListener('resize', update);
+      window.removeEventListener('scroll', update, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const onKey = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        closeWithoutSaving();
+        triggerRef.current?.focus();
+        return;
+      }
+      if (e.key === 'Enter' && !e.shiftKey) {
+        const tag = e.target?.tagName;
+        // Allow Enter in textareas; for inputs/buttons apply.
+        if (tag === 'TEXTAREA') return;
+        e.preventDefault();
+        applyAndClose();
+      }
+    };
+
+    const onPointer = (e) => {
+      if (!rootRef.current?.contains(e.target)) {
+        closeWithoutSaving();
+      }
+    };
+
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('mousedown', onPointer);
+    // Focus hour field for quick keyboard entry after open.
+    const t = window.setTimeout(() => hourRef.current?.focus(), 20);
+    return () => {
+      document.removeEventListener('keydown', onKey, true);
+      document.removeEventListener('mousedown', onPointer);
+      window.clearTimeout(t);
+    };
+  }, [open, closeWithoutSaving, applyAndClose]);
+
+  const setDraftDate = (dateKey) => {
+    if (!allowPast && isDateBeforeToday(dateKey, new Date(), timeZone)) return;
+    setDraft((prev) => ({ ...prev, date: dateKey }));
+    const parsed = parseDateKey(dateKey);
+    if (parsed) {
+      setViewYear(parsed.year);
+      setViewMonth(parsed.month);
+    }
+  };
+
+  const onQuick = (kind) => {
+    const next = applyQuickSelect(kind, draft, { timeZone });
+    setDraft(next);
+    syncTimeText(next);
+    const parsed = parseDateKey(next.date);
+    if (parsed) {
+      setViewYear(parsed.year);
+      setViewMonth(parsed.month);
+    }
+  };
+
+  const applyPreset = (preset) => {
+    const next = {
+      ...draft,
+      hour: preset.hour,
+      minute: preset.minute,
+      ampm: preset.ampm,
+    };
+    setDraft(next);
+    syncTimeText(next);
+  };
+
+  const commitHour = () => {
+    const hour = clampHour12(hourText === '' ? draft.hour : hourText);
+    setDraft((prev) => ({ ...prev, hour }));
+    setHourText(pad(hour));
+  };
+
+  const commitMinute = () => {
+    const minute = clampMinute(minuteText === '' ? draft.minute : minuteText);
+    setDraft((prev) => ({ ...prev, minute }));
+    setMinuteText(pad(minute));
+  };
+
+  const todayKey = todayDateKey(new Date(), timeZone);
+  const cells = buildMonthGrid(viewYear, viewMonth);
+  const display = value ? formatDisplayValue(value) : '';
+
+  const navMonth = (delta) => {
+    const next = shiftMonth(viewYear, viewMonth, delta);
+    setViewYear(next.year);
+    setViewMonth(next.month);
+  };
+
   return (
-    <div id={id} className={`space-y-2 ${className}`}>
+    <div id={id} ref={rootRef} className={`relative ${className}`}>
       <button
+        ref={triggerRef}
         type="button"
         disabled={disabled}
-        onClick={openEditor}
-        className={`w-full border rounded px-3 py-2 text-left ${disabled ? 'bg-gray-100 text-gray-400' : 'bg-white'}`}
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        aria-controls={open ? panelId : undefined}
+        onClick={() => (open ? closeWithoutSaving() : openEditor())}
+        className={[
+          'group w-full rounded-lg border px-3 py-2.5 text-left text-sm transition-all duration-150',
+          'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30 focus-visible:border-blue-500',
+          disabled
+            ? 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400'
+            : open
+              ? 'border-blue-500 bg-white text-slate-900 shadow-sm ring-2 ring-blue-500/15'
+              : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300',
+        ].join(' ')}
       >
-        {date ? `${date} ${pad(hour)}:${pad(minute)} ${ampm}` : 'Select date/time'}
+        <span className="flex items-center justify-between gap-2">
+          <span className={display ? 'text-slate-800' : 'text-slate-400'}>
+            {display || placeholder}
+          </span>
+          <svg
+            className={`h-4 w-4 shrink-0 transition-colors duration-150 ${open ? 'text-blue-600' : 'text-slate-400 group-hover:text-slate-500'}`}
+            viewBox="0 0 20 20"
+            fill="none"
+            aria-hidden="true"
+          >
+            <path
+              d="M6.5 3.5v1.2M13.5 3.5v1.2M3.75 7.25h12.5M4.5 5.5h11c.69 0 1.25.56 1.25 1.25v8c0 .69-.56 1.25-1.25 1.25h-11c-.69 0-1.25-.56-1.25-1.25v-8c0-.69.56-1.25 1.25-1.25z"
+              stroke="currentColor"
+              strokeWidth="1.4"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
       </button>
+
       {open ? (
-        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/45 p-3">
-          <div className="w-full max-w-lg rounded-xl bg-white p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="font-semibold text-gray-900">Choose date & time</h3>
-              <button type="button" className="text-gray-500 hover:text-gray-800" onClick={() => setOpen(false)}>
+        <>
+          {/* Mobile backdrop / bottom-sheet shell */}
+          <div
+            className="fixed inset-0 z-40 bg-slate-900/35 sm:hidden transition-opacity duration-150"
+            aria-hidden="true"
+            onClick={closeWithoutSaving}
+          />
+          <div
+            id={panelId}
+            ref={panelRef}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Select date and time"
+            className={[
+              'z-50 w-full bg-white shadow-xl border border-slate-200/90',
+              'transition-all duration-150 ease-out',
+              // Mobile: bottom sheet
+              'fixed inset-x-0 bottom-0 max-h-[92vh] overflow-y-auto rounded-t-2xl p-4 pb-[max(1rem,env(safe-area-inset-bottom))]',
+              // Desktop: anchored popover
+              'sm:absolute sm:inset-x-auto sm:bottom-auto sm:max-h-none sm:overflow-visible sm:rounded-xl sm:p-3.5 sm:w-[22.5rem] sm:max-w-[calc(100vw-1.5rem)]',
+              placement === 'top' ? 'sm:bottom-full sm:mb-2 sm:top-auto' : 'sm:top-full sm:mt-2',
+              'sm:left-0',
+            ].join(' ')}
+          >
+            <div className="mb-3 flex items-start justify-between gap-2">
+              <div>
+                <p className="text-[13px] font-semibold tracking-tight text-slate-900">
+                  Select date & time
+                </p>
+                {timeZone ? (
+                  <p className="mt-0.5 text-[11px] text-slate-500 truncate" title={timeZone}>
+                    {timeZone}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                className="sm:hidden -mr-1 rounded-md px-2 py-1 text-sm text-slate-500 hover:bg-slate-50 hover:text-slate-800"
+                onClick={closeWithoutSaving}
+              >
                 Close
               </button>
             </div>
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
-              <div className="sm:col-span-2">
-                <p className="mb-1 text-xs font-semibold uppercase text-gray-500">Date</p>
-                <div className="max-h-52 overflow-y-auto rounded border">
-                  {dateOptions.map((d) => (
-                    <button
-                      key={d}
-                      type="button"
-                      onClick={() => setDraftDate(d)}
-                      className={`block w-full px-3 py-2 text-left text-sm ${draftDate === d ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50'}`}
-                    >
-                      {d}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="mb-1 text-xs font-semibold uppercase text-gray-500">Hour</p>
-                <div className="max-h-52 overflow-y-auto rounded border">
-                  {hours.map((h) => (
-                    <button
-                      key={h}
-                      type="button"
-                      onClick={() => setDraftHour(h)}
-                      className={`block w-full px-3 py-2 text-left text-sm ${draftHour === h ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50'}`}
-                    >
-                      {pad(h)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <p className="mb-1 text-xs font-semibold uppercase text-gray-500">Minute</p>
-                <div className="max-h-52 overflow-y-auto rounded border">
-                  {minutes.map((m) => (
-                    <button
-                      key={m}
-                      type="button"
-                      onClick={() => setDraftMinute(m)}
-                      className={`block w-full px-3 py-2 text-left text-sm ${draftMinute === m ? 'bg-blue-50 text-blue-700' : 'hover:bg-gray-50'}`}
-                    >
-                      {pad(m)}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-            <div className="mt-3 flex items-center gap-2">
-              <button
-                type="button"
-                className={`rounded border px-3 py-2 text-sm ${draftAmpm === 'AM' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-300'}`}
-                onClick={() => setDraftAmpm('AM')}
-              >
-                AM
-              </button>
-              <button
-                type="button"
-                className={`rounded border px-3 py-2 text-sm ${draftAmpm === 'PM' ? 'border-blue-600 bg-blue-50 text-blue-700' : 'border-gray-300'}`}
-                onClick={() => setDraftAmpm('PM')}
-              >
-                PM
-              </button>
-              <div className="ml-auto flex gap-2">
-                <button type="button" className="rounded border px-3 py-2 text-sm" onClick={() => setOpen(false)}>
-                  Cancel
+
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              {QUICK_SELECTS.map((q) => (
+                <button
+                  key={q.id}
+                  type="button"
+                  onClick={() => onQuick(q.id)}
+                  className="rounded-md border border-slate-200 bg-slate-50/80 px-2.5 py-1 text-[12px] font-medium text-slate-700 transition-colors duration-150 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
+                >
+                  {q.label}
                 </button>
+              ))}
+            </div>
+
+            <div className="rounded-lg border border-slate-200 bg-white">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-100 px-2 py-1.5">
                 <button
                   type="button"
-                  className="rounded bg-blue-600 px-3 py-2 text-sm font-semibold text-white"
-                  onClick={() => {
-                    handleChange(draftDate, draftHour, draftMinute, draftAmpm);
-                    setOpen(false);
-                  }}
+                  aria-label="Previous month"
+                  onClick={() => navMonth(-1)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
                 >
-                  Apply
+                  <Chevron dir="left" />
+                </button>
+                <p className="text-[13px] font-semibold text-slate-900 tabular-nums">
+                  {formatMonthLabel(viewYear, viewMonth)}
+                </p>
+                <button
+                  type="button"
+                  aria-label="Next month"
+                  onClick={() => navMonth(1)}
+                  className="inline-flex h-8 w-8 items-center justify-center rounded-md text-slate-500 transition-colors duration-150 hover:bg-slate-100 hover:text-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
+                >
+                  <Chevron dir="right" />
                 </button>
               </div>
+
+              <div className="grid grid-cols-7 gap-0 px-1.5 pt-2 pb-0.5">
+                {WEEKDAYS.map((d) => (
+                  <div
+                    key={d}
+                    className="pb-1 text-center text-[10px] font-semibold uppercase tracking-wide text-slate-400"
+                  >
+                    {d}
+                  </div>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-7 gap-0.5 px-1.5 pb-2">
+                {cells.map((cell) => {
+                  const selected = draft.date === cell.key;
+                  const isToday = cell.key === todayKey;
+                  const past = !allowPast && isDateBeforeToday(cell.key, new Date(), timeZone);
+                  return (
+                    <button
+                      key={cell.key}
+                      type="button"
+                      disabled={past}
+                      aria-label={cell.key}
+                      aria-pressed={selected}
+                      onClick={() => setDraftDate(cell.key)}
+                      className={[
+                        'relative mx-auto flex h-8 w-8 items-center justify-center rounded-full text-[12px] transition-colors duration-150',
+                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40',
+                        past ? 'cursor-not-allowed text-slate-300' : '',
+                        !past && !selected && cell.inMonth ? 'text-slate-800 hover:bg-slate-100' : '',
+                        !past && !selected && !cell.inMonth ? 'text-slate-300 hover:bg-slate-50' : '',
+                        selected ? 'bg-blue-600 font-semibold text-white hover:bg-blue-600' : '',
+                        !selected && isToday ? 'font-semibold text-blue-700 ring-1 ring-inset ring-blue-200' : '',
+                      ].join(' ')}
+                    >
+                      {cell.day}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-3">
+              <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                Time
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50/60 p-1">
+                  <input
+                    ref={hourRef}
+                    type="text"
+                    inputMode="numeric"
+                    aria-label="Hour"
+                    value={hourText}
+                    onChange={(e) => setHourText(e.target.value.replace(/[^\d]/g, '').slice(0, 2))}
+                    onBlur={commitHour}
+                    onFocus={(e) => e.target.select()}
+                    className="w-10 rounded-md bg-white px-1.5 py-1.5 text-center text-sm font-semibold tabular-nums text-slate-900 outline-none ring-0 focus:ring-2 focus:ring-blue-500/25"
+                  />
+                  <span className="px-0.5 text-sm font-semibold text-slate-400" aria-hidden="true">
+                    :
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    aria-label="Minute"
+                    value={minuteText}
+                    onChange={(e) => setMinuteText(e.target.value.replace(/[^\d]/g, '').slice(0, 2))}
+                    onBlur={commitMinute}
+                    onFocus={(e) => e.target.select()}
+                    className="w-10 rounded-md bg-white px-1.5 py-1.5 text-center text-sm font-semibold tabular-nums text-slate-900 outline-none ring-0 focus:ring-2 focus:ring-blue-500/25"
+                  />
+                </div>
+
+                <div
+                  className="inline-flex rounded-lg border border-slate-200 bg-slate-50/60 p-0.5"
+                  role="group"
+                  aria-label="AM or PM"
+                >
+                  {['AM', 'PM'].map((period) => {
+                    const active = draft.ampm === period;
+                    return (
+                      <button
+                        key={period}
+                        type="button"
+                        aria-pressed={active}
+                        onClick={() => setDraft((prev) => ({ ...prev, ampm: period }))}
+                        className={[
+                          'min-w-[2.75rem] rounded-md px-2.5 py-1.5 text-[12px] font-semibold transition-colors duration-150',
+                          'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30',
+                          active
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : 'text-slate-600 hover:bg-white hover:text-slate-900',
+                        ].join(' ')}
+                      >
+                        {period}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {TIME_PRESETS.map((preset) => {
+                  const active =
+                    draft.hour === preset.hour &&
+                    draft.minute === preset.minute &&
+                    draft.ampm === preset.ampm;
+                  return (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => applyPreset(preset)}
+                      className={[
+                        'rounded-md border px-2 py-1 text-[11px] font-medium transition-colors duration-150',
+                        'focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30',
+                        active
+                          ? 'border-blue-500 bg-blue-50 text-blue-700'
+                          : 'border-slate-200 bg-white text-slate-600 hover:border-slate-300 hover:bg-slate-50',
+                      ].join(' ')}
+                    >
+                      {preset.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="mt-4 flex items-center justify-end gap-2 border-t border-slate-100 pt-3">
+              <button
+                type="button"
+                onClick={closeWithoutSaving}
+                className="rounded-lg border border-slate-200 bg-white px-3.5 py-2 text-[13px] font-medium text-slate-700 transition-colors duration-150 hover:bg-slate-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/30"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={applyAndClose}
+                className="rounded-lg bg-blue-600 px-3.5 py-2 text-[13px] font-semibold text-white shadow-sm transition-colors duration-150 hover:bg-blue-700 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40"
+              >
+                Apply
+              </button>
             </div>
           </div>
-        </div>
+        </>
       ) : null}
     </div>
   );
 };
+
+function Chevron({ dir }) {
+  return (
+    <svg className="h-4 w-4" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+      <path
+        d={dir === 'left' ? 'M10 3.5L5.5 8l4.5 4.5' : 'M6 3.5L10.5 8 6 12.5'}
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
 
 export default DateTimeInput;
