@@ -1,8 +1,8 @@
 /** Matches `Job` enum order in Rails (`app/models/job.rb`). */
-export const JOB_STATUS_KEYS = ['open', 'reserved', 'accepted', 'completed', 'filled', 'finished', 'pending_funding'];
+export const JOB_STATUS_KEYS = ['open', 'reserved', 'accepted', 'completed', 'filled', 'finished', 'pending_funding', 'draft'];
 
 /** Canonical business lifecycle keys from `Job#effective_status`. */
-export const EFFECTIVE_STATUS_KEYS = ['pending_funding', 'completed', 'ended_early', 'active', 'claimed', 'expired', 'open'];
+export const EFFECTIVE_STATUS_KEYS = ['draft', 'pending_funding', 'completed', 'ended_early', 'active', 'claimed', 'expired', 'open'];
 
 const LABELS = {
   open: 'Open',
@@ -12,6 +12,7 @@ const LABELS = {
   filled: 'Filled',
   finished: 'Finished',
   pending_funding: 'Pending funding',
+  draft: 'Draft',
   expired: 'Expired',
   claimed: 'Claimed',
   active: 'Active',
@@ -26,6 +27,7 @@ const DISPLAY = {
   completed: { label: 'Completed', tone: 'green' },
   ended_early: { label: 'Ended early', tone: 'gray' },
   pending_funding: { label: 'Pending funding', tone: 'orange' },
+  draft: { label: 'Draft', tone: 'gray' },
 };
 
 export const jobStatusLabel = (key) => LABELS[key] || key;
@@ -93,6 +95,7 @@ export const CARD_ACCENT_CLASSES = {
   completed: 'border-l-[3px] border-l-emerald-400',
   ended_early: 'border-l-[3px] border-l-slate-400',
   pending_funding: 'border-l-[3px] border-l-orange-500',
+  draft: 'border-l-[3px] border-l-slate-400',
   default: 'border-l-[3px] border-l-slate-200',
 };
 

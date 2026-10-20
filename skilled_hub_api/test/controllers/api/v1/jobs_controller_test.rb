@@ -331,6 +331,151 @@ module Api
         assert_equal "open", created_job.status
       end
 
+      test "company can save a draft job without funding or card and update that draft by id" do
+        user = User.create!(
+          email: "company-draft-save@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "basic",
+          membership_fee_waived: true,
+          job_funding_waived: false
+        )
+        user.update_column(:company_profile_id, profile.id)
+        template_count_before = JobTemplate.count
+
+        with_mocked_company_has_payment_method(false) do
+          post "/api/v1/jobs",
+               params: {
+                 title: "HVAC weekend draft",
+                 description: "Almost ready",
+                 status: "draft",
+                 skill_class: "Journeyman",
+                 hourly_rate_cents: 7500,
+                 hours_per_day: 8,
+                 days: 2
+               },
+               headers: auth_header_for(user),
+               as: :json
+        end
+
+        assert_response :created
+        draft = Job.order(:id).last
+        assert_equal "draft", draft.status
+        assert draft.funding_unfunded?
+        assert_equal 0, draft.job_payment_transactions.count
+        assert_equal template_count_before, JobTemplate.count
+
+        put "/api/v1/jobs/#{draft.id}",
+            params: {
+              title: "HVAC weekend draft v2",
+              description: "Tweaked copy",
+              status: "draft",
+              skill_class: "Journeyman"
+            },
+            headers: auth_header_for(user),
+            as: :json
+
+        assert_response :ok
+        assert_equal "HVAC weekend draft v2", draft.reload.title
+        assert_equal "draft", draft.status
+        assert_equal template_count_before, JobTemplate.count
+      end
+
+      test "company can publish a draft job to open without card when funding is waived" do
+        user = User.create!(
+          email: "company-draft-publish@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: user,
+          membership_level: "premium",
+          membership_fee_waived: true,
+          job_funding_waived: true
+        )
+        user.update_column(:company_profile_id, profile.id)
+
+        draft = Job.create!(
+          company_profile: profile,
+          title: "Ready draft",
+          description: "desc",
+          status: :draft,
+          skill_class: "Journeyman",
+          hourly_rate_cents: 5000,
+          hours_per_day: 8,
+          days: 1
+        )
+
+        put "/api/v1/jobs/#{draft.id}",
+            params: {
+              title: "Ready draft",
+              description: "desc",
+              status: "open",
+              skill_class: "Journeyman",
+              hourly_rate_cents: 5000,
+              hours_per_day: 8,
+              days: 1
+            },
+            headers: auth_header_for(user),
+            as: :json
+
+        assert_response :ok
+        draft.reload
+        assert_equal "open", draft.status
+        assert draft.funding_funded?
+      end
+
+      test "technician cannot see draft jobs" do
+        company_user = User.create!(
+          email: "company-hidden-draft@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :company
+        )
+        profile = CompanyProfile.create!(
+          user: company_user,
+          membership_level: "premium",
+          membership_fee_waived: true,
+          job_funding_waived: true
+        )
+        company_user.update_column(:company_profile_id, profile.id)
+        draft = Job.create!(
+          company_profile: profile,
+          title: "Secret draft",
+          description: "hidden",
+          status: :draft,
+          skill_class: "Journeyman"
+        )
+
+        tech = User.create!(
+          email: "tech-no-draft@example.com",
+          password: "password123",
+          password_confirmation: "password123",
+          role: :technician
+        )
+        TechnicianProfile.create!(
+          user: tech,
+          trade_type: "General",
+          availability: "Full-time",
+          membership_level: "basic"
+        )
+
+        get "/api/v1/jobs/#{draft.id}", headers: auth_header_for(tech), as: :json
+        assert_response :not_found
+
+        get "/api/v1/jobs", headers: auth_header_for(tech), as: :json
+        assert_response :ok
+        body = JSON.parse(response.body)
+        jobs = body.is_a?(Hash) ? body["jobs"] : body
+        ids = Array(jobs).map { |j| j["id"] }
+        assert_not_includes ids, draft.id
+      end
+
       test "technician can claim paid job for billing exempt company without payment method" do
         reset_technician_tier_rules!
 

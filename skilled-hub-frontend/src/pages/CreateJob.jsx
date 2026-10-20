@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, useSearchParams } from "react-router-dom";
 import { jobsAPI, profilesAPI, crmAPI } from '../api/api';
 import DateTimeInput from '../components/DateTimeInput';
 import JobAddressFields from '../components/JobAddressFields';
@@ -154,6 +154,9 @@ const CreateJob = () => {
   const [useCustomGoLiveAt, setUseCustomGoLiveAt] = useState(false);
   const [goLiveAt, setGoLiveAt] = useState(toDatetimeLocal(new Date()));
   const [saving, setSaving] = useState(false);
+  const [savingDraft, setSavingDraft] = useState(false);
+  const [draftJobId, setDraftJobId] = useState(null);
+  const [draftSavedNotice, setDraftSavedNotice] = useState('');
   const [companyProfileId, setCompanyProfileId] = useState(null);
   const [companyQuery, setCompanyQuery] = useState('');
   const [companyOptions, setCompanyOptions] = useState([]);
@@ -167,7 +170,9 @@ const CreateJob = () => {
   const [errorModal, setErrorModal] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const duplicateFrom = location.state?.duplicateFrom;
+  const draftIdFromUrl = searchParams.get('draftId');
 
   // Fills the form from anything shaped like a job: a job being duplicated, or the
   // attributes a saved template produces for a new start date.
@@ -264,7 +269,28 @@ const CreateJob = () => {
   }, [duplicateFrom, hydrateFromJobShape]);
 
   useEffect(() => {
-    if (duplicateFrom) return;
+    if (!draftIdFromUrl || duplicateFrom) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const job = await jobsAPI.getById(draftIdFromUrl);
+        if (cancelled || !job) return;
+        if (String(job.status) !== 'draft' && job.effective_status !== 'draft') {
+          navigate(`/jobs/${job.id}/edit`, { replace: true });
+          return;
+        }
+        hydrateFromJobShape(job);
+        setDraftJobId(job.id);
+        setStatus('draft');
+      } catch (err) {
+        if (!cancelled) setErrorModal(err.message || 'Could not load draft job.');
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [draftIdFromUrl, duplicateFrom, hydrateFromJobShape, navigate]);
+
+  useEffect(() => {
+    if (duplicateFrom || draftIdFromUrl) return;
     try {
       const raw = localStorage.getItem(DRAFT_KEY);
       if (!raw) return;
@@ -319,9 +345,10 @@ const CreateJob = () => {
     } catch {
       /* ignore bad draft */
     }
-  }, [defaultStart, duplicateFrom]);
+  }, [defaultStart, duplicateFrom, draftIdFromUrl]);
 
   useEffect(() => {
+    if (draftJobId) return;
     try {
       localStorage.setItem(
         DRAFT_KEY,
@@ -418,6 +445,7 @@ const CreateJob = () => {
     scheduledEndAt,
     useCustomGoLiveAt,
     goLiveAt,
+    draftJobId,
   ]);
 
   useEffect(() => {
@@ -612,126 +640,174 @@ const CreateJob = () => {
     if (patch.country !== undefined) setCountry(patch.country);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const buildJobPayload = (statusOverride) => {
+    const years = minimumYearsExperience.trim() === '' ? null : parseInt(minimumYearsExperience, 10);
+    const payload = {
+      title,
+      description,
+      trade_type: tradeType || null,
+      skill_class: skillClass.trim(),
+      minimum_years_experience: years != null && !Number.isNaN(years) ? years : null,
+      notes: notes.trim() || null,
+      required_certifications: requiredCertifications.filter((c) => c.trim()).length
+        ? requiredCertifications.filter((c) => c.trim()).join(", ")
+        : null,
+      require_background_check: requireBackgroundCheck,
+      require_identity_verification: requireIdentityVerification,
+      minimum_verified_references: Math.max(0, parseInt(minimumVerifiedReferences, 10) || 0),
+      address,
+      city,
+      state,
+      zip_code: zipCode,
+      country,
+      status: statusOverride,
+      start_mode: startMode,
+      company_profile_id: companyProfileId,
+      scheduled_start_at: startMode === 'rolling_start' ? null : (scheduledStartAt ? new Date(scheduledStartAt).toISOString() : null),
+      scheduled_end_at: scheduledEndAt ? new Date(scheduledEndAt).toISOString() : null,
+      go_live_at: useCustomGoLiveAt && goLiveAt ? new Date(goLiveAt).toISOString() : null,
+      rolling_start_rule_type: startMode === 'rolling_start' ? rollingStartRuleType : 'none',
+      rolling_start_exact_start_at: startMode === 'rolling_start' && rollingStartRuleType === 'exact_datetime' && rollingStartExactStartAt
+        ? new Date(rollingStartExactStartAt).toISOString()
+        : null,
+      rolling_start_days_after_acceptance: startMode === 'rolling_start' && rollingStartRuleType === 'days_after_acceptance'
+        ? Math.max(1, parseInt(rollingStartDaysAfterAcceptance, 10) || 1)
+        : null,
+      rolling_start_weekday: startMode === 'rolling_start' && rollingStartRuleType === 'following_weekday'
+        ? parseInt(rollingStartWeekday, 10)
+        : null,
+      rolling_start_weekday_time: startMode === 'rolling_start' && rollingStartRuleType === 'following_weekday'
+        ? rollingStartWeekdayTime
+        : null,
+      weekend_work_policy: weekendWorkPolicy,
+      standard_work_days: standardWorkDays,
+      standard_day_shifts: standardDayShifts,
+      saturday_work_policy: saturdayWorkPolicy,
+      sunday_work_policy: sundayWorkPolicy,
+      saturday_multiplier: saturdayWorkPolicy === 'premium_rate' ? Number(saturdayMultiplier) : null,
+      sunday_multiplier: sundayWorkPolicy === 'premium_rate' ? Number(sundayMultiplier) : null,
+      weekend_requires_company_approval: weekendRequiresCompanyApproval,
+      weekend_requires_technician_acceptance: weekendRequiresTechnicianAcceptance,
+      overtime_enabled: overtimeEnabled,
+      daily_overtime_threshold_hours: overtimeEnabled && dailyOvertimeThresholdHours ? Number(dailyOvertimeThresholdHours) : null,
+      weekly_overtime_threshold_hours: overtimeEnabled && weeklyOvertimeThresholdHours ? Number(weeklyOvertimeThresholdHours) : null,
+      overtime_multiplier: overtimeEnabled ? Number(overtimeMultiplier || 1.5) : null,
+      premium_combination_rule: premiumCombinationRule,
+      hard_deadline_at: hardDeadlineAt ? new Date(hardDeadlineAt).toISOString() : null,
+      job_timezone: jobTimezone || 'UTC',
+      potential_full_time: potentialFullTime,
+      schedule_flexibility: scheduleFlexibility,
+    };
+    if (isAdmin) {
+      payload.skip_card_validation = !enforceCardValidation;
+    }
+    if (jobAmount > 0) {
+      payload.hourly_rate_cents = Math.round(hr * 100);
+      payload.hours_per_day = hpd;
+      payload.days = d;
+      payload.pay_basis = payBasis;
+    }
+    return payload;
+  };
+
+  const validateForPublish = () => {
     const hasCity = Boolean(String(city || '').trim());
     const hasState = Boolean(String(state || '').trim());
     const hasStreetAddress = Boolean(String(address || '').trim());
     if (!(hasState && (hasCity || hasStreetAddress))) {
-      setErrorModal('Please provide a state and either a city or street address.');
-      return;
+      return 'Please provide a state and either a city or street address.';
     }
     if (startMode !== 'rolling_start' && scheduledStartAt && scheduledEndAt) {
       const startMs = new Date(scheduledStartAt).getTime();
       const endMs = new Date(scheduledEndAt).getTime();
       if (Number.isFinite(startMs) && Number.isFinite(endMs) && endMs < startMs) {
-        setErrorModal('End date/time cannot be before start date/time.');
-        return;
+        return 'End date/time cannot be before start date/time.';
       }
     }
     if (companyServiceTrades.length > 1 && !tradeType) {
-      setErrorModal('Select the trade for this job. This company has multiple service trades.');
-      return;
+      return 'Select the trade for this job. This company has multiple service trades.';
     }
     if (!isTechnicianClass(skillClass)) {
-      setErrorModal('Select a class (Apprentice, Journeyman, or Master).');
-      return;
+      return 'Select a class (Apprentice, Journeyman, or Master).';
     }
     if (weekendWorkPolicy === 'required' && saturdayWorkPolicy === 'unavailable' && sundayWorkPolicy === 'unavailable') {
-      setErrorModal('Weekend-required jobs must include Saturday or Sunday availability.');
-      return;
+      return 'Weekend-required jobs must include Saturday or Sunday availability.';
     }
     if (weekendWorkPolicy === 'optional' && saturdayWorkPolicy === 'unavailable' && sundayWorkPolicy === 'unavailable') {
-      setErrorModal('Select at least one weekend day that may be offered.');
-      return;
+      return 'Select at least one weekend day that may be offered.';
     }
-    if (weekendWorkPolicy === 'prohibited' && standardWorkDays.some((d) => Number(d) === 6 || Number(d) === 7)) {
-      setErrorModal('Remove Saturday and Sunday from standard working days when weekend work is prohibited.');
-      return;
+    if (weekendWorkPolicy === 'prohibited' && standardWorkDays.some((day) => Number(day) === 6 || Number(day) === 7)) {
+      return 'Remove Saturday and Sunday from standard working days when weekend work is prohibited.';
     }
     if (saturdayWorkPolicy === 'premium_rate' && !saturdayMultiplier) {
-      setErrorModal('Saturday multiplier is required when Saturday premium pay is selected.');
-      return;
+      return 'Saturday multiplier is required when Saturday premium pay is selected.';
     }
     if (sundayWorkPolicy === 'premium_rate' && !sundayMultiplier) {
-      setErrorModal('Sunday multiplier is required when Sunday premium pay is selected.');
+      return 'Sunday multiplier is required when Sunday premium pay is selected.';
+    }
+    return null;
+  };
+
+  // Persists the current form as a draft job for this company. Does not create or
+  // update job templates — only the job row for this draft id.
+  const handleSaveDraft = async () => {
+    if (!companyProfileId) {
+      setErrorModal('Select a company before saving a draft.');
+      return;
+    }
+    if (!String(title || '').trim()) {
+      setErrorModal('Add a job title before saving a draft.');
+      return;
+    }
+    setSavingDraft(true);
+    setDraftSavedNotice('');
+    try {
+      const payload = buildJobPayload('draft');
+      let saved;
+      if (draftJobId) {
+        saved = await jobsAPI.update(draftJobId, payload);
+      } else {
+        saved = await jobsAPI.create(payload);
+      }
+      const id = saved?.id || saved?.job?.id;
+      if (id) {
+        setDraftJobId(id);
+        setStatus('draft');
+        setSearchParams({ draftId: String(id) }, { replace: true });
+        localStorage.removeItem(DRAFT_KEY);
+        setDraftSavedNotice(`Draft saved (job #${id}). Templates were not changed.`);
+      }
+    } catch (err) {
+      setErrorModal(err.message || 'Failed to save draft');
+    } finally {
+      setSavingDraft(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    const validationError = validateForPublish();
+    if (validationError) {
+      setErrorModal(validationError);
       return;
     }
     setSaving(true);
     try {
-      const years = minimumYearsExperience.trim() === '' ? null : parseInt(minimumYearsExperience, 10);
-      const payload = {
-        title,
-        description,
-        trade_type: tradeType || null,
-        skill_class: skillClass.trim(),
-        minimum_years_experience: years != null && !Number.isNaN(years) ? years : null,
-        notes: notes.trim() || null,
-        required_certifications: requiredCertifications.filter((c) => c.trim()).length
-          ? requiredCertifications.filter((c) => c.trim()).join(", ")
-          : null,
-        require_background_check: requireBackgroundCheck,
-        require_identity_verification: requireIdentityVerification,
-        minimum_verified_references: Math.max(0, parseInt(minimumVerifiedReferences, 10) || 0),
-        address,
-        city,
-        state,
-        zip_code: zipCode,
-        country,
-        status,
-        start_mode: startMode,
-        company_profile_id: companyProfileId,
-        scheduled_start_at: startMode === 'rolling_start' ? null : (scheduledStartAt ? new Date(scheduledStartAt).toISOString() : null),
-        scheduled_end_at: scheduledEndAt ? new Date(scheduledEndAt).toISOString() : null,
-        go_live_at: useCustomGoLiveAt && goLiveAt ? new Date(goLiveAt).toISOString() : null,
-        rolling_start_rule_type: startMode === 'rolling_start' ? rollingStartRuleType : 'none',
-        rolling_start_exact_start_at: startMode === 'rolling_start' && rollingStartRuleType === 'exact_datetime' && rollingStartExactStartAt
-          ? new Date(rollingStartExactStartAt).toISOString()
-          : null,
-        rolling_start_days_after_acceptance: startMode === 'rolling_start' && rollingStartRuleType === 'days_after_acceptance'
-          ? Math.max(1, parseInt(rollingStartDaysAfterAcceptance, 10) || 1)
-          : null,
-        rolling_start_weekday: startMode === 'rolling_start' && rollingStartRuleType === 'following_weekday'
-          ? parseInt(rollingStartWeekday, 10)
-          : null,
-        rolling_start_weekday_time: startMode === 'rolling_start' && rollingStartRuleType === 'following_weekday'
-          ? rollingStartWeekdayTime
-          : null,
-        weekend_work_policy: weekendWorkPolicy,
-        standard_work_days: standardWorkDays,
-        standard_day_shifts: standardDayShifts,
-        saturday_work_policy: saturdayWorkPolicy,
-        sunday_work_policy: sundayWorkPolicy,
-        saturday_multiplier: saturdayWorkPolicy === 'premium_rate' ? Number(saturdayMultiplier) : null,
-        sunday_multiplier: sundayWorkPolicy === 'premium_rate' ? Number(sundayMultiplier) : null,
-        weekend_requires_company_approval: weekendRequiresCompanyApproval,
-        weekend_requires_technician_acceptance: weekendRequiresTechnicianAcceptance,
-        overtime_enabled: overtimeEnabled,
-        daily_overtime_threshold_hours: overtimeEnabled && dailyOvertimeThresholdHours ? Number(dailyOvertimeThresholdHours) : null,
-        weekly_overtime_threshold_hours: overtimeEnabled && weeklyOvertimeThresholdHours ? Number(weeklyOvertimeThresholdHours) : null,
-        overtime_multiplier: overtimeEnabled ? Number(overtimeMultiplier || 1.5) : null,
-        premium_combination_rule: premiumCombinationRule,
-        hard_deadline_at: hardDeadlineAt ? new Date(hardDeadlineAt).toISOString() : null,
-        job_timezone: jobTimezone || 'UTC',
-        potential_full_time: potentialFullTime,
-        schedule_flexibility: scheduleFlexibility,
-      };
-      if (isAdmin) {
-        payload.skip_card_validation = !enforceCardValidation;
+      // Always publish from this button. Drafts are saved via Save Draft only.
+      const payload = buildJobPayload('open');
+      let created;
+      if (draftJobId) {
+        created = await jobsAPI.update(draftJobId, payload);
+      } else {
+        created = await jobsAPI.create(payload);
       }
-      if (jobAmount > 0) {
-        payload.hourly_rate_cents = Math.round(hr * 100);
-        payload.hours_per_day = hpd;
-        payload.days = d;
-        payload.pay_basis = payBasis;
-      }
-      const created = await jobsAPI.create(payload);
       if (created?.payment_adjustment_required && created.client_secret) {
         await confirmStripeCardPayment(created.client_secret);
-        const jobId = created.job?.id || created.id;
+        const jobId = created.job?.id || created.id || draftJobId;
         await jobsAPI.confirmFunding(jobId);
       }
       localStorage.removeItem(DRAFT_KEY);
+      setDraftJobId(null);
       if (!isAdmin) {
         trackCompanyJobPosted();
       }
@@ -752,8 +828,19 @@ const CreateJob = () => {
       >
         ← Back
       </button>
-      <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">Create New Job</h1>
-      <p className="text-sm text-slate-500 mb-6">Matches web parity fields and posting behavior used in production.</p>
+      <h1 className="text-3xl font-bold tracking-tight text-slate-900 mb-2">
+        {draftJobId ? `Edit Draft Job #${draftJobId}` : 'Create New Job'}
+      </h1>
+      <p className="text-sm text-slate-500 mb-6">
+        {draftJobId
+          ? 'This draft is saved for this job only. Saving a draft never changes your templates.'
+          : 'Apply a template, tweak the details, then save a draft or post the job. Drafts do not change templates.'}
+      </p>
+      {draftSavedNotice ? (
+        <p className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          {draftSavedNotice}
+        </p>
+      ) : null}
       <form onSubmit={handleSubmit} className="space-y-6">
         <JobTemplatePanel
           companyProfileId={companyProfileId}
@@ -1412,37 +1499,35 @@ const CreateJob = () => {
           <h3 className="font-semibold text-slate-900">Schedule and pay summary</h3>
           <p className="text-sm text-slate-700">{scheduleSummary}</p>
         </div>
-        <div>
-          <label className={labelClass}>Status</label>
-          <select
-            className={fieldClass}
-            value={status}
-            onChange={e => setStatus(e.target.value)}
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={handleSaveDraft}
+            className="inline-flex items-center justify-center rounded-lg border border-slate-200 bg-white px-6 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-50"
+            disabled={saving || savingDraft || !companyProfileId}
           >
-            <option value="open">Open</option>
-            <option value="draft">Draft</option>
-          </select>
+            {savingDraft ? 'Saving draft...' : draftJobId ? 'Update Draft' : 'Save Draft'}
+          </button>
+          <button
+            type="submit"
+            className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-50"
+            disabled={saving || savingDraft || !companyProfileId}
+          >
+            {saving ? 'Posting...' : draftJobId ? 'Post Job' : 'Create Job'}
+          </button>
           {isAdmin && (
-            <p className="text-xs text-slate-500 mt-1">
-              Jobs go live immediately when status is set to Open.
+            <p className="text-xs text-slate-600 w-full sm:w-auto">
+              Card validation:{" "}
+              <span className={enforceCardValidation ? "font-semibold text-green-700" : "font-semibold text-amber-700"}>
+                {enforceCardValidation ? "ON" : "OFF"}
+              </span>
             </p>
           )}
         </div>
-        <button
-          type="submit"
-          className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-50"
-          disabled={saving || !companyProfileId}
-        >
-          {saving ? 'Creating...' : 'Create Job'}
-        </button>
-        {isAdmin && (
-          <p className="text-xs text-slate-600">
-            Card validation:{" "}
-            <span className={enforceCardValidation ? "font-semibold text-green-700" : "font-semibold text-amber-700"}>
-              {enforceCardValidation ? "ON" : "OFF"}
-            </span>
-          </p>
-        )}
+        <p className="text-xs text-slate-500">
+          Save Draft keeps this posting for job{draftJobId ? ` #${draftJobId}` : ' id'} without publishing or changing templates.
+          Create/Post Job publishes it for technicians.
+        </p>
       </form>
 
       <WorkScheduleCalendarPopup

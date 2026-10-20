@@ -12,6 +12,7 @@ import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
 import { TRADE_OPTIONS } from '../constants/trades';
 import { isTechnicianClass, technicianClassSelectOptions, technicianClassLabel, technicianClassSlug } from '../constants/technicianClass';
 import { companyChargeFromJobAmount, formatPlatformFeePercent, parseLoadedCommissionPercent } from '../utils/companyPlatformFee';
+import { confirmStripeCardPayment } from '../utils/confirmStripePayment';
 import { auth } from '../auth';
 import { JOB_STATUS_KEYS, jobStatusLabel, normalizeJobStatusKey } from '../utils/jobStatus';
 import {
@@ -274,7 +275,7 @@ const EditJob = () => {
       });
       return;
     }
-    if (!isTechnicianClass(form.skill_class)) {
+    if (form.status !== 'draft' && !isTechnicianClass(form.skill_class)) {
       setAlertModal({
         isOpen: true,
         title: 'Class required',
@@ -355,9 +356,20 @@ const EditJob = () => {
         payload.hours_per_day = null;
         payload.days = null;
       }
-      await jobsAPI.update(id, payload);
+      const updated = await jobsAPI.update(id, payload);
+      if (updated?.payment_adjustment_required && updated.client_secret) {
+        await confirmStripeCardPayment(updated.client_secret);
+        const jobId = updated.job?.id || updated.id || id;
+        await jobsAPI.confirmFunding(jobId);
+      }
+      const publishedDraft = job?.status === 'draft' && form.status === 'open';
       setAlertModal({
-        isOpen: true, title: 'Job updated!', message: 'Your changes have been saved.', variant: 'success',
+        isOpen: true,
+        title: publishedDraft ? 'Job posted!' : 'Job updated!',
+        message: publishedDraft
+          ? 'Your draft was published. Technicians can now discover and claim it.'
+          : 'Your changes have been saved.',
+        variant: 'success',
         onCloseAction: () => navigate('/dashboard'),
       });
     } catch (err) {
@@ -911,7 +923,7 @@ const EditJob = () => {
             value={form.status}
             onChange={handleChange}
           >
-            {JOB_STATUS_KEYS.map((key) => (
+            {(job?.status === 'draft' ? ['draft', 'open'] : JOB_STATUS_KEYS.filter((key) => key !== 'draft')).map((key) => (
               <option
                 key={key}
                 value={key}
@@ -921,12 +933,17 @@ const EditJob = () => {
               </option>
             ))}
           </select>
+          {job?.status === 'draft' ? (
+            <p className="text-xs text-slate-500 mt-1">
+              This is a draft for job #{job.id} only. Keep Draft to save without publishing, or choose Open to post. Templates are not changed.
+            </p>
+          ) : null}
           {hasAcceptedApplication && !isAdmin ? (
             <p className="text-xs text-amber-800 mt-1">
               To set the listing back to Open, use Deny Technician first (or contact an admin).
             </p>
           ) : null}
-          {isAdmin && (
+          {isAdmin && job?.status !== 'draft' && (
             <p className="text-xs text-slate-500 mt-1">
               Jobs go live immediately when status is set to Open.
             </p>
@@ -938,7 +955,13 @@ const EditJob = () => {
             className="inline-flex items-center justify-center rounded-lg bg-blue-600 px-6 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40 disabled:opacity-50"
             disabled={saving}
           >
-            {saving ? 'Saving...' : 'Save Changes'}
+            {saving
+              ? 'Saving...'
+              : job?.status === 'draft' && form.status === 'open'
+                ? 'Post Job'
+                : job?.status === 'draft'
+                  ? 'Save Draft'
+                  : 'Save Changes'}
           </button>
           <button
             type="button"

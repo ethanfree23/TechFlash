@@ -80,6 +80,7 @@ module JobEffectiveStatus
   end
 
   def effective_status
+    return "draft" if draft?
     return "pending_funding" if pending_funding?
     return "ended_early" if terminated_early?
     return "completed" if finished? || completed?
