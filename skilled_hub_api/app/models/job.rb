@@ -4,7 +4,7 @@ class Job < ApplicationRecord
 
   has_secure_token :share_token
 
-  enum :status, { open: 0, reserved: 1, accepted: 2, completed: 3, filled: 4, finished: 5, pending_funding: 6 }
+  enum :status, { open: 0, reserved: 1, accepted: 2, completed: 3, filled: 4, finished: 5, pending_funding: 6, draft: 7 }
   enum :pay_basis, { actual_hours_worked: 0, guaranteed_job_pay: 1 }
   enum :funding_status, { unfunded: 0, funded: 1, adjustment_required: 2, funding_failed: 3 }, prefix: :funding
   enum :settlement_status, { unsettled: 0, settling: 1, settled: 2, settlement_blocked: 3 }, prefix: :settlement
@@ -193,7 +193,12 @@ class Job < ApplicationRecord
   end
 
   def self.publicly_visible
-    where.not(status: :pending_funding)
+    where.not(status: [:pending_funding, :draft])
+  end
+
+  # Unpublished company-owned posting. Hidden from technicians; no funding yet.
+  def draft_posting?
+    draft?
   end
 
   scope :potential_full_time_only, -> {

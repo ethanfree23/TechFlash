@@ -76,15 +76,20 @@ export default function JobCardActions({
         <Link to={`/jobs/${job.id}`} className={`${compact ? `${btnCompact} bg-blue-600 text-white` : btnPrimary} ${fullWidth}`}>
           View Details
         </Link>
-        <Link to={`/jobs/${job.id}/edit`} className={compact ? `${btnCompact} border border-slate-200` : btnSecondary}>
-          Edit
+        <Link
+          to={job.status === 'draft' || job.effective_status === 'draft' ? `/jobs/create?draftId=${job.id}` : `/jobs/${job.id}/edit`}
+          className={compact ? `${btnCompact} border border-slate-200` : btnSecondary}
+        >
+          {job.status === 'draft' || job.effective_status === 'draft' ? 'Continue draft' : 'Edit'}
         </Link>
         <button type="button" onClick={handleDuplicate} className={compact ? `${btnCompact} border border-slate-200` : btnSecondary}>
           Duplicate
         </button>
-        <button type="button" onClick={() => setShowSaveTemplate(true)} className={compact ? `${btnCompact} border border-slate-200` : btnSecondary}>
-          Save template
-        </button>
+        {job.status !== 'draft' && job.effective_status !== 'draft' && (
+          <button type="button" onClick={() => setShowSaveTemplate(true)} className={compact ? `${btnCompact} border border-slate-200` : btnSecondary}>
+            Save template
+          </button>
+        )}
         {job.company_profile_id && (
           <Link to={`/companies/${job.company_profile_id}`} className={compact ? `${btnCompact} text-blue-600` : btnSecondary}>
             Company
@@ -150,16 +155,21 @@ export default function JobCardActions({
           View Details
         </Link>
         {isJobEditable(job) && (
-          <Link to={`/jobs/${job.id}/edit`} className={compact ? `${btnCompact} border border-slate-200` : btnSecondary}>
-            Edit
+          <Link
+            to={job.status === 'draft' || job.effective_status === 'draft' ? `/jobs/create?draftId=${job.id}` : `/jobs/${job.id}/edit`}
+            className={compact ? `${btnCompact} border border-slate-200` : btnSecondary}
+          >
+            {job.status === 'draft' || job.effective_status === 'draft' ? 'Continue draft' : 'Edit'}
           </Link>
         )}
         <button type="button" onClick={handleDuplicate} className={compact ? `${btnCompact} border border-slate-200` : btnSecondary}>
           Duplicate
         </button>
-        <button type="button" onClick={() => setShowSaveTemplate(true)} className={compact ? `${btnCompact} border border-slate-200` : btnSecondary}>
-          Save template
-        </button>
+        {job.status !== 'draft' && job.effective_status !== 'draft' && (
+          <button type="button" onClick={() => setShowSaveTemplate(true)} className={compact ? `${btnCompact} border border-slate-200` : btnSecondary}>
+            Save template
+          </button>
+        )}
         {techId && (
           <>
             <Link to={`/technicians/${techId}`} className={compact ? `${btnCompact} text-blue-600` : btnSecondary}>

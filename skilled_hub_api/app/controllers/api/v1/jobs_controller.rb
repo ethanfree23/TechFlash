@@ -35,7 +35,7 @@ module Api
                    end
           else
             # Browse: when "All" show available + the tech's own claimed/completed work.
-            jobs = jobs.where.not(status: :pending_funding)
+            jobs = jobs.where.not(status: [:pending_funding, :draft])
             if params[:status].present?
               jobs = jobs.where.not(status: [:filled, :finished])
             end
@@ -112,7 +112,7 @@ module Api
           company_profile = @current_user.company_profile
           jobs = company_profile ? company_profile.jobs : Job.none
         elsif @current_user&.technician?
-          jobs = jobs.where.not(status: [:filled, :finished, :pending_funding])
+          jobs = jobs.where.not(status: [:filled, :finished, :pending_funding, :draft])
             .where.not(id: Job.expired_listings.select(:id))
         end
         locs = jobs.where.not(location: [nil, ""]).distinct.pluck(:location)
@@ -127,7 +127,7 @@ module Api
         if @current_user&.company? && job.company_profile_id != @current_user.company_profile&.id
           return render json: { error: "You can only view your own jobs" }, status: :forbidden
         end
-        if @current_user&.technician? && job.pending_funding?
+        if @current_user&.technician? && (job.pending_funding? || job.draft?)
           return render json: { error: "Job not found" }, status: :not_found
         end
         if @current_user&.technician? && (tp = @current_user.technician_profile)
@@ -152,6 +152,7 @@ module Api
         company_profile = resolve_company_profile_for_create
         return if performed?
 
+        save_as_draft = requested_status_is_draft?
         requires_saved_card = !company_profile.job_funding_waived?
         skip_card_validation = @current_user&.admin? && ActiveModel::Type::Boolean.new.cast(params[:skip_card_validation])
         priced_preview = JobMoney.labor_cents(
@@ -160,13 +161,39 @@ module Api
           days: job_params[:days],
           fallback_cents: job_params[:price_cents].to_i
         )
-        if requires_saved_card && priced_preview.positive? && !skip_card_validation && !PaymentService.company_has_payment_method?(company_profile.user)
-          return render json: { error: 'Add a valid credit or debit card in Profile & Settings → Payment before posting a job.' }, status: :unprocessable_entity
+        unless save_as_draft
+          if requires_saved_card && priced_preview.positive? && !skip_card_validation && !PaymentService.company_has_payment_method?(company_profile.user)
+            return render json: { error: 'Add a valid credit or debit card in Profile & Settings → Payment before posting a job.' }, status: :unprocessable_entity
+          end
         end
 
         job = Job.new(job_params.except(:company_profile_id, :skip_card_validation))
         job.company_profile_id = company_profile.id
         job.pay_basis = params[:pay_basis] if params[:pay_basis].present?
+
+        if save_as_draft
+          job.status = :draft
+          trade_validation_error = assign_and_validate_trade_type!(
+            job: job,
+            company_profile: company_profile,
+            allow_blank: true
+          )
+          if trade_validation_error.present?
+            return render json: { error: trade_validation_error }, status: :unprocessable_entity
+          end
+          skill_class_error = assign_and_validate_skill_class!(job, required: false)
+          if skill_class_error.present?
+            return render json: { error: skill_class_error }, status: :unprocessable_entity
+          end
+          if job.title.to_s.strip.blank?
+            return render json: { error: 'Add a job title before saving a draft.' }, status: :unprocessable_entity
+          end
+          unless job.save
+            return render json: { errors: job.errors.full_messages }, status: :unprocessable_entity
+          end
+          return render json: job, serializer: JobSerializer, status: :created
+        end
+
         needs_funding = job.priced? && !job.job_funding_waived?
         job.status = needs_funding ? :pending_funding : :open
         trade_validation_error = assign_and_validate_trade_type!(job: job, company_profile: company_profile)
@@ -221,6 +248,7 @@ module Api
         previous_weekend_policy = job.weekend_work_policy
         previous_sat_multiplier = job.saturday_multiplier
         previous_sun_multiplier = job.sunday_multiplier
+        was_draft = job.draft?
         incoming = job_params
         if (status_error = disallowed_status_change_error(job, incoming))
           return render json: { error: status_error }, status: :unprocessable_entity
@@ -235,11 +263,33 @@ module Api
           end
         end
         job.assign_attributes(incoming)
-        trade_validation_error = assign_and_validate_trade_type!(job: job, company_profile: job.company_profile)
+
+        publishing_draft = was_draft && !job.draft?
+        staying_draft = job.draft?
+
+        if staying_draft
+          if job.title.to_s.strip.blank?
+            return render json: { error: 'Add a job title before saving a draft.' }, status: :unprocessable_entity
+          end
+          job.status = :draft
+        elsif publishing_draft
+          # Mirror create: priced drafts go through funding before becoming open.
+          needs_funding = job.priced? && !job.job_funding_waived?
+          job.status = needs_funding ? :pending_funding : :open
+        end
+
+        trade_validation_error = assign_and_validate_trade_type!(
+          job: job,
+          company_profile: job.company_profile,
+          allow_blank: staying_draft
+        )
         if trade_validation_error.present?
           return render json: { error: trade_validation_error }, status: :unprocessable_entity
         end
-        skill_class_error = assign_and_validate_skill_class!(job, required: params.key?(:skill_class))
+        skill_class_error = assign_and_validate_skill_class!(
+          job,
+          required: publishing_draft || (params.key?(:skill_class) && !staying_draft)
+        )
         if skill_class_error.present?
           return render json: { error: skill_class_error }, status: :unprocessable_entity
         end
@@ -258,16 +308,35 @@ module Api
             error: 'Weekend multipliers cannot be reduced after approved or paid weekend hours exist.'
           }, status: :unprocessable_entity
         end
-        set_go_live_at_for_post!(job)
-        if job.save
-          Jobs::TermChangeAuditLogger.log!(job: job, actor_user: @current_user, reason: params[:change_reason])
-          # A pending alternate-schedule proposal was calculated against the old terms.
-          Schedule::ProposalInvalidator.invalidate_stale_for_job!(job, reason: "company_edited_job")
-          JobAlertDispatcher.dispatch_for_job(job) if job.effectively_open?
-          render json: job, serializer: JobSerializer, status: :ok
-        else
-          render json: { errors: job.errors.full_messages }, status: :unprocessable_entity
+
+        if publishing_draft
+          publish_error = enforce_card_for_publish!(job)
+          return render json: { error: publish_error }, status: :unprocessable_entity if publish_error.present?
         end
+
+        set_go_live_at_for_post!(job) unless job.pending_funding? || job.draft?
+        unless job.save
+          return render json: { errors: job.errors.full_messages }, status: :unprocessable_entity
+        end
+
+        if publishing_draft
+          funded = finalize_publish_funding!(job)
+          return if performed? || funded == :halted
+          job.reload
+          CrmProspectPromotion.promote_after_job_created!(job.company_profile_id)
+          if job.effectively_open?
+            JobAlertDispatcher.dispatch_for_job(job)
+            Rails.logger.info("[mail] job_posted_email job_id=#{job.id}")
+            MailDelivery.safe_deliver { UserMailer.job_posted_email(job).deliver_now }
+          end
+          return render json: job, serializer: JobSerializer, status: :ok
+        end
+
+        Jobs::TermChangeAuditLogger.log!(job: job, actor_user: @current_user, reason: params[:change_reason])
+        # A pending alternate-schedule proposal was calculated against the old terms.
+        Schedule::ProposalInvalidator.invalidate_stale_for_job!(job, reason: "company_edited_job")
+        JobAlertDispatcher.dispatch_for_job(job) if job.effectively_open?
+        render json: job, serializer: JobSerializer, status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Job not found" }, status: :not_found
       end
@@ -643,7 +712,12 @@ module Api
         @current_user&.company? && job.company_profile_id == @current_user.company_profile&.id
       end
 
-      UPDATABLE_STATUSES = %w[open pending_funding].freeze
+      UPDATABLE_STATUSES = %w[open pending_funding draft].freeze
+
+      def requested_status_is_draft?
+        raw = params[:status].presence || job_params[:status].presence || job_params["status"].presence
+        raw.to_s == "draft"
+      end
 
       def disallowed_status_change_error(job, incoming)
         return nil unless incoming.key?("status") || incoming.key?(:status)
@@ -651,7 +725,14 @@ module Api
         requested = incoming[:status].presence || incoming["status"].presence
         return nil if requested.blank?
         return nil if requested.to_s == job.status.to_s
+        # Drafts may be published to open/pending_funding. Published jobs cannot become drafts
+        # from this endpoint (use Unpublish for open/pending_funding listings).
+        if requested.to_s == "draft" && !job.draft?
+          return 'Published jobs cannot be converted to drafts. Unpublish the job instead.'
+        end
         return nil if UPDATABLE_STATUSES.include?(requested.to_s)
+        # Publishing a draft: client may send "open"; funding may rewrite to pending_funding.
+        return nil if job.draft? && %w[open pending_funding].include?(requested.to_s)
 
         action = case requested.to_s
                  when "finished", "completed" then 'Use "Mark Complete" or "End Assignment" instead.'
@@ -659,6 +740,47 @@ module Api
                  else "Use the dedicated job action instead."
                  end
         "Job status cannot be changed to \"#{requested}\" from this endpoint. #{action}"
+      end
+
+      def enforce_card_for_publish!(job)
+        return nil if job.job_funding_waived?
+        return nil unless job.priced?
+
+        skip_card_validation = @current_user&.admin? && ActiveModel::Type::Boolean.new.cast(params[:skip_card_validation])
+        return nil if skip_card_validation
+        return nil if PaymentService.company_has_payment_method?(job.company_profile.user)
+
+        'Add a valid credit or debit card in Profile & Settings → Payment before posting a job.'
+      end
+
+      # Runs funding after a draft is saved as pending_funding/open. Returns :ok, :halted
+      # (response already rendered), or nil when nothing to do.
+      def finalize_publish_funding!(job)
+        needs_funding = job.priced? && !job.job_funding_waived?
+        if needs_funding
+          result = JobFundingService.fund_for_publish!(job)
+          if result[:requires_action]
+            render json: {
+              job: JobSerializer.new(job.reload, scope: @current_user).as_json,
+              payment_adjustment_required: true,
+              client_secret: result[:client_secret]
+            }, status: :accepted
+            return :halted
+          end
+          unless result[:success]
+            render json: {
+              error: result[:error] || "Payment failed. This job was not published.",
+              job: JobSerializer.new(job.reload, scope: @current_user).as_json
+            }, status: :unprocessable_entity
+            return :halted
+          end
+          return :ok
+        end
+
+        JobFundingService.snapshot_company!(job)
+        job.update!(funding_status: :funded) unless job.funding_funded?
+        JobFundingService.record_revision!(job, source: "posting")
+        :ok
       end
 
       def undeletable_reason(job)
@@ -750,7 +872,7 @@ module Api
         sat_changed || sun_changed
       end
 
-      def assign_and_validate_trade_type!(job:, company_profile:)
+      def assign_and_validate_trade_type!(job:, company_profile:, allow_blank: false)
         company_trades = Array(company_profile&.effective_service_trades).compact.uniq
         requested_trade = TradeCatalog.normalized_label(job.trade_type)
 
@@ -765,6 +887,8 @@ module Api
 
         if company_trades.length > 1
           if requested_trade.blank?
+            return nil if allow_blank
+
             return "Select a trade for this job. This company has multiple service trades configured."
           end
           unless company_trades.include?(requested_trade)
