@@ -16,6 +16,7 @@ class JobSerializer < ActiveModel::Serializer
              :overtime_multiplier, :hard_deadline_at, :job_timezone, :standard_day_shifts, :weekend_day_shifts,
              :potential_full_time, :potential_full_time_details, :potential_full_time_disclaimer,
              :schedule_flexibility, :technicians_needed,
+             :primary_contact_user_id, :additional_contact_user_ids,
              :schedule_and_pay_summary,
              :timeline_events, :pending_counter_offer,
              :terminated_at, :ended_early
@@ -73,6 +74,18 @@ class JobSerializer < ActiveModel::Serializer
   # than hard-coding the assumption.
   def technicians_needed
     object.claim_capacity
+  end
+
+  def primary_contact_user_id
+    return nil unless object.has_attribute?(:primary_contact_user_id)
+
+    object.primary_contact_user_id
+  end
+
+  def additional_contact_user_ids
+    return [] unless object.has_attribute?(:additional_contact_user_ids)
+
+    object.additional_contact_user_ids_list
   end
 
   # available / schedule_conflict / unavailable for the viewing technician, with the
