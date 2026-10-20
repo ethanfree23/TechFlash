@@ -703,6 +703,7 @@ const EditJob = () => {
                   id="edit-job-rolling-exact-start"
                   value={rollingStartExactStartAt}
                   onChange={(e) => setRollingStartExactStartAt(e.target.value)}
+                  timeZone={form.job_timezone}
                   className="w-full"
                 />
               </div>
@@ -762,6 +763,7 @@ const EditJob = () => {
               id="edit-job-go-live-at"
               value={goLiveAt}
               onChange={(e) => setGoLiveAt(e.target.value)}
+              timeZone={form.job_timezone}
               className="w-full"
             />
           )}
@@ -802,7 +804,13 @@ const EditJob = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className={labelClass}>Hard deadline</label>
-              <DateTimeInput id="edit-job-hard-deadline" value={form.hard_deadline_at} onChange={(e) => setForm((p) => ({ ...p, hard_deadline_at: e.target.value }))} className="w-full" />
+              <DateTimeInput
+                id="edit-job-hard-deadline"
+                value={form.hard_deadline_at}
+                onChange={(e) => setForm((p) => ({ ...p, hard_deadline_at: e.target.value }))}
+                timeZone={form.job_timezone}
+                className="w-full"
+              />
             </div>
             <div>
               <label className={labelClass}>Job timezone</label>
@@ -954,6 +962,7 @@ const EditJob = () => {
                 id="edit-job-extend-end-at"
                 value={extendEndAt}
                 onChange={(e) => setExtendEndAt(e.target.value)}
+                timeZone={form.job_timezone}
                 className="w-full"
               />
             </div>
