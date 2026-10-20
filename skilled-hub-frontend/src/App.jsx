@@ -47,6 +47,10 @@ import { metaAPI, authAPI } from './api/api';
 import { setApiDemoMode, setDemoFlagshipJobId, setDemoReviewedJobId, getDemoBasePath, isDemoPath, isDemoRoleAutoLoginSearch, isDemoRoleAutoLoginLocation } from './utils/demoMode';
 import MetaPixelRouteTracker from './components/MetaPixelRouteTracker';
 
+const DateTimePickerPreviewPage = import.meta.env.DEV
+  ? React.lazy(() => import('./pages/DateTimePickerPreviewPage'))
+  : null;
+
 // Protected Route component
 const ProtectedRoute = ({ children, isAuthenticated }) => {
   return isAuthenticated ? children : <Navigate to="/login" replace />;
@@ -206,6 +210,17 @@ function App() {
           {/* Public job share preview (no login) */}
           <Route path="/jobs/shared/:shareToken" element={<PublicJobSharePage />} />
           <Route path="/references/respond/:token" element={<ReferenceResponsePage />} />
+
+          {import.meta.env.DEV && DateTimePickerPreviewPage ? (
+            <Route
+              path="/dev/datetime-picker"
+              element={(
+                <React.Suspense fallback={<div className="p-8 text-sm text-slate-500">Loading…</div>}>
+                  <DateTimePickerPreviewPage />
+                </React.Suspense>
+              )}
+            />
+          ) : null}
           
           {/* Dashboard - both company and technician */}
           <Route

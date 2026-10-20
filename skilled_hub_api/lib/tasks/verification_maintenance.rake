@@ -22,16 +22,13 @@ namespace :verification do
       end
       next if owner.blank?
 
-      badge_type = doc.doc_type.to_s == "insurance" ? "insured" : "license_verified"
-      VerificationBadge.where(user_id: owner.id, badge_type: badge_type, status: :active)
+      next unless doc.doc_type.to_s.in?(%w[license certificate cert])
+
+      VerificationBadge.where(user_id: owner.id, badge_type: "license_verified", status: :active)
         .update_all(status: VerificationBadge.statuses[:expired], updated_at: now)
 
       profile = VerificationProfile.for_user!(owner)
-      if doc.doc_type.to_s == "insurance"
-        profile.update!(insurance_status: :expired)
-      elsif doc.doc_type.to_s.in?(%w[license certificate cert])
-        profile.update!(licenses_status: :expired)
-      end
+      profile.update!(licenses_status: :expired)
     end
 
     puts "Expired #{expired_background.count} background checks and #{expired_docs.count} documents."
