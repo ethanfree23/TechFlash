@@ -204,7 +204,7 @@ module Demo
           state: market[:state],
           zip_code: format("%05d", 77_000 + i),
           country: "United States",
-          bio: "#{fn} #{ln} — #{trade} specialist with #{3 + (i % 12)}+ years in #{market[:city]}. Licensed, insured, strong references.",
+          bio: "#{fn} #{ln} — #{trade} specialist with #{3 + (i % 12)}+ years in #{market[:city]}. Licensed, strong references.",
           phone: user.phone,
           membership_level: MEMBERSHIP_LEVELS[(i + 1) % MEMBERSHIP_LEVELS.size],
           membership_status: "active",

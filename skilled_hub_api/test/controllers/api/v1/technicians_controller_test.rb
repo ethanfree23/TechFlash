@@ -506,8 +506,7 @@ module Api
         VerificationProfile.create!(
           user: verified_user,
           identity_status: :verified,
-          references_status: :verified,
-          insurance_status: :verified
+          references_status: :verified
         )
         VerificationBadge.create!(user: verified_user, badge_type: "cert_osha_10", status: :active, earned_at: Time.current)
 
@@ -534,7 +533,6 @@ module Api
               background_verified: true,
               identity_verified: true,
               references_verified: true,
-              insurance_verified: true,
               certification: "osha 10"
             },
             headers: auth_header_for(company_user)

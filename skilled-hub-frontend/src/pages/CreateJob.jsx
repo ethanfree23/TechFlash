@@ -112,7 +112,6 @@ const CreateJob = () => {
   const [requireBackgroundCheck, setRequireBackgroundCheck] = useState(false);
   const [requireIdentityVerification, setRequireIdentityVerification] = useState(false);
   const [minimumVerifiedReferences, setMinimumVerifiedReferences] = useState("0");
-  const [requireInsuranceVerification, setRequireInsuranceVerification] = useState(false);
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("Texas");
@@ -206,7 +205,6 @@ const CreateJob = () => {
     setRequireBackgroundCheck(Boolean(job.require_background_check));
     setRequireIdentityVerification(Boolean(job.require_identity_verification));
     setMinimumVerifiedReferences(String(job.minimum_verified_references ?? 0));
-    setRequireInsuranceVerification(Boolean(job.require_insurance_verification));
     setStartMode(String(job.start_mode || 'hard_start'));
     // Posting-instance datetimes are never reusable. Clear leftovers so a draft
     // cannot keep an old go-live or exact rolling timestamp after apply/duplicate.
@@ -297,7 +295,6 @@ const CreateJob = () => {
       setRequireBackgroundCheck(Boolean(draft.requireBackgroundCheck));
       setRequireIdentityVerification(Boolean(draft.requireIdentityVerification));
       setMinimumVerifiedReferences(String(draft.minimumVerifiedReferences ?? '0'));
-      setRequireInsuranceVerification(Boolean(draft.requireInsuranceVerification));
       setStartMode(String(draft.startMode || 'hard_start'));
       setWeekendWorkPolicy(String(draft.weekendWorkPolicy || 'prohibited'));
       setStandardWorkDays(Array.isArray(draft.standardWorkDays) && draft.standardWorkDays.length ? draft.standardWorkDays : DEFAULT_STANDARD_WORK_DAYS);
@@ -351,7 +348,6 @@ const CreateJob = () => {
           requireBackgroundCheck,
           requireIdentityVerification,
           minimumVerifiedReferences,
-          requireInsuranceVerification,
           startMode,
           weekendWorkPolicy,
           standardWorkDays,
@@ -401,7 +397,6 @@ const CreateJob = () => {
     requireBackgroundCheck,
     requireIdentityVerification,
     minimumVerifiedReferences,
-    requireInsuranceVerification,
     startMode,
     weekendWorkPolicy,
     standardWorkDays,
@@ -554,7 +549,6 @@ const CreateJob = () => {
       required_certifications: certs.length ? certs.join(', ') : null,
       require_background_check: requireBackgroundCheck,
       require_identity_verification: requireIdentityVerification,
-      require_insurance_verification: requireInsuranceVerification,
       minimum_verified_references: Math.max(0, parseInt(minimumVerifiedReferences, 10) || 0),
       hourly_rate_cents: hr > 0 ? Math.round(hr * 100) : null,
       hours_per_day: hpd,
@@ -599,7 +593,7 @@ const CreateJob = () => {
   }, [
     title, description, notes, tradeType, skillClass, minimumYearsExperience,
     requiredCertifications, requireBackgroundCheck, requireIdentityVerification,
-    requireInsuranceVerification, minimumVerifiedReferences, hr, hpd, d, payBasis,
+    minimumVerifiedReferences, hr, hpd, d, payBasis,
     potentialFullTime, scheduleFlexibility, startMode, rollingStartRuleType,
     rollingStartDaysAfterAcceptance, rollingStartWeekday, rollingStartWeekdayTime,
     standardWorkDays, standardDayShifts,
@@ -679,7 +673,6 @@ const CreateJob = () => {
         require_background_check: requireBackgroundCheck,
         require_identity_verification: requireIdentityVerification,
         minimum_verified_references: Math.max(0, parseInt(minimumVerifiedReferences, 10) || 0),
-        require_insurance_verification: requireInsuranceVerification,
         address,
         city,
         state,
@@ -781,67 +774,111 @@ const CreateJob = () => {
             <div className={`${sectionCardClass} mb-4`}>
               <h3 className="font-semibold text-slate-900">Company Account</h3>
               <p className="text-xs text-slate-500">
-                Search and select the company account this job should be attached to.
+                Search by company or employee name, then pick which login this job should be attached to.
+                Jobs post to the shared company account.
               </p>
               <input
                 className={fieldClass}
                 value={companyQuery}
-                onChange={(e) => setCompanyQuery(e.target.value)}
-                placeholder="Search by company name..."
+                onChange={(e) => {
+                  setCompanyQuery(e.target.value);
+                  if (companySelectionLocked || selectedCompanyName) {
+                    setCompanySelectionLocked(false);
+                    setSelectedCompanyName('');
+                    setCompanyProfileId(null);
+                  }
+                }}
+                placeholder="Search by company or employee name..."
                 disabled={companySelectionLocked}
               />
               {companySelectionLocked && (
                 <p className="text-xs text-blue-700">
-                  Company is locked. Click Edit to change selection.
+                  Selection locked. Click Change to pick a different company or employee.
                 </p>
               )}
               {companySearchLoading && (
                 <p className="text-xs text-slate-500">Searching companies...</p>
               )}
               {!companySelectionLocked && !companySearchLoading && companyOptions.length > 0 && (
-                <div className="max-h-44 overflow-y-auto border border-slate-200 rounded-lg bg-white">
-                  {companyOptions.map((company) => (
-                    (() => {
-                      const contactName = [company.contact_first_name, company.contact_last_name]
-                        .map((x) => (x || '').trim())
-                        .filter(Boolean)
-                        .join(' ');
-                      const companyLabel = company.company_name || `Company #${company.id}`;
-                      const label = contactName ? `${companyLabel} — ${contactName}` : companyLabel;
-                      return (
-                    <button
-                      key={company.id}
-                      type="button"
-                      onClick={() => {
-                        setCompanyProfileId(company.id);
-                        setSelectedCompanyName(label);
-                        setCompanyQuery(companyLabel);
-                        setCompanyOptions([]);
-                        setCompanySelectionLocked(true);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-slate-100 last:border-b-0"
-                    >
-                      {label}
-                    </button>
-                      );
-                    })()
-                  ))}
+                <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-lg bg-white">
+                  {companyOptions.flatMap((company) => {
+                    const companyLabel = company.company_name || `Company #${company.id}`;
+                    const users = Array.isArray(company.company_users) ? company.company_users : [];
+                    const rows =
+                      users.length > 0
+                        ? users.map((user) => {
+                            const employeeName = [user.first_name, user.last_name]
+                              .map((x) => (x || '').trim())
+                              .filter(Boolean)
+                              .join(' ');
+                            const label = employeeName
+                              ? `${companyLabel} — ${employeeName}`
+                              : `${companyLabel} — ${user.email || `User #${user.id}`}`;
+                            return {
+                              key: `${company.id}-user-${user.id}`,
+                              label,
+                              companyLabel,
+                              subtitle: user.email || null,
+                              companyId: company.id,
+                            };
+                          })
+                        : [
+                            {
+                              key: `${company.id}-company`,
+                              label: (() => {
+                                const contactName = [company.contact_first_name, company.contact_last_name]
+                                  .map((x) => (x || '').trim())
+                                  .filter(Boolean)
+                                  .join(' ');
+                                return contactName ? `${companyLabel} — ${contactName}` : companyLabel;
+                              })(),
+                              companyLabel,
+                              subtitle:
+                                company.company_users_count > 0
+                                  ? `${company.company_users_count} login(s)`
+                                  : null,
+                              companyId: company.id,
+                            },
+                          ];
+                    return rows.map((row) => (
+                      <button
+                        key={row.key}
+                        type="button"
+                        onClick={() => {
+                          setCompanyProfileId(row.companyId);
+                          setSelectedCompanyName(row.label);
+                          setCompanyQuery(row.companyLabel);
+                          setCompanyOptions([]);
+                          setCompanySelectionLocked(true);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-slate-100 last:border-b-0"
+                      >
+                        <div className="font-medium text-slate-900">{row.label}</div>
+                        {row.subtitle && (
+                          <div className="text-xs text-slate-500">{row.subtitle}</div>
+                        )}
+                      </button>
+                    ));
+                  })}
                 </div>
               )}
               {selectedCompanyName && (
                 <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 flex items-center justify-between gap-3">
                   <p className="text-sm text-blue-900">
-                    Selected company: <span className="font-semibold">{selectedCompanyName}</span>
+                    Selected: <span className="font-semibold">{selectedCompanyName}</span>
                   </p>
                   <button
                     type="button"
                     onClick={() => {
                       setCompanySelectionLocked(false);
                       setCompanyOptions([]);
+                      setCompanyProfileId(null);
+                      setSelectedCompanyName('');
+                      // Keep the company name in the search box so results reappear for a re-pick.
                     }}
-                    className="text-xs px-2.5 py-1 rounded border border-blue-300 text-blue-800 bg-white hover:bg-blue-100"
+                    className="shrink-0 text-xs px-2.5 py-1 rounded border border-blue-300 text-blue-800 bg-white hover:bg-blue-100"
                   >
-                    Edit
+                    Change
                   </button>
                 </div>
               )}
@@ -963,6 +1000,7 @@ const CreateJob = () => {
                 id="create-job-go-live-at"
                 value={goLiveAt}
                 onChange={(e) => setGoLiveAt(e.target.value)}
+                timeZone={jobTimezone}
                 className="w-full"
               />
             </div>
@@ -1011,14 +1049,6 @@ const CreateJob = () => {
                 onChange={(e) => setMinimumVerifiedReferences(e.target.value)}
               />
             </div>
-            <label className="flex items-center justify-between text-sm gap-4">
-              <span>Require insurance verification</span>
-              <input
-                type="checkbox"
-                checked={requireInsuranceVerification}
-                onChange={(e) => setRequireInsuranceVerification(e.target.checked)}
-              />
-            </label>
           </div>
         </div>
         <div>
@@ -1173,6 +1203,7 @@ const CreateJob = () => {
                     id="create-job-rolling-exact-start"
                     value={rollingStartExactStartAt}
                     onChange={(e) => setRollingStartExactStartAt(e.target.value)}
+                    timeZone={jobTimezone}
                     className="w-full"
                   />
                 </div>
@@ -1224,6 +1255,7 @@ const CreateJob = () => {
               id="create-job-start-at"
               value={scheduledStartAt}
               onChange={(e) => setScheduledStartAt(e.target.value)}
+              timeZone={jobTimezone}
               className="w-full"
               disabled={startMode === 'rolling_start'}
             />
@@ -1234,6 +1266,7 @@ const CreateJob = () => {
               id="create-job-end-at"
               value={scheduledEndAt}
               onChange={(e) => setScheduledEndAt(e.target.value)}
+              timeZone={jobTimezone}
               className="w-full"
             />
             <p className="text-xs text-slate-500 mt-0.5">Auto-calculated from days and hours (incl. 1 hr lunch/day). Adjust if needed.</p>
@@ -1283,6 +1316,7 @@ const CreateJob = () => {
                 id="create-job-hard-deadline"
                 value={hardDeadlineAt}
                 onChange={(e) => setHardDeadlineAt(e.target.value)}
+                timeZone={jobTimezone}
                 className="w-full"
               />
             </div>

@@ -2,7 +2,6 @@ class VerificationEligibilityService
   BLOCK_BACKGROUND = "background_check_required".freeze
   BLOCK_IDENTITY = "identity_verification_required".freeze
   BLOCK_REFERENCES = "verified_references_required".freeze
-  BLOCK_INSURANCE = "insurance_verification_required".freeze
   BLOCK_CERTS = "required_certifications_missing".freeze
 
   Result = Struct.new(:eligible, :reasons, keyword_init: true)
@@ -37,9 +36,6 @@ class VerificationEligibilityService
       unless refs_badge || refs_generic
         reasons << reason(BLOCK_REFERENCES, "This job requires #{@job.minimum_verified_references} verified references.")
       end
-    end
-    if @job.require_insurance_verification? && verification_profile.insurance_status.to_s != "verified"
-      reasons << reason(BLOCK_INSURANCE, "This job requires insurance verification.")
     end
     if @job.required_certifications.present?
       required = @job.required_certifications.split(",").map(&:strip).reject(&:blank?)

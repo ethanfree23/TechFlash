@@ -478,15 +478,6 @@ module Api
             why_it_matters: "Trade-specific licenses improve discoverability and eligibility.",
             badge_preview: "Licensed / Certified",
             last_updated_at: profile.updated_at
-          },
-          {
-            key: "insurance",
-            title: "Insurance Documents",
-            status: profile.insurance_status,
-            cta: "Upload insurance",
-            why_it_matters: "Insurance verification is required on many enterprise worksites.",
-            badge_preview: "Insured",
-            last_updated_at: profile.updated_at
           }
         ]
       end
