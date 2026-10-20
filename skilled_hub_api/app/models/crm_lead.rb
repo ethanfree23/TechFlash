@@ -20,6 +20,7 @@ class CrmLead < ApplicationRecord
     "solar",
     "appliance_repair",
     "facility_maintenance",
+    "automotive",
     "other"
   ].freeze
 

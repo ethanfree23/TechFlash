@@ -26,7 +26,8 @@ class GhlCompanyProvisioner
     "Fire Protection / Sprinkler Tech" => "fire_protection",
     "Roofer" => "roofing",
     "Solar Installer" => "solar",
-    "Appliance Repair Tech" => "appliance_repair"
+    "Appliance Repair Tech" => "appliance_repair",
+    "Automobile Technician" => "automotive"
   }.freeze
 
   def self.upsert!(user:, payload:)
