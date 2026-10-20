@@ -50,7 +50,9 @@ const DateTimeInput = ({
   const rootRef = useRef(null);
   const triggerRef = useRef(null);
   const panelRef = useRef(null);
-  const hourRef = useRef(null);
+  const panelFocusRef = useRef(null);
+  const hourInputRef = useRef(null);
+  const minuteRef = useRef(null);
 
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState(() => initialDraftFromValue(value, { timeZone }));
@@ -87,6 +89,18 @@ const DateTimeInput = ({
   const closeWithoutSaving = useCallback(() => {
     setOpen(false);
   }, []);
+
+  const commitHour = useCallback(() => {
+    const hour = clampHour12(hourText === '' ? draft.hour : hourText);
+    setDraft((prev) => ({ ...prev, hour }));
+    setHourText(pad(hour));
+  }, [draft.hour, hourText]);
+
+  const commitMinute = useCallback(() => {
+    const minute = clampMinute(minuteText === '' ? draft.minute : minuteText);
+    setDraft((prev) => ({ ...prev, minute }));
+    setMinuteText(pad(minute));
+  }, [draft.minute, minuteText]);
 
   const applyAndClose = useCallback(() => {
     if (!draft.date) return;
@@ -135,8 +149,17 @@ const DateTimeInput = ({
       }
       if (e.key === 'Enter' && !e.shiftKey) {
         const tag = e.target?.tagName;
-        // Allow Enter in textareas; for inputs/buttons apply.
+        const name = e.target?.getAttribute?.('data-dtp-field');
         if (tag === 'TEXTAREA') return;
+        // Hour → move to minutes; Minute / elsewhere → apply.
+        if (name === 'hour') {
+          e.preventDefault();
+          commitHour();
+          minuteRef.current?.focus();
+          minuteRef.current?.select?.();
+          return;
+        }
+        if (tag === 'BUTTON') return;
         e.preventDefault();
         applyAndClose();
       }
@@ -150,14 +173,14 @@ const DateTimeInput = ({
 
     document.addEventListener('keydown', onKey, true);
     document.addEventListener('mousedown', onPointer);
-    // Focus hour field for quick keyboard entry after open.
-    const t = window.setTimeout(() => hourRef.current?.focus(), 20);
+    // Move focus into the dialog for a11y without stealing clicks from time fields.
+    const t = window.setTimeout(() => panelFocusRef.current?.focus(), 0);
     return () => {
       document.removeEventListener('keydown', onKey, true);
       document.removeEventListener('mousedown', onPointer);
       window.clearTimeout(t);
     };
-  }, [open, closeWithoutSaving, applyAndClose]);
+  }, [open, closeWithoutSaving, applyAndClose, commitHour]);
 
   const setDraftDate = (dateKey) => {
     if (!allowPast && isDateBeforeToday(dateKey, new Date(), timeZone)) return;
@@ -189,18 +212,6 @@ const DateTimeInput = ({
     };
     setDraft(next);
     syncTimeText(next);
-  };
-
-  const commitHour = () => {
-    const hour = clampHour12(hourText === '' ? draft.hour : hourText);
-    setDraft((prev) => ({ ...prev, hour }));
-    setHourText(pad(hour));
-  };
-
-  const commitMinute = () => {
-    const minute = clampMinute(minuteText === '' ? draft.minute : minuteText);
-    setDraft((prev) => ({ ...prev, minute }));
-    setMinuteText(pad(minute));
   };
 
   const todayKey = todayDateKey(new Date(), timeZone);
@@ -279,6 +290,12 @@ const DateTimeInput = ({
               'sm:left-0',
             ].join(' ')}
           >
+            <div
+              ref={panelFocusRef}
+              tabIndex={-1}
+              className="outline-none"
+              aria-hidden="true"
+            />
             <div className="mb-3 flex items-start justify-between gap-2">
               <div>
                 <p className="text-[13px] font-semibold tracking-tight text-slate-900">
@@ -382,29 +399,37 @@ const DateTimeInput = ({
               </p>
               <div className="flex flex-wrap items-center gap-2">
                 <div className="inline-flex items-center rounded-lg border border-slate-200 bg-slate-50/60 p-1">
-                  <input
-                    ref={hourRef}
-                    type="text"
-                    inputMode="numeric"
-                    aria-label="Hour"
+                  <TimeSegment
+                    inputRef={hourInputRef}
+                    field="hour"
+                    label="Hour"
                     value={hourText}
-                    onChange={(e) => setHourText(e.target.value.replace(/[^\d]/g, '').slice(0, 2))}
-                    onBlur={commitHour}
-                    onFocus={(e) => e.target.select()}
-                    className="w-10 rounded-md bg-white px-1.5 py-1.5 text-center text-sm font-semibold tabular-nums text-slate-900 outline-none ring-0 focus:ring-2 focus:ring-blue-500/25"
+                    onChangeText={(text) => setHourText(text)}
+                    onCommit={commitHour}
+                    onStep={(delta) => {
+                      const current = clampHour12(hourText === '' ? draft.hour : hourText);
+                      // Wrap 1↔12
+                      const next = ((current - 1 + delta + 12) % 12) + 1;
+                      setDraft((prev) => ({ ...prev, hour: next }));
+                      setHourText(pad(next));
+                    }}
                   />
                   <span className="px-0.5 text-sm font-semibold text-slate-400" aria-hidden="true">
                     :
                   </span>
-                  <input
-                    type="text"
-                    inputMode="numeric"
-                    aria-label="Minute"
+                  <TimeSegment
+                    inputRef={minuteRef}
+                    field="minute"
+                    label="Minute"
                     value={minuteText}
-                    onChange={(e) => setMinuteText(e.target.value.replace(/[^\d]/g, '').slice(0, 2))}
-                    onBlur={commitMinute}
-                    onFocus={(e) => e.target.select()}
-                    className="w-10 rounded-md bg-white px-1.5 py-1.5 text-center text-sm font-semibold tabular-nums text-slate-900 outline-none ring-0 focus:ring-2 focus:ring-blue-500/25"
+                    onChangeText={(text) => setMinuteText(text)}
+                    onCommit={commitMinute}
+                    onStep={(delta) => {
+                      const current = clampMinute(minuteText === '' ? draft.minute : minuteText);
+                      const next = (current + delta + 60) % 60;
+                      setDraft((prev) => ({ ...prev, minute: next }));
+                      setMinuteText(pad(next));
+                    }}
                   />
                 </div>
 
@@ -496,6 +521,50 @@ function Chevron({ dir }) {
         strokeLinejoin="round"
       />
     </svg>
+  );
+}
+
+function TimeSegment({ inputRef, field, label, value, onChangeText, onCommit, onStep }) {
+  return (
+    <div className="inline-flex flex-col items-stretch">
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label={`Increase ${label.toLowerCase()}`}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => onStep(1)}
+        className="flex h-4 items-center justify-center rounded-t-md text-slate-400 hover:bg-white hover:text-slate-700"
+      >
+        <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <path d="M3 7.5L6 4.5L9 7.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+      <input
+        ref={inputRef}
+        type="text"
+        inputMode="numeric"
+        autoComplete="off"
+        data-dtp-field={field}
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChangeText(e.target.value.replace(/[^\d]/g, '').slice(0, 2))}
+        onBlur={onCommit}
+        onFocus={(e) => e.target.select()}
+        className="w-10 rounded-md bg-white px-1.5 py-1 text-center text-sm font-semibold tabular-nums text-slate-900 outline-none ring-0 focus:ring-2 focus:ring-blue-500/25"
+      />
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label={`Decrease ${label.toLowerCase()}`}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => onStep(-1)}
+        className="flex h-4 items-center justify-center rounded-b-md text-slate-400 hover:bg-white hover:text-slate-700"
+      >
+        <svg className="h-3 w-3" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+    </div>
   );
 }
 
