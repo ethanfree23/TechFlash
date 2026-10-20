@@ -488,7 +488,7 @@ const DateTimeInput = ({
                 <input
                   id={`${panelId}-time-text`}
                   type="text"
-                  inputMode="numeric"
+                  inputMode="text"
                   autoComplete="off"
                   spellCheck={false}
                   placeholder="e.g. 10:30"
@@ -499,13 +499,23 @@ const DateTimeInput = ({
                     setTimeTextError('');
                   }}
                   onBlur={syncDraftFromTimeText}
+                  onKeyDown={(e) => {
+                    // Keep typing local; parent dialog also listens for Enter.
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (syncDraftFromTimeText()) {
+                        // allow outer apply via explicit Apply click; Enter here just commits text
+                      }
+                    }
+                  }}
                   className={[
                     'w-[5.5rem] rounded-md border bg-white px-2 py-1.5 text-sm tabular-nums text-slate-900 outline-none transition-colors duration-150',
                     'focus:ring-2 focus:ring-blue-500/25',
                     timeTextError ? 'border-red-300 focus:border-red-400' : 'border-slate-200 focus:border-blue-500',
                   ].join(' ')}
                 />
-                <span className="text-[11px] text-slate-500">or type time</span>
+                <span className="text-[11px] text-slate-500">type 10:30</span>
                 {timeTextError ? (
                   <span className="text-[11px] font-medium text-red-600">{timeTextError}</span>
                 ) : null}

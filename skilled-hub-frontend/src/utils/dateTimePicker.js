@@ -358,15 +358,30 @@ export function formatDisplayValue(value) {
 }
 
 /**
- * Parse a typed 12-hour clock fragment like `10:30` or `9:05`.
+ * Parse a typed 12-hour clock fragment like `10:30`, `9:05`, or compact `1030`.
  * @returns {{ hour: number, minute: number } | null}
  */
 export function parseHourMinuteText(raw) {
   const cleaned = String(raw || '').trim();
-  const match = /^(\d{1,2})\s*:\s*(\d{1,2})$/.exec(cleaned);
-  if (!match) return null;
-  const hour = Number(match[1]);
-  const minute = Number(match[2]);
+  let hour;
+  let minute;
+  const colon = /^(\d{1,2})\s*:\s*(\d{1,2})$/.exec(cleaned);
+  if (colon) {
+    hour = Number(colon[1]);
+    minute = Number(colon[2]);
+  } else {
+    const digits = cleaned.replace(/[^\d]/g, '');
+    if (digits.length === 3 || digits.length === 4) {
+      // 930 → 9:30, 1030 → 10:30
+      hour = Number(digits.slice(0, digits.length - 2));
+      minute = Number(digits.slice(-2));
+    } else if (digits.length === 1 || digits.length === 2) {
+      hour = Number(digits);
+      minute = 0;
+    } else {
+      return null;
+    }
+  }
   if (!Number.isFinite(hour) || hour < 1 || hour > 12) return null;
   if (!Number.isFinite(minute) || minute < 0 || minute > 59) return null;
   return { hour, minute };
