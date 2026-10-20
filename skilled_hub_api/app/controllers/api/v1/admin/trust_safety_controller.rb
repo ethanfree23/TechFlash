@@ -8,7 +8,7 @@ module Api
         def dashboard
           pending_background = BackgroundCheck.where(status: %i[pending processing consider invited]).count
           pending_references = VerificationReference.pending_review.count
-          pending_documents = Document.pending_review_queue.where(doc_type: %w[license certificate cert insurance identity drivers_license passport]).count
+          pending_documents = Document.pending_review_queue.where(doc_type: %w[license certificate cert identity drivers_license passport]).count
           expiring_soon = BackgroundCheck.where("expires_at IS NOT NULL AND expires_at <= ?", 30.days.from_now).count
           expiring_docs = Document.where("valid_until IS NOT NULL AND valid_until <= ?", 30.days.from_now.to_date).count
           failed_or_flagged = BackgroundCheck.where(status: %i[failed consider suspended manually_rejected]).count
@@ -30,7 +30,7 @@ module Api
             checkr_webhook_anomalies: serialize_webhook_anomalies(CheckrWebhookEvent.where.not(processing_error: [nil, ""]).order(updated_at: :desc).limit(100)),
             pending_references: serialize_references(VerificationReference.pending_review.limit(100)),
             pending_documents: serialize_documents(
-              Document.pending_review_queue.where(doc_type: %w[license certificate cert insurance identity drivers_license passport]).limit(100)
+              Document.pending_review_queue.where(doc_type: %w[license certificate cert identity drivers_license passport]).limit(100)
             ),
             audit_timeline: serialize_audit_events(VerificationAuditLog.order(created_at: :desc).limit(200))
           }, status: :ok
@@ -164,15 +164,6 @@ module Api
               VerificationBadge.set_active!(user: owner_user, badge_type: badge_name.presence || "license_verified", source: doc, expires_at: doc.valid_until)
             elsif doc.rejected?
               profile.update!(licenses_status: :pending) if profile.licenses_status.to_s != "verified"
-            end
-          end
-
-          if doc.doc_type.to_s == "insurance"
-            if doc.approved?
-              profile.update!(insurance_status: :verified, last_verified_at: Time.current)
-              VerificationBadge.set_active!(user: owner_user, badge_type: "insured", source: doc, expires_at: doc.valid_until)
-            elsif doc.rejected?
-              profile.update!(insurance_status: :pending)
             end
           end
 

@@ -255,7 +255,6 @@ module Api
                  required_certifications: "EPA 608, OSHA 10",
                  require_background_check: true,
                  require_identity_verification: false,
-                 require_insurance_verification: false,
                  minimum_verified_references: 0,
                  hourly_rate_cents: 4_500,
                  hours_per_day: 8,

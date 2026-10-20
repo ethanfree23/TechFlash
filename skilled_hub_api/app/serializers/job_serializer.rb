@@ -7,7 +7,7 @@ class JobSerializer < ActiveModel::Serializer
              :funding_status, :settlement_status, :financial_revision,
              :address, :city, :state, :zip_code, :country, :latitude, :longitude,
              :skill_class, :trade_type, :minimum_years_experience, :notes, :go_live_at, :start_mode,
-             :require_background_check, :require_identity_verification, :minimum_verified_references, :require_insurance_verification,
+             :require_background_check, :require_identity_verification, :minimum_verified_references,
              :rolling_start_rule_type, :rolling_start_exact_start_at, :rolling_start_days_after_acceptance,
              :rolling_start_weekday, :rolling_start_weekday_time,
              :weekend_work_policy, :standard_work_days, :saturday_work_policy, :sunday_work_policy,

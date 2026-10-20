@@ -72,7 +72,7 @@ const EditJob = () => {
   const [form, setForm] = useState({
     title: '', description: '', skill_class: '', trade_type: '', minimum_years_experience: '', notes: '', required_certifications: [''], address: '', city: '', state: '', zip_code: '', country: '', status: 'open',
     hourly_rate_cents: '', hours_per_day: '8', days: '', pay_basis: 'actual_hours_worked', start_mode: 'hard_start',
-    require_background_check: false, require_identity_verification: false, minimum_verified_references: '0', require_insurance_verification: false,
+    require_background_check: false, require_identity_verification: false, minimum_verified_references: '0',
     weekend_work_policy: 'prohibited', standard_work_days: DEFAULT_STANDARD_WORK_DAYS, standard_day_shifts: {},
     saturday_work_policy: 'unavailable', sunday_work_policy: 'unavailable', saturday_multiplier: '1.5', sunday_multiplier: '1.5',
     weekend_requires_company_approval: true, weekend_requires_technician_acceptance: true,
@@ -126,7 +126,6 @@ const EditJob = () => {
           require_background_check: Boolean(data.require_background_check),
           require_identity_verification: Boolean(data.require_identity_verification),
           minimum_verified_references: String(data.minimum_verified_references ?? 0),
-          require_insurance_verification: Boolean(data.require_insurance_verification),
           hourly_rate_cents: hasHourlyRate ? (data.hourly_rate_cents / 100).toFixed(2) : '',
           hours_per_day: data.hours_per_day ?? 8,
           days: data.days ?? '',
@@ -302,7 +301,6 @@ const EditJob = () => {
         require_background_check: !!form.require_background_check,
         require_identity_verification: !!form.require_identity_verification,
         minimum_verified_references: Math.max(0, parseInt(form.minimum_verified_references, 10) || 0),
-        require_insurance_verification: !!form.require_insurance_verification,
         address: form.address,
         city: form.city,
         state: form.state,
@@ -553,15 +551,6 @@ const EditJob = () => {
                 onChange={handleChange}
               />
             </div>
-            <label className="flex items-center justify-between text-sm gap-4">
-              <span>Require insurance verification</span>
-              <input
-                type="checkbox"
-                name="require_insurance_verification"
-                checked={!!form.require_insurance_verification}
-                onChange={(e) => setForm((prev) => ({ ...prev, require_insurance_verification: e.target.checked }))}
-              />
-            </label>
           </div>
         </div>
         <div>
