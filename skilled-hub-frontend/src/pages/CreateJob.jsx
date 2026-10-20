@@ -112,7 +112,6 @@ const CreateJob = () => {
   const [requireBackgroundCheck, setRequireBackgroundCheck] = useState(false);
   const [requireIdentityVerification, setRequireIdentityVerification] = useState(false);
   const [minimumVerifiedReferences, setMinimumVerifiedReferences] = useState("0");
-  const [requireInsuranceVerification, setRequireInsuranceVerification] = useState(false);
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [state, setState] = useState("Texas");
@@ -206,7 +205,6 @@ const CreateJob = () => {
     setRequireBackgroundCheck(Boolean(job.require_background_check));
     setRequireIdentityVerification(Boolean(job.require_identity_verification));
     setMinimumVerifiedReferences(String(job.minimum_verified_references ?? 0));
-    setRequireInsuranceVerification(Boolean(job.require_insurance_verification));
     setStartMode(String(job.start_mode || 'hard_start'));
     // Posting-instance datetimes are never reusable. Clear leftovers so a draft
     // cannot keep an old go-live or exact rolling timestamp after apply/duplicate.
@@ -297,7 +295,6 @@ const CreateJob = () => {
       setRequireBackgroundCheck(Boolean(draft.requireBackgroundCheck));
       setRequireIdentityVerification(Boolean(draft.requireIdentityVerification));
       setMinimumVerifiedReferences(String(draft.minimumVerifiedReferences ?? '0'));
-      setRequireInsuranceVerification(Boolean(draft.requireInsuranceVerification));
       setStartMode(String(draft.startMode || 'hard_start'));
       setWeekendWorkPolicy(String(draft.weekendWorkPolicy || 'prohibited'));
       setStandardWorkDays(Array.isArray(draft.standardWorkDays) && draft.standardWorkDays.length ? draft.standardWorkDays : DEFAULT_STANDARD_WORK_DAYS);
@@ -351,7 +348,6 @@ const CreateJob = () => {
           requireBackgroundCheck,
           requireIdentityVerification,
           minimumVerifiedReferences,
-          requireInsuranceVerification,
           startMode,
           weekendWorkPolicy,
           standardWorkDays,
@@ -401,7 +397,6 @@ const CreateJob = () => {
     requireBackgroundCheck,
     requireIdentityVerification,
     minimumVerifiedReferences,
-    requireInsuranceVerification,
     startMode,
     weekendWorkPolicy,
     standardWorkDays,
@@ -554,7 +549,6 @@ const CreateJob = () => {
       required_certifications: certs.length ? certs.join(', ') : null,
       require_background_check: requireBackgroundCheck,
       require_identity_verification: requireIdentityVerification,
-      require_insurance_verification: requireInsuranceVerification,
       minimum_verified_references: Math.max(0, parseInt(minimumVerifiedReferences, 10) || 0),
       hourly_rate_cents: hr > 0 ? Math.round(hr * 100) : null,
       hours_per_day: hpd,
@@ -599,7 +593,7 @@ const CreateJob = () => {
   }, [
     title, description, notes, tradeType, skillClass, minimumYearsExperience,
     requiredCertifications, requireBackgroundCheck, requireIdentityVerification,
-    requireInsuranceVerification, minimumVerifiedReferences, hr, hpd, d, payBasis,
+    minimumVerifiedReferences, hr, hpd, d, payBasis,
     potentialFullTime, scheduleFlexibility, startMode, rollingStartRuleType,
     rollingStartDaysAfterAcceptance, rollingStartWeekday, rollingStartWeekdayTime,
     standardWorkDays, standardDayShifts,
@@ -679,7 +673,6 @@ const CreateJob = () => {
         require_background_check: requireBackgroundCheck,
         require_identity_verification: requireIdentityVerification,
         minimum_verified_references: Math.max(0, parseInt(minimumVerifiedReferences, 10) || 0),
-        require_insurance_verification: requireInsuranceVerification,
         address,
         city,
         state,
@@ -1011,14 +1004,6 @@ const CreateJob = () => {
                 onChange={(e) => setMinimumVerifiedReferences(e.target.value)}
               />
             </div>
-            <label className="flex items-center justify-between text-sm gap-4">
-              <span>Require insurance verification</span>
-              <input
-                type="checkbox"
-                checked={requireInsuranceVerification}
-                onChange={(e) => setRequireInsuranceVerification(e.target.checked)}
-              />
-            </label>
           </div>
         </div>
         <div>
