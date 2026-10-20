@@ -371,16 +371,10 @@ export function parseHourMinuteText(raw) {
     minute = Number(colon[2]);
   } else {
     const digits = cleaned.replace(/[^\d]/g, '');
-    if (digits.length === 3 || digits.length === 4) {
-      // 930 → 9:30, 1030 → 10:30
-      hour = Number(digits.slice(0, digits.length - 2));
-      minute = Number(digits.slice(-2));
-    } else if (digits.length === 1 || digits.length === 2) {
-      hour = Number(digits);
-      minute = 0;
-    } else {
-      return null;
-    }
+    // Compact forms only: 930 → 9:30, 1030 → 10:30 (reject partial digit strings).
+    if (digits.length !== 3 && digits.length !== 4) return null;
+    hour = Number(digits.slice(0, digits.length - 2));
+    minute = Number(digits.slice(-2));
   }
   if (!Number.isFinite(hour) || hour < 1 || hour > 12) return null;
   if (!Number.isFinite(minute) || minute < 0 || minute > 59) return null;

@@ -215,7 +215,7 @@ function testParseHourMinuteText() {
   assert.deepEqual(parseHourMinuteText('12:00'), { hour: 12, minute: 0 });
   assert.deepEqual(parseHourMinuteText('1030'), { hour: 10, minute: 30 });
   assert.deepEqual(parseHourMinuteText('930'), { hour: 9, minute: 30 });
-  assert.deepEqual(parseHourMinuteText('9'), { hour: 9, minute: 0 });
+  assert.equal(parseHourMinuteText('9'), null);
   assert.equal(parseHourMinuteText('0:30'), null);
   assert.equal(parseHourMinuteText('13:00'), null);
   assert.equal(parseHourMinuteText('10:60'), null);

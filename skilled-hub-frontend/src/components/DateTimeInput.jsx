@@ -12,7 +12,6 @@ import {
   initialDraftFromValue,
   isDateBeforeToday,
   parseDateKey,
-  parseHourMinuteText,
   shiftMonth,
   todayDateKey,
 } from '../utils/dateTimePicker';
@@ -66,16 +65,11 @@ const DateTimeInput = ({
     return p?.month ?? new Date().getMonth() + 1;
   });
   const [placement, setPlacement] = useState('bottom');
-  /** Free-typed HH:MM override; null means use draft hour/minute selects. */
-  const [timeText, setTimeText] = useState('');
-  const [timeTextError, setTimeTextError] = useState('');
 
   const openEditor = () => {
     if (disabled) return;
     const next = initialDraftFromValue(value, { timeZone });
     setDraft(next);
-    setTimeText(`${pad(next.hour)}:${pad(next.minute)}`);
-    setTimeTextError('');
     const parsed = parseDateKey(next.date);
     if (parsed) {
       setViewYear(parsed.year);
@@ -88,43 +82,19 @@ const DateTimeInput = ({
     setOpen(false);
   }, []);
 
-  const syncDraftFromTimeText = useCallback(() => {
-    const parsed = parseHourMinuteText(timeText);
-    if (!parsed) {
-      setTimeTextError('Use h:mm (1–12)');
-      setTimeText(`${pad(draft.hour)}:${pad(draft.minute)}`);
-      return false;
-    }
-    setTimeTextError('');
-    setDraft((prev) => ({ ...prev, hour: parsed.hour, minute: parsed.minute }));
-    setTimeText(`${pad(parsed.hour)}:${pad(parsed.minute)}`);
-    return true;
-  }, [draft.hour, draft.minute, timeText]);
-
   const applyAndClose = useCallback(() => {
     if (!draft.date) return;
-    let hour = draft.hour;
-    let minute = draft.minute;
-    const parsed = parseHourMinuteText(timeText);
-    if (timeText && !parsed) {
-      setTimeTextError('Use h:mm (1–12)');
-      return;
-    }
-    if (parsed) {
-      hour = parsed.hour;
-      minute = parsed.minute;
-    }
     const next = {
       ...draft,
-      hour: clampHour12(hour),
-      minute: clampMinute(minute),
+      hour: clampHour12(draft.hour),
+      minute: clampMinute(draft.minute),
       ampm: draft.ampm === 'PM' ? 'PM' : 'AM',
     };
     if (!allowPast && isDateBeforeToday(next.date, new Date(), timeZone)) return;
     const val = buildWallDateTime(next.date, next.hour, next.minute, next.ampm);
     onChange({ target: { value: val } });
     setOpen(false);
-  }, [allowPast, draft, onChange, timeText, timeZone]);
+  }, [allowPast, draft, onChange, timeZone]);
 
   // Position: flip above the trigger when near the bottom of the viewport.
   useLayoutEffect(() => {
@@ -194,8 +164,6 @@ const DateTimeInput = ({
   const onQuick = (kind) => {
     const next = applyQuickSelect(kind, draft, { timeZone });
     setDraft(next);
-    setTimeText(`${pad(next.hour)}:${pad(next.minute)}`);
-    setTimeTextError('');
     const parsed = parseDateKey(next.date);
     if (parsed) {
       setViewYear(parsed.year);
@@ -204,29 +172,20 @@ const DateTimeInput = ({
   };
 
   const applyPreset = (preset) => {
-    const next = {
-      ...draft,
+    setDraft((prev) => ({
+      ...prev,
       hour: preset.hour,
       minute: preset.minute,
       ampm: preset.ampm,
-    };
-    setDraft(next);
-    setTimeText(`${pad(preset.hour)}:${pad(preset.minute)}`);
-    setTimeTextError('');
+    }));
   };
 
   const setHour = (hour) => {
-    const nextHour = clampHour12(hour);
-    setDraft((prev) => ({ ...prev, hour: nextHour }));
-    setTimeText(`${pad(nextHour)}:${pad(draft.minute)}`);
-    setTimeTextError('');
+    setDraft((prev) => ({ ...prev, hour: clampHour12(hour) }));
   };
 
   const setMinute = (minute) => {
-    const nextMinute = clampMinute(minute);
-    setDraft((prev) => ({ ...prev, minute: nextMinute }));
-    setTimeText(`${pad(draft.hour)}:${pad(nextMinute)}`);
-    setTimeTextError('');
+    setDraft((prev) => ({ ...prev, minute: clampMinute(minute) }));
   };
 
   const todayKey = todayDateKey(new Date(), timeZone);
@@ -481,44 +440,6 @@ const DateTimeInput = ({
                     );
                   })}
                 </div>
-              </div>
-
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <label className="sr-only" htmlFor={`${panelId}-time-text`}>Type time</label>
-                <input
-                  id={`${panelId}-time-text`}
-                  type="text"
-                  inputMode="text"
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="e.g. 10:30"
-                  aria-label="Type time as hour:minute"
-                  value={timeText}
-                  onChange={(e) => {
-                    setTimeText(e.target.value);
-                    setTimeTextError('');
-                  }}
-                  onBlur={syncDraftFromTimeText}
-                  onKeyDown={(e) => {
-                    // Keep typing local; parent dialog also listens for Enter.
-                    if (e.key === 'Enter') {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      if (syncDraftFromTimeText()) {
-                        // allow outer apply via explicit Apply click; Enter here just commits text
-                      }
-                    }
-                  }}
-                  className={[
-                    'w-[5.5rem] rounded-md border bg-white px-2 py-1.5 text-sm tabular-nums text-slate-900 outline-none transition-colors duration-150',
-                    'focus:ring-2 focus:ring-blue-500/25',
-                    timeTextError ? 'border-red-300 focus:border-red-400' : 'border-slate-200 focus:border-blue-500',
-                  ].join(' ')}
-                />
-                <span className="text-[11px] text-slate-500">type 10:30</span>
-                {timeTextError ? (
-                  <span className="text-[11px] font-medium text-red-600">{timeTextError}</span>
-                ) : null}
               </div>
 
               <div className="mt-2 flex flex-wrap gap-1.5">
