@@ -781,67 +781,111 @@ const CreateJob = () => {
             <div className={`${sectionCardClass} mb-4`}>
               <h3 className="font-semibold text-slate-900">Company Account</h3>
               <p className="text-xs text-slate-500">
-                Search and select the company account this job should be attached to.
+                Search by company or employee name, then pick which login this job should be attached to.
+                Jobs post to the shared company account.
               </p>
               <input
                 className={fieldClass}
                 value={companyQuery}
-                onChange={(e) => setCompanyQuery(e.target.value)}
-                placeholder="Search by company name..."
+                onChange={(e) => {
+                  setCompanyQuery(e.target.value);
+                  if (companySelectionLocked || selectedCompanyName) {
+                    setCompanySelectionLocked(false);
+                    setSelectedCompanyName('');
+                    setCompanyProfileId(null);
+                  }
+                }}
+                placeholder="Search by company or employee name..."
                 disabled={companySelectionLocked}
               />
               {companySelectionLocked && (
                 <p className="text-xs text-blue-700">
-                  Company is locked. Click Edit to change selection.
+                  Selection locked. Click Change to pick a different company or employee.
                 </p>
               )}
               {companySearchLoading && (
                 <p className="text-xs text-slate-500">Searching companies...</p>
               )}
               {!companySelectionLocked && !companySearchLoading && companyOptions.length > 0 && (
-                <div className="max-h-44 overflow-y-auto border border-slate-200 rounded-lg bg-white">
-                  {companyOptions.map((company) => (
-                    (() => {
-                      const contactName = [company.contact_first_name, company.contact_last_name]
-                        .map((x) => (x || '').trim())
-                        .filter(Boolean)
-                        .join(' ');
-                      const companyLabel = company.company_name || `Company #${company.id}`;
-                      const label = contactName ? `${companyLabel} — ${contactName}` : companyLabel;
-                      return (
-                    <button
-                      key={company.id}
-                      type="button"
-                      onClick={() => {
-                        setCompanyProfileId(company.id);
-                        setSelectedCompanyName(label);
-                        setCompanyQuery(companyLabel);
-                        setCompanyOptions([]);
-                        setCompanySelectionLocked(true);
-                      }}
-                      className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-slate-100 last:border-b-0"
-                    >
-                      {label}
-                    </button>
-                      );
-                    })()
-                  ))}
+                <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-lg bg-white">
+                  {companyOptions.flatMap((company) => {
+                    const companyLabel = company.company_name || `Company #${company.id}`;
+                    const users = Array.isArray(company.company_users) ? company.company_users : [];
+                    const rows =
+                      users.length > 0
+                        ? users.map((user) => {
+                            const employeeName = [user.first_name, user.last_name]
+                              .map((x) => (x || '').trim())
+                              .filter(Boolean)
+                              .join(' ');
+                            const label = employeeName
+                              ? `${companyLabel} — ${employeeName}`
+                              : `${companyLabel} — ${user.email || `User #${user.id}`}`;
+                            return {
+                              key: `${company.id}-user-${user.id}`,
+                              label,
+                              companyLabel,
+                              subtitle: user.email || null,
+                              companyId: company.id,
+                            };
+                          })
+                        : [
+                            {
+                              key: `${company.id}-company`,
+                              label: (() => {
+                                const contactName = [company.contact_first_name, company.contact_last_name]
+                                  .map((x) => (x || '').trim())
+                                  .filter(Boolean)
+                                  .join(' ');
+                                return contactName ? `${companyLabel} — ${contactName}` : companyLabel;
+                              })(),
+                              companyLabel,
+                              subtitle:
+                                company.company_users_count > 0
+                                  ? `${company.company_users_count} login(s)`
+                                  : null,
+                              companyId: company.id,
+                            },
+                          ];
+                    return rows.map((row) => (
+                      <button
+                        key={row.key}
+                        type="button"
+                        onClick={() => {
+                          setCompanyProfileId(row.companyId);
+                          setSelectedCompanyName(row.label);
+                          setCompanyQuery(row.companyLabel);
+                          setCompanyOptions([]);
+                          setCompanySelectionLocked(true);
+                        }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-slate-100 last:border-b-0"
+                      >
+                        <div className="font-medium text-slate-900">{row.label}</div>
+                        {row.subtitle && (
+                          <div className="text-xs text-slate-500">{row.subtitle}</div>
+                        )}
+                      </button>
+                    ));
+                  })}
                 </div>
               )}
               {selectedCompanyName && (
                 <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 flex items-center justify-between gap-3">
                   <p className="text-sm text-blue-900">
-                    Selected company: <span className="font-semibold">{selectedCompanyName}</span>
+                    Selected: <span className="font-semibold">{selectedCompanyName}</span>
                   </p>
                   <button
                     type="button"
                     onClick={() => {
                       setCompanySelectionLocked(false);
                       setCompanyOptions([]);
+                      setCompanyProfileId(null);
+                      setSelectedCompanyName('');
+                      // Keep the company name in the search box so results reappear for a re-pick.
                     }}
-                    className="text-xs px-2.5 py-1 rounded border border-blue-300 text-blue-800 bg-white hover:bg-blue-100"
+                    className="shrink-0 text-xs px-2.5 py-1 rounded border border-blue-300 text-blue-800 bg-white hover:bg-blue-100"
                   >
-                    Edit
+                    Change
                   </button>
                 </div>
               )}

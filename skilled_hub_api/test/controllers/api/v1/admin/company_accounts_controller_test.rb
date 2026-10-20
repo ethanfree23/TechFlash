@@ -18,7 +18,9 @@ module Api
             email: "owner+search_companies_test@example.com",
             password: "password123",
             password_confirmation: "password123",
-            role: :company
+            role: :company,
+            first_name: "Pat",
+            last_name: "Owner"
           )
           profile = CompanyProfile.create!(
             user: owner,
@@ -32,7 +34,9 @@ module Api
             password: "password123",
             password_confirmation: "password123",
             role: :company,
-            company_profile_id: profile.id
+            company_profile_id: profile.id,
+            first_name: "Sam",
+            last_name: "Manager"
           )
 
           get "/api/v1/admin/company_accounts/search_companies",
@@ -46,6 +50,56 @@ module Api
           assert_equal profile.id, companies.first.fetch("id")
           assert_equal "Alpha Mechanical", companies.first.fetch("company_name")
           assert_equal 2, companies.first.fetch("company_users_count")
+          users = companies.first.fetch("company_users")
+          assert_equal 2, users.length
+          assert_includes users.map { |u| u.fetch("first_name") }, "Pat"
+          assert_includes users.map { |u| u.fetch("first_name") }, "Sam"
+        end
+
+        test "search_companies matches employee name and returns that company" do
+          admin = User.create!(
+            email: "admin+search_companies_employee@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :admin
+          )
+
+          owner = User.create!(
+            email: "owner+search_companies_employee@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :company,
+            first_name: "Hughes",
+            last_name: "Primary"
+          )
+          profile = CompanyProfile.create!(
+            user: owner,
+            company_name: "Beta Industrial Systems",
+            phone: "555-900-2000",
+            bio: "Employee name search target"
+          )
+          owner.update_column(:company_profile_id, profile.id)
+          User.create!(
+            email: "paul+search_companies_employee@example.com",
+            password: "password123",
+            password_confirmation: "password123",
+            role: :company,
+            company_profile_id: profile.id,
+            first_name: "Paul",
+            last_name: "Ellenberger"
+          )
+
+          get "/api/v1/admin/company_accounts/search_companies",
+              params: { q: "Ellenberger" },
+              headers: auth_header_for(admin)
+
+          assert_response :ok
+          body = JSON.parse(response.body)
+          companies = body.fetch("companies")
+          assert_equal 1, companies.length
+          assert_equal profile.id, companies.first.fetch("id")
+          emails = companies.first.fetch("company_users").map { |u| u.fetch("email") }
+          assert_includes emails, "paul+search_companies_employee@example.com"
         end
 
         test "creates additional company login under existing company profile" do
