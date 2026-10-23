@@ -17,15 +17,15 @@ class CompanyProfileDetailSerializer < ActiveModel::Serializer
   end
 
   def company_users
-    User.where(role: :company, company_profile_id: object.id)
-      .order(:email)
-      .map do |u|
-        {
-          id: u.id,
-          email: u.email,
-          created_at: u.created_at
-        }
-      end
+    object.login_users.map do |u|
+      {
+        id: u.id,
+        email: u.email,
+        first_name: u.first_name,
+        last_name: u.last_name,
+        created_at: u.created_at
+      }
+    end
   end
 
   def effective_membership_fee_cents

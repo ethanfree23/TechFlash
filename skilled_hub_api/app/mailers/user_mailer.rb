@@ -35,11 +35,14 @@ class UserMailer < ApplicationMailer
 
   def job_posted_email(job)
     @job = job
-    @user = job.company_profile.user
+    contacts = job.company_contact_users
+    @user = contacts.first || job.company_profile.user
     @company_name = job.company_profile.company_name || 'Your company'
     @dashboard_url = frontend_url('/dashboard')
-    return unless notifications_enabled_for?(@user, :job_lifecycle)
-    mail(to: @user.email, subject: "Job posted: #{job.title}")
+    emails = notification_recipients(:job_lifecycle, *contacts)
+    return if emails.empty?
+
+    mail(to: emails, subject: "Job posted: #{job.title}")
   end
 
   def job_alert_email(user, job, technician_profile: nil)
@@ -60,9 +63,12 @@ class UserMailer < ApplicationMailer
     @job = job
     accepted_app = job.job_applications.find_by(status: :accepted)
     @technician = accepted_app&.technician_profile
-    @company_user = job.company_profile.user
-    return unless notifications_enabled_for?(@company_user, :job_lifecycle)
-    mail(to: @company_user.email, subject: "Your job \"#{job.title}\" was claimed")
+    contacts = job.company_contact_users
+    @company_user = contacts.first || job.company_profile.user
+    emails = notification_recipients(:job_lifecycle, *contacts)
+    return if emails.empty?
+
+    mail(to: emails, subject: "Your job \"#{job.title}\" was claimed")
   end
 
   def job_accepted_email(job)

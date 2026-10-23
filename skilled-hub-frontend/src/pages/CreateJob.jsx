@@ -6,6 +6,7 @@ import JobAddressFields from '../components/JobAddressFields';
 import AlertModal from '../components/AlertModal';
 import WorkScheduleCalendarPopup from '../components/WorkScheduleCalendarPopup';
 import JobTemplatePanel from '../components/jobs/JobTemplatePanel';
+import JobCompanyContactsPicker, { employeeDisplayName } from '../components/jobs/JobCompanyContactsPicker';
 import PotentialFullTimeToggle from '../components/jobs/PotentialFullTimeToggle';
 import ScheduleFlexibilityField from '../components/jobs/ScheduleFlexibilityField';
 import { EXPERIENCE_YEAR_OPTIONS } from '../constants/experienceSelect';
@@ -163,6 +164,10 @@ const CreateJob = () => {
   const [companySearchLoading, setCompanySearchLoading] = useState(false);
   const [selectedCompanyName, setSelectedCompanyName] = useState('');
   const [companySelectionLocked, setCompanySelectionLocked] = useState(false);
+  const [companyEmployees, setCompanyEmployees] = useState([]);
+  const [companyEmployeesLoading, setCompanyEmployeesLoading] = useState(false);
+  const [primaryContactUserId, setPrimaryContactUserId] = useState(null);
+  const [additionalContactUserIds, setAdditionalContactUserIds] = useState([]);
   const [enforceCardValidation, setEnforceCardValidation] = useState(true);
   const [platformFeePercent, setPlatformFeePercent] = useState(null);
   const [companyServiceTrades, setCompanyServiceTrades] = useState([]);
@@ -258,6 +263,16 @@ const CreateJob = () => {
       setCompanyProfileId(job.company_profile_id);
       setSelectedCompanyName(job.company_profile?.company_name || '');
       setCompanySelectionLocked(true);
+    }
+    if (job.primary_contact_user_id != null) {
+      setPrimaryContactUserId(Number(job.primary_contact_user_id));
+    }
+    if (Array.isArray(job.additional_contact_user_ids)) {
+      setAdditionalContactUserIds(
+        job.additional_contact_user_ids.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)
+      );
+    } else {
+      setAdditionalContactUserIds([]);
     }
   }, [isAdmin]);
 
@@ -459,35 +474,66 @@ const CreateJob = () => {
         const trades = normalizedCompanyTrades(profile);
         setCompanyServiceTrades(trades);
         if (trades.length === 1) setTradeType((prev) => prev || trades[0]);
+        const users = Array.isArray(profile.company_users) ? profile.company_users : [];
+        setCompanyEmployees(users);
+        setPrimaryContactUserId((prev) => {
+          if (prev && users.some((u) => Number(u.id) === Number(prev))) return prev;
+          return users[0]?.id != null ? Number(users[0].id) : null;
+        });
       } catch {
         setCompanyProfileId(null);
         setPlatformFeePercent(null);
         setCompanyServiceTrades([]);
+        setCompanyEmployees([]);
       }
     };
     fetchProfile();
   }, [isAdmin]);
 
   useEffect(() => {
-    if (!isAdmin || !companyProfileId) {
-      if (isAdmin) setPlatformFeePercent(null);
+    if (!companyProfileId) {
+      if (isAdmin) {
+        setPlatformFeePercent(null);
+        setCompanyEmployees([]);
+      }
       return;
     }
     let cancelled = false;
     (async () => {
+      setCompanyEmployeesLoading(true);
       try {
-        const profile = await profilesAPI.getCompanyById(companyProfileId);
-        if (!cancelled) {
+        const profile = isAdmin
+          ? await profilesAPI.getCompanyById(companyProfileId)
+          : await profilesAPI.getCompanyProfile();
+        if (cancelled) return;
+        if (isAdmin) {
           setPlatformFeePercent(parseLoadedCommissionPercent(profile?.effective_commission_percent));
           const trades = normalizedCompanyTrades(profile);
           setCompanyServiceTrades(trades);
           if (trades.length === 1) setTradeType((prev) => prev || trades[0]);
+          if (profile?.company_name) {
+            setSelectedCompanyName((prev) => prev || profile.company_name);
+          }
         }
+        const users = Array.isArray(profile?.company_users) ? profile.company_users : [];
+        setCompanyEmployees(users);
+        setPrimaryContactUserId((prev) => {
+          if (prev && users.some((u) => Number(u.id) === Number(prev))) return prev;
+          return users[0]?.id != null ? Number(users[0].id) : null;
+        });
+        setAdditionalContactUserIds((prev) =>
+          (prev || []).filter((id) => users.some((u) => Number(u.id) === Number(id)))
+        );
       } catch {
         if (!cancelled) {
-          setPlatformFeePercent(null);
-          setCompanyServiceTrades([]);
+          if (isAdmin) {
+            setPlatformFeePercent(null);
+            setCompanyServiceTrades([]);
+          }
+          setCompanyEmployees([]);
         }
+      } finally {
+        if (!cancelled) setCompanyEmployeesLoading(false);
       }
     })();
     return () => {
@@ -617,6 +663,10 @@ const CreateJob = () => {
       country,
       schedule_start_time: startTime,
       schedule_working_day_span: d > 0 ? d : null,
+      primary_contact_user_id: primaryContactUserId || null,
+      additional_contact_user_ids: (additionalContactUserIds || [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id) && id > 0 && id !== Number(primaryContactUserId)),
     };
   }, [
     title, description, notes, tradeType, skillClass, minimumYearsExperience,
@@ -629,7 +679,7 @@ const CreateJob = () => {
     sundayMultiplier, weekendRequiresCompanyApproval, weekendRequiresTechnicianAcceptance,
     premiumCombinationRule, overtimeEnabled, dailyOvertimeThresholdHours,
     weeklyOvertimeThresholdHours, overtimeMultiplier, jobTimezone, address, city, state,
-    zipCode, country, scheduledStartAt,
+    zipCode, country, scheduledStartAt, primaryContactUserId, additionalContactUserIds,
   ]);
 
   const patchAddress = (patch) => {
@@ -697,6 +747,10 @@ const CreateJob = () => {
       job_timezone: jobTimezone || 'UTC',
       potential_full_time: potentialFullTime,
       schedule_flexibility: scheduleFlexibility,
+      primary_contact_user_id: primaryContactUserId || null,
+      additional_contact_user_ids: (additionalContactUserIds || [])
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id) && id > 0 && id !== Number(primaryContactUserId)),
     };
     if (isAdmin) {
       payload.skip_card_validation = !enforceCardValidation;
@@ -861,8 +915,8 @@ const CreateJob = () => {
             <div className={`${sectionCardClass} mb-4`}>
               <h3 className="font-semibold text-slate-900">Company Account</h3>
               <p className="text-xs text-slate-500">
-                Search by company or employee name, then pick which login this job should be attached to.
-                Jobs post to the shared company account.
+                Search by company or employee name, pick the company, then choose a primary contact
+                and anyone else to loop in. Jobs still post to the shared company account.
               </p>
               <input
                 className={fieldClass}
@@ -873,6 +927,9 @@ const CreateJob = () => {
                     setCompanySelectionLocked(false);
                     setSelectedCompanyName('');
                     setCompanyProfileId(null);
+                    setCompanyEmployees([]);
+                    setPrimaryContactUserId(null);
+                    setAdditionalContactUserIds([]);
                   }
                 }}
                 placeholder="Search by company or employee name..."
@@ -880,79 +937,80 @@ const CreateJob = () => {
               />
               {companySelectionLocked && (
                 <p className="text-xs text-blue-700">
-                  Selection locked. Click Change to pick a different company or employee.
+                  Company locked. Click Change to pick a different company.
                 </p>
               )}
               {companySearchLoading && (
                 <p className="text-xs text-slate-500">Searching companies...</p>
               )}
               {!companySelectionLocked && !companySearchLoading && companyOptions.length > 0 && (
-                <div className="max-h-56 overflow-y-auto border border-slate-200 rounded-lg bg-white">
-                  {companyOptions.flatMap((company) => {
+                <div className="max-h-72 overflow-y-auto border border-slate-200 rounded-lg bg-white">
+                  {companyOptions.map((company) => {
                     const companyLabel = company.company_name || `Company #${company.id}`;
                     const users = Array.isArray(company.company_users) ? company.company_users : [];
-                    const rows =
-                      users.length > 0
-                        ? users.map((user) => {
-                            const employeeName = [user.first_name, user.last_name]
-                              .map((x) => (x || '').trim())
-                              .filter(Boolean)
-                              .join(' ');
-                            const label = employeeName
-                              ? `${companyLabel} — ${employeeName}`
-                              : `${companyLabel} — ${user.email || `User #${user.id}`}`;
-                            return {
-                              key: `${company.id}-user-${user.id}`,
-                              label,
-                              companyLabel,
-                              subtitle: user.email || null,
-                              companyId: company.id,
-                            };
-                          })
-                        : [
-                            {
-                              key: `${company.id}-company`,
-                              label: (() => {
-                                const contactName = [company.contact_first_name, company.contact_last_name]
-                                  .map((x) => (x || '').trim())
-                                  .filter(Boolean)
-                                  .join(' ');
-                                return contactName ? `${companyLabel} — ${contactName}` : companyLabel;
-                              })(),
-                              companyLabel,
-                              subtitle:
-                                company.company_users_count > 0
-                                  ? `${company.company_users_count} login(s)`
-                                  : null,
-                              companyId: company.id,
-                            },
-                          ];
-                    return rows.map((row) => (
-                      <button
-                        key={row.key}
-                        type="button"
-                        onClick={() => {
-                          setCompanyProfileId(row.companyId);
-                          setSelectedCompanyName(row.label);
-                          setCompanyQuery(row.companyLabel);
-                          setCompanyOptions([]);
-                          setCompanySelectionLocked(true);
-                        }}
-                        className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50 border-b border-slate-100 last:border-b-0"
-                      >
-                        <div className="font-medium text-slate-900">{row.label}</div>
-                        {row.subtitle && (
-                          <div className="text-xs text-slate-500">{row.subtitle}</div>
+                    const selectCompany = (preferredUserId = null) => {
+                      setCompanyProfileId(company.id);
+                      setSelectedCompanyName(companyLabel);
+                      setCompanyQuery(companyLabel);
+                      setCompanyOptions([]);
+                      setCompanySelectionLocked(true);
+                      if (users.length > 0) {
+                        setCompanyEmployees(users);
+                        const preferred = preferredUserId
+                          ? users.find((u) => Number(u.id) === Number(preferredUserId))
+                          : null;
+                        setPrimaryContactUserId(Number((preferred || users[0]).id));
+                        setAdditionalContactUserIds([]);
+                      } else {
+                        setCompanyEmployees([]);
+                        setPrimaryContactUserId(null);
+                        setAdditionalContactUserIds([]);
+                      }
+                    };
+                    return (
+                      <div key={company.id} className="border-b border-slate-100 last:border-b-0">
+                        <button
+                          type="button"
+                          onClick={() => selectCompany()}
+                          className="w-full text-left px-3 py-2 text-sm hover:bg-blue-50"
+                        >
+                          <div className="font-semibold text-slate-900">{companyLabel}</div>
+                          <div className="text-xs text-slate-500">
+                            {users.length > 0
+                              ? `${users.length} employee login${users.length === 1 ? '' : 's'}`
+                              : company.company_users_count > 0
+                                ? `${company.company_users_count} login(s) — select to load employees`
+                                : 'No employee logins listed'}
+                          </div>
+                        </button>
+                        {users.length > 0 && (
+                          <div className="pb-1">
+                            {users.map((user) => (
+                              <button
+                                key={`${company.id}-user-${user.id}`}
+                                type="button"
+                                onClick={() => selectCompany(user.id)}
+                                className="w-full text-left px-3 py-1.5 pl-6 text-sm hover:bg-blue-50"
+                              >
+                                <div className="font-medium text-slate-800">
+                                  {employeeDisplayName(user)}
+                                </div>
+                                {user.email ? (
+                                  <div className="text-xs text-slate-500">{user.email}</div>
+                                ) : null}
+                              </button>
+                            ))}
+                          </div>
                         )}
-                      </button>
-                    ));
+                      </div>
+                    );
                   })}
                 </div>
               )}
               {selectedCompanyName && (
                 <div className="rounded-md border border-blue-200 bg-blue-50 px-3 py-2 flex items-center justify-between gap-3">
                   <p className="text-sm text-blue-900">
-                    Selected: <span className="font-semibold">{selectedCompanyName}</span>
+                    Company: <span className="font-semibold">{selectedCompanyName}</span>
                   </p>
                   <button
                     type="button"
@@ -961,7 +1019,9 @@ const CreateJob = () => {
                       setCompanyOptions([]);
                       setCompanyProfileId(null);
                       setSelectedCompanyName('');
-                      // Keep the company name in the search box so results reappear for a re-pick.
+                      setCompanyEmployees([]);
+                      setPrimaryContactUserId(null);
+                      setAdditionalContactUserIds([]);
                     }}
                     className="shrink-0 text-xs px-2.5 py-1 rounded border border-blue-300 text-blue-800 bg-white hover:bg-blue-100"
                   >
@@ -969,6 +1029,44 @@ const CreateJob = () => {
                   </button>
                 </div>
               )}
+              {companyProfileId && (
+                <JobCompanyContactsPicker
+                  employees={companyEmployees}
+                  loading={companyEmployeesLoading}
+                  primaryContactUserId={primaryContactUserId}
+                  additionalContactUserIds={additionalContactUserIds}
+                  onPrimaryChange={(id) => {
+                    setPrimaryContactUserId(Number(id));
+                    setAdditionalContactUserIds((prev) =>
+                      (prev || []).filter((x) => Number(x) !== Number(id))
+                    );
+                  }}
+                  onAdditionalChange={setAdditionalContactUserIds}
+                />
+              )}
+            </div>
+          )}
+
+          {!isAdmin && companyProfileId && companyEmployees.length > 0 && (
+            <div className={`${sectionCardClass} mb-4`}>
+              <h3 className="font-semibold text-slate-900">Job contacts</h3>
+              <p className="text-xs text-slate-500">
+                Choose who this post is associated with, and anyone else on your account to loop in.
+                These preferences are saved with the template when you save one.
+              </p>
+              <JobCompanyContactsPicker
+                employees={companyEmployees}
+                loading={companyEmployeesLoading}
+                primaryContactUserId={primaryContactUserId}
+                additionalContactUserIds={additionalContactUserIds}
+                onPrimaryChange={(id) => {
+                  setPrimaryContactUserId(Number(id));
+                  setAdditionalContactUserIds((prev) =>
+                    (prev || []).filter((x) => Number(x) !== Number(id))
+                  );
+                }}
+                onAdditionalChange={setAdditionalContactUserIds}
+              />
             </div>
           )}
 

@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_10_20_163000) do
+ActiveRecord::Schema[7.1].define(version: 2026_10_20_210000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -838,11 +838,14 @@ ActiveRecord::Schema[7.1].define(version: 2026_10_20_163000) do
     t.json "potential_full_time_details", default: {}, null: false
     t.integer "schedule_flexibility", default: 0, null: false
     t.datetime "terminated_at"
+    t.integer "primary_contact_user_id"
+    t.json "additional_contact_user_ids", default: [], null: false
     t.index ["company_membership_tier_config_id"], name: "index_jobs_on_company_membership_tier_config_id"
     t.index ["company_profile_id"], name: "index_jobs_on_company_profile_id"
     t.index ["funding_status"], name: "index_jobs_on_funding_status"
     t.index ["pay_basis"], name: "index_jobs_on_pay_basis"
     t.index ["potential_full_time"], name: "index_jobs_on_potential_full_time"
+    t.index ["primary_contact_user_id"], name: "index_jobs_on_primary_contact_user_id"
     t.index ["rolling_start_rule_type"], name: "index_jobs_on_rolling_start_rule_type"
     t.index ["schedule_flexibility"], name: "index_jobs_on_schedule_flexibility"
     t.index ["share_token"], name: "index_jobs_on_share_token", unique: true
