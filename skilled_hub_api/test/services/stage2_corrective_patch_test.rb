@@ -60,7 +60,7 @@ class Stage2CorrectivePatchTest < ActiveSupport::TestCase
     assert_equal "single_charge", decision[:mode]
   end
 
-  test "insufficient allocatable funds falls back to platform balance" do
+  test "insufficient allocatable funds blocks transfer (unsafe)" do
     job, payment, _txn = build_funded_job(title: "src short", charge_id: "ch_short", amount: 5_000)
     JobPaymentTransaction.create!(
       payment: payment, job: job, transaction_type: :final_hours_refund, direction: :outbound,
@@ -69,10 +69,12 @@ class Stage2CorrectivePatchTest < ActiveSupport::TestCase
     )
     decision = PaymentService.source_transaction_decision(job.reload, amount_cents: 2_000)
     assert_nil decision[:charge_id]
+    assert_equal "blocked", decision[:mode]
+    refute decision[:safe]
     assert_equal "insufficient_allocatable_source", decision[:reason]
   end
 
-  test "two collections with different charge ids use option B" do
+  test "two collections with different charge ids use safe option B" do
     job, payment, _txn = build_funded_job(title: "src multi", charge_id: "ch_a", amount: 20_000)
     JobPaymentTransaction.create!(
       payment: payment, job: job, transaction_type: :final_hours_top_up, direction: :inbound,
@@ -81,10 +83,12 @@ class Stage2CorrectivePatchTest < ActiveSupport::TestCase
     )
     decision = PaymentService.source_transaction_decision(job.reload, amount_cents: 1_000)
     assert_nil decision[:charge_id]
+    assert_equal "platform_balance", decision[:mode]
+    assert decision[:safe]
     assert_equal "multiple_source_charges", decision[:reason]
   end
 
-  test "two collections one missing charge id fails closed to option B" do
+  test "two collections one missing charge id blocks (fail closed)" do
     job, payment, _txn = build_funded_job(title: "src miss", charge_id: "ch_only", amount: 20_000)
     JobPaymentTransaction.create!(
       payment: payment, job: job, transaction_type: :final_hours_top_up, direction: :inbound,
@@ -93,6 +97,8 @@ class Stage2CorrectivePatchTest < ActiveSupport::TestCase
     )
     decision = PaymentService.source_transaction_decision(job.reload, amount_cents: 1_000)
     assert_nil decision[:charge_id]
+    assert_equal "blocked", decision[:mode]
+    refute decision[:safe]
     assert_equal "collection_missing_charge_id", decision[:reason]
   end
 
@@ -104,7 +110,7 @@ class Stage2CorrectivePatchTest < ActiveSupport::TestCase
       idempotency_key: "tf_s2c_pend_#{job.id}", revision: 2
     )
     decision = PaymentService.source_transaction_decision(job.reload, amount_cents: 3_000)
-    assert_nil decision[:charge_id]
+    assert_equal "blocked", decision[:mode]
     assert_equal "insufficient_allocatable_source", decision[:reason]
   end
 
@@ -116,14 +122,14 @@ class Stage2CorrectivePatchTest < ActiveSupport::TestCase
       idempotency_key: "tf_s2c_xfer_#{job.id}", revision: 2, succeeded_at: Time.current
     )
     decision = PaymentService.source_transaction_decision(job.reload, amount_cents: 2_000)
-    assert_nil decision[:charge_id]
+    assert_equal "blocked", decision[:mode]
     assert_equal "insufficient_allocatable_source", decision[:reason]
   end
 
   test "payment intent id shape is rejected as source charge" do
     job, _payment, txn = build_funded_job(title: "src pi", charge_id: "pi_not_a_charge", amount: 10_000)
     decision = PaymentService.source_transaction_decision(job, amount_cents: 1_000)
-    assert_nil decision[:charge_id]
+    assert_equal "blocked", decision[:mode]
     assert_equal "invalid_charge_id_shape", decision[:reason]
     assert txn.stripe_charge_id.start_with?("pi_")
   end
@@ -132,7 +138,7 @@ class Stage2CorrectivePatchTest < ActiveSupport::TestCase
     job, payment, txn = build_funded_job(title: "src cur", charge_id: "ch_cur", amount: 10_000)
     txn.update_columns(currency: "eur")
     decision = PaymentService.source_transaction_decision(job.reload, amount_cents: 1_000)
-    assert_nil decision[:charge_id]
+    assert_equal "blocked", decision[:mode]
     assert_equal "currency_mismatch", decision[:reason]
     assert payment.present?
   end

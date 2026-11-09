@@ -104,6 +104,20 @@ class PaymentRiskEvent < ApplicationRecord
     )
   end
 
+  # Higher rank = more authoritative. Delayed lower-rank events must not regress state.
+  LIFECYCLE_RANK = {
+    "outcome_unknown" => 0,
+    "opened" => 1,
+    "under_review" => 2,
+    "confirmed_return" => 2,
+    "funds_withdrawn" => 3,
+    "dispute_won" => 4,
+    "dispute_lost" => 4,
+    "funds_reinstated" => 5,
+    "unconfirmed_signal" => 1,
+    "admin_resolved" => 100
+  }.freeze
+
   # Idempotent dispute upsert keyed by Stripe dispute ID.
   # Closed ≠ funds reinstated; never auto-unblocks transfers.
   def self.upsert_dispute!(
@@ -118,32 +132,58 @@ class PaymentRiskEvent < ApplicationRecord
     raise ArgumentError, "dispute id required" if dispute_id.blank?
 
     key = "dispute:#{dispute_id}"
+    attempts = 0
+
+    begin
+      attempts += 1
+      apply_dispute_upsert!(
+        key: key,
+        job: job,
+        dispute: dispute,
+        job_payment_transaction: job_payment_transaction,
+        event_type: event_type,
+        stripe_event_id: stripe_event_id,
+        ach_confirmed_return: ach_confirmed_return
+      )
+    rescue ActiveRecord::RecordNotUnique
+      raise if attempts >= 3
+
+      # Concurrent first delivery — reload the winning row and retry the update.
+      retry
+    rescue ActiveRecord::RecordInvalid => e
+      # Only recover uniqueness races; surface unrelated validation failures.
+      raise unless e.record&.errors&.of_kind?(:correlation_key, :taken)
+      raise if attempts >= 3
+
+      retry
+    end
+  end
+
+  def self.apply_dispute_upsert!(
+    key:,
+    job:,
+    dispute:,
+    job_payment_transaction:,
+    event_type:,
+    stripe_event_id:,
+    ach_confirmed_return:
+  )
     transfer_done = job.job_payment_transactions
       .where(transaction_type: :technician_transfer, status: :succeeded)
       .exists?
 
     base_lifecycle = lifecycle_for_dispute_event(event_type, dispute)
-    # ACH returns are confirmed financial exposure; lifecycle stays distinct from card disputes.
     lifecycle = if ach_confirmed_return && base_lifecycle.in?(%w[opened under_review])
       "confirmed_return"
     else
       base_lifecycle
     end
 
-    risk_kind = if ach_confirmed_return
-      "post_success_return"
-    else
-      "post_success_dispute"
-    end
+    risk_kind = ach_confirmed_return ? "post_success_return" : "post_success_dispute"
 
     transaction do
       rec = lock.find_or_initialize_by(correlation_key: key)
       was_new = rec.new_record?
-
-      # Preserve original risk_kind if already a confirmed ACH return.
-      if rec.persisted? && rec.risk_kind == "post_success_return"
-        risk_kind = "post_success_return"
-      end
 
       history = Array(rec.metadata_json.to_h["event_history"])
       history << {
@@ -154,7 +194,47 @@ class PaymentRiskEvent < ApplicationRecord
         "stripe_event_id" => stripe_event_id
       }
 
+      # Admin-resolved: append audit history only — do not reopen or downgrade.
+      if rec.persisted? && rec.investigation_status == "resolved" && rec.lifecycle_state == "admin_resolved"
+        rec.update!(
+          metadata_json: rec.metadata_json.to_h.merge(
+            "event_history" => history.last(25),
+            "post_resolve_event" => {
+              "event_type" => event_type.to_s,
+              "stripe_status" => dispute.status.to_s,
+              "at" => Time.current.iso8601
+            }
+          )
+        )
+        return [rec, false]
+      end
+
+      # Preserve confirmed ACH return classification.
+      if rec.persisted? && rec.risk_kind == "post_success_return"
+        risk_kind = "post_success_return"
+      end
+
+      # Do not let delayed lower-rank events (e.g. updated after funds_reinstated) regress state.
+      incoming_rank = LIFECYCLE_RANK.fetch(lifecycle, 0)
+      current_rank = LIFECYCLE_RANK.fetch(rec.lifecycle_state.to_s, -1)
+      effective_lifecycle = if rec.persisted? && incoming_rank < current_rank
+        rec.lifecycle_state
+      else
+        lifecycle
+      end
+
       loss_amount = dispute.amount || job_payment_transaction&.amount_cents
+      exposure = ach_confirmed_return || rec.exposure_confirmed ||
+        effective_lifecycle.in?(%w[funds_withdrawn confirmed_return dispute_lost])
+      # Funds reinstated remains distinct from confirmed exposure / loss.
+      confirmed_loss = if effective_lifecycle == "funds_reinstated"
+        rec.confirmed_loss_cents # preserve historical confirmed loss; do not clear evidence
+      elsif ach_confirmed_return || effective_lifecycle.in?(%w[funds_withdrawn dispute_lost confirmed_return])
+        loss_amount
+      else
+        rec.confirmed_loss_cents
+      end
+
       attrs = {
         job: job,
         job_payment_transaction: job_payment_transaction,
@@ -164,37 +244,36 @@ class PaymentRiskEvent < ApplicationRecord
         stripe_event_id: stripe_event_id.presence || rec.stripe_event_id,
         stripe_payment_intent_id: dispute.payment_intent.to_s.presence || job_payment_transaction&.stripe_payment_intent_id,
         stripe_charge_id: dispute.charge.to_s.presence || job_payment_transaction&.stripe_charge_id,
-        stripe_dispute_id: dispute_id,
+        stripe_dispute_id: dispute.id.to_s,
         bank_payout_status: "unknown",
         investigation_required: true,
         # Closed/won does NOT clear the block — only admin resolve clears transfer blocks.
-        investigation_status: rec.investigation_status == "resolved" ? "resolved" : (lifecycle.in?(%w[dispute_won dispute_lost funds_reinstated]) ? "reviewing" : "open"),
-        lifecycle_state: lifecycle,
-        exposure_confirmed: ach_confirmed_return || rec.exposure_confirmed || lifecycle.in?(%w[funds_withdrawn confirmed_return dispute_lost]),
-        confirmed_loss_cents: if ach_confirmed_return || lifecycle.in?(%w[funds_withdrawn dispute_lost confirmed_return])
-                                loss_amount
-                              else
-                                rec.confirmed_loss_cents
-                              end,
+        investigation_status: effective_lifecycle.in?(%w[dispute_won dispute_lost funds_reinstated]) ? "reviewing" : "open",
+        lifecycle_state: effective_lifecycle,
+        exposure_confirmed: exposure,
+        confirmed_loss_cents: confirmed_loss,
         transfer_already_executed: transfer_done || rec.transfer_already_executed,
         admin_note: [
           rec.admin_note,
-          "Dispute #{dispute_id} #{event_type} status=#{dispute.status}. No automatic transfer reversal."
+          "Dispute #{dispute.id} #{event_type} status=#{dispute.status}. No automatic transfer reversal."
         ].compact.join("\n"),
         metadata_json: rec.metadata_json.to_h.merge(
           "reason" => dispute.reason.to_s,
           "stripe_status" => dispute.status.to_s,
           "event_type" => event_type.to_s,
           "ach_confirmed_return" => ach_confirmed_return || rec.metadata_json.to_h["ach_confirmed_return"],
-          "confirmed" => ach_confirmed_return || rec.exposure_confirmed,
+          "confirmed" => exposure,
+          "funds_reinstated" => (effective_lifecycle == "funds_reinstated"),
           "event_history" => history.last(25)
         ),
         detected_at: rec.detected_at || Time.current
       }
 
-      # Never auto-resolve on closed alone.
-      if lifecycle == "funds_reinstated" && dispute.status.to_s == "won"
-        attrs[:admin_note] = [attrs[:admin_note], "Funds reinstated after win — awaiting admin confirmation to clear transfer block."].join("\n")
+      if effective_lifecycle == "funds_reinstated"
+        attrs[:admin_note] = [
+          attrs[:admin_note],
+          "Funds reinstated — exposure history retained; awaiting admin confirmation to clear transfer block."
+        ].join("\n")
       end
 
       rec.assign_attributes(attrs)

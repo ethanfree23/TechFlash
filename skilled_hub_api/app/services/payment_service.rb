@@ -5,6 +5,9 @@ class PaymentService
 
   class PaymentError < StandardError; end
 
+  # Only genuine multi-charge jobs may use platform-balance transfers.
+  SAFE_PLATFORM_BALANCE_REASONS = %w[multiple_source_charges].freeze
+
   def self.company_has_payment_method?(user)
     return true if defined?(DemoMode) && DemoMode.enabled?
 
@@ -112,18 +115,20 @@ class PaymentService
         early = { error: "Unresolved financial risk on this job; technician payout is blocked pending admin review." }
         next
       end
-      if ledger.transferred_cents.positive?
-        early = { error: "Technician payout already transferred." }
-        next
-      end
       if ledger.technician_net_payout_cents.nil?
         early = { error: "Technician commission snapshot is missing; refusing to transfer." }
         next
       end
 
+      # Idempotent recovery: return the existing succeeded transfer before the
+      # transferred_cents guard so retries do not look like hard failures.
       existing = locked_job.job_payment_transactions.find_by(transaction_type: :technician_transfer, status: :succeeded)
       if existing
         early = { success: true, payment: payment, transaction: existing }
+        next
+      end
+      if ledger.transferred_cents.positive?
+        early = { error: "Technician payout already transferred." }
         next
       end
 
@@ -168,22 +173,57 @@ class PaymentService
         txn.save!
       elsif txn.status_succeeded?
         early = { success: true, payment: payment, transaction: txn }
+        next
+      elsif txn.job_id != locked_job.id || !txn.technician_transfer?
+        early = { error: "Transfer ledger row ownership mismatch; refusing payout." }
+        next
+      elsif txn.amount_cents.to_i != payout_amount.to_i
+        early = { error: "Pending transfer amount does not match approved payout; refusing conflicting retry." }
+        next
       end
     end
     return early if early
 
-    source_charge_id = source_charge_for_transfer(job, amount_cents: payout_amount)
+    allocation = persist_source_allocation!(txn, job: job, amount_cents: payout_amount)
+    unless allocation[:safe]
+      return { error: "Transfer blocked: #{allocation[:reason]} (unsafe source allocation)." }
+    end
+
+    source_charge_id = allocation[:charge_id]
+    # Never send a PaymentIntent ID as source_transaction.
+    if source_charge_id.present? && !source_charge_id.to_s.start_with?("ch_")
+      return { error: "Transfer blocked: invalid_charge_id_shape (unsafe source allocation)." }
+    end
+
     result = JobStripeOps.transfer!(
       amount_cents: payout_amount,
       destination: technician_profile.stripe_account_id,
       metadata: JobFundingService.stripe_metadata(job, txn).merge(
         "source_charge_id" => source_charge_id.to_s,
-        "source_transaction_mode" => source_charge_id.present? ? "single_charge" : "platform_balance"
+        "source_transaction_mode" => allocation[:mode].to_s,
+        "source_allocation_reason" => allocation[:reason].to_s
       ),
       transfer_group: job.transfer_group,
       idempotency_key: key,
       source_transaction: source_charge_id
     )
+
+    # Timeout / network ambiguity: retry once with identical idempotency params.
+    # Stripe returns the original transfer for the same key when the first create succeeded.
+    if !result.succeeded? && transient_stripe_failure?(result)
+      result = JobStripeOps.transfer!(
+        amount_cents: payout_amount,
+        destination: technician_profile.stripe_account_id,
+        metadata: JobFundingService.stripe_metadata(job, txn).merge(
+          "source_charge_id" => source_charge_id.to_s,
+          "source_transaction_mode" => allocation[:mode].to_s,
+          "source_allocation_reason" => allocation[:reason].to_s
+        ),
+        transfer_group: job.transfer_group,
+        idempotency_key: key,
+        source_transaction: source_charge_id
+      )
+    end
 
     Job.transaction do
       locked_txn = JobPaymentTransaction.lock.find(txn.id)
@@ -201,6 +241,8 @@ class PaymentService
           succeeded_at: Time.current,
           metadata_json: locked_txn.metadata_json.to_h.merge(
             "source_transaction" => source_charge_id,
+            "source_transaction_mode" => allocation[:mode].to_s,
+            "source_allocation_reason" => allocation[:reason].to_s,
             "bank_payout_status" => "unknown"
           )
         )
@@ -244,42 +286,144 @@ class PaymentService
     { error: e.message }
   end
 
-  # Prefer source_transaction only for a demonstrably single-charge funded job with
-  # sufficient unallocated Charge funds. Multi-charge / ambiguous → Option B (nil).
-  # source_transaction must be a Charge ID (ch_...), never a PaymentIntent ID.
-  def self.source_charge_for_transfer(job, amount_cents: nil)
-    source_transaction_decision(job, amount_cents: amount_cents)[:charge_id]
-  end
-
-  # Returns { charge_id:, mode:, reason: } — charge_id nil means platform-balance (Option B).
-  def self.source_transaction_decision(job, amount_cents: nil)
-    collections = job.job_payment_transactions.company_collections.status_succeeded.order(:id).to_a
-    if collections.empty?
-      return { charge_id: nil, mode: "platform_balance", reason: "no_succeeded_collections" }
+  # Persist a stable allocation decision on the pending transfer so Stripe idempotency
+  # retries always reuse identical source_transaction parameters.
+  def self.persist_source_allocation!(txn, job:, amount_cents:)
+    meta = txn.metadata_json.to_h
+    cached = meta["source_allocation"]
+    if cached.is_a?(Hash) && cached["reason"].present? && cached.key?("safe")
+      return {
+        charge_id: cached["charge_id"].presence,
+        mode: cached["mode"],
+        reason: cached["reason"],
+        safe: ActiveModel::Type::Boolean.new.cast(cached["safe"]),
+        allocatable_cents: cached["allocatable_cents"]
+      }.symbolize_keys
     end
 
-    # Fail closed: every succeeded collection must carry a real Charge ID.
+    decision = source_transaction_decision(
+      job,
+      amount_cents: amount_cents,
+      exclude_transfer_id: txn.id
+    )
+    txn.update!(
+      metadata_json: meta.merge(
+        "source_allocation" => {
+          "charge_id" => decision[:charge_id],
+          "mode" => decision[:mode],
+          "reason" => decision[:reason],
+          "safe" => decision[:safe],
+          "allocatable_cents" => decision[:allocatable_cents],
+          "decided_at" => Time.current.iso8601
+        }
+      )
+    )
+    decision
+  end
+
+  def self.transient_stripe_failure?(result)
+    msg = result.error.to_s
+    return false if msg.blank?
+
+    msg.match?(/timeout|timed out|connection|temporarily|503|500|network/i)
+  end
+
+  # Prefer source_transaction only for a demonstrably single-charge funded job with
+  # sufficient unallocated Charge funds. Multi-charge → safe Option B (platform balance).
+  # Unsafe conditions return mode: "blocked" (caller must not transfer).
+  # source_transaction must be a Charge ID (ch_...), never a PaymentIntent ID.
+  def self.source_charge_for_transfer(job, amount_cents: nil, exclude_transfer_id: nil)
+    decision = source_transaction_decision(job, amount_cents: amount_cents, exclude_transfer_id: exclude_transfer_id)
+    return nil unless decision[:safe]
+
+    decision[:charge_id]
+  end
+
+  # Returns { charge_id:, mode:, reason:, safe:, allocatable_cents?: }
+  # mode: "single_charge" | "platform_balance" | "blocked"
+  def self.source_transaction_decision(job, amount_cents: nil, exclude_transfer_id: nil)
+    exclude_id = validate_exclude_transfer_id!(job, exclude_transfer_id)
+
+    collections = job.job_payment_transactions.company_collections.status_succeeded.order(:id).to_a
+    if collections.empty?
+      return blocked_decision("no_succeeded_collections")
+    end
+
+    # Missing Charge IDs are unsafe — do not invent platform-balance funding.
     if collections.any? { |t| t.stripe_charge_id.to_s.strip.blank? }
-      return { charge_id: nil, mode: "platform_balance", reason: "collection_missing_charge_id" }
+      return blocked_decision("collection_missing_charge_id")
     end
 
     charge_ids = collections.map { |t| t.stripe_charge_id.to_s.strip }.uniq
+    currencies = collections.map { |t| t.currency.to_s.downcase.presence || "usd" }.uniq
+    if currencies.size != 1 || currencies.first != "usd"
+      return blocked_decision("currency_mismatch")
+    end
+
+    collected = collections.sum { |t| t.amount_cents.to_i }
+    reserved_refunds = reserved_refund_cents(job)
+    reserved_transfers = reserved_transfer_cents(job, exclude_id: exclude_id)
+    allocatable = collected - reserved_refunds - reserved_transfers
+    planned = amount_cents.nil? ? allocatable : amount_cents.to_i
+
+    if planned <= 0
+      return blocked_decision("non_positive_transfer_amount", allocatable_cents: allocatable)
+    end
+    if planned > allocatable
+      return blocked_decision("insufficient_allocatable_source", allocatable_cents: allocatable)
+    end
+
+    # Genuine multi-charge job with complete Charge IDs and sufficient unallocated funding.
     if charge_ids.size != 1
-      return { charge_id: nil, mode: "platform_balance", reason: "multiple_source_charges" }
+      return {
+        charge_id: nil,
+        mode: "platform_balance",
+        reason: "multiple_source_charges",
+        safe: true,
+        allocatable_cents: allocatable
+      }
     end
 
     charge_id = charge_ids.first
     unless charge_id.start_with?("ch_")
-      return { charge_id: nil, mode: "platform_balance", reason: "invalid_charge_id_shape" }
+      return blocked_decision("invalid_charge_id_shape", allocatable_cents: allocatable)
     end
 
-    currencies = collections.map { |t| t.currency.to_s.downcase.presence || "usd" }.uniq
-    if currencies.size != 1 || currencies.first != "usd"
-      return { charge_id: nil, mode: "platform_balance", reason: "currency_mismatch" }
+    {
+      charge_id: charge_id,
+      mode: "single_charge",
+      reason: "ok",
+      safe: true,
+      allocatable_cents: allocatable
+    }
+  end
+
+  def self.blocked_decision(reason, allocatable_cents: nil)
+    {
+      charge_id: nil,
+      mode: "blocked",
+      reason: reason,
+      safe: false,
+      allocatable_cents: allocatable_cents
+    }
+  end
+
+  def self.validate_exclude_transfer_id!(job, exclude_transfer_id)
+    return nil if exclude_transfer_id.blank?
+
+    txn = job.job_payment_transactions.find_by(id: exclude_transfer_id)
+    if txn.nil?
+      raise PaymentError, "exclude_transfer_id=#{exclude_transfer_id} does not belong to job #{job.id}"
+    end
+    unless txn.technician_transfer?
+      raise PaymentError, "exclude_transfer_id=#{exclude_transfer_id} is not a technician_transfer"
     end
 
-    collected = collections.sum { |t| t.amount_cents.to_i }
-    reserved_refunds = job.job_payment_transactions.company_refunds
+    txn.id
+  end
+
+  def self.reserved_refund_cents(job)
+    job.job_payment_transactions.company_refunds
       .where(status: [
         JobPaymentTransaction.statuses[:succeeded],
         JobPaymentTransaction.statuses[:pending],
@@ -287,25 +431,17 @@ class PaymentService
         JobPaymentTransaction.statuses[:requires_action]
       ])
       .sum(:amount_cents).to_i
+  end
 
-    transferred = job.job_payment_transactions
+  def self.reserved_transfer_cents(job, exclude_id: nil)
+    scope = job.job_payment_transactions
       .where(transaction_type: JobPaymentTransaction.transaction_types[:technician_transfer])
       .where(status: [
         JobPaymentTransaction.statuses[:succeeded],
         JobPaymentTransaction.statuses[:pending],
         JobPaymentTransaction.statuses[:processing]
       ])
-      .sum(:amount_cents).to_i
-
-    allocatable = collected - reserved_refunds - transferred
-    planned = amount_cents.nil? ? allocatable : amount_cents.to_i
-    if planned <= 0
-      return { charge_id: nil, mode: "platform_balance", reason: "non_positive_transfer_amount" }
-    end
-    if planned > allocatable
-      return { charge_id: nil, mode: "platform_balance", reason: "insufficient_allocatable_source" }
-    end
-
-    { charge_id: charge_id, mode: "single_charge", reason: "ok", allocatable_cents: allocatable }
+    scope = scope.where.not(id: exclude_id) if exclude_id.present?
+    scope.sum(:amount_cents).to_i
   end
 end
