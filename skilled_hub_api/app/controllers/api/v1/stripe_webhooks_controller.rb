@@ -4,14 +4,22 @@ module Api
   module V1
     # Does not inherit ApplicationController — avoids JSON body rewind / token auth.
     class StripeWebhooksController < ActionController::API
+      SUBSCRIPTION_EVENT_TYPES = %w[
+        customer.subscription.created
+        customer.subscription.updated
+        customer.subscription.deleted
+      ].freeze
+
+      # Events delivered for a connected account (event.account present) describe that account only.
+      # They must never reach the platform-side ledger/membership handlers.
+      CONNECTED_ACCOUNT_EVENT_TYPES = %w[account.updated].freeze
+
       def create
         payload = request.body.read
         sig_header = request.env['HTTP_STRIPE_SIGNATURE']
-        secret = ENV['STRIPE_WEBHOOK_SECRET'].presence || Rails.application.credentials.dig(:stripe, :webhook_secret).presence
-        # Optional second endpoint ("events on connected accounts") has its own signing secret.
-        connect_secret = ENV['STRIPE_CONNECT_WEBHOOK_SECRET'].presence
+        secrets = webhook_signing_secrets
 
-        unless secret.present?
+        if secrets.empty?
           if webhook_secret_required?
             Rails.logger.error('[stripe webhook] STRIPE_WEBHOOK_SECRET is required in this environment')
             return head :internal_server_error
@@ -20,18 +28,8 @@ module Api
           return head :service_unavailable
         end
 
-        event = nil
-        last_error = nil
-        [secret, connect_secret].compact.uniq.each do |candidate|
-          event = Stripe::Webhook.construct_event(payload, sig_header, candidate)
-          break
-        rescue JSON::ParserError, Stripe::SignatureVerificationError => e
-          last_error = e
-        end
-        unless event
-          Rails.logger.warn("[stripe webhook] verify failed: #{last_error&.message}")
-          return head :bad_request
-        end
+        event = verified_event(payload, sig_header, secrets)
+        return head :bad_request if event.nil?
 
         existing = StripeWebhookEvent.find_by(stripe_event_id: event.id)
         return head :ok if existing&.processed_at.present?
@@ -52,7 +50,39 @@ module Api
 
       private
 
+      # Platform destination secret first, then the optional Connect ("events on connected accounts")
+      # destination secret. Only non-blank values are candidates; nothing is ever defaulted.
+      def webhook_signing_secrets
+        platform = ENV['STRIPE_WEBHOOK_SECRET'].presence ||
+          Rails.application.credentials.dig(:stripe, :webhook_secret).presence
+        connect = ENV['STRIPE_CONNECT_WEBHOOK_SECRET'].presence ||
+          Rails.application.credentials.dig(:stripe, :connect_webhook_secret).presence
+        [platform, connect].map { |s| s.to_s.strip.presence }.compact.uniq
+      end
+
+      def verified_event(payload, sig_header, secrets)
+        last_error = nil
+        secrets.each do |secret|
+          return Stripe::Webhook.construct_event(payload, sig_header, secret)
+        rescue Stripe::SignatureVerificationError => e
+          last_error = e
+        rescue JSON::ParserError => e
+          # Signature matched but the body is not JSON; no other secret can fix that.
+          last_error = e
+          break
+        end
+        # Class only: a JSON::ParserError message can echo payload fragments.
+        Rails.logger.warn("[stripe webhook] verify failed: #{last_error.class} secrets_tried=#{secrets.size}")
+        nil
+      end
+
       def process_event(event)
+        connected_account_id = event["account"].to_s.presence
+        if connected_account_id && !CONNECTED_ACCOUNT_EVENT_TYPES.include?(event.type)
+          Rails.logger.info("[stripe webhook] ignoring connected-account event type=#{event.type} id=#{event.id}")
+          return
+        end
+
         case event.type
         when 'payment_intent.succeeded'
           reconcile_payment_intent_succeeded(event.data.object)
@@ -68,21 +98,20 @@ module Api
             MembershipSubscriptionService.sync_from_subscription(subscription)
             send_membership_checkout_email(session: session)
           elsif session.mode.to_s == "payment"
-            # Delayed methods (ACH) complete Checkout with payment_status "unpaid"; only a paid
-            # session may launch a background check. Unpaid ones finish via async_payment_succeeded.
-            process_background_check_checkout(session) if session.payment_status.to_s == "paid"
+            # Delayed methods (e.g. ACH) complete Checkout with payment_status "unpaid"; the paid
+            # guard inside fulfillment defers those to checkout.session.async_payment_succeeded.
+            fulfill_background_check_checkout(session, event_type: event.type)
           end
         when 'checkout.session.async_payment_succeeded'
           session = event.data.object
-          process_background_check_checkout(session) if session.mode.to_s == "payment"
+          fulfill_background_check_checkout(session, event_type: event.type) if session.mode.to_s == "payment"
         when 'checkout.session.async_payment_failed'
           session = event.data.object
-          Rails.logger.warn(
-            "[stripe webhook] checkout async payment failed session=#{session.id} " \
-            "background_check_id=#{session.metadata&.[]('background_check_id')}"
-          )
+          record_background_check_async_payment_failed(session) if session.mode.to_s == "payment"
         when 'customer.subscription.updated', 'customer.subscription.created'
           subscription = event.data.object
+          return if stale_subscription_event?(event, subscription.id)
+
           MembershipSubscriptionService.sync_from_subscription(subscription)
         when 'invoice.paid'
           send_membership_invoice_paid_email(invoice: event.data.object)
@@ -104,9 +133,7 @@ module Api
         when 'charge.refunded'
           reconcile_charge_refunded(event.data.object)
         when 'account.updated'
-          account = event.data.object
-          profile = TechnicianProfile.find_by(stripe_account_id: account.id)
-          StripeConnectAccountService.sync!(profile) if profile
+          sync_connected_account(event, connected_account_id: connected_account_id)
         else
           Rails.logger.info("[stripe webhook] unhandled type=#{event.type} id=#{event.id}")
         end
@@ -135,24 +162,71 @@ module Api
         MailDelivery.safe_deliver { UserMailer.membership_checkout_thanks(user, membership_level: tier).deliver_now }
       end
 
-      def process_background_check_checkout(session)
+      # Single fulfillment path for checkout.session.completed and checkout.session.async_payment_succeeded.
+      # The paid transition is claimed under a row lock so concurrent/duplicate events for the same
+      # check launch exactly one Checkr invitation.
+      def fulfill_background_check_checkout(session, event_type:)
         background_check_id = session.metadata&.[]("background_check_id").to_s
         return if background_check_id.blank?
-        check = BackgroundCheck.find_by(id: background_check_id)
-        return if check.blank?
-        return if check.payment_status.to_s == "paid"
 
-        check.update!(
-          payment_status: :paid,
-          stripe_checkout_session_id: session.id,
-          stripe_payment_intent_id: session.payment_intent.to_s.presence,
-          paid_at: Time.current
-        )
+        unless session.payment_status.to_s == "paid"
+          Rails.logger.info(
+            "[stripe webhook] background check checkout not paid type=#{event_type} session=#{session.id} " \
+            "background_check_id=#{background_check_id} payment_status=#{session.payment_status}"
+          )
+          return
+        end
+
+        check = nil
+        claimed = false
+        BackgroundCheck.transaction do
+          check = BackgroundCheck.lock.find_by(id: background_check_id)
+          next if check.blank? || check.payment_status_paid?
+
+          check.update!(
+            payment_status: :paid,
+            stripe_checkout_session_id: session.id,
+            stripe_payment_intent_id: session.payment_intent.to_s.presence,
+            paid_at: Time.current
+          )
+          claimed = true
+        end
+        return unless claimed
+
         VerificationEventNotifier.background_payment_completed(check.user, check)
         invitation = BackgroundCheckStartService.launch_checkr_invitation!(check)
         check.update!(provider_invitation_id: invitation["id"]) if invitation["id"].present?
       rescue BackgroundCheckStartService::Error => e
         check&.update!(status: :failed, admin_notes: e.message)
+      end
+
+      # Delayed payment failed after Checkout completed: never launch Checkr. A still-pending check is
+      # marked payment failed so the technician can start over; a paid check is never downgraded.
+      def record_background_check_async_payment_failed(session)
+        background_check_id = session.metadata&.[]("background_check_id").to_s
+        outcome = "no_background_check"
+
+        if background_check_id.present?
+          BackgroundCheck.transaction do
+            check = BackgroundCheck.lock.find_by(id: background_check_id)
+            next if check.blank?
+
+            if check.payment_status_paid?
+              outcome = "already_paid_ignored"
+            elsif check.payment_status_pending? &&
+                  (check.stripe_checkout_session_id.blank? || check.stripe_checkout_session_id == session.id.to_s)
+              check.update!(payment_status: :failed)
+              outcome = "marked_payment_failed"
+            else
+              outcome = "unchanged"
+            end
+          end
+        end
+
+        Rails.logger.warn(
+          "[stripe webhook] checkout async payment failed session=#{session.id} " \
+          "background_check_id=#{background_check_id.presence || '-'} outcome=#{outcome}"
+        )
       end
 
       def send_membership_invoice_paid_email(invoice:)
@@ -193,10 +267,53 @@ module Api
           .exists?
       end
 
+      # Stripe does not guarantee ordering. A subscription event is stale when the subscription was
+      # already deleted (terminal in Stripe) or when a newer event for the same subscription has
+      # already been processed; applying it could re-grant a canceled tier.
+      def stale_subscription_event?(event, subscription_id)
+        sid = subscription_id.to_s
+        return false if sid.blank?
+
+        processed = StripeWebhookEvent
+          .where(event_type: SUBSCRIPTION_EVENT_TYPES)
+          .where.not(processed_at: nil)
+          .where("payload LIKE ?", "%\"id\":\"#{sid}\"%")
+
+        if processed.where(event_type: 'customer.subscription.deleted').exists?
+          Rails.logger.info("[stripe webhook] ignoring #{event.type} for deleted subscription event=#{event.id}")
+          return true
+        end
+
+        event_created = event["created"].to_i
+        return false unless event_created.positive?
+
+        newer = processed.pluck(:payload).any? do |raw|
+          JSON.parse(raw)["created"].to_i > event_created
+        rescue JSON::ParserError
+          false
+        end
+        Rails.logger.info("[stripe webhook] ignoring out-of-order #{event.type} event=#{event.id}") if newer
+        newer
+      end
+
       def webhook_secret_required?
         return false if defined?(DemoMode) && DemoMode.enabled?
 
         Rails.env.production? || Rails.env.to_s == "staging"
+      end
+
+      def sync_connected_account(event, connected_account_id:)
+        account = event.data.object
+        account_id = account.id.to_s
+        return if account_id.blank?
+
+        if connected_account_id && connected_account_id != account_id
+          Rails.logger.warn("[stripe webhook] account.updated account mismatch event=#{event.id}")
+          return
+        end
+
+        profile = TechnicianProfile.find_by(stripe_account_id: account_id)
+        StripeConnectAccountService.sync!(profile) if profile
       end
 
       def reconcile_payment_intent_succeeded(pi)
@@ -219,55 +336,149 @@ module Api
         txn&.update!(status: :failed, error_message: pi.last_payment_error&.message)
       end
 
+      # charge.refunded carries the Charge (with every refund so far), not a single Refund.
       def reconcile_charge_refunded(charge)
-        refunds = charge.refunds&.data || []
-        refunds.each do |refund|
-          next if JobPaymentTransaction.exists?(stripe_refund_id: refund.id)
-          # App-initiated refunds create their own txn before calling Stripe and tag the refund
-          # with metadata.transaction_id. If this webhook wins the race against that write, attach
-          # to the existing txn instead of inserting a duplicate (which double-counts the refund).
-          next if link_app_initiated_refund!(refund)
+        refunds_for_charge(charge).each do |refund|
+          reconcile_refund!(charge, refund)
+        end
+      end
 
-          pi_id = charge.payment_intent.to_s.presence
+      # Newer API versions omit `refunds` from the Charge payload (or truncate it); fetch from Stripe then.
+      def refunds_for_charge(charge)
+        collection = charge["refunds"]
+        data = collection && collection["data"]
+        return Array(data) if !data.nil? && !collection["has_more"]
+
+        Stripe::Refund.list({ charge: charge.id, limit: 100 }).auto_paging_each.to_a
+      end
+
+      def reconcile_refund!(charge, refund)
+        pi_id = charge.payment_intent.to_s.presence
+
+        JobPaymentTransaction.transaction do
+          # 1) Already linked (by us or by an earlier delivery): only sync status, never insert.
+          existing = JobPaymentTransaction.lock.find_by(stripe_refund_id: refund.id)
+          if existing
+            apply_stripe_refund_status!(existing, refund)
+            next
+          end
+
+          # 2) App-initiated refund whose stripe_refund_id has not been persisted yet (race with
+          #    JobFundingService.refund_slice!): attach to the pending txn instead of inserting.
+          next if link_app_initiated_refund!(refund, charge: charge, pi_id: pi_id)
+
+          # 3) External refund (Dashboard/API outside the app): record it against the collection.
           source = JobPaymentTransaction.status_succeeded.company_collections.find_by(stripe_payment_intent_id: pi_id)
           source ||= JobPaymentTransaction.find_by(stripe_charge_id: charge.id)
-          next unless source
+          unless source
+            Rails.logger.warn("[stripe webhook] refund without matching collection refund=#{refund.id} charge=#{charge.id}")
+            next
+          end
 
+          create_external_refund_txn!(source: source, charge: charge, refund: refund, pi_id: pi_id)
+        end
+      end
+
+      def link_app_initiated_refund!(refund, charge:, pi_id:)
+        txn_id = refund["metadata"]&.[]("transaction_id").to_s
+        return false unless txn_id.match?(/\A\d+\z/)
+
+        txn = JobPaymentTransaction.lock.find_by(id: txn_id.to_i)
+        if txn.nil?
+          Rails.logger.warn("[stripe webhook] refund metadata points to unknown txn refund=#{refund.id} transaction_id=#{txn_id}")
+          return false
+        end
+
+        mismatch = refund_txn_mismatch(txn, refund: refund, charge: charge, pi_id: pi_id)
+        if mismatch
+          Rails.logger.warn(
+            "[stripe webhook] refund metadata mismatch refund=#{refund.id} transaction_id=#{txn.id} reason=#{mismatch}"
+          )
+          return false
+        end
+
+        attrs = { stripe_refund_id: refund.id }
+        attrs[:stripe_charge_id] = charge.id if txn.stripe_charge_id.blank?
+        attrs[:stripe_payment_intent_id] = pi_id if txn.stripe_payment_intent_id.blank? && pi_id
+        txn.assign_attributes(attrs)
+        apply_stripe_refund_status!(txn, refund)
+        true
+      end
+
+      # Returns nil when the Stripe refund is consistent with the ledger txn, else a short reason.
+      def refund_txn_mismatch(txn, refund:, charge:, pi_id:)
+        return "type" unless JobPaymentTransaction::REFUND_TYPES.include?(txn.transaction_type.to_s)
+        return "refund_id_conflict" if txn.stripe_refund_id.present? && txn.stripe_refund_id != refund.id
+        return "amount" unless txn.amount_cents.to_i == refund.amount.to_i
+        return "currency" unless txn.currency.to_s.casecmp?(refund.currency.to_s)
+
+        txn_pi = txn.stripe_payment_intent_id.presence || txn.metadata_json.to_h["payment_intent_id"].presence
+        txn_charge = txn.stripe_charge_id.presence
+        if txn_pi.present? || txn_charge.present?
+          pi_ok = txn_pi.present? && pi_id.present? && txn_pi == pi_id
+          charge_ok = txn_charge.present? && txn_charge == charge.id.to_s
+          return "parent_charge" unless pi_ok || charge_ok
+        else
+          same_job = JobPaymentTransaction
+            .where(job_id: txn.job_id)
+            .where("stripe_payment_intent_id = ? OR stripe_charge_id = ?", pi_id.to_s, charge.id.to_s)
+            .exists?
+          return "parent_charge" unless same_job
+        end
+
+        nil
+      end
+
+      # Ledger status follows the real Stripe refund status; pending/failed are never success.
+      # A txn the app already settled as succeeded is not downgraded here (logged for review).
+      def apply_stripe_refund_status!(txn, refund)
+        case refund["status"].to_s
+        when "succeeded"
+          unless txn.status_succeeded?
+            txn.status = :succeeded
+            txn.succeeded_at ||= Time.current
+          end
+        when "failed", "canceled"
+          if txn.status_succeeded?
+            Rails.logger.warn("[stripe webhook] stripe refund #{refund['status']} but ledger txn succeeded refund=#{refund.id} transaction_id=#{txn.id}")
+          else
+            txn.status = :failed
+            txn.error_message = refund["failure_reason"].presence || "Stripe refund #{refund['status']}"
+          end
+        end
+        txn.save! if txn.changed?
+      end
+
+      def create_external_refund_txn!(source:, charge:, refund:, pi_id:)
+        status =
+          case refund["status"].to_s
+          when "succeeded" then :succeeded
+          when "failed", "canceled" then :failed
+          else :pending
+          end
+
+        JobPaymentTransaction.transaction(requires_new: true) do
           JobPaymentTransaction.create!(
             payment: source.payment,
             job: source.job,
             transaction_type: :refund,
             direction: :outbound,
             amount_cents: refund.amount.to_i,
-            currency: refund.currency || "usd",
-            status: :succeeded,
+            currency: refund.currency.presence || "usd",
+            status: status,
             stripe_refund_id: refund.id,
             stripe_charge_id: charge.id,
             stripe_payment_intent_id: pi_id,
             idempotency_key: "tf_stripe_refund_#{refund.id}",
             revision: source.job.financial_revision,
-            succeeded_at: Time.current,
-            metadata_json: { "source" => "stripe_webhook" }
+            succeeded_at: (Time.current if status == :succeeded),
+            error_message: (refund["failure_reason"].presence if status == :failed),
+            metadata_json: { "source" => "stripe_webhook", "stripe_refund_status" => refund["status"].to_s }
           )
         end
-      end
-
-      def link_app_initiated_refund!(refund)
-        txn_id = refund.metadata&.[]("transaction_id").to_s.presence
-        return false if txn_id.blank?
-
-        JobPaymentTransaction.transaction do
-          txn = JobPaymentTransaction.lock.find_by(id: txn_id)
-          return false unless txn && JobPaymentTransaction::REFUND_TYPES.include?(txn.transaction_type.to_s)
-
-          attrs = { stripe_refund_id: refund.id }
-          if refund.status.to_s == "succeeded" && !txn.status_succeeded?
-            attrs[:status] = :succeeded
-            attrs[:succeeded_at] = Time.current
-          end
-          txn.update!(attrs) if txn.stripe_refund_id.blank? || attrs.key?(:status)
-        end
-        true
+      rescue ActiveRecord::RecordNotUnique
+        # A concurrent delivery inserted this refund first; nothing left to do.
+        nil
       end
 
       def timestamp_to_time(value)

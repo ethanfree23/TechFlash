@@ -14,6 +14,11 @@ class MembershipSubscriptionService
     }
   }.freeze
 
+  # Subscription statuses that entitle the user to the tier mapped from the subscription price.
+  # POLICY (review later): past_due keeps paid access during Stripe's automatic retry window;
+  # Stripe moves the subscription to unpaid/canceled when retries are exhausted.
+  PAID_ACCESS_STATUSES = %w[active trialing past_due].freeze
+
   def self.create_checkout_session!(user:, membership_level:, success_url:, cancel_url:)
     raise Error, "Stripe is not configured" if Stripe.api_key.blank?
     mode_error = StripeModeGuard.error_message
@@ -52,8 +57,9 @@ class MembershipSubscriptionService
     { session_id: session.id, url: session.url }
   end
 
-  # past_due keeps access during Stripe's automatic retry window.
-  PAID_ACCESS_STATUSES = %w[active trialing past_due].freeze
+  def self.paid_access_status?(status)
+    PAID_ACCESS_STATUSES.include?(status.to_s)
+  end
 
   def self.sync_from_subscription(subscription)
     return if subscription.blank?
@@ -66,7 +72,7 @@ class MembershipSubscriptionService
     return if profile.blank?
 
     level =
-      if PAID_ACCESS_STATUSES.include?(subscription.status.to_s)
+      if paid_access_status?(subscription.status)
         level_from_subscription(user: user, subscription: subscription)
       else
         # incomplete / incomplete_expired / unpaid / canceled / paused: no paid tier until Stripe
