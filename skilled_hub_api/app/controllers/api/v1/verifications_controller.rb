@@ -51,6 +51,12 @@ module Api
           .first
         return render json: { error: "Background check already in progress." }, status: :unprocessable_entity if existing.present?
 
+        # A paid check whose Checkr invitation has not been created yet (provider outage) must not be
+        # bypassed by starting a new one: that would charge the technician a second time.
+        if BackgroundCheckFulfillmentService.awaiting_invitation.where(user_id: @current_user.id).exists?
+          return render json: { error: "Your background check payment was received and the invitation is being prepared." }, status: :unprocessable_entity
+        end
+
         membership_level = @current_user.technician_profile&.membership_level.to_s
         tier = MembershipTierConfig.find_by(audience: "technician", slug: membership_level)
         fee_waived = tier&.waives_background_check_fee?

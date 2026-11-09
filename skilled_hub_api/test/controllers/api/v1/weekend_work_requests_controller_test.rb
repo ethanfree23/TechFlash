@@ -31,7 +31,7 @@ module Api
         post "/api/v1/jobs/#{@job.id}/weekend_work_requests",
              params: {
                requested_date: Date.today.next_occurring(:saturday),
-               requested_start_at: 2.days.from_now.iso8601,
+               requested_start_at: 2.days.from_now.change(hour: 8).iso8601,
                requested_end_at: 2.days.from_now.change(hour: 16).iso8601,
                estimated_hours: 8,
                applicable_multiplier: 1.5
@@ -49,7 +49,7 @@ module Api
           requested_by_user: @company_user,
           status: :requested_by_company,
           requested_date: Date.today.next_occurring(:saturday),
-          requested_start_at: 2.days.from_now,
+          requested_start_at: 2.days.from_now.change(hour: 8),
           requested_end_at: 2.days.from_now.change(hour: 16),
           estimated_hours: 8,
           applicable_multiplier: 1.5

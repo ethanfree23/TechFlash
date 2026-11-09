@@ -14,6 +14,11 @@ class MembershipSubscriptionService
     }
   }.freeze
 
+  # Subscription statuses that entitle the user to the tier mapped from the subscription price.
+  # POLICY (review later): past_due keeps paid access during Stripe's automatic retry window;
+  # Stripe moves the subscription to unpaid/canceled when retries are exhausted.
+  PAID_ACCESS_STATUSES = %w[active trialing past_due].freeze
+
   def self.create_checkout_session!(user:, membership_level:, success_url:, cancel_url:)
     raise Error, "Stripe is not configured" if Stripe.api_key.blank?
     mode_error = StripeModeGuard.error_message
@@ -52,6 +57,10 @@ class MembershipSubscriptionService
     { session_id: session.id, url: session.url }
   end
 
+  def self.paid_access_status?(status)
+    PAID_ACCESS_STATUSES.include?(status.to_s)
+  end
+
   def self.sync_from_subscription(subscription)
     return if subscription.blank?
 
@@ -62,12 +71,24 @@ class MembershipSubscriptionService
     profile = profile_for(user)
     return if profile.blank?
 
-    level = level_from_subscription(user: user, subscription: subscription)
-    profile.update!(
-      membership_level: level,
+    level =
+      if paid_access_status?(subscription.status)
+        level_from_subscription(user: user, subscription: subscription)
+      else
+        # incomplete / incomplete_expired / unpaid / canceled / paused: no paid tier until Stripe
+        # reports a paying status (customer.subscription.updated arrives when that happens).
+        MembershipPolicy.default_slug_for(user.company? ? "company" : "technician")
+      end
+    # Targeted column write: profiles validate unrelated fields on update (e.g. phone presence),
+    # and a legacy profile failing those must not block Stripe's entitlement state from landing.
+    # The level is normalized explicitly since update_columns skips before_validation callbacks.
+    audience = user.company? ? :company : :technician
+    profile.update_columns(
+      membership_level: MembershipPolicy.normalized_level(level, audience: audience),
       stripe_membership_subscription_id: subscription.id,
       membership_status: subscription.status,
-      membership_current_period_end_at: timestamp_to_time(subscription.current_period_end)
+      membership_current_period_end_at: timestamp_to_time(subscription.current_period_end),
+      updated_at: Time.current
     )
   end
 
