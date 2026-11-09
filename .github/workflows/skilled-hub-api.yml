@@ -1,0 +1,51 @@
+# Rails API test suite (skilled_hub_api). Runs on SQLite with RAILS_ENV=test; no real credentials.
+# Pinned to ubuntu-24.04: ruby/setup-ruby only ships prebuilt Ruby 3.0.x for 22.04/24.04 (not ubuntu-latest).
+name: skilled-hub-api
+
+on:
+  push:
+    paths:
+      - 'skilled_hub_api/**'
+      - '.github/workflows/skilled-hub-api.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'skilled_hub_api/**'
+      - '.github/workflows/skilled-hub-api.yml'
+
+concurrency:
+  group: skilled-hub-api-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: skilled_hub_api
+    env:
+      RAILS_ENV: test
+      CI: "true"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install native dependencies (sqlite3, pg gems)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libsqlite3-dev libpq-dev
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.0.2'
+          bundler-cache: true
+          working-directory: skilled_hub_api
+
+      - name: Prepare test database (clean SQLite, schema load)
+        run: |
+          rm -f db/test.sqlite3 db/test.sqlite3-shm db/test.sqlite3-wal db/test.sqlite3-journal
+          bundle exec rails db:create db:schema:load
+
+      - name: Run tests
+        run: bundle exec rails test

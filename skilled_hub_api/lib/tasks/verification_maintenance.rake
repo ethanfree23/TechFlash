@@ -1,4 +1,17 @@
 namespace :verification do
+  desc "Create Checkr invitations for paid background checks that have none (e.g. after a Checkr outage)"
+  task retry_background_check_invitations: :environment do
+    summary = Hash.new(0)
+    BackgroundCheckFulfillmentService.awaiting_invitation.order(:id).pluck(:id).each do |check_id|
+      outcome = BackgroundCheckFulfillmentService.ensure_invitation!(check_id)
+      summary[outcome] += 1
+    rescue BackgroundCheckFulfillmentService::Error => e
+      summary[:failed] += 1
+      puts "background_check=#{check_id} failed: #{e.class}"
+    end
+    puts "Background check invitation retry: #{summary.to_json}"
+  end
+
   desc "Expire outdated verification items and badges"
   task expire_items: :environment do
     now = Time.current

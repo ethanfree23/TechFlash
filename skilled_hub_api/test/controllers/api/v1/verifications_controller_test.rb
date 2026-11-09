@@ -44,6 +44,31 @@ module Api
         assert AppNotification.where(user_id: user.id, category: "verification").exists?
       end
 
+      test "start background check refuses to create a second check while a paid one awaits its invitation" do
+        user, = create_technician_with_membership("basic", "verification-paid-awaiting@example.com")
+        BackgroundCheck.create!(
+          user: user,
+          provider: "checkr",
+          package_name: "essential_plus",
+          status: :failed,
+          payment_status: :paid,
+          paid_by: "technician",
+          payment_amount_cents: 8000,
+          paid_at: Time.current,
+          admin_notes: "Checkr invitation failed (will retry): Checkr 503"
+        )
+
+        assert_no_difference -> { BackgroundCheck.where(user_id: user.id).count } do
+          post "/api/v1/verification/start_background_check",
+               params: background_check_consent_params,
+               headers: auth_header_for(user),
+               as: :json
+        end
+
+        assert_response :unprocessable_entity
+        assert_match(/payment was received/i, JSON.parse(response.body)["error"])
+      end
+
       test "premium technician start background check launches invitation" do
         user, profile = create_technician_with_membership("premium", "verification-premium@example.com")
 
