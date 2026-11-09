@@ -52,6 +52,9 @@ class MembershipSubscriptionService
     { session_id: session.id, url: session.url }
   end
 
+  # past_due keeps access during Stripe's automatic retry window.
+  PAID_ACCESS_STATUSES = %w[active trialing past_due].freeze
+
   def self.sync_from_subscription(subscription)
     return if subscription.blank?
 
@@ -62,7 +65,14 @@ class MembershipSubscriptionService
     profile = profile_for(user)
     return if profile.blank?
 
-    level = level_from_subscription(user: user, subscription: subscription)
+    level =
+      if PAID_ACCESS_STATUSES.include?(subscription.status.to_s)
+        level_from_subscription(user: user, subscription: subscription)
+      else
+        # incomplete / incomplete_expired / unpaid / canceled / paused: no paid tier until Stripe
+        # reports a paying status (customer.subscription.updated arrives when that happens).
+        MembershipPolicy.default_slug_for(user.company? ? "company" : "technician")
+      end
     profile.update!(
       membership_level: level,
       stripe_membership_subscription_id: subscription.id,
