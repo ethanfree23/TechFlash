@@ -106,12 +106,12 @@ class JobSettlementService
         transaction_type: refund_transaction_type,
         revision: revision + 1
       )
-      if result[:processing]
+      if result[:processing] || result[:pending]
         job.update!(settlement_status: :settlement_blocked)
         return {
           success: false,
-          processing: true,
-          error: "ACH refund is processing. Settlement will complete when the bank return finishes."
+          pending: true,
+          error: "Refund is pending. Settlement will complete when Stripe finalizes the refund."
         }
       end
       unless result[:success]

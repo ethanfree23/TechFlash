@@ -61,9 +61,9 @@ const AdminJobPaymentsPage = ({ user, onLogout }) => {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
           {[
             ['ACH processing', counts.ach_processing],
-            ['Processing', counts.processing],
+            ['Open risks', counts.open_risks],
             ['Failed', counts.failed],
-            ['Disputed', counts.disputed],
+            ['Investigation', counts.investigation_required],
           ].map(([label, value]) => (
             <div key={label} className="rounded-xl border border-slate-200 bg-white p-4">
               <div className="text-xs uppercase tracking-wide text-slate-500">{label}</div>
@@ -166,8 +166,20 @@ const AdminJobPaymentsPage = ({ user, onLogout }) => {
                       <span className={`inline-flex px-2 py-0.5 rounded-md text-xs font-medium ${statusTone(row)}`}>
                         {row.status}
                       </span>
+                      {row.review_required && (
+                        <div className="text-xs font-semibold text-red-700 mt-1">Review required</div>
+                      )}
+                      {row.payout_at_risk && (
+                        <div className="text-xs font-semibold text-orange-800 mt-1">Payout at risk</div>
+                      )}
+                      {row.risk_kind && (
+                        <div className="text-xs text-slate-600 mt-1">Risk: {row.risk_kind}</div>
+                      )}
                       <div className="text-xs text-slate-500 mt-1">
                         funding: {row.funding_status || '—'} · settlement: {row.settlement_status || '—'}
+                      </div>
+                      <div className="text-xs text-slate-500">
+                        Transfer ≠ bank payout · bank: {row.bank_payout_status || 'unknown'}
                       </div>
                       {row.error_message && (
                         <div className="text-xs text-red-600 mt-1 max-w-xs">{row.error_message}</div>

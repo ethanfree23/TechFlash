@@ -17,6 +17,20 @@ production:
   <<: *default
   url: <%= ENV['DATABASE_URL'] %>
 
+# Dedicated Railway staging Postgres. Never falls back to SQLite or production URL.
+staging:
+  <<: *default
+  <% if ENV['DATABASE_URL'].to_s.strip.empty? %>
+  # Fail at boot with a clear message if DATABASE_URL is missing.
+  adapter: postgresql
+  database: staging_database_url_missing
+  username: invalid
+  password: invalid
+  host: 127.0.0.1
+  <% else %>
+  url: <%= ENV['DATABASE_URL'] %>
+  <% end %>
+
 demo:
   <<: *default
   <% if ENV['DATABASE_URL'].present? %>

@@ -78,14 +78,14 @@ class JobFundingAdjustmentService
         job.update!(funding_status: :funded)
         JobFundingService.record_revision!(job, source: source, transaction: result[:transaction])
         { success: true, job: job, transaction: result[:transaction] }
-      elsif result[:processing]
+      elsif result[:processing] || result[:pending]
         job.update!(funding_status: :adjustment_required)
         {
           success: false,
-          processing: true,
+          pending: true,
           job: job,
           transaction: result[:transaction],
-          error: "ACH refund is processing. Settlement will complete when the bank return finishes."
+          error: "Refund is pending. Settlement will complete when Stripe finalizes the refund."
         }
       else
         { success: false, error: result[:error] || "Could not refund the difference.", job: job }

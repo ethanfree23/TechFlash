@@ -50,8 +50,16 @@ class JobStripeOps
     defined?(DemoMode) && DemoMode.enabled?
   end
 
+  # Simulate Stripe only in DemoMode or local/unit tests — never in staging (real sk_test_).
+  def self.simulate_stripe?
+    return true if demo?
+    return true if Rails.env.test? && !ENV["STRIPE_INTEGRATION_TEST"].to_s.strip.casecmp("true").zero?
+
+    false
+  end
+
   def self.create_payment_intent!(amount_cents:, customer_id:, payment_method_id:, metadata:, transfer_group:, idempotency_key:, off_session: true)
-    if demo? || Rails.env.test?
+    if simulate_stripe?
       return Result.new(
         status: "succeeded",
         stripe_id: "pi_test_#{SecureRandom.hex(8)}",
@@ -106,7 +114,7 @@ class JobStripeOps
   end
 
   def self.refund!(amount_cents:, payment_intent_id:, metadata:, idempotency_key:)
-    if demo? || Rails.env.test?
+    if simulate_stripe?
       return Result.new(status: "succeeded", stripe_id: "re_test_#{SecureRandom.hex(8)}", simulated: true)
     end
     mode_error = StripeModeGuard.error_message
@@ -117,36 +125,31 @@ class JobStripeOps
       { payment_intent: payment_intent_id, amount: amount_cents, metadata: metadata },
       { idempotency_key: idempotency_key }
     )
-    # ACH refunds may return pending/processing before succeeded.
-    normalized =
-      case refund.status.to_s
-      when "succeeded" then "succeeded"
-      when "pending", "requires_action" then "processing"
-      else refund.status
-      end
-    Result.new(status: normalized, stripe_id: refund.id)
+    # Preserve Stripe's refund status vocabulary: pending stays pending (not "processing").
+    Result.new(status: refund.status.to_s, stripe_id: refund.id)
   rescue Stripe::StripeError => e
     Result.new(status: "failed", error: e.message)
   end
 
-  def self.transfer!(amount_cents:, destination:, metadata:, transfer_group:, idempotency_key:)
-    if demo? || Rails.env.test?
+  def self.transfer!(amount_cents:, destination:, metadata:, transfer_group:, idempotency_key:, source_transaction: nil)
+    if simulate_stripe?
       return Result.new(status: "succeeded", stripe_id: "tr_test_#{SecureRandom.hex(8)}", simulated: true)
     end
     mode_error = StripeModeGuard.error_message
     return Result.new(status: "failed", error: mode_error) if mode_error
     return Result.new(status: "failed", error: "Stripe not configured") if Stripe.api_key.blank?
 
-    transfer = Stripe::Transfer.create(
-      {
-        amount: amount_cents,
-        currency: "usd",
-        destination: destination,
-        metadata: metadata,
-        transfer_group: transfer_group
-      },
-      { idempotency_key: idempotency_key }
-    )
+    params = {
+      amount: amount_cents,
+      currency: "usd",
+      destination: destination,
+      metadata: metadata,
+      transfer_group: transfer_group
+    }
+    # source_transaction must be a Charge ID (ch_...), never a PaymentIntent ID.
+    params[:source_transaction] = source_transaction if source_transaction.present?
+
+    transfer = Stripe::Transfer.create(params, { idempotency_key: idempotency_key })
     Result.new(status: "succeeded", stripe_id: transfer.id)
   rescue Stripe::StripeError => e
     Result.new(status: "failed", error: e.message)

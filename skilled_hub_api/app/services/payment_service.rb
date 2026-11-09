@@ -98,13 +98,18 @@ class PaymentService
         early = { error: "Company ACH payment is still processing; technician payout is blocked." }
         next
       end
-      if locked_job.job_payment_transactions.company_refunds.status_processing.exists?
-        early = { error: "Company ACH refund is still processing; technician payout is blocked." }
+      if locked_job.job_payment_transactions.company_refunds.status_processing.exists? ||
+          locked_job.job_payment_transactions.company_refunds.status_pending.exists?
+        early = { error: "Company refund is still pending; technician payout is blocked." }
         next
       end
       disputed = locked_job.job_payment_transactions.company_collections.status_succeeded.select(&:disputed?)
       if disputed.any?
         early = { error: "Company payment is disputed or returned; technician payout is blocked until resolved." }
+        next
+      end
+      if defined?(PaymentRiskEvent) && PaymentRiskEvent.open_for_job?(locked_job)
+        early = { error: "Unresolved financial risk on this job; technician payout is blocked pending admin review." }
         next
       end
       if ledger.transferred_cents.positive?
@@ -167,12 +172,17 @@ class PaymentService
     end
     return early if early
 
+    source_charge_id = source_charge_for_transfer(job)
     result = JobStripeOps.transfer!(
       amount_cents: payout_amount,
       destination: technician_profile.stripe_account_id,
-      metadata: JobFundingService.stripe_metadata(job, txn),
+      metadata: JobFundingService.stripe_metadata(job, txn).merge(
+        "source_charge_id" => source_charge_id.to_s,
+        "source_transaction_mode" => source_charge_id.present? ? "single_charge" : "platform_balance"
+      ),
       transfer_group: job.transfer_group,
-      idempotency_key: key
+      idempotency_key: key,
+      source_transaction: source_charge_id
     )
 
     Job.transaction do
@@ -183,7 +193,17 @@ class PaymentService
       end
 
       if result.succeeded?
-        locked_txn.update!(status: :succeeded, stripe_transfer_id: result.stripe_id, succeeded_at: Time.current)
+        locked_txn.update!(
+          status: :succeeded,
+          stripe_transfer_id: result.stripe_id,
+          source_charge_id: source_charge_id,
+          bank_payout_status: "unknown",
+          succeeded_at: Time.current,
+          metadata_json: locked_txn.metadata_json.to_h.merge(
+            "source_transaction" => source_charge_id,
+            "bank_payout_status" => "unknown"
+          )
+        )
         locked_payment.update!(
           status: "released",
           stripe_transfer_id: result.stripe_id,
@@ -195,6 +215,24 @@ class PaymentService
           paid_at: Time.current,
           updated_at: Time.current
         )
+        PaymentRiskEvent.create!(
+          job: job,
+          job_payment_transaction: locked_txn,
+          risk_kind: "transfer_executed",
+          investigation_status: "resolved",
+          investigation_required: false,
+          amount_cents: payout_amount,
+          currency: "usd",
+          stripe_transfer_id: result.stripe_id,
+          stripe_connected_account_id: technician_profile.stripe_account_id,
+          stripe_charge_id: source_charge_id,
+          bank_payout_status: "unknown",
+          admin_note: "Transfer created on Stripe Connect. Bank payout status unknown (not proven).",
+          metadata_json: { "note" => "transfer_executed_is_not_bank_payout" },
+          detected_at: Time.current,
+          resolved_at: Time.current
+        )
+
         MailDelivery.safe_deliver { UserMailer.payment_received_email(job, payout_amount).deliver_now }
         { success: true, payment: locked_payment, transaction: locked_txn }
       else
@@ -204,5 +242,20 @@ class PaymentService
     end
   rescue JobLedger::MissingCommissionSnapshotError => e
     { error: e.message }
+  end
+
+  # Prefer source_transaction only for single-charge funded jobs.
+  # Multi-charge jobs keep platform-balance transfers (Option B) — never pick an arbitrary charge.
+  def self.source_charge_for_transfer(job)
+    charges = job.job_payment_transactions
+      .company_collections
+      .status_succeeded
+      .where.not(stripe_charge_id: [nil, ""])
+      .order(:id)
+      .pluck(:stripe_charge_id)
+      .uniq
+    return charges.first if charges.size == 1
+
+    nil
   end
 end

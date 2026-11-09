@@ -46,6 +46,10 @@ module Ghl
       if defined?(DemoMode) && DemoMode.enabled?
         return persist_and_return(result(ok: true, status: :skipped, error: "Demo mode: SMS not sent", http_status: :ok))
       end
+      if defined?(StagingSandbox) && StagingSandbox.simulate_ghl?
+        StagingSandbox.log_blocked("ghl_sms")
+        return persist_and_return(result(ok: true, status: :skipped, error: "Staging sandbox: GHL SMS not sent", http_status: :ok))
+      end
 
       unless GhlConfiguration.outbound_configured?
         return persist_and_return(result(ok: false, status: :failed, error: "GHL SMS is not configured", http_status: :service_unavailable))

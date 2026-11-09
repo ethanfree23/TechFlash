@@ -60,6 +60,7 @@ module Api
         assert_equal "seti_secret_test", body["client_secret"]
         assert_equal ["us_bank_account"], captured[:payment_method_types]
         assert_equal ["payment_method"], captured.dig(:payment_method_options, :us_bank_account, :financial_connections, :permissions)
+        refute captured.key?(:mandate_data), "SetupIntent create must not include mandate_data"
       end
 
       test "create_setup_intent defaults to card" do

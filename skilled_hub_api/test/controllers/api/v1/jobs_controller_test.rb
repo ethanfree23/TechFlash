@@ -265,7 +265,7 @@ module Api
              as: :json
 
         assert_response :unprocessable_entity
-        assert_match(/credit or debit card/i, JSON.parse(response.body)["error"].to_s)
+        assert_match(/credit\/debit card or bank account|credit or debit card/i, JSON.parse(response.body)["error"].to_s)
       end
 
       test "job funding waived company can create priced job without saved card" do

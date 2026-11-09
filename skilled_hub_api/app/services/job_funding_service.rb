@@ -215,7 +215,7 @@ class JobFundingService
     return early if early
 
     user = job.company_profile.user
-    skip_live_customer = JobStripeOps.demo? || Rails.env.test?
+    skip_live_customer = JobStripeOps.simulate_stripe?
     customer_id = StripeCustomerService.validate_or_clear_customer_id!(user) unless skip_live_customer
     return { error: "Company must add a payment method in Settings before posting a job" } if customer_id.blank? && !skip_live_customer
 
@@ -488,7 +488,8 @@ class JobFundingService
         return { success: true, transaction: locked_txn }
       end
 
-      if result.succeeded?
+      case result.status.to_s
+      when "succeeded"
         locked_txn.update!(
           status: :succeeded,
           stripe_refund_id: result.stripe_id,
@@ -496,22 +497,25 @@ class JobFundingService
           succeeded_at: Time.current
         )
         { success: true, transaction: locked_txn.reload }
-      elsif result.processing?
-        # ACH refund accepted but not finalized — treat as in-flight, not success.
+      when "pending", "requires_action"
+        # Stripe accepted the refund request; funds not finalized. Keep pending (never failed).
         locked_txn.update!(
-          status: :processing,
+          status: :pending,
           stripe_refund_id: result.stripe_id,
           stripe_payment_intent_id: payment_intent_id,
-          processing_at: locked_txn.processing_at || Time.current
+          metadata_json: locked_txn.metadata_json.to_h.merge("stripe_refund_status" => result.status.to_s)
         )
         {
           success: false,
-          processing: true,
+          pending: true,
           transaction: locked_txn.reload,
-          message: "Refund initiated. It will complete when the bank processes the return."
+          message: "Refund initiated and pending. It will complete when Stripe finalizes the refund."
         }
+      when "failed", "canceled"
+        locked_txn.update!(status: :failed, error_message: result.error || "Stripe refund #{result.status}", stripe_refund_id: result.stripe_id)
+        { error: result.error || "Refund failed", transaction: locked_txn }
       else
-        locked_txn.update!(status: :failed, error_message: result.error)
+        locked_txn.update!(status: :failed, error_message: result.error || "Unexpected refund status #{result.status}")
         { error: result.error || "Refund failed", transaction: locked_txn }
       end
     end

@@ -43,3 +43,13 @@ These are implemented with the safe defaults above. Changing them needs explicit
 ## What is stored locally
 
 Stripe PaymentMethod / PaymentIntent / Charge / Dispute IDs plus non-sensitive display fields (`payment_method_type`, bank name, last4, brand). **Never** raw account numbers, routing numbers, or bank login credentials.
+
+## Stage 2 additions
+
+- SetupIntent create **must not** include `mandate_data` (mandate via Stripe.js confirm).
+- `StripeSetupRecord` reconciles setup success/failure webhooks.
+- Refund Stripe status `pending` stays ledger `pending` (never auto-failed).
+- `PaymentRiskEvent` tracks post-success disputes/returns/investigation without auto clawback.
+- Single-charge Connect transfers may set `source_transaction` (Charge ID). Multi-charge jobs use platform-balance transfers (Option B).
+- Staging (`RAILS_ENV=staging`) uses real Stripe **test** keys; DemoMode disabled; outbound comms sandboxed.
+- Docs: `docs/STRIPE_WEBHOOK_EVENT_INVENTORY.md`, `docs/STAGING_SETUP.md`, `docs/STAGING_E2E_CHECKLIST.md`.

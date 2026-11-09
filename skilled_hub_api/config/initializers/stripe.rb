@@ -26,9 +26,22 @@ demo_stripe_secret_key = lambda do
   nil # Do not fall back to credentials — production live keys share the same RAILS_MASTER_KEY.
 end
 
+staging_stripe_secret_key = lambda do
+  key = ENV["STRIPE_SECRET_KEY"].to_s.strip.presence || ENV["STRIPE_SECRET_KEY_TEST"].to_s.strip.presence
+  return key if key.to_s.start_with?("sk_test_")
+
+  if key.to_s.start_with?("sk_live_")
+    raise "Staging Stripe key must be sk_test_.... Live keys are forbidden on RAILS_ENV=staging."
+  end
+
+  key
+end
+
 Stripe.api_key =
   if defined?(DemoMode) && DemoMode.enabled?
     demo_stripe_secret_key.call
+  elsif Rails.env.staging?
+    staging_stripe_secret_key.call
   elsif Rails.env.production?
     ENV['STRIPE_SECRET_KEY'].presence ||
       Rails.application.credentials.dig(:stripe, :secret_key).presence

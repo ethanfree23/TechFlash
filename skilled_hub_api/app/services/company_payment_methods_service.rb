@@ -47,16 +47,14 @@ class CompanyPaymentMethodsService
           verification_method: "automatic"
         }
       }
-      # Evidence of ACH debit authorization for future off-session charges.
-      if ip_address.present? && user_agent.present?
-        params[:mandate_data] = {
-          customer_acceptance: {
-            type: "online",
-            online: {
-              ip_address: ip_address.to_s,
-              user_agent: user_agent.to_s
-            }
-          }
+      # Do NOT pass mandate_data on an unconfirmed SetupIntent — Stripe rejects it.
+      # Mandate acceptance is collected client-side via confirmUsBankAccountSetup /
+      # collectBankAccountForSetup (ip_address/user_agent retained for audit logging only).
+      if ip_address.present? || user_agent.present?
+        params[:metadata] = {
+          techflash_setup: "company_us_bank_account",
+          request_ip_present: ip_address.present?.to_s,
+          user_agent_present: user_agent.present?.to_s
         }
       end
     end

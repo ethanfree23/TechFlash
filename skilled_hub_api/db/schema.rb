@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_09_000001) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_09_180000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -692,6 +692,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_09_000001) do
     t.datetime "processing_at"
     t.string "dispute_status"
     t.string "stripe_dispute_id"
+    t.boolean "investigation_required", default: false, null: false
+    t.string "source_charge_id"
+    t.string "bank_payout_status"
     t.index ["dispute_status"], name: "index_job_payment_transactions_on_dispute_status"
     t.index ["idempotency_key"], name: "index_job_payment_transactions_on_idempotency_key", unique: true
     t.index ["job_id", "transaction_type"], name: "index_job_payment_transactions_on_job_id_and_transaction_type"
@@ -933,6 +936,38 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_09_000001) do
     t.index ["user_id"], name: "index_password_setup_challenges_on_user_id"
   end
 
+  create_table "payment_risk_events", force: :cascade do |t|
+    t.integer "job_id", null: false
+    t.integer "job_payment_transaction_id"
+    t.string "risk_kind", null: false
+    t.string "investigation_status", default: "open", null: false
+    t.integer "amount_cents"
+    t.string "currency", default: "usd", null: false
+    t.string "stripe_event_id"
+    t.string "stripe_payment_intent_id"
+    t.string "stripe_charge_id"
+    t.string "stripe_refund_id"
+    t.string "stripe_dispute_id"
+    t.string "stripe_transfer_id"
+    t.string "stripe_connected_account_id"
+    t.string "stripe_payout_id"
+    t.string "bank_payout_status", default: "unknown", null: false
+    t.boolean "investigation_required", default: true, null: false
+    t.text "admin_note"
+    t.json "metadata_json", default: {}, null: false
+    t.datetime "detected_at", null: false
+    t.datetime "resolved_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["investigation_status"], name: "index_payment_risk_events_on_investigation_status"
+    t.index ["job_id", "investigation_status"], name: "index_payment_risk_events_on_job_id_and_investigation_status"
+    t.index ["job_id"], name: "index_payment_risk_events_on_job_id"
+    t.index ["job_payment_transaction_id"], name: "index_payment_risk_events_on_job_payment_transaction_id"
+    t.index ["risk_kind"], name: "index_payment_risk_events_on_risk_kind"
+    t.index ["stripe_event_id"], name: "index_payment_risk_events_on_stripe_event_id"
+    t.index ["stripe_payment_intent_id"], name: "index_payment_risk_events_on_stripe_payment_intent_id"
+  end
+
   create_table "payments", force: :cascade do |t|
     t.integer "job_id", null: false
     t.integer "amount_cents", null: false
@@ -1072,6 +1107,25 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_09_000001) do
     t.index ["provider"], name: "index_sms_delivery_logs_on_provider"
     t.index ["provider_message_id"], name: "index_sms_delivery_logs_on_provider_message_id"
     t.index ["user_id"], name: "index_sms_delivery_logs_on_user_id"
+  end
+
+  create_table "stripe_setup_records", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.string "stripe_setup_intent_id", null: false
+    t.string "stripe_customer_id"
+    t.string "stripe_payment_method_id"
+    t.string "payment_method_type"
+    t.string "status", default: "requires_action", null: false
+    t.string "error_message"
+    t.json "metadata_json", default: {}, null: false
+    t.datetime "succeeded_at"
+    t.datetime "failed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["stripe_payment_method_id"], name: "index_stripe_setup_records_on_stripe_payment_method_id"
+    t.index ["stripe_setup_intent_id"], name: "index_stripe_setup_records_on_stripe_setup_intent_id", unique: true
+    t.index ["user_id", "status"], name: "index_stripe_setup_records_on_user_id_and_status"
+    t.index ["user_id"], name: "index_stripe_setup_records_on_user_id"
   end
 
   create_table "stripe_webhook_events", force: :cascade do |t|
@@ -1412,6 +1466,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_09_000001) do
   add_foreign_key "jobs", "company_profiles"
   add_foreign_key "messages", "conversations"
   add_foreign_key "password_setup_challenges", "users"
+  add_foreign_key "payment_risk_events", "job_payment_transactions"
+  add_foreign_key "payment_risk_events", "jobs"
   add_foreign_key "payments", "jobs"
   add_foreign_key "ratings", "jobs"
   add_foreign_key "ratings", "users", column: "hidden_by_user_id"
@@ -1422,6 +1478,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_09_000001) do
   add_foreign_key "review_flags", "users", column: "reviewed_by_id"
   add_foreign_key "saved_job_searches", "technician_profiles"
   add_foreign_key "sms_delivery_logs", "users"
+  add_foreign_key "stripe_setup_records", "users"
   add_foreign_key "technician_assessment_results", "assessment_attempts"
   add_foreign_key "technician_assessment_results", "assessment_versions"
   add_foreign_key "technician_assessment_results", "assessments"

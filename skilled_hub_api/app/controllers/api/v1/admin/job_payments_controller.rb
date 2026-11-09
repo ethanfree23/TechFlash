@@ -21,7 +21,18 @@ module Api
             scope = scope.where(payment_method_type: params[:payment_method_type])
           end
           if ActiveModel::Type::Boolean.new.cast(params[:needs_attention])
-            scope = scope.needs_attention
+            risk_job_ids = PaymentRiskEvent.blocking.distinct.pluck(:job_id)
+            scope = scope.where(
+              "job_payment_transactions.status IN (:bad_status)
+               OR (job_payment_transactions.dispute_status IS NOT NULL AND job_payment_transactions.dispute_status != '')
+               OR job_payment_transactions.investigation_required = TRUE
+               OR job_payment_transactions.job_id IN (:risk_jobs)",
+              bad_status: [
+                JobPaymentTransaction.statuses[:failed],
+                JobPaymentTransaction.statuses[:processing]
+              ],
+              risk_jobs: risk_job_ids.presence || [0]
+            )
           end
           if params[:company_profile_id].present?
             scope = scope.joins(:job).where(jobs: { company_profile_id: params[:company_profile_id] })
@@ -67,13 +78,23 @@ module Api
             processing: JobPaymentTransaction.status_processing.count,
             failed: JobPaymentTransaction.status_failed.count,
             disputed: JobPaymentTransaction.where.not(dispute_status: [nil, ""]).count,
-            ach_processing: JobPaymentTransaction.ach.status_processing.count
+            ach_processing: JobPaymentTransaction.ach.status_processing.count,
+            open_risks: PaymentRiskEvent.open_cases.count,
+            investigation_required: JobPaymentTransaction.where(investigation_required: true).count
           }
         end
 
         def serialize(txn, detailed: false)
           job = txn.job
           company = job&.company_profile
+          risks = PaymentRiskEvent.where(job_id: txn.job_id).order(detected_at: :desc).limit(5)
+          open_risk = risks.detect { |r| %w[open reviewing].include?(r.investigation_status) }
+          ledger =
+            begin
+              JobLedger.for(job)
+            rescue StandardError
+              nil
+            end
           payload = {
             id: txn.id,
             job_id: txn.job_id,
@@ -96,15 +117,40 @@ module Api
             stripe_refund_id: txn.stripe_refund_id,
             stripe_transfer_id: txn.stripe_transfer_id,
             stripe_payment_method_id: txn.stripe_payment_method_id,
+            source_charge_id: txn.source_charge_id,
             dispute_status: txn.dispute_status,
             stripe_dispute_id: txn.stripe_dispute_id,
+            investigation_required: txn.investigation_required,
+            bank_payout_status: txn.bank_payout_status.presence || "unknown",
+            risk_kind: open_risk&.risk_kind,
+            review_required: txn.investigation_required || open_risk.present? || txn.disputed? || txn.status_processing?,
+            payout_at_risk: open_risk.present? && %w[post_success_return post_success_dispute post_success_reversal_unconfirmed].include?(open_risk.risk_kind),
+            collected_cents: ledger&.collected_cents,
+            refunded_cents: ledger&.refunded_cents,
+            transferred_cents: ledger&.transferred_cents,
             processing_at: txn.processing_at&.iso8601,
             succeeded_at: txn.succeeded_at&.iso8601,
             created_at: txn.created_at&.iso8601,
             error_message: txn.error_message,
-            needs_attention: txn.status_failed? || txn.status_processing? || txn.disputed?,
+            needs_attention: txn.status_failed? || txn.status_processing? || txn.disputed? || txn.investigation_required || open_risk.present?,
             settlement_status: job&.settlement_status,
-            funding_status: job&.funding_status
+            funding_status: job&.funding_status,
+            risk_events: risks.map { |r|
+              {
+                id: r.id,
+                risk_kind: r.risk_kind,
+                investigation_status: r.investigation_status,
+                bank_payout_status: r.bank_payout_status,
+                amount_cents: r.amount_cents,
+                stripe_event_id: r.stripe_event_id,
+                stripe_dispute_id: r.stripe_dispute_id,
+                stripe_transfer_id: r.stripe_transfer_id,
+                stripe_payout_id: r.stripe_payout_id,
+                admin_note: r.admin_note,
+                detected_at: r.detected_at&.iso8601,
+                resolved_at: r.resolved_at&.iso8601
+              }
+            }
           }
           if detailed
             payload[:metadata_json] = txn.metadata_json
