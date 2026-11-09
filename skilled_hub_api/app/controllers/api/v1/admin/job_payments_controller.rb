@@ -71,6 +71,45 @@ module Api
           render json: { error: "Not found" }, status: :not_found
         end
 
+        # POST /api/v1/admin/job_payments/:id/resolve_risk
+        # Administrative resolution only — never reverses Stripe transfers automatically.
+        def resolve_risk
+          txn = JobPaymentTransaction.find(params[:id])
+          note = params[:note].to_s.presence || "Admin resolved financial risk review."
+          risks = PaymentRiskEvent.blocking.where(job_id: txn.job_id)
+          risks.find_each { |r| r.resolve!(note: note, actor: current_user&.email) }
+          txn.update!(investigation_required: false) if txn.investigation_required?
+          render json: {
+            ok: true,
+            resolved_count: risks.size,
+            job_payment: serialize(txn.reload, detailed: true),
+            note: "Transfers are not automatically reversed. Bank payout status remains unknown unless proven."
+          }, status: :ok
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Not found" }, status: :not_found
+        end
+
+        # POST /api/v1/admin/payment_risk_events/:id/resolve
+        def resolve_risk_event
+          risk = PaymentRiskEvent.find(params[:id])
+          risk.resolve!(
+            note: params[:note].to_s.presence || "Admin resolved risk event.",
+            actor: current_user&.email
+          )
+          render json: {
+            ok: true,
+            risk_event: {
+              id: risk.id,
+              risk_kind: risk.risk_kind,
+              investigation_status: risk.investigation_status,
+              lifecycle_state: risk.lifecycle_state,
+              resolved_at: risk.resolved_at&.iso8601
+            }
+          }, status: :ok
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Not found" }, status: :not_found
+        end
+
         private
 
         def attention_counts
@@ -140,12 +179,17 @@ module Api
                 id: r.id,
                 risk_kind: r.risk_kind,
                 investigation_status: r.investigation_status,
+                lifecycle_state: r.lifecycle_state,
+                exposure_confirmed: r.exposure_confirmed,
+                confirmed_loss_cents: r.confirmed_loss_cents,
+                transfer_already_executed: r.transfer_already_executed,
                 bank_payout_status: r.bank_payout_status,
                 amount_cents: r.amount_cents,
                 stripe_event_id: r.stripe_event_id,
                 stripe_dispute_id: r.stripe_dispute_id,
                 stripe_transfer_id: r.stripe_transfer_id,
                 stripe_payout_id: r.stripe_payout_id,
+                correlation_key: r.correlation_key,
                 admin_note: r.admin_note,
                 detected_at: r.detected_at&.iso8601,
                 resolved_at: r.resolved_at&.iso8601

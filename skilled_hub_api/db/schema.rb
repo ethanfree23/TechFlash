@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_09_180000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_09_210000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -959,11 +959,19 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_09_180000) do
     t.datetime "resolved_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "correlation_key"
+    t.string "lifecycle_state"
+    t.integer "confirmed_loss_cents"
+    t.boolean "exposure_confirmed", default: false, null: false
+    t.boolean "transfer_already_executed", default: false, null: false
+    t.index ["correlation_key"], name: "index_payment_risk_events_on_correlation_key_unique", unique: true
     t.index ["investigation_status"], name: "index_payment_risk_events_on_investigation_status"
     t.index ["job_id", "investigation_status"], name: "index_payment_risk_events_on_job_id_and_investigation_status"
     t.index ["job_id"], name: "index_payment_risk_events_on_job_id"
     t.index ["job_payment_transaction_id"], name: "index_payment_risk_events_on_job_payment_transaction_id"
+    t.index ["lifecycle_state"], name: "index_payment_risk_events_on_lifecycle_state"
     t.index ["risk_kind"], name: "index_payment_risk_events_on_risk_kind"
+    t.index ["stripe_dispute_id"], name: "index_payment_risk_events_on_stripe_dispute_id"
     t.index ["stripe_event_id"], name: "index_payment_risk_events_on_stripe_event_id"
     t.index ["stripe_payment_intent_id"], name: "index_payment_risk_events_on_stripe_payment_intent_id"
   end

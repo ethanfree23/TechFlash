@@ -5,6 +5,7 @@ require_relative "../mail_env"
 
 # Staging is production-like but uses Stripe TEST mode and sandboxes outbound
 # business communications. DemoMode must remain disabled here.
+# Staging does NOT require production RAILS_MASTER_KEY / encrypted credentials.
 Rails.application.configure do
   config.enable_reloading = false
   config.eager_load = true
@@ -78,15 +79,22 @@ Rails.application.configure do
   config.host_authorization = { exclude: ->(request) { request.path == "/up" || request.path == "/api/v1/meta" } }
 
   config.after_initialize do
-    if defined?(DemoMode) && DemoMode.enabled?
-      raise "[staging] DemoMode must be disabled in staging (real Stripe test mode required)"
+    if ENV["DATABASE_URL"].to_s.strip.empty?
+      raise "[staging] DATABASE_URL is required (dedicated staging PostgreSQL only)"
+    end
+    if ENV["DEMO_MODE"].to_s.strip.casecmp("true").zero? || (defined?(DemoMode) && DemoMode.enabled?)
+      raise "[staging] DemoMode / DEMO_MODE=true is forbidden (real Stripe test mode required)"
     end
     if Stripe.api_key.to_s.start_with?("sk_live_")
       raise "[staging] Live Stripe secret key is forbidden in staging"
     end
     unless Stripe.api_key.to_s.start_with?("sk_test_")
-      Rails.logger.error("[staging] Stripe test secret key missing or invalid (expected sk_test_...)")
+      raise "[staging] Stripe test secret key required (set STRIPE_SECRET_KEY=sk_test_...). Refusing to boot."
     end
-    Rails.logger.warn("[staging] boot: RAILS_ENV=staging DemoMode=false StripeMode=#{StripeModeGuard.mode_label}")
+    StagingSandbox.assert_safe! if defined?(StagingSandbox)
+    guard = StripeModeGuard.error_message
+    raise "[staging] #{guard}" if guard
+
+    Rails.logger.warn("[staging] boot: RAILS_ENV=staging DemoMode=false StripeMode=#{StripeModeGuard.mode_label} sandbox=#{StagingSandbox.block_real_world_comms?}")
   end
 end

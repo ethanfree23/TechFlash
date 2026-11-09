@@ -172,7 +172,7 @@ class PaymentService
     end
     return early if early
 
-    source_charge_id = source_charge_for_transfer(job)
+    source_charge_id = source_charge_for_transfer(job, amount_cents: payout_amount)
     result = JobStripeOps.transfer!(
       amount_cents: payout_amount,
       destination: technician_profile.stripe_account_id,
@@ -244,18 +244,68 @@ class PaymentService
     { error: e.message }
   end
 
-  # Prefer source_transaction only for single-charge funded jobs.
-  # Multi-charge jobs keep platform-balance transfers (Option B) — never pick an arbitrary charge.
-  def self.source_charge_for_transfer(job)
-    charges = job.job_payment_transactions
-      .company_collections
-      .status_succeeded
-      .where.not(stripe_charge_id: [nil, ""])
-      .order(:id)
-      .pluck(:stripe_charge_id)
-      .uniq
-    return charges.first if charges.size == 1
+  # Prefer source_transaction only for a demonstrably single-charge funded job with
+  # sufficient unallocated Charge funds. Multi-charge / ambiguous → Option B (nil).
+  # source_transaction must be a Charge ID (ch_...), never a PaymentIntent ID.
+  def self.source_charge_for_transfer(job, amount_cents: nil)
+    source_transaction_decision(job, amount_cents: amount_cents)[:charge_id]
+  end
 
-    nil
+  # Returns { charge_id:, mode:, reason: } — charge_id nil means platform-balance (Option B).
+  def self.source_transaction_decision(job, amount_cents: nil)
+    collections = job.job_payment_transactions.company_collections.status_succeeded.order(:id).to_a
+    if collections.empty?
+      return { charge_id: nil, mode: "platform_balance", reason: "no_succeeded_collections" }
+    end
+
+    # Fail closed: every succeeded collection must carry a real Charge ID.
+    if collections.any? { |t| t.stripe_charge_id.to_s.strip.blank? }
+      return { charge_id: nil, mode: "platform_balance", reason: "collection_missing_charge_id" }
+    end
+
+    charge_ids = collections.map { |t| t.stripe_charge_id.to_s.strip }.uniq
+    if charge_ids.size != 1
+      return { charge_id: nil, mode: "platform_balance", reason: "multiple_source_charges" }
+    end
+
+    charge_id = charge_ids.first
+    unless charge_id.start_with?("ch_")
+      return { charge_id: nil, mode: "platform_balance", reason: "invalid_charge_id_shape" }
+    end
+
+    currencies = collections.map { |t| t.currency.to_s.downcase.presence || "usd" }.uniq
+    if currencies.size != 1 || currencies.first != "usd"
+      return { charge_id: nil, mode: "platform_balance", reason: "currency_mismatch" }
+    end
+
+    collected = collections.sum { |t| t.amount_cents.to_i }
+    reserved_refunds = job.job_payment_transactions.company_refunds
+      .where(status: [
+        JobPaymentTransaction.statuses[:succeeded],
+        JobPaymentTransaction.statuses[:pending],
+        JobPaymentTransaction.statuses[:processing],
+        JobPaymentTransaction.statuses[:requires_action]
+      ])
+      .sum(:amount_cents).to_i
+
+    transferred = job.job_payment_transactions
+      .where(transaction_type: JobPaymentTransaction.transaction_types[:technician_transfer])
+      .where(status: [
+        JobPaymentTransaction.statuses[:succeeded],
+        JobPaymentTransaction.statuses[:pending],
+        JobPaymentTransaction.statuses[:processing]
+      ])
+      .sum(:amount_cents).to_i
+
+    allocatable = collected - reserved_refunds - transferred
+    planned = amount_cents.nil? ? allocatable : amount_cents.to_i
+    if planned <= 0
+      return { charge_id: nil, mode: "platform_balance", reason: "non_positive_transfer_amount" }
+    end
+    if planned > allocatable
+      return { charge_id: nil, mode: "platform_balance", reason: "insufficient_allocatable_source" }
+    end
+
+    { charge_id: charge_id, mode: "single_charge", reason: "ok", allocatable_cents: allocatable }
   end
 end

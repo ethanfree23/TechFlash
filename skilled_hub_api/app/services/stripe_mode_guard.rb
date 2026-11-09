@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 # Environment Stripe key mode guard.
-# - production: require sk_live_
+# - production: require sk_live_ (never skipped by DEMO_MODE)
 # - staging: require sk_test_ (real Stripe test API; never live; never DemoMode simulation)
 # - demo: DemoMode handles test-only key loading separately
 # Never logs or returns the secret itself.
@@ -35,20 +35,15 @@ class StripeModeGuard
 
     return nil unless production_guard_applies?
 
-    key = Stripe.api_key.to_s
-    if key.blank?
-      return "Stripe is not configured for production (secret key missing). Refusing payment operations."
-    end
-    unless key.start_with?("sk_live_")
-      return "Production Stripe secret key is not live mode (detected #{mode_label}). Refusing payment operations."
-    end
-
-    nil
+    production_error_message
   end
 
   def self.staging_error_message
     if defined?(DemoMode) && DemoMode.enabled?
       return "Staging refuses DemoMode. Staging must call real Stripe TEST APIs."
+    end
+    if ENV["DEMO_MODE"].to_s.strip.casecmp("true").zero?
+      return "Staging refuses DEMO_MODE=true. Unset DEMO_MODE for staging."
     end
 
     key = Stripe.api_key.to_s
@@ -65,11 +60,28 @@ class StripeModeGuard
     nil
   end
 
-  def self.production_guard_applies?
-    return false if defined?(DemoMode) && DemoMode.enabled?
-    return false unless Rails.env.production?
+  def self.production_error_message
+    if ENV["DEMO_MODE"].to_s.strip.casecmp("true").zero?
+      return "Production refuses DEMO_MODE=true. Unset DEMO_MODE and use sk_live_ only."
+    end
 
-    true
+    key = Stripe.api_key.to_s
+    if key.blank?
+      return "Stripe is not configured for production (secret key missing). Refusing payment operations."
+    end
+    if key.start_with?("sk_test_")
+      return "Production Stripe secret key is not live mode (detected test). Test keys are forbidden."
+    end
+    unless key.start_with?("sk_live_")
+      return "Production Stripe secret key is not live mode (detected #{mode_label}). Refusing payment operations."
+    end
+
+    nil
+  end
+
+  # Production live-key validation must NEVER be bypassed by DEMO_MODE.
+  def self.production_guard_applies?
+    Rails.env.production?
   end
 
   def self.staging_guard_applies?

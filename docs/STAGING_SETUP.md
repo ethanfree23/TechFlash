@@ -19,8 +19,9 @@ Staging is **production-like Rails** with **real Stripe TEST API calls**.
 | `STAGING_HOSTS` | Optional | Comma-separated extra allowed hosts |
 | `STAGING_SANDBOX` | Optional | Defaults on when `RAILS_ENV=staging` |
 | `STAGING_ALLOW_MAIL_DELIVERY` | Optional | `true` only for Mailtrap sink inbox |
-| `STAGING_ALLOW_REAL_WORLD_COMMS` | Optional | Keep unset/false |
-| `DEMO_MODE` | Must be unset/false | Staging refuses DemoMode |
+| `STAGING_ALLOW_REAL_WORLD_COMMS` | Optional | Ignored alone — keep unset |
+| `STAGING_UNSAFE_ALLOW_REAL_WORLD_COMMS` | Optional | Must be `true` **together with** `STAGING_ALLOW_REAL_WORLD_COMMS` to open SMS/Checkr/GHL (fail-closed dual override) |
+| `DEMO_MODE` | Must be unset/false | Staging refuses DemoMode and refuses to boot if set |
 | `ALLOW_DEMO_RESET` | Must be unset/false | |
 | `CHECKR_*` | Optional | Staging sandbox simulates Checkr invitations |
 | `TWILIO_*` / `GHL_*` | Optional | Sandboxed; not sent |

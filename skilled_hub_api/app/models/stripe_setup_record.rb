@@ -15,11 +15,22 @@ class StripeSetupRecord < ApplicationRecord
     resolved_user = user
     resolved_user ||= User.find_by(stripe_customer_id: customer_id) if customer_id
     return nil if resolved_user.blank?
+    return nil unless resolved_user.company?
+    # Ownership: SetupIntent customer must match the company user's Stripe customer.
+    if customer_id.present? && resolved_user.stripe_customer_id.to_s != customer_id
+      Rails.logger.warn("[stripe_setup] customer mismatch setup=#{setup_intent.id} user=#{resolved_user.id}")
+      return nil
+    end
 
     rec = StripeSetupRecord.lock.find_or_initialize_by(stripe_setup_intent_id: setup_intent.id)
-    # Do not overwrite a newer successful setup with an older failure.
+    # Do not overwrite a newer successful setup with an older failure / cancel / requires_action.
     if rec.persisted? && rec.status == "succeeded" && setup_intent.status.to_s != "succeeded"
       Rails.logger.info("[stripe_setup] ignoring #{setup_intent.status} after succeeded id=#{setup_intent.id}")
+      return rec
+    end
+    # Do not reassign a persisted setup record to a different company user.
+    if rec.persisted? && rec.user_id != resolved_user.id
+      Rails.logger.warn("[stripe_setup] refusing user reassignment setup=#{setup_intent.id}")
       return rec
     end
 

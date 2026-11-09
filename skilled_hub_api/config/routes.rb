@@ -222,7 +222,12 @@ Rails.application.routes.draw do
         get "licensing_settings", to: "licensing_settings#show"
         patch "licensing_settings", to: "licensing_settings#update"
         get "mailtrap_audit", to: "mailtrap_audits#show"
-        resources :job_payments, only: %i[index show]
+        resources :job_payments, only: %i[index show] do
+          member do
+            post :resolve_risk
+          end
+        end
+        post "payment_risk_events/:id/resolve", to: "job_payments#resolve_risk_event"
         get "storage_diagnostic/check", to: "storage_diagnostics#check"
         get "storage_diagnostic", to: "storage_diagnostics#show"
         get "email_qa/templates", to: "email_qa#templates"
