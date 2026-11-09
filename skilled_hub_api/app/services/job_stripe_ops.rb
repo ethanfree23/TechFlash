@@ -2,15 +2,24 @@
 
 class JobStripeOps
   class Result
-    attr_reader :status, :stripe_id, :charge_id, :client_secret, :error, :simulated
+    attr_reader :status, :stripe_id, :charge_id, :client_secret, :error, :simulated,
+                :payment_method_id, :payment_method_type, :payment_method_last4,
+                :payment_method_brand, :payment_method_bank_name
 
-    def initialize(status:, stripe_id: nil, charge_id: nil, client_secret: nil, error: nil, simulated: false)
+    def initialize(status:, stripe_id: nil, charge_id: nil, client_secret: nil, error: nil, simulated: false,
+                   payment_method_id: nil, payment_method_type: nil, payment_method_last4: nil,
+                   payment_method_brand: nil, payment_method_bank_name: nil)
       @status = status
       @stripe_id = stripe_id
       @charge_id = charge_id
       @client_secret = client_secret
       @error = error
       @simulated = simulated
+      @payment_method_id = payment_method_id
+      @payment_method_type = payment_method_type
+      @payment_method_last4 = payment_method_last4
+      @payment_method_brand = payment_method_brand
+      @payment_method_bank_name = payment_method_bank_name
     end
 
     def succeeded?
@@ -20,20 +29,44 @@ class JobStripeOps
     def requires_action?
       status.to_s == "requires_action"
     end
+
+    # ACH Direct Debit: Stripe accepted the debit request; funds are not settled yet.
+    def processing?
+      status.to_s == "processing"
+    end
+
+    def payment_method_attrs
+      {
+        stripe_payment_method_id: payment_method_id,
+        payment_method_type: payment_method_type,
+        payment_method_last4: payment_method_last4,
+        payment_method_brand: payment_method_brand,
+        payment_method_bank_name: payment_method_bank_name
+      }.compact
+    end
   end
 
   def self.demo?
     defined?(DemoMode) && DemoMode.enabled?
   end
 
-    def self.create_payment_intent!(amount_cents:, customer_id:, payment_method_id:, metadata:, transfer_group:, idempotency_key:, off_session: true)
+  def self.create_payment_intent!(amount_cents:, customer_id:, payment_method_id:, metadata:, transfer_group:, idempotency_key:, off_session: true)
     if demo? || Rails.env.test?
-      return Result.new(status: "succeeded", stripe_id: "pi_test_#{SecureRandom.hex(8)}", simulated: true)
+      return Result.new(
+        status: "succeeded",
+        stripe_id: "pi_test_#{SecureRandom.hex(8)}",
+        simulated: true,
+        payment_method_id: payment_method_id,
+        payment_method_type: "card",
+        payment_method_last4: "4242",
+        payment_method_brand: "visa"
+      )
     end
     mode_error = StripeModeGuard.error_message
     return Result.new(status: "failed", error: mode_error) if mode_error
     return Result.new(status: "failed", error: "Stripe not configured") if Stripe.api_key.blank?
 
+    pm_meta = payment_method_display(payment_method_id)
     params = {
       amount: amount_cents,
       currency: "usd",
@@ -42,24 +75,37 @@ class JobStripeOps
       off_session: off_session,
       confirm: true,
       metadata: metadata,
-      transfer_group: transfer_group,
-      automatic_payment_methods: { enabled: true, allow_redirects: "never" }
+      transfer_group: transfer_group
     }
+
+    if pm_meta[:payment_method_type].to_s == "us_bank_account"
+      # Explicit ACH path — do not rely on automatic_payment_methods for bank debits.
+      params[:payment_method_types] = ["us_bank_account"]
+    else
+      params[:automatic_payment_methods] = { enabled: true, allow_redirects: "never" }
+    end
+
     intent = Stripe::PaymentIntent.create(params, { idempotency_key: idempotency_key })
     Result.new(
       status: intent.status,
       stripe_id: intent.id,
       charge_id: intent.latest_charge.to_s.presence,
       client_secret: intent.client_secret,
-      error: intent.last_payment_error&.message
+      error: intent.last_payment_error&.message,
+      **pm_meta
     )
   rescue Stripe::CardError => e
-    Result.new(status: "failed", error: e.message, stripe_id: e.json_body.dig(:error, :payment_intent, :id))
+    Result.new(
+      status: "failed",
+      error: e.message,
+      stripe_id: e.json_body.dig(:error, :payment_intent, :id),
+      **pm_meta_safe(payment_method_id)
+    )
   rescue Stripe::StripeError => e
-    Result.new(status: "failed", error: e.message)
+    Result.new(status: "failed", error: e.message, **pm_meta_safe(payment_method_id))
   end
 
-    def self.refund!(amount_cents:, payment_intent_id:, metadata:, idempotency_key:)
+  def self.refund!(amount_cents:, payment_intent_id:, metadata:, idempotency_key:)
     if demo? || Rails.env.test?
       return Result.new(status: "succeeded", stripe_id: "re_test_#{SecureRandom.hex(8)}", simulated: true)
     end
@@ -71,12 +117,19 @@ class JobStripeOps
       { payment_intent: payment_intent_id, amount: amount_cents, metadata: metadata },
       { idempotency_key: idempotency_key }
     )
-    Result.new(status: refund.status == "succeeded" ? "succeeded" : refund.status, stripe_id: refund.id)
+    # ACH refunds may return pending/processing before succeeded.
+    normalized =
+      case refund.status.to_s
+      when "succeeded" then "succeeded"
+      when "pending", "requires_action" then "processing"
+      else refund.status
+      end
+    Result.new(status: normalized, stripe_id: refund.id)
   rescue Stripe::StripeError => e
     Result.new(status: "failed", error: e.message)
   end
 
-    def self.transfer!(amount_cents:, destination:, metadata:, transfer_group:, idempotency_key:)
+  def self.transfer!(amount_cents:, destination:, metadata:, transfer_group:, idempotency_key:)
     if demo? || Rails.env.test?
       return Result.new(status: "succeeded", stripe_id: "tr_test_#{SecureRandom.hex(8)}", simulated: true)
     end
@@ -98,4 +151,37 @@ class JobStripeOps
   rescue Stripe::StripeError => e
     Result.new(status: "failed", error: e.message)
   end
+
+  def self.payment_method_display(payment_method_id)
+    return {} if payment_method_id.blank?
+
+    pm = Stripe::PaymentMethod.retrieve(payment_method_id)
+    case pm.type.to_s
+    when "card"
+      {
+        payment_method_id: pm.id,
+        payment_method_type: "card",
+        payment_method_last4: pm.card&.last4,
+        payment_method_brand: pm.card&.brand
+      }
+    when "us_bank_account"
+      {
+        payment_method_id: pm.id,
+        payment_method_type: "us_bank_account",
+        payment_method_last4: pm.us_bank_account&.last4,
+        payment_method_bank_name: pm.us_bank_account&.bank_name
+      }
+    else
+      { payment_method_id: pm.id, payment_method_type: pm.type.to_s }
+    end
+  rescue Stripe::StripeError
+    { payment_method_id: payment_method_id }
+  end
+
+  def self.pm_meta_safe(payment_method_id)
+    payment_method_display(payment_method_id)
+  rescue StandardError
+    {}
+  end
+  private_class_method :pm_meta_safe
 end

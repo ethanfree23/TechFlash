@@ -5,7 +5,27 @@ module Api
     class SettingsController < ApplicationController
       before_action :authenticate_user
 
-      # Company: create SetupIntent to add payment method (card)
+      # Company: list saved cards and bank accounts
+      def payment_methods
+        unless @current_user.company?
+          return render json: { error: "Company only" }, status: :forbidden
+        end
+
+        if Stripe.api_key.blank?
+          return render json: { error: "Payments not configured" }, status: :service_unavailable
+        end
+        mode_error = StripeModeGuard.error_message
+        if mode_error
+          return render json: { error: mode_error }, status: :service_unavailable
+        end
+
+        payload = CompanyPaymentMethodsService.list_for(@current_user)
+        render json: payload, status: :ok
+      rescue CompanyPaymentMethodsService::Error => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      # Company: create SetupIntent to add payment method (card or ACH/us_bank_account)
       def create_setup_intent
         unless @current_user.company?
           return render json: { error: 'Company only' }, status: :forbidden
@@ -19,15 +39,47 @@ module Api
           return render json: { error: mode_error }, status: :service_unavailable
         end
 
-        customer_id = StripeCustomerService.ensure_customer_id!(@current_user)
-
-        intent = Stripe::SetupIntent.create(
-          customer: customer_id,
-          payment_method_types: ['card'],
-          usage: 'off_session'
+        payment_method_type = params[:payment_method_type].presence || params[:type].presence || "card"
+        payload = CompanyPaymentMethodsService.create_setup_intent!(
+          @current_user,
+          payment_method_type: payment_method_type,
+          ip_address: request.remote_ip,
+          user_agent: request.user_agent
         )
-        render json: { client_secret: intent.client_secret }, status: :ok
+        render json: payload, status: :ok
+      rescue CompanyPaymentMethodsService::Error => e
+        render json: { error: e.message }, status: :unprocessable_entity
       rescue Stripe::StripeError => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      def set_default_payment_method
+        unless @current_user.company?
+          return render json: { error: "Company only" }, status: :forbidden
+        end
+        return render_payments_unavailable if payments_unavailable?
+
+        pm = CompanyPaymentMethodsService.set_default!(
+          @current_user,
+          payment_method_id: params[:payment_method_id]
+        )
+        render json: { payment_method: pm, default_payment_method_id: pm[:id] }, status: :ok
+      rescue CompanyPaymentMethodsService::Error => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      def destroy_payment_method
+        unless @current_user.company?
+          return render json: { error: "Company only" }, status: :forbidden
+        end
+        return render_payments_unavailable if payments_unavailable?
+
+        result = CompanyPaymentMethodsService.detach!(
+          @current_user,
+          payment_method_id: params[:id]
+        )
+        render json: result, status: :ok
+      rescue CompanyPaymentMethodsService::Error => e
         render json: { error: e.message }, status: :unprocessable_entity
       end
 
@@ -86,6 +138,20 @@ module Api
         }, status: :ok
       rescue Stripe::StripeError => e
         render json: { error: e.message }, status: :unprocessable_entity
+      end
+
+      private
+
+      def payments_unavailable?
+        return true if Stripe.api_key.blank?
+        return true if StripeModeGuard.error_message.present?
+
+        false
+      end
+
+      def render_payments_unavailable
+        mode_error = StripeModeGuard.error_message
+        render json: { error: mode_error.presence || "Payments not configured" }, status: :service_unavailable
       end
     end
   end

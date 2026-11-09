@@ -15,7 +15,7 @@ import {
   verificationReferencesAPI,
 } from '../api/api';
 import { auth } from '../auth';
-import CardPaymentForm from '../components/CardPaymentForm';
+import CompanyPaymentMethodsPanel from '../components/CompanyPaymentMethodsPanel';
 import { getStripePublishableKey, isValidStripePublishableKey } from '../stripeConfig';
 import JobAddressFields from '../components/JobAddressFields';
 import TechnicianTradeLines from '../components/TechnicianTradeLines';
@@ -1548,18 +1548,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
-  const handleAddCardConfirm = async ({ card, billing_details }) => {
+  const handlePaymentMethodsStatus = (message, variant = 'success') => {
     setPaymentError(null);
     setPaymentSuccess(null);
-    const res = await settingsAPI.createSetupIntent();
-    const client_secret = res?.client_secret;
-    if (!client_secret) throw new Error(res?.error || 'Could not create setup');
-    if (!stripe) throw new Error('Payment form not ready');
-    const { error: confirmError } = await stripe.confirmCardSetup(client_secret, {
-      payment_method: { card, billing_details },
-    });
-    if (confirmError) throw new Error(confirmError.message);
-    setPaymentSuccess('Payment method added successfully.');
+    if (variant === 'error') setPaymentError(message);
+    else setPaymentSuccess(message);
   };
 
   const handleConnectBank = async () => {
@@ -2573,23 +2566,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           )}
 
           {isCompany && (
-            <div>
-              <h3 className="text-base font-medium text-gray-900 mb-2">Credit card</h3>
-              <p className="text-gray-600 mb-4">Add a credit or debit card. Priced jobs are charged when you post them.</p>
-              {!isValidStripePublishableKey(publishableKey) && (
-                <p className="mb-4 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-3">
-                  Stripe is not configured for this build. Set <code className="font-mono text-xs">VITE_STRIPE_PUBLISHABLE_KEY_TEST</code> or{' '}
-                  <code className="font-mono text-xs">VITE_STRIPE_PUBLISHABLE_KEY</code> in your frontend <code className="font-mono text-xs">.env</code> (must start with{' '}
-                  <code className="font-mono text-xs">pk_</code>).
-                </p>
-              )}
-              <CardPaymentForm
-                stripe={stripe}
-                publishableKey={publishableKey}
-                onConfirm={handleAddCardConfirm}
-                submitLabel="Add Card"
-              />
-            </div>
+            <CompanyPaymentMethodsPanel
+              stripe={stripe}
+              publishableKey={publishableKey}
+              onStatus={handlePaymentMethodsStatus}
+            />
           )}
 
           {isTechnician && (
@@ -2629,7 +2610,9 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                     <li key={row.id} className="text-sm border border-gray-200 rounded-lg p-3">
                       <div className="font-medium text-gray-900">{row.job_title || `Job #${row.job_id}`}</div>
                       <div className="text-gray-600">
-                        {row.transaction_type?.replace(/_/g, ' ')} · {row.status} · ${((row.amount_cents || 0) / 100).toFixed(2)}
+                        {row.transaction_type?.replace(/_/g, ' ')} · {row.status}
+                        {row.payment_method_display ? ` · ${row.payment_method_display}` : ''}
+                        {' · '}${((row.amount_cents || 0) / 100).toFixed(2)}
                       </div>
                       {row.occurred_at && (
                         <div className="text-xs text-gray-500">{new Date(row.occurred_at).toLocaleString()}</div>

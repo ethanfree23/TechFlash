@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_10_20_163000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_09_000001) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -684,10 +684,21 @@ ActiveRecord::Schema[7.1].define(version: 2026_10_20_163000) do
     t.datetime "succeeded_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "payment_method_type"
+    t.string "payment_method_last4"
+    t.string "payment_method_brand"
+    t.string "payment_method_bank_name"
+    t.string "stripe_payment_method_id"
+    t.datetime "processing_at"
+    t.string "dispute_status"
+    t.string "stripe_dispute_id"
+    t.index ["dispute_status"], name: "index_job_payment_transactions_on_dispute_status"
     t.index ["idempotency_key"], name: "index_job_payment_transactions_on_idempotency_key", unique: true
     t.index ["job_id", "transaction_type"], name: "index_job_payment_transactions_on_job_id_and_transaction_type"
     t.index ["job_id"], name: "index_job_payment_transactions_on_job_id"
     t.index ["payment_id"], name: "index_job_payment_transactions_on_payment_id"
+    t.index ["payment_method_type"], name: "index_job_payment_transactions_on_payment_method_type"
+    t.index ["status"], name: "index_job_payment_transactions_on_status"
     t.index ["stripe_payment_intent_id"], name: "index_job_payment_transactions_on_stripe_payment_intent_id"
     t.index ["stripe_refund_id"], name: "index_job_payment_transactions_on_stripe_refund_id"
     t.index ["stripe_transfer_id"], name: "index_job_payment_transactions_on_stripe_transfer_id"

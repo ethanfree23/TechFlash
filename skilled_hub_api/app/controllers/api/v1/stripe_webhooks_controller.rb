@@ -48,8 +48,12 @@ module Api
         case event.type
         when 'payment_intent.succeeded'
           reconcile_payment_intent_succeeded(event.data.object)
+        when 'payment_intent.processing'
+          reconcile_payment_intent_processing(event.data.object)
         when 'payment_intent.payment_failed'
           reconcile_payment_intent_failed(event.data.object)
+        when 'setup_intent.succeeded'
+          reconcile_setup_intent_succeeded(event.data.object)
         when 'checkout.session.completed'
           session = event.data.object
           if session.mode.to_s == "subscription"
@@ -84,6 +88,8 @@ module Api
           end
         when 'charge.refunded'
           reconcile_charge_refunded(event.data.object)
+        when 'charge.dispute.created', 'charge.dispute.updated', 'charge.dispute.closed'
+          reconcile_charge_dispute(event.data.object, event_type: event.type)
         when 'account.updated'
           account = event.data.object
           profile = TechnicianProfile.find_by(stripe_account_id: account.id)
@@ -182,22 +188,125 @@ module Api
 
       def reconcile_payment_intent_succeeded(pi)
         Job.transaction do
-          txn = JobPaymentTransaction.lock.find_by(stripe_payment_intent_id: pi.id)
-          txn ||= JobPaymentTransaction.lock.find_by(id: pi.metadata&.[]("transaction_id").to_i) if pi.metadata&.[]("transaction_id").present?
+          txn = find_locked_collection_txn(pi)
           next unless txn && !txn.status_succeeded?
 
-          JobFundingService.mark_txn_succeeded!(txn, stripe_id: pi.id, charge_id: pi.latest_charge.to_s.presence)
+          was_initial = txn.initial_job_charge?
+          JobFundingService.mark_txn_succeeded!(
+            txn,
+            stripe_id: pi.id,
+            charge_id: pi.latest_charge.to_s.presence,
+            payment_method_attrs: payment_method_attrs_from_intent(pi)
+          )
           job = Job.lock.find(txn.job_id)
           payment = Payment.lock.find(txn.payment_id)
           payment.update!(status: "held", stripe_payment_intent_id: pi.id, held_at: Time.current) if payment.status == "pending" || payment.status == "failed"
-          JobFundingService.publish!(job) if txn.initial_job_charge? && job.pending_funding?
-          job.update!(funding_status: :funded) if job.funding_adjustment_required?
+          if was_initial && (job.pending_funding? || job.funding_adjustment_required?)
+            JobFundingService.publish!(job)
+            JobFundingService.record_revision!(job, source: "posting", transaction: txn) unless job.job_financial_revisions.exists?(revision_number: job.financial_revision)
+            MailDelivery.safe_deliver { UserMailer.payment_confirmation_email(job, txn.amount_cents).deliver_now }
+            JobAlertDispatcher.dispatch_for_job(job) if job.effectively_open?
+          elsif txn.counteroffer_top_up? || txn.final_hours_top_up?
+            JobFundingAdjustmentService.after_successful_collection!(job)
+          elsif job.funding_adjustment_required?
+            job.update!(funding_status: :funded)
+          end
+        end
+      end
+
+      def reconcile_payment_intent_processing(pi)
+        Job.transaction do
+          txn = find_locked_collection_txn(pi)
+          next unless txn
+          next if txn.status_succeeded? || txn.status_failed? || txn.status_canceled?
+
+          JobFundingService.mark_txn_processing!(
+            txn,
+            stripe_id: pi.id,
+            charge_id: pi.latest_charge.to_s.presence,
+            payment_method_attrs: payment_method_attrs_from_intent(pi)
+          )
+          job = Job.lock.find(txn.job_id)
+          if txn.initial_job_charge? || txn.counteroffer_top_up? || txn.final_hours_top_up?
+            attrs = { funding_status: :adjustment_required }
+            attrs[:status] = :pending_funding if txn.initial_job_charge? && !job.filled? && !job.finished? && !job.reserved?
+            job.update!(attrs)
+          end
         end
       end
 
       def reconcile_payment_intent_failed(pi)
-        txn = JobPaymentTransaction.find_by(stripe_payment_intent_id: pi.id)
-        txn&.update!(status: :failed, error_message: pi.last_payment_error&.message)
+        Job.transaction do
+          txn = find_locked_collection_txn(pi)
+          next unless txn
+          next if txn.status_succeeded?
+
+          txn.update!(
+            status: :failed,
+            error_message: pi.last_payment_error&.message || "Payment failed",
+            **payment_method_attrs_from_intent(pi)
+          )
+          job = Job.lock.find(txn.job_id)
+          payment = Payment.lock.find_by(id: txn.payment_id)
+          payment&.update!(status: "failed") if payment&.status == "pending"
+          if txn.initial_job_charge? && job.pending_funding?
+            job.update!(funding_status: :funding_failed)
+          elsif txn.counteroffer_top_up? || txn.final_hours_top_up?
+            job.update!(funding_status: :adjustment_required, settlement_status: :settlement_blocked)
+          end
+        end
+      end
+
+      def reconcile_setup_intent_succeeded(setup_intent)
+        # Payment methods are stored in Stripe; we only log mandate evidence for audit.
+        Rails.logger.info(
+          "[stripe webhook] setup_intent.succeeded id=#{setup_intent.id} customer=#{setup_intent.customer} " \
+          "payment_method=#{setup_intent.payment_method} status=#{setup_intent.status}"
+        )
+      end
+
+      def reconcile_charge_dispute(dispute, event_type:)
+        charge_id = dispute.charge.to_s.presence
+        pi_id = dispute.payment_intent.to_s.presence
+        txn = nil
+        txn = JobPaymentTransaction.find_by(stripe_charge_id: charge_id) if charge_id
+        txn ||= JobPaymentTransaction.company_collections.find_by(stripe_payment_intent_id: pi_id) if pi_id
+        return unless txn
+
+        txn.update!(
+          dispute_status: dispute.status.to_s.presence || event_type.to_s,
+          stripe_dispute_id: dispute.id.to_s,
+          metadata_json: txn.metadata_json.to_h.merge(
+            "dispute" => {
+              "id" => dispute.id.to_s,
+              "status" => dispute.status.to_s,
+              "reason" => dispute.reason.to_s,
+              "amount" => dispute.amount,
+              "event_type" => event_type.to_s,
+              "updated_at" => Time.current.iso8601
+            }
+          )
+        )
+        Rails.logger.warn(
+          "[stripe webhook] dispute job_id=#{txn.job_id} txn_id=#{txn.id} dispute=#{dispute.id} status=#{dispute.status}"
+        )
+      end
+
+      def find_locked_collection_txn(pi)
+        txn = JobPaymentTransaction.lock.find_by(stripe_payment_intent_id: pi.id)
+        txn ||= JobPaymentTransaction.lock.find_by(id: pi.metadata&.[]("transaction_id").to_i) if pi.metadata&.[]("transaction_id").present?
+        txn
+      end
+
+      def payment_method_attrs_from_intent(pi)
+        pm_id = pi.payment_method.to_s.presence
+        return {} if pm_id.blank?
+
+        JobStripeOps.payment_method_display(pm_id).transform_keys do |key|
+          key == :payment_method_id ? :stripe_payment_method_id : key
+        end
+      rescue StandardError
+        { stripe_payment_method_id: pm_id }
       end
 
       def reconcile_charge_refunded(charge)

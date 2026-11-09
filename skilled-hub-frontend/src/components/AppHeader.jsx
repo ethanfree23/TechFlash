@@ -14,6 +14,7 @@ const SETTINGS_NESTED_PAGES = ['settings', 'reviews', 'trust_safety', 'assessmen
 const ADMIN_SETTINGS_ITEMS = [
   { page: 'settings', to: '/settings', label: 'Settings' },
   { page: 'reviews', to: '/admin/reviews', label: 'Reviews' },
+  { page: 'job_payments', to: '/admin/job-payments', label: 'Payments' },
   { page: 'trust_safety', to: '/admin/trust-safety', label: 'Trust & Safety' },
   { page: 'assessments', to: '/admin/assessments', label: 'Assessments' },
 ];

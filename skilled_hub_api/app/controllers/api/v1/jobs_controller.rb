@@ -163,7 +163,7 @@ module Api
         )
         unless save_as_draft
           if requires_saved_card && priced_preview.positive? && !skip_card_validation && !PaymentService.company_has_payment_method?(company_profile.user)
-            return render json: { error: 'Add a valid credit or debit card in Profile & Settings → Payment before posting a job.' }, status: :unprocessable_entity
+            return render json: { error: 'Add a valid credit/debit card or bank account in Profile & Settings → Payment before posting a job.' }, status: :unprocessable_entity
           end
         end
 
@@ -216,6 +216,14 @@ module Api
               job: JobSerializer.new(job.reload, scope: @current_user).as_json,
               payment_adjustment_required: true,
               client_secret: result[:client_secret]
+            }, status: :accepted
+          end
+          if result[:processing]
+            return render json: {
+              job: JobSerializer.new(job.reload, scope: @current_user).as_json,
+              payment_processing: true,
+              payment_method_type: result[:payment_method_type] || "us_bank_account",
+              message: result[:message] || "Bank debit initiated. This job will publish when the ACH payment succeeds."
             }, status: :accepted
           end
           unless result[:success]
@@ -750,7 +758,7 @@ module Api
         return nil if skip_card_validation
         return nil if PaymentService.company_has_payment_method?(job.company_profile.user)
 
-        'Add a valid credit or debit card in Profile & Settings → Payment before posting a job.'
+        'Add a valid credit/debit card or bank account in Profile & Settings → Payment before posting a job.'
       end
 
       # Runs funding after a draft is saved as pending_funding/open. Returns :ok, :halted
@@ -764,6 +772,15 @@ module Api
               job: JobSerializer.new(job.reload, scope: @current_user).as_json,
               payment_adjustment_required: true,
               client_secret: result[:client_secret]
+            }, status: :accepted
+            return :halted
+          end
+          if result[:processing]
+            render json: {
+              job: JobSerializer.new(job.reload, scope: @current_user).as_json,
+              payment_processing: true,
+              payment_method_type: result[:payment_method_type] || "us_bank_account",
+              message: result[:message] || "Bank debit initiated. This job will publish when the ACH payment succeeds."
             }, status: :accepted
             return :halted
           end

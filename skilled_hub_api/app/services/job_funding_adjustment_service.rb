@@ -53,6 +53,15 @@ class JobFundingAdjustmentService
       elsif result[:requires_action]
         job.update!(funding_status: :adjustment_required)
         { success: false, requires_action: true, client_secret: result[:client_secret], job: job, error: "Additional payment is required to accept these terms." }
+      elsif result[:processing]
+        job.update!(funding_status: :adjustment_required)
+        {
+          success: false,
+          processing: true,
+          job: job,
+          transaction: result[:transaction],
+          error: "ACH payment is processing. These terms will apply when the bank debit succeeds."
+        }
       else
         job.update!(funding_status: :adjustment_required)
         { success: false, error: result[:error] || "Could not collect the additional amount.", job: job }
@@ -69,6 +78,15 @@ class JobFundingAdjustmentService
         job.update!(funding_status: :funded)
         JobFundingService.record_revision!(job, source: source, transaction: result[:transaction])
         { success: true, job: job, transaction: result[:transaction] }
+      elsif result[:processing]
+        job.update!(funding_status: :adjustment_required)
+        {
+          success: false,
+          processing: true,
+          job: job,
+          transaction: result[:transaction],
+          error: "ACH refund is processing. Settlement will complete when the bank return finishes."
+        }
       else
         { success: false, error: result[:error] || "Could not refund the difference.", job: job }
       end

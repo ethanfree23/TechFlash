@@ -86,6 +86,14 @@ class JobSettlementService
         job.update!(funding_status: :adjustment_required, settlement_status: :settlement_blocked)
         return { success: false, requires_action: true, client_secret: result[:client_secret], error: "Additional company payment is required before technician payout." }
       end
+      if result[:processing]
+        job.update!(funding_status: :adjustment_required, settlement_status: :settlement_blocked)
+        return {
+          success: false,
+          processing: true,
+          error: "ACH payment is processing. Technician payout is blocked until the bank debit succeeds."
+        }
+      end
       unless result[:success]
         job.update!(funding_status: :adjustment_required, settlement_status: :settlement_blocked)
         return { success: false, error: result[:error] || "Could not collect the remaining job amount." }
@@ -98,6 +106,14 @@ class JobSettlementService
         transaction_type: refund_transaction_type,
         revision: revision + 1
       )
+      if result[:processing]
+        job.update!(settlement_status: :settlement_blocked)
+        return {
+          success: false,
+          processing: true,
+          error: "ACH refund is processing. Settlement will complete when the bank return finishes."
+        }
+      end
       unless result[:success]
         job.update!(settlement_status: :settlement_blocked)
         return { success: false, error: result[:error] || "Could not refund unused job funding." }

@@ -92,6 +92,21 @@ class PaymentService
         early = { error: "Job is underfunded; technician payout is blocked." }
         next
       end
+      # ACH safety: never transfer while a company collection/refund is still processing,
+      # or while a funding charge is under dispute / return review.
+      if locked_job.job_payment_transactions.company_collections.status_processing.exists?
+        early = { error: "Company ACH payment is still processing; technician payout is blocked." }
+        next
+      end
+      if locked_job.job_payment_transactions.company_refunds.status_processing.exists?
+        early = { error: "Company ACH refund is still processing; technician payout is blocked." }
+        next
+      end
+      disputed = locked_job.job_payment_transactions.company_collections.status_succeeded.select(&:disputed?)
+      if disputed.any?
+        early = { error: "Company payment is disputed or returned; technician payout is blocked until resolved." }
+        next
+      end
       if ledger.transferred_cents.positive?
         early = { error: "Technician payout already transferred." }
         next

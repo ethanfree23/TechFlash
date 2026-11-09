@@ -167,6 +167,10 @@ const CreateJob = () => {
   const [platformFeePercent, setPlatformFeePercent] = useState(null);
   const [companyServiceTrades, setCompanyServiceTrades] = useState([]);
   const [successModal, setSuccessModal] = useState(false);
+  const [successMessage, setSuccessMessage] = useState(
+    'Your job has been posted. Technicians can now discover and claim it. Priced jobs are already funded.'
+  );
+  const [successTitle, setSuccessTitle] = useState('Job created!');
   const [errorModal, setErrorModal] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
@@ -805,10 +809,25 @@ const CreateJob = () => {
         await confirmStripeCardPayment(created.client_secret);
         const jobId = created.job?.id || created.id || draftJobId;
         await jobsAPI.confirmFunding(jobId);
+        setSuccessTitle('Job created!');
+        setSuccessMessage(
+          'Your job has been posted. Technicians can now discover and claim it. Priced jobs are already funded.'
+        );
+      } else if (created?.payment_processing) {
+        setSuccessTitle('Bank debit started');
+        setSuccessMessage(
+          created.message ||
+            'Your ACH payment is processing. This job will stay unpublished until the bank debit succeeds (usually 1–5 business days). You will see it go live automatically.'
+        );
+      } else {
+        setSuccessTitle('Job created!');
+        setSuccessMessage(
+          'Your job has been posted. Technicians can now discover and claim it. Priced jobs are already funded.'
+        );
       }
       localStorage.removeItem(DRAFT_KEY);
       setDraftJobId(null);
-      if (!isAdmin) {
+      if (!isAdmin && !created?.payment_processing) {
         trackCompanyJobPosted();
       }
       setSuccessModal(true);
@@ -1548,8 +1567,8 @@ const CreateJob = () => {
           setSuccessModal(false);
           navigate('/dashboard');
         }}
-        title="Job created!"
-        message="Your job has been posted. Technicians can now discover and claim it. Priced jobs are already funded."
+        title={successTitle}
+        message={successMessage}
         variant="success"
       />
 
