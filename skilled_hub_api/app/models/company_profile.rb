@@ -40,6 +40,20 @@ class CompanyProfile < ApplicationRecord
     fallback.present? ? [fallback] : []
   end
 
+  # All company logins for this shared account: memberships plus the profile owner.
+  def login_users
+    by_id = {}
+    company_users.where(role: :company).find_each { |u| by_id[u.id] = u }
+    by_id[user.id] = user if user&.company?
+    by_id.values.sort_by do |u|
+      [u.first_name.to_s.downcase, u.last_name.to_s.downcase, u.email.to_s.downcase]
+    end
+  end
+
+  def login_user_ids
+    login_users.map(&:id)
+  end
+
   private
 
   def normalize_service_cities_list

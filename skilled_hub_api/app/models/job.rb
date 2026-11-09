@@ -48,8 +48,12 @@ class Job < ApplicationRecord
     "This position may lead to a permanent role with the company. Permanent employment is not guaranteed."
 
   belongs_to :company_profile
+  belongs_to :primary_contact_user, class_name: "User", optional: true
   belongs_to :company_membership_tier_config, class_name: "MembershipTierConfig", optional: true
   belongs_to :technician_membership_tier_config, class_name: "MembershipTierConfig", optional: true
+
+  before_validation :normalize_additional_contact_user_ids
+  validate :contact_users_belong_to_company
 
   has_many :job_applications, dependent: :destroy
   has_many :payments, dependent: :destroy
@@ -155,6 +159,26 @@ class Job < ApplicationRecord
     {}
   end
 
+  # Company people who should hear about this job: primary first, then additional.
+  # Falls back to the company profile owner when no contacts were chosen.
+  def company_contact_users
+    return [company_profile&.user].compact unless has_attribute?(:primary_contact_user_id)
+
+    allowed = company_profile&.login_users || []
+    allowed_by_id = allowed.index_by(&:id)
+    ordered_ids = []
+    ordered_ids << primary_contact_user_id if primary_contact_user_id.present?
+    Array(additional_contact_user_ids).each { |id| ordered_ids << id.to_i }
+    users = ordered_ids.uniq.filter_map { |id| allowed_by_id[id] }
+    users.presence || [company_profile&.user].compact
+  end
+
+  def additional_contact_user_ids_list
+    return [] unless has_attribute?(:additional_contact_user_ids)
+
+    Array(additional_contact_user_ids).map { |id| id.to_i }.select(&:positive?).uniq
+  end
+
   before_validation :normalize_job_display_fields
   before_validation :normalize_schedule_fields
   before_validation :normalize_trade_type
@@ -206,6 +230,29 @@ class Job < ApplicationRecord
   }
 
   private
+
+  def normalize_additional_contact_user_ids
+    return unless has_attribute?(:additional_contact_user_ids)
+
+    ids = Array(additional_contact_user_ids).map { |id| id.to_i }.select(&:positive?).uniq
+    primary_id = primary_contact_user_id.to_i
+    ids.reject! { |id| id == primary_id } if primary_id.positive?
+    self.additional_contact_user_ids = ids
+  end
+
+  def contact_users_belong_to_company
+    return if company_profile.blank?
+    return unless has_attribute?(:primary_contact_user_id)
+
+    allowed = company_profile.login_user_ids
+    if primary_contact_user_id.present? && !allowed.include?(primary_contact_user_id.to_i)
+      errors.add(:primary_contact_user_id, "must be a login on this company account")
+    end
+    unknown = additional_contact_user_ids_list - allowed
+    return if unknown.empty?
+
+    errors.add(:additional_contact_user_ids, "must be logins on this company account")
+  end
 
   def normalize_job_display_fields
     normalized_class = TechnicianClassCatalog.normalized_label(skill_class)

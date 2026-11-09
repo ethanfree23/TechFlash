@@ -7,12 +7,23 @@ class CompanyProfileSerializer < ActiveModel::Serializer
              :membership_level, :membership_fee_override_cents, :commission_override_percent, :membership_fee_waived,
              :job_funding_waived,
              :membership_status, :membership_current_period_end_at, :effective_membership_fee_cents, :effective_commission_percent,
-             :review_summary
+             :review_summary, :company_users
 
   belongs_to :user
 
   def avatar_url
     absolute_blob_url(object.avatar)
+  end
+
+  def company_users
+    object.login_users.map do |u|
+      {
+        id: u.id,
+        email: u.email,
+        first_name: u.first_name,
+        last_name: u.last_name
+      }
+    end
   end
 
   def effective_membership_fee_cents

@@ -54,6 +54,8 @@ class JobTemplate < ApplicationRecord
     state
     zip_code
     country
+    primary_contact_user_id
+    additional_contact_user_ids
   ].freeze
 
   # Never copied. Each of these belongs to one specific posting.

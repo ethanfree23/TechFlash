@@ -692,10 +692,12 @@ module Api
                       :overtime_enabled, :daily_overtime_threshold_hours, :weekly_overtime_threshold_hours, :overtime_multiplier,
                       :hard_deadline_at, :job_timezone,
                       :potential_full_time, :schedule_flexibility,
+                      :primary_contact_user_id,
                       standard_work_days: [],
                       standard_day_shifts: {},
                       weekend_day_shifts: {},
-                      potential_full_time_details: {})
+                      potential_full_time_details: {},
+                      additional_contact_user_ids: [])
       end
 
       # Posting should make the job live immediately.
