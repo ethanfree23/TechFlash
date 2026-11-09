@@ -8,6 +8,8 @@ module Api
         payload = request.body.read
         sig_header = request.env['HTTP_STRIPE_SIGNATURE']
         secret = ENV['STRIPE_WEBHOOK_SECRET'].presence || Rails.application.credentials.dig(:stripe, :webhook_secret).presence
+        # Optional second endpoint ("events on connected accounts") has its own signing secret.
+        connect_secret = ENV['STRIPE_CONNECT_WEBHOOK_SECRET'].presence
 
         unless secret.present?
           if webhook_secret_required?
@@ -18,10 +20,16 @@ module Api
           return head :service_unavailable
         end
 
-        begin
-          event = Stripe::Webhook.construct_event(payload, sig_header, secret)
+        event = nil
+        last_error = nil
+        [secret, connect_secret].compact.uniq.each do |candidate|
+          event = Stripe::Webhook.construct_event(payload, sig_header, candidate)
+          break
         rescue JSON::ParserError, Stripe::SignatureVerificationError => e
-          Rails.logger.warn("[stripe webhook] verify failed: #{e.message}")
+          last_error = e
+        end
+        unless event
+          Rails.logger.warn("[stripe webhook] verify failed: #{last_error&.message}")
           return head :bad_request
         end
 
@@ -60,8 +68,19 @@ module Api
             MembershipSubscriptionService.sync_from_subscription(subscription)
             send_membership_checkout_email(session: session)
           elsif session.mode.to_s == "payment"
-            process_background_check_checkout(session)
+            # Delayed methods (ACH) complete Checkout with payment_status "unpaid"; only a paid
+            # session may launch a background check. Unpaid ones finish via async_payment_succeeded.
+            process_background_check_checkout(session) if session.payment_status.to_s == "paid"
           end
+        when 'checkout.session.async_payment_succeeded'
+          session = event.data.object
+          process_background_check_checkout(session) if session.mode.to_s == "payment"
+        when 'checkout.session.async_payment_failed'
+          session = event.data.object
+          Rails.logger.warn(
+            "[stripe webhook] checkout async payment failed session=#{session.id} " \
+            "background_check_id=#{session.metadata&.[]('background_check_id')}"
+          )
         when 'customer.subscription.updated', 'customer.subscription.created'
           subscription = event.data.object
           MembershipSubscriptionService.sync_from_subscription(subscription)
@@ -204,6 +223,10 @@ module Api
         refunds = charge.refunds&.data || []
         refunds.each do |refund|
           next if JobPaymentTransaction.exists?(stripe_refund_id: refund.id)
+          # App-initiated refunds create their own txn before calling Stripe and tag the refund
+          # with metadata.transaction_id. If this webhook wins the race against that write, attach
+          # to the existing txn instead of inserting a duplicate (which double-counts the refund).
+          next if link_app_initiated_refund!(refund)
 
           pi_id = charge.payment_intent.to_s.presence
           source = JobPaymentTransaction.status_succeeded.company_collections.find_by(stripe_payment_intent_id: pi_id)
@@ -227,6 +250,24 @@ module Api
             metadata_json: { "source" => "stripe_webhook" }
           )
         end
+      end
+
+      def link_app_initiated_refund!(refund)
+        txn_id = refund.metadata&.[]("transaction_id").to_s.presence
+        return false if txn_id.blank?
+
+        JobPaymentTransaction.transaction do
+          txn = JobPaymentTransaction.lock.find_by(id: txn_id)
+          return false unless txn && JobPaymentTransaction::REFUND_TYPES.include?(txn.transaction_type.to_s)
+
+          attrs = { stripe_refund_id: refund.id }
+          if refund.status.to_s == "succeeded" && !txn.status_succeeded?
+            attrs[:status] = :succeeded
+            attrs[:succeeded_at] = Time.current
+          end
+          txn.update!(attrs) if txn.stripe_refund_id.blank? || attrs.key?(:status)
+        end
+        true
       end
 
       def timestamp_to_time(value)
