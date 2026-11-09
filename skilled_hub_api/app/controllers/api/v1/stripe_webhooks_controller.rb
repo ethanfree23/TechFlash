@@ -34,6 +34,10 @@ module Api
         existing = StripeWebhookEvent.find_by(stripe_event_id: event.id)
         return head :ok if existing&.processed_at.present?
 
+        # Work that calls external providers (Checkr) is deferred until the ledger/payment state
+        # below is committed, so a provider failure can never roll back a verified payment.
+        @after_commit_steps = []
+
         StripeWebhookEvent.transaction do
           rec = StripeWebhookEvent.lock.find_or_initialize_by(stripe_event_id: event.id)
           unless rec.processed_at.present?
@@ -41,11 +45,22 @@ module Api
             rec.payload = payload
             rec.save!
             process_event(event)
-            rec.update!(processed_at: Time.current)
+            rec.update!(processed_at: Time.current) if @after_commit_steps.empty?
           end
         end
 
+        if @after_commit_steps.any?
+          # The event stays unprocessed until every deferred step succeeds. A failure returns 500 so
+          # Stripe redelivers (there is no durable job queue in this app: Active Job is inline); the
+          # retry finds payment already recorded and only the missing step left to do.
+          @after_commit_steps.each(&:call)
+          StripeWebhookEvent.where(stripe_event_id: event.id).update_all(processed_at: Time.current)
+        end
+
         head :ok
+      rescue BackgroundCheckFulfillmentService::Error => e
+        Rails.logger.error("[stripe webhook] deferred fulfillment failed event=#{event&.id} error=#{e.class}; returning 500 for Stripe retry")
+        head :internal_server_error
       end
 
       private
@@ -122,12 +137,14 @@ module Api
           profile = company_profile || technician_profile
           if profile
             audience = company_profile ? :company : :technician
-            profile.update!(
+            # Same validation-safe targeted write as MembershipSubscriptionService.sync_from_subscription.
+            profile.update_columns(
               membership_level: MembershipPolicy.default_slug_for(audience),
               membership_status: subscription.status,
               stripe_membership_subscription_id: nil,
               membership_current_period_end_at: nil,
-              pending_membership_level: nil
+              pending_membership_level: nil,
+              updated_at: Time.current
             )
           end
         when 'charge.refunded'
@@ -162,9 +179,13 @@ module Api
         MailDelivery.safe_deliver { UserMailer.membership_checkout_thanks(user, membership_level: tier).deliver_now }
       end
 
-      # Single fulfillment path for checkout.session.completed and checkout.session.async_payment_succeeded.
-      # The paid transition is claimed under a row lock so concurrent/duplicate events for the same
-      # check launch exactly one Checkr invitation.
+      # Single path for checkout.session.completed and checkout.session.async_payment_succeeded.
+      #
+      # Phase 1 (inside the webhook transaction): record the verified payment, idempotently, under a
+      # row lock. Phase 2 (after commit, see #create): create the Checkr invitation via
+      # BackgroundCheckFulfillmentService, which is keyed on provider_invitation_id rather than on
+      # payment state, so a Checkr failure leaves a paid, retryable check and a redelivered event
+      # (or the retry rake task) finishes fulfillment without a second invitation or charge.
       def fulfill_background_check_checkout(session, event_type:)
         background_check_id = session.metadata&.[]("background_check_id").to_s
         return if background_check_id.blank?
@@ -178,26 +199,35 @@ module Api
         end
 
         check = nil
-        claimed = false
+        newly_paid = false
         BackgroundCheck.transaction do
           check = BackgroundCheck.lock.find_by(id: background_check_id)
-          next if check.blank? || check.payment_status_paid?
+          next if check.blank?
 
-          check.update!(
-            payment_status: :paid,
-            stripe_checkout_session_id: session.id,
-            stripe_payment_intent_id: session.payment_intent.to_s.presence,
-            paid_at: Time.current
-          )
-          claimed = true
+          unless check.payment_status_paid?
+            check.update!(
+              payment_status: :paid,
+              stripe_checkout_session_id: session.id,
+              stripe_payment_intent_id: session.payment_intent.to_s.presence,
+              paid_at: Time.current
+            )
+            newly_paid = true
+          end
         end
-        return unless claimed
+        return if check.blank?
 
+        @after_commit_steps << lambda do
+          notify_background_payment_completed(check) if newly_paid
+          outcome = BackgroundCheckFulfillmentService.ensure_invitation!(check.id)
+          Rails.logger.info("[stripe webhook] background check fulfillment type=#{event_type} background_check_id=#{check.id} outcome=#{outcome}")
+        end
+      end
+
+      # Notification is best-effort and must never block or roll back fulfillment.
+      def notify_background_payment_completed(check)
         VerificationEventNotifier.background_payment_completed(check.user, check)
-        invitation = BackgroundCheckStartService.launch_checkr_invitation!(check)
-        check.update!(provider_invitation_id: invitation["id"]) if invitation["id"].present?
-      rescue BackgroundCheckStartService::Error => e
-        check&.update!(status: :failed, admin_notes: e.message)
+      rescue StandardError => e
+        Rails.logger.warn("[stripe webhook] background payment notification failed background_check_id=#{check.id} error=#{e.class}")
       end
 
       # Delayed payment failed after Checkout completed: never launch Checkr. A still-pending check is
@@ -476,9 +506,22 @@ module Api
             metadata_json: { "source" => "stripe_webhook", "stripe_refund_status" => refund["status"].to_s }
           )
         end
-      rescue ActiveRecord::RecordNotUnique
-        # A concurrent delivery inserted this refund first; nothing left to do.
-        nil
+      rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid => e
+        # Row locks cannot serialize two inserts for a refund nobody has recorded yet; the UNIQUE
+        # index on idempotency_key does (stripe_refund_id is indexed but not unique). Depending on
+        # when the winner committed, the loser sees either the DB constraint (RecordNotUnique) or
+        # the model's uniqueness validation (RecordInvalid). Either way: treat it as a duplicate
+        # delivery, re-read the winner's row and reconcile its status.
+        raise if e.is_a?(ActiveRecord::RecordInvalid) && e.record.errors[:idempotency_key].blank?
+
+        Rails.logger.info("[stripe webhook] concurrent refund insert refund=#{refund.id} (#{e.class}); reconciling existing row")
+        existing = JobPaymentTransaction.lock.find_by(idempotency_key: "tf_stripe_refund_#{refund.id}") ||
+                   JobPaymentTransaction.lock.find_by(stripe_refund_id: refund.id)
+        return nil if existing.nil?
+
+        existing.stripe_refund_id = refund.id if existing.stripe_refund_id.blank?
+        apply_stripe_refund_status!(existing, refund)
+        existing
       end
 
       def timestamp_to_time(value)

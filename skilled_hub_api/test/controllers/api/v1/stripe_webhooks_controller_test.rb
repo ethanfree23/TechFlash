@@ -305,18 +305,120 @@ module Api
         assert_equal "pending", check.reload.payment_status
       end
 
-      test "Checkr launch failure after payment keeps the check paid and records the failure" do
+      test "Checkr launch failure keeps the payment recorded, leaves the check retryable and returns 500 so Stripe retries" do
         check = create_pending_background_check(session_id: "cs_checkr_fail")
         failing = ->(_check) { raise BackgroundCheckStartService::Error, "Checkr is not configured." }
         BackgroundCheckStartService.stub(:launch_checkr_invitation!, failing) do
           post_stripe_event(checkout_event("evt_checkr_fail", "checkout.session.completed", check, session_id: "cs_checkr_fail", payment_status: "paid"))
         end
 
-        assert_response :ok
+        assert_response :internal_server_error
         check.reload
         assert_equal "paid", check.payment_status
+        assert check.paid_at.present?
+        assert_nil check.provider_invitation_id
         assert_equal "failed", check.status
-        assert_equal "Checkr is not configured.", check.admin_notes
+        assert_match(/Checkr is not configured/, check.admin_notes)
+        assert_includes BackgroundCheckFulfillmentService.awaiting_invitation.pluck(:id), check.id
+        # Event stays unprocessed so the redelivery is not short-circuited as a duplicate.
+        assert_nil StripeWebhookEvent.find_by(stripe_event_id: "evt_checkr_fail").processed_at
+      end
+
+      test "Checkr raises then succeeds on the redelivered event: exactly one invitation, no second payment write" do
+        check = create_pending_background_check(session_id: "cs_checkr_retry")
+        event = checkout_event("evt_checkr_retry", "checkout.session.completed", check, session_id: "cs_checkr_retry", payment_status: "paid", payment_intent: "pi_checkr_retry")
+
+        calls = 0
+        flaky = lambda do |c|
+          calls += 1
+          raise BackgroundCheckStartService::Error, "Checkr timeout" if calls == 1
+
+          c.update!(status: :invited, provider_invitation_id: "inv_retry_1")
+          { "id" => "inv_retry_1" }
+        end
+
+        BackgroundCheckStartService.stub(:launch_checkr_invitation!, flaky) do
+          post_stripe_event(event)
+          assert_response :internal_server_error
+          first_paid_at = check.reload.paid_at
+          assert first_paid_at.present?
+
+          post_stripe_event(event)
+          assert_response :ok
+          check.reload
+          assert_equal first_paid_at.to_i, check.paid_at.to_i
+        end
+
+        assert_equal 2, calls
+        check.reload
+        assert_equal "paid", check.payment_status
+        assert_equal "invited", check.status
+        assert_equal "inv_retry_1", check.provider_invitation_id
+        assert StripeWebhookEvent.find_by(stripe_event_id: "evt_checkr_retry").processed_at.present?
+        assert_empty BackgroundCheckFulfillmentService.awaiting_invitation.where(id: check.id)
+      end
+
+      test "payment notification raising does not block the invitation" do
+        check = create_pending_background_check(session_id: "cs_notify_fail")
+        exploding = ->(_user, _check) { raise StandardError, "mailer down" }
+        launches = VerificationEventNotifier.stub(:background_payment_completed, exploding) do
+          stub_checkr_launch do
+            post_stripe_event(checkout_event("evt_notify_fail", "checkout.session.completed", check, session_id: "cs_notify_fail", payment_status: "paid"))
+          end
+        end
+
+        assert_response :ok
+        assert_equal 1, launches.size
+        check.reload
+        assert_equal "paid", check.payment_status
+        assert_equal "inv_test_1", check.provider_invitation_id
+      end
+
+      test "duplicate success events after a Checkr failure create exactly one invitation" do
+        check = create_pending_background_check(session_id: "cs_dup_after_fail")
+        calls = 0
+        flaky = lambda do |c|
+          calls += 1
+          raise BackgroundCheckStartService::Error, "Checkr 503" if calls == 1
+
+          c.update!(status: :invited, provider_invitation_id: "inv_dup_fail_1")
+          { "id" => "inv_dup_fail_1" }
+        end
+
+        BackgroundCheckStartService.stub(:launch_checkr_invitation!, flaky) do
+          post_stripe_event(checkout_event("evt_dup_after_fail_1", "checkout.session.completed", check, session_id: "cs_dup_after_fail", payment_status: "paid"))
+          assert_response :internal_server_error
+          post_stripe_event(checkout_event("evt_dup_after_fail_2", "checkout.session.async_payment_succeeded", check, session_id: "cs_dup_after_fail", payment_status: "paid"))
+          assert_response :ok
+          post_stripe_event(checkout_event("evt_dup_after_fail_1", "checkout.session.completed", check, session_id: "cs_dup_after_fail", payment_status: "paid"))
+          assert_response :ok
+        end
+
+        assert_equal 2, calls
+        assert_equal "inv_dup_fail_1", check.reload.provider_invitation_id
+      end
+
+      test "paid check with a missing invitation is fulfilled by the retry service exactly once" do
+        check = create_pending_background_check(session_id: "cs_rake_retry")
+        check.update!(payment_status: :paid, paid_at: Time.current)
+        assert_includes BackgroundCheckFulfillmentService.awaiting_invitation.pluck(:id), check.id
+
+        launches = stub_checkr_launch do
+          assert_equal :launched, BackgroundCheckFulfillmentService.ensure_invitation!(check.id)
+          assert_equal :already_fulfilled, BackgroundCheckFulfillmentService.ensure_invitation!(check.id)
+        end
+
+        assert_equal 1, launches.size
+        assert_equal "inv_test_1", check.reload.provider_invitation_id
+        assert_empty BackgroundCheckFulfillmentService.awaiting_invitation.where(id: check.id)
+      end
+
+      test "retry service never launches Checkr for an unpaid check" do
+        check = create_pending_background_check(session_id: "cs_unpaid_retry")
+        launches = stub_checkr_launch do
+          assert_equal :not_eligible, BackgroundCheckFulfillmentService.ensure_invitation!(check.id)
+        end
+        assert_empty launches
       end
 
       test "subscription checkout.session.completed still syncs membership and never touches background checks" do
@@ -560,6 +662,80 @@ module Api
         assert_equal "ch_ext_1", txn.stripe_charge_id
         assert_equal "tf_stripe_refund_re_ext_1", txn.idempotency_key
         assert_equal 2000, JobLedger.for(job.reload).refunded_cents
+      end
+
+      test "concurrent external refund inserts: the loser hits the unique idempotency key and reconciles the winner's row" do
+        job, payment, _collection = create_funded_job(pi_id: "pi_race_1", charge_id: "ch_race_1")
+        refund = refund_object(id: "re_race_1", amount: 2000, charge: "ch_race_1", payment_intent: "pi_race_1")
+        charge = charge_object(id: "ch_race_1", payment_intent: "pi_race_1", refunds: [refund])
+
+        # Simulates delivery A committing its insert between delivery B's lookups and B's insert
+        # (READ COMMITTED: B's refund-id lookup saw nothing, B's insert then violates the UNIQUE
+        # index on idempotency_key). A's row is modelled without stripe_refund_id so B cannot
+        # short-circuit on the refund-id match and must go through the insert + RecordNotUnique path.
+        winner = JobPaymentTransaction.create!(
+          payment: payment, job: job, transaction_type: :refund, direction: :outbound,
+          amount_cents: 2000, currency: "usd", status: :pending,
+          stripe_charge_id: "ch_race_1", stripe_payment_intent_id: "pi_race_1",
+          idempotency_key: "tf_stripe_refund_re_race_1", revision: job.financial_revision
+        )
+
+        # In the real race the model's uniqueness validation cannot see A's uncommitted row, so the
+        # DB UNIQUE index is what fires; skip the validation here to hit that exact constraint.
+        attempted_inserts = 0
+        raised = nil
+        raw_insert = lambda do |attrs|
+          attempted_inserts += 1
+          begin
+            JobPaymentTransaction.new(attrs).save!(validate: false)
+          rescue ActiveRecord::RecordNotUnique => e
+            raised = e
+            raise
+          end
+        end
+        JobPaymentTransaction.stub(:create!, raw_insert) do
+          post_stripe_event(stripe_event(id: "evt_race_1", type: "charge.refunded", object: charge))
+        end
+
+        assert_response :ok
+        assert_equal 1, attempted_inserts, "insert must be attempted and lose to the unique key"
+        assert_kind_of ActiveRecord::RecordNotUnique, raised
+        rows = JobPaymentTransaction.where(idempotency_key: "tf_stripe_refund_re_race_1")
+        assert_equal 1, rows.count
+        assert_equal 1, JobPaymentTransaction.where(job: job).company_refunds.count
+        reconciled = rows.first
+        assert_equal winner.id, reconciled.id
+        assert_equal "re_race_1", reconciled.stripe_refund_id
+        assert reconciled.status_succeeded?
+        assert_equal 2000, JobLedger.for(job.reload).refunded_cents
+        assert StripeWebhookEvent.find_by(stripe_event_id: "evt_race_1").processed_at.present?
+
+        # A later redelivery now matches by refund id and still does not add a row.
+        post_stripe_event(stripe_event(id: "evt_race_2", type: "charge.refunded", object: charge))
+        assert_equal 1, JobPaymentTransaction.where(job: job).company_refunds.count
+        assert_equal 2000, JobLedger.for(job.reload).refunded_cents
+      end
+
+      test "concurrent external refund insert where the winner is already visible to the uniqueness validation" do
+        job, payment, _collection = create_funded_job(pi_id: "pi_race_2", charge_id: "ch_race_2")
+        refund = refund_object(id: "re_race_2", amount: 1500, charge: "ch_race_2", payment_intent: "pi_race_2")
+        charge = charge_object(id: "ch_race_2", payment_intent: "pi_race_2", refunds: [refund])
+        JobPaymentTransaction.create!(
+          payment: payment, job: job, transaction_type: :refund, direction: :outbound,
+          amount_cents: 1500, currency: "usd", status: :pending,
+          stripe_charge_id: "ch_race_2", stripe_payment_intent_id: "pi_race_2",
+          idempotency_key: "tf_stripe_refund_re_race_2", revision: job.financial_revision
+        )
+
+        # Unstubbed create!: the model's uniqueness validation raises RecordInvalid for the key.
+        post_stripe_event(stripe_event(id: "evt_race_3", type: "charge.refunded", object: charge))
+
+        assert_response :ok
+        rows = JobPaymentTransaction.where(job: job).company_refunds
+        assert_equal 1, rows.count
+        assert_equal "re_race_2", rows.first.stripe_refund_id
+        assert rows.first.status_succeeded?
+        assert_equal 1500, JobLedger.for(job.reload).refunded_cents
       end
 
       test "external pending refund is recorded but not counted as refunded" do
