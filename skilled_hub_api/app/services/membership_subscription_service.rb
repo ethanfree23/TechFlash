@@ -79,11 +79,16 @@ class MembershipSubscriptionService
         # reports a paying status (customer.subscription.updated arrives when that happens).
         MembershipPolicy.default_slug_for(user.company? ? "company" : "technician")
       end
-    profile.update!(
-      membership_level: level,
+    # Targeted column write: profiles validate unrelated fields on update (e.g. phone presence),
+    # and a legacy profile failing those must not block Stripe's entitlement state from landing.
+    # The level is normalized explicitly since update_columns skips before_validation callbacks.
+    audience = user.company? ? :company : :technician
+    profile.update_columns(
+      membership_level: MembershipPolicy.normalized_level(level, audience: audience),
       stripe_membership_subscription_id: subscription.id,
       membership_status: subscription.status,
-      membership_current_period_end_at: timestamp_to_time(subscription.current_period_end)
+      membership_current_period_end_at: timestamp_to_time(subscription.current_period_end),
+      updated_at: Time.current
     )
   end
 

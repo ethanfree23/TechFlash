@@ -121,6 +121,36 @@ class MembershipSubscriptionServiceTest < ActiveSupport::TestCase
     user&.destroy
   end
 
+  test "sync_from_subscription updates a legacy profile that would fail unrelated validations" do
+    user, profile = build_subscriber(role: :technician, customer_id: "cus_sync_legacy_phone")
+    profile.update_column(:phone, nil)
+    refute profile.reload.valid?(:update), "fixture must be invalid on update to prove the targeted write"
+
+    with_price("technician", "pro", "price_sync_legacy") do
+      assert_nothing_raised do
+        MembershipSubscriptionService.sync_from_subscription(subscription_struct(id: "sub_legacy", customer: "cus_sync_legacy_phone", status: "active", price_id: "price_sync_legacy"))
+      end
+    end
+
+    profile.reload
+    assert_equal "pro", profile.membership_level
+    assert_equal "active", profile.membership_status
+    assert_equal "sub_legacy", profile.stripe_membership_subscription_id
+    assert_nil profile.phone, "unrelated columns are untouched"
+  ensure
+    user&.destroy
+  end
+
+  test "sync_from_subscription still normalizes the level without validation callbacks" do
+    user, profile = build_subscriber(role: :technician, customer_id: "cus_sync_normalize")
+    MembershipSubscriptionService.stub(:level_from_subscription, "PRO") do
+      MembershipSubscriptionService.sync_from_subscription(subscription_struct(id: "sub_norm", customer: "cus_sync_normalize", status: "active", price_id: "price_any"))
+    end
+    assert_equal "pro", profile.reload.membership_level
+  ensure
+    user&.destroy
+  end
+
   test "sync_from_subscription ignores subscriptions for unknown customers" do
     assert_nothing_raised do
       MembershipSubscriptionService.sync_from_subscription(subscription_struct(id: "sub_nobody", customer: "cus_nobody", status: "active", price_id: "price_x"))
