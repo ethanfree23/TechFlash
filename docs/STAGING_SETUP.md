@@ -11,7 +11,8 @@ Staging is **production-like Rails** with **real Stripe TEST API calls**.
 |---|---|---|
 | `RAILS_ENV` | Yes | `staging` |
 | `DATABASE_URL` | Yes | Dedicated staging Postgres only — never production |
-| `SECRET_KEY_BASE` / `RAILS_MASTER_KEY` | Yes | Separate from production |
+| `SECRET_KEY_BASE` | Yes | Required for staging boot (do **not** rely on production `RAILS_MASTER_KEY`) |
+| `RAILS_MASTER_KEY` | No | Staging must not require production encrypted credentials |
 | `STRIPE_SECRET_KEY` | Yes | Must be `sk_test_...` (live keys rejected) |
 | `STRIPE_WEBHOOK_SECRET` | Yes | Staging platform destination signing secret |
 | `STRIPE_CONNECT_WEBHOOK_SECRET` | Recommended | Staging Connect destination |
