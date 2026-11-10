@@ -1189,10 +1189,21 @@ const JobDetail = () => {
           <p>
             <span className="font-medium">Funding: </span>
             {job.funding_status === 'funded' && (job.payment_summary.fully_funded ? 'Funded.' : 'Partially funded.')}
-            {job.funding_status === 'adjustment_required' && 'Additional payment is required before these terms can proceed.'}
+            {job.funding_status === 'adjustment_required' &&
+              (job.payment_summary?.ach_processing
+                ? 'ACH bank debit is processing. This job stays unpublished until the payment succeeds.'
+                : 'Additional payment is required before these terms can proceed.')}
             {job.funding_status === 'funding_failed' && 'The last collection attempt failed. This job is not listed until payment succeeds.'}
             {job.funding_status === 'unfunded' && 'Not funded yet.'}
             {!job.funding_status && 'Funding status unavailable.'}
+            {job.payment_summary?.latest_payment_method_display && (
+              <span className="block text-xs text-slate-500 mt-1">
+                Method: {job.payment_summary.latest_payment_method_display}
+                {job.payment_summary.latest_payment_status
+                  ? ` · ${job.payment_summary.latest_payment_status}`
+                  : ''}
+              </span>
+            )}
           </p>
           {job.payment_summary.amount_due_cents > 0 && (
             <p className="text-amber-800">Amount still due: ${((job.payment_summary.amount_due_cents) / 100).toFixed(2)}</p>

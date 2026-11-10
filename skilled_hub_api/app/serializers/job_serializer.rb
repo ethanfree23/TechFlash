@@ -132,6 +132,8 @@ class JobSerializer < ActiveModel::Serializer
 
   def payment_summary
     ledger = object.financial_ledger
+    processing_txns = object.job_payment_transactions.status_processing.to_a
+    latest_collection = object.job_payment_transactions.company_collections.order(:id).last
     {
       state: object.funding_status,
       settlement_status: object.settlement_status,
@@ -148,7 +150,12 @@ class JobSerializer < ActiveModel::Serializer
       tech_payout_cents: object.tech_payout_cents,
       company_charge_cents: object.company_charge_cents,
       company_commission_percent: ledger.company_commission_percent,
-      technician_commission_percent: ledger.technician_commission_percent
+      technician_commission_percent: ledger.technician_commission_percent,
+      ach_processing: processing_txns.any?(&:ach?),
+      processing_amount_cents: processing_txns.sum(&:amount_cents),
+      latest_payment_method_type: latest_collection&.payment_method_type,
+      latest_payment_method_display: latest_collection&.payment_method_display,
+      latest_payment_status: latest_collection&.status
     }
   rescue JobLedger::MissingCommissionSnapshotError
     {

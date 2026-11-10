@@ -35,7 +35,26 @@ export async function unblockUser(blockedUserId: number) {
 export async function createCardSetupIntent() {
   return apiRequest<{ client_secret?: string }>('/settings/create_setup_intent', {
     method: 'POST',
+    body: JSON.stringify({ payment_method_type: 'card' }),
   });
+}
+
+/** Company ACH / Financial Connections SetupIntent. Prefer completing bank setup on web Settings. */
+export async function createBankSetupIntent() {
+  return apiRequest<{ client_secret?: string; payment_method_type?: string }>(
+    '/settings/create_setup_intent',
+    {
+      method: 'POST',
+      body: JSON.stringify({ payment_method_type: 'us_bank_account' }),
+    }
+  );
+}
+
+export async function listPaymentMethods() {
+  return apiRequest<{
+    payment_methods?: Array<Record<string, unknown>>;
+    default_payment_method_id?: string | null;
+  }>('/settings/payment_methods');
 }
 
 export async function getTechnicianProfile() {

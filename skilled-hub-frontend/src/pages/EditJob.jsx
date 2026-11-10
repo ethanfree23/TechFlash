@@ -357,6 +357,18 @@ const EditJob = () => {
         payload.days = null;
       }
       const updated = await jobsAPI.update(id, payload);
+      if (updated?.payment_processing) {
+        setAlertModal({
+          isOpen: true,
+          title: 'Bank debit started',
+          message:
+            updated.message ||
+            'Bank debit initiated. This job will publish when the ACH payment succeeds.',
+          variant: 'success',
+          onCloseAction: () => navigate('/dashboard'),
+        });
+        return;
+      }
       if (updated?.payment_adjustment_required && updated.client_secret) {
         await confirmStripeCardPayment(updated.client_secret);
         const jobId = updated.job?.id || updated.id || id;

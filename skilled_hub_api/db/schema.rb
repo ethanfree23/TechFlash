@@ -10,7 +10,23 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_10_20_163000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_10_190000) do
+  create_table "ach_feature_audits", force: :cascade do |t|
+    t.string "scope", null: false
+    t.integer "company_profile_id"
+    t.integer "actor_user_id"
+    t.string "actor_email"
+    t.boolean "old_value"
+    t.boolean "new_value", null: false
+    t.string "source", default: "admin", null: false
+    t.json "metadata_json", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["company_profile_id"], name: "index_ach_feature_audits_on_company_profile_id"
+    t.index ["created_at"], name: "index_ach_feature_audits_on_created_at"
+    t.index ["scope"], name: "index_ach_feature_audits_on_scope"
+  end
+
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -390,6 +406,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_10_20_163000) do
     t.string "staffing_intent"
     t.json "hiring_context", default: {}, null: false
     t.json "acquisition_attribution", default: {}, null: false
+    t.boolean "ach_payments_enabled", default: false, null: false
+    t.index ["ach_payments_enabled"], name: "index_company_profiles_on_ach_payments_enabled"
     t.index ["membership_level"], name: "index_company_profiles_on_membership_level"
     t.index ["staffing_intent"], name: "index_company_profiles_on_staffing_intent"
     t.index ["state"], name: "index_company_profiles_on_state"
@@ -684,10 +702,25 @@ ActiveRecord::Schema[7.1].define(version: 2026_10_20_163000) do
     t.datetime "succeeded_at"
     t.datetime "created_at", null: false
     t.datetime "updated_at", null: false
+    t.string "payment_method_type"
+    t.string "payment_method_last4"
+    t.string "payment_method_brand"
+    t.string "payment_method_bank_name"
+    t.string "stripe_payment_method_id"
+    t.datetime "processing_at"
+    t.string "dispute_status"
+    t.string "stripe_dispute_id"
+    t.boolean "investigation_required", default: false, null: false
+    t.string "source_charge_id"
+    t.string "bank_payout_status"
+    t.datetime "transfer_first_attempted_at"
+    t.index ["dispute_status"], name: "index_job_payment_transactions_on_dispute_status"
     t.index ["idempotency_key"], name: "index_job_payment_transactions_on_idempotency_key", unique: true
     t.index ["job_id", "transaction_type"], name: "index_job_payment_transactions_on_job_id_and_transaction_type"
     t.index ["job_id"], name: "index_job_payment_transactions_on_job_id"
     t.index ["payment_id"], name: "index_job_payment_transactions_on_payment_id"
+    t.index ["payment_method_type"], name: "index_job_payment_transactions_on_payment_method_type"
+    t.index ["status"], name: "index_job_payment_transactions_on_status"
     t.index ["stripe_payment_intent_id"], name: "index_job_payment_transactions_on_stripe_payment_intent_id"
     t.index ["stripe_refund_id"], name: "index_job_payment_transactions_on_stripe_refund_id"
     t.index ["stripe_transfer_id"], name: "index_job_payment_transactions_on_stripe_transfer_id"
@@ -922,6 +955,50 @@ ActiveRecord::Schema[7.1].define(version: 2026_10_20_163000) do
     t.index ["user_id"], name: "index_password_setup_challenges_on_user_id"
   end
 
+  create_table "payment_risk_events", force: :cascade do |t|
+    t.integer "job_id", null: false
+    t.integer "job_payment_transaction_id"
+    t.string "risk_kind", null: false
+    t.string "investigation_status", default: "open", null: false
+    t.integer "amount_cents"
+    t.string "currency", default: "usd", null: false
+    t.string "stripe_event_id"
+    t.string "stripe_payment_intent_id"
+    t.string "stripe_charge_id"
+    t.string "stripe_refund_id"
+    t.string "stripe_dispute_id"
+    t.string "stripe_transfer_id"
+    t.string "stripe_connected_account_id"
+    t.string "stripe_payout_id"
+    t.string "bank_payout_status", default: "unknown", null: false
+    t.boolean "investigation_required", default: true, null: false
+    t.text "admin_note"
+    t.json "metadata_json", default: {}, null: false
+    t.datetime "detected_at", null: false
+    t.datetime "resolved_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.string "correlation_key"
+    t.string "lifecycle_state"
+    t.integer "confirmed_loss_cents"
+    t.boolean "exposure_confirmed", default: false, null: false
+    t.boolean "transfer_already_executed", default: false, null: false
+    t.datetime "last_stripe_event_created_at"
+    t.string "resolved_by"
+    t.datetime "reopened_at"
+    t.string "reopened_by_event_id"
+    t.index ["correlation_key"], name: "index_payment_risk_events_on_correlation_key_unique", unique: true
+    t.index ["investigation_status"], name: "index_payment_risk_events_on_investigation_status"
+    t.index ["job_id", "investigation_status"], name: "index_payment_risk_events_on_job_id_and_investigation_status"
+    t.index ["job_id"], name: "index_payment_risk_events_on_job_id"
+    t.index ["job_payment_transaction_id"], name: "index_payment_risk_events_on_job_payment_transaction_id"
+    t.index ["lifecycle_state"], name: "index_payment_risk_events_on_lifecycle_state"
+    t.index ["risk_kind"], name: "index_payment_risk_events_on_risk_kind"
+    t.index ["stripe_dispute_id"], name: "index_payment_risk_events_on_stripe_dispute_id"
+    t.index ["stripe_event_id"], name: "index_payment_risk_events_on_stripe_event_id"
+    t.index ["stripe_payment_intent_id"], name: "index_payment_risk_events_on_stripe_payment_intent_id"
+  end
+
   create_table "payments", force: :cascade do |t|
     t.integer "job_id", null: false
     t.integer "amount_cents", null: false
@@ -1063,6 +1140,25 @@ ActiveRecord::Schema[7.1].define(version: 2026_10_20_163000) do
     t.index ["user_id"], name: "index_sms_delivery_logs_on_user_id"
   end
 
+  create_table "stripe_setup_records", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.string "stripe_setup_intent_id", null: false
+    t.string "stripe_customer_id"
+    t.string "stripe_payment_method_id"
+    t.string "payment_method_type"
+    t.string "status", default: "requires_action", null: false
+    t.string "error_message"
+    t.json "metadata_json", default: {}, null: false
+    t.datetime "succeeded_at"
+    t.datetime "failed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["stripe_payment_method_id"], name: "index_stripe_setup_records_on_stripe_payment_method_id"
+    t.index ["stripe_setup_intent_id"], name: "index_stripe_setup_records_on_stripe_setup_intent_id", unique: true
+    t.index ["user_id", "status"], name: "index_stripe_setup_records_on_user_id_and_status"
+    t.index ["user_id"], name: "index_stripe_setup_records_on_user_id"
+  end
+
   create_table "stripe_webhook_events", force: :cascade do |t|
     t.string "stripe_event_id", null: false
     t.string "event_type"
@@ -1192,6 +1288,45 @@ ActiveRecord::Schema[7.1].define(version: 2026_10_20_163000) do
     t.datetime "updated_at", null: false
     t.index ["job_id"], name: "index_time_entry_pay_lines_on_job_id"
     t.index ["time_entry_id"], name: "index_time_entry_pay_lines_on_time_entry_id"
+  end
+
+  create_table "transfer_retry_authorization_audits", force: :cascade do |t|
+    t.integer "job_payment_transaction_id", null: false
+    t.integer "transfer_retry_authorization_id"
+    t.integer "actor_user_id"
+    t.string "actor_email"
+    t.string "event", null: false
+    t.text "reason"
+    t.boolean "acknowledged_prior_timeout_risk"
+    t.string "lookup_outcome"
+    t.string "decision"
+    t.string "final_outcome"
+    t.json "metadata_json", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.index ["created_at"], name: "idx_xfer_retry_audit_on_created"
+    t.index ["job_payment_transaction_id"], name: "idx_xfer_retry_audit_on_txn"
+    t.index ["transfer_retry_authorization_id"], name: "idx_xfer_retry_audit_on_auth"
+  end
+
+  create_table "transfer_retry_authorizations", force: :cascade do |t|
+    t.integer "job_payment_transaction_id", null: false
+    t.integer "granted_by_user_id"
+    t.string "granted_by_email"
+    t.text "reason", null: false
+    t.boolean "acknowledged_prior_timeout_risk", default: false, null: false
+    t.datetime "granted_at", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "consumed_at"
+    t.integer "consumed_by_user_id"
+    t.string "status", default: "granted", null: false
+    t.string "lookup_outcome_at_grant"
+    t.string "token", null: false
+    t.json "metadata_json", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["job_payment_transaction_id", "status"], name: "idx_xfer_retry_auth_on_txn_status"
+    t.index ["job_payment_transaction_id"], name: "idx_xfer_retry_auth_on_txn"
+    t.index ["token"], name: "idx_xfer_retry_auth_on_token", unique: true
   end
 
   create_table "user_login_events", force: :cascade do |t|
@@ -1401,6 +1536,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_10_20_163000) do
   add_foreign_key "jobs", "company_profiles"
   add_foreign_key "messages", "conversations"
   add_foreign_key "password_setup_challenges", "users"
+  add_foreign_key "payment_risk_events", "job_payment_transactions"
+  add_foreign_key "payment_risk_events", "jobs"
   add_foreign_key "payments", "jobs"
   add_foreign_key "ratings", "jobs"
   add_foreign_key "ratings", "users", column: "hidden_by_user_id"
@@ -1411,6 +1548,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_10_20_163000) do
   add_foreign_key "review_flags", "users", column: "reviewed_by_id"
   add_foreign_key "saved_job_searches", "technician_profiles"
   add_foreign_key "sms_delivery_logs", "users"
+  add_foreign_key "stripe_setup_records", "users"
   add_foreign_key "technician_assessment_results", "assessment_attempts"
   add_foreign_key "technician_assessment_results", "assessment_versions"
   add_foreign_key "technician_assessment_results", "assessments"

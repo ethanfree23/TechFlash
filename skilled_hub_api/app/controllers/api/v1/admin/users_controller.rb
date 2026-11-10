@@ -351,6 +351,15 @@ module Api
 
           profile.update!(attrs) if attrs.any?
 
+          if user.company? && params.key?(:ach_payments_enabled)
+            AchAccess.set_company!(
+              profile.reload,
+              enabled: params[:ach_payments_enabled],
+              actor: @current_user,
+              source: "admin_membership_pricing"
+            )
+          end
+
           render json: {
             message: "Membership pricing updated",
             user: list_item(user.reload),
@@ -596,6 +605,8 @@ module Api
             commission_override_percent: profile.commission_override_percent,
             membership_fee_waived: profile.membership_fee_waived,
             job_funding_waived: user.company? ? !!profile.try(:job_funding_waived) : nil,
+            ach_payments_enabled: user.company? ? !!profile.try(:ach_payments_enabled) : nil,
+            effective_ach_payments_enabled: user.company? ? AchAccess.allowed?(profile) : nil,
             membership_status: profile.membership_status,
             membership_current_period_end_at: profile.membership_current_period_end_at,
             active_coupon_assignment: serialize_coupon_assignment(user)

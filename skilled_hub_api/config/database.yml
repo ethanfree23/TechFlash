@@ -8,14 +8,33 @@ development:
 
 test:
   <<: *default
+  <% if ENV['DATABASE_URL'].to_s.strip.present? && ENV['TEST_DATABASE_ADAPTER'].to_s == 'postgresql' %>
+  # Optional PostgreSQL integrity runs: TEST_DATABASE_ADAPTER=postgresql DATABASE_URL=postgres://...
+  url: <%= ENV['DATABASE_URL'] %>
+  <% else %>
   adapter: sqlite3
   database: db/test.sqlite3
   # SQLite busy_handler wait (ms) — reduces flaky "database is locked" on WSL / shared test.sqlite3
   timeout: 10_000
+  <% end %>
 
 production:
   <<: *default
   url: <%= ENV['DATABASE_URL'] %>
+
+# Dedicated Railway staging Postgres. Never falls back to SQLite or production URL.
+staging:
+  <<: *default
+  <% if ENV['DATABASE_URL'].to_s.strip.empty? %>
+  # Fail at boot with a clear message if DATABASE_URL is missing.
+  adapter: postgresql
+  database: staging_database_url_missing
+  username: invalid
+  password: invalid
+  host: 127.0.0.1
+  <% else %>
+  url: <%= ENV['DATABASE_URL'] %>
+  <% end %>
 
 demo:
   <<: *default

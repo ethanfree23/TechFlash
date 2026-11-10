@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "ostruct"
+
 module Api
   module V1
     # Does not inherit ApplicationController — avoids JSON body rewind / token auth.
@@ -12,7 +14,15 @@ module Api
 
       # Events delivered for a connected account (event.account present) describe that account only.
       # They must never reach the platform-side ledger/membership handlers.
-      CONNECTED_ACCOUNT_EVENT_TYPES = %w[account.updated].freeze
+      CONNECTED_ACCOUNT_EVENT_TYPES = %w[
+        account.updated
+        payout.created
+        payout.updated
+        payout.paid
+        payout.failed
+        payout.canceled
+        payout.reconciliation_completed
+      ].freeze
 
       def create
         payload = request.body.read
@@ -68,10 +78,16 @@ module Api
       # Platform destination secret first, then the optional Connect ("events on connected accounts")
       # destination secret. Only non-blank values are candidates; nothing is ever defaulted.
       def webhook_signing_secrets
-        platform = ENV['STRIPE_WEBHOOK_SECRET'].presence ||
-          Rails.application.credentials.dig(:stripe, :webhook_secret).presence
-        connect = ENV['STRIPE_CONNECT_WEBHOOK_SECRET'].presence ||
-          Rails.application.credentials.dig(:stripe, :connect_webhook_secret).presence
+        # Staging never falls back to production encrypted credentials.
+        if Rails.env.staging?
+          platform = ENV['STRIPE_WEBHOOK_SECRET'].presence
+          connect = ENV['STRIPE_CONNECT_WEBHOOK_SECRET'].presence
+        else
+          platform = ENV['STRIPE_WEBHOOK_SECRET'].presence ||
+            Rails.application.credentials.dig(:stripe, :webhook_secret).presence
+          connect = ENV['STRIPE_CONNECT_WEBHOOK_SECRET'].presence ||
+            Rails.application.credentials.dig(:stripe, :connect_webhook_secret).presence
+        end
         [platform, connect].map { |s| s.to_s.strip.presence }.compact.uniq
       end
 
@@ -101,8 +117,14 @@ module Api
         case event.type
         when 'payment_intent.succeeded'
           reconcile_payment_intent_succeeded(event.data.object)
+        when 'payment_intent.processing'
+          reconcile_payment_intent_processing(event.data.object)
         when 'payment_intent.payment_failed'
           reconcile_payment_intent_failed(event.data.object)
+        when 'setup_intent.succeeded', 'setup_intent.setup_failed', 'setup_intent.canceled', 'setup_intent.requires_action'
+          reconcile_setup_intent(event.data.object, event_type: event.type)
+        when 'refund.created', 'refund.updated', 'refund.failed'
+          reconcile_refund_object(event.data.object, event_type: event.type)
         when 'checkout.session.completed'
           session = event.data.object
           if session.mode.to_s == "subscription"
@@ -149,8 +171,20 @@ module Api
           end
         when 'charge.refunded'
           reconcile_charge_refunded(event.data.object)
+        when 'charge.dispute.created', 'charge.dispute.updated', 'charge.dispute.closed',
+             'charge.dispute.funds_withdrawn', 'charge.dispute.funds_reinstated'
+          reconcile_charge_dispute(
+            event.data.object,
+            event_type: event.type,
+            stripe_event_id: event.id,
+            stripe_event_created_at: event.created
+          )
+        when 'transfer.created', 'transfer.updated'
+          reconcile_platform_transfer(event.data.object, event_type: event.type)
         when 'account.updated'
           sync_connected_account(event, connected_account_id: connected_account_id)
+        when 'payout.created', 'payout.updated', 'payout.paid', 'payout.failed', 'payout.canceled', 'payout.reconciliation_completed'
+          reconcile_connected_payout(event, connected_account_id: connected_account_id)
         else
           Rails.logger.info("[stripe webhook] unhandled type=#{event.type} id=#{event.id}")
         end
@@ -348,22 +382,254 @@ module Api
 
       def reconcile_payment_intent_succeeded(pi)
         Job.transaction do
-          txn = JobPaymentTransaction.lock.find_by(stripe_payment_intent_id: pi.id)
-          txn ||= JobPaymentTransaction.lock.find_by(id: pi.metadata&.[]("transaction_id").to_i) if pi.metadata&.[]("transaction_id").present?
+          txn = find_locked_collection_txn(pi)
           next unless txn && !txn.status_succeeded?
 
-          JobFundingService.mark_txn_succeeded!(txn, stripe_id: pi.id, charge_id: pi.latest_charge.to_s.presence)
+          was_initial = txn.initial_job_charge?
+          JobFundingService.mark_txn_succeeded!(
+            txn,
+            stripe_id: pi.id,
+            charge_id: pi.latest_charge.to_s.presence,
+            payment_method_attrs: payment_method_attrs_from_intent(pi)
+          )
           job = Job.lock.find(txn.job_id)
           payment = Payment.lock.find(txn.payment_id)
           payment.update!(status: "held", stripe_payment_intent_id: pi.id, held_at: Time.current) if payment.status == "pending" || payment.status == "failed"
-          JobFundingService.publish!(job) if txn.initial_job_charge? && job.pending_funding?
-          job.update!(funding_status: :funded) if job.funding_adjustment_required?
+          if was_initial && (job.pending_funding? || job.funding_adjustment_required?)
+            JobFundingService.publish!(job)
+            JobFundingService.record_revision!(job, source: "posting", transaction: txn) unless job.job_financial_revisions.exists?(revision_number: job.financial_revision)
+            MailDelivery.safe_deliver { UserMailer.payment_confirmation_email(job, txn.amount_cents).deliver_now }
+            JobAlertDispatcher.dispatch_for_job(job) if job.effectively_open?
+          elsif txn.counteroffer_top_up? || txn.final_hours_top_up?
+            JobFundingAdjustmentService.after_successful_collection!(job)
+          elsif job.funding_adjustment_required?
+            job.update!(funding_status: :funded)
+          end
+        end
+      end
+
+      def reconcile_payment_intent_processing(pi)
+        Job.transaction do
+          txn = find_locked_collection_txn(pi)
+          next unless txn
+          next if txn.status_succeeded? || txn.status_failed? || txn.status_canceled?
+
+          JobFundingService.mark_txn_processing!(
+            txn,
+            stripe_id: pi.id,
+            charge_id: pi.latest_charge.to_s.presence,
+            payment_method_attrs: payment_method_attrs_from_intent(pi)
+          )
+          job = Job.lock.find(txn.job_id)
+          if txn.initial_job_charge? || txn.counteroffer_top_up? || txn.final_hours_top_up?
+            attrs = { funding_status: :adjustment_required }
+            attrs[:status] = :pending_funding if txn.initial_job_charge? && !job.filled? && !job.finished? && !job.reserved?
+            job.update!(attrs)
+          end
         end
       end
 
       def reconcile_payment_intent_failed(pi)
-        txn = JobPaymentTransaction.find_by(stripe_payment_intent_id: pi.id)
-        txn&.update!(status: :failed, error_message: pi.last_payment_error&.message)
+        Job.transaction do
+          txn = find_locked_collection_txn(pi)
+          next unless txn
+
+          # Never silently downgrade a legitimate success.
+          # payment_intent.payment_failed after success is NOT a confirmed ACH return.
+          if txn.status_succeeded?
+            txn.update!(
+              investigation_required: true,
+              metadata_json: txn.metadata_json.to_h.merge(
+                "post_success_failure_signal" => {
+                  "message" => pi.last_payment_error&.message.to_s,
+                  "code" => pi.last_payment_error&.try(:code).to_s,
+                  "at" => Time.current.iso8601
+                }
+              )
+            )
+            PaymentRiskEvent.record_unconfirmed_post_success_signal!(
+              job: txn.job,
+              job_payment_transaction: txn,
+              stripe_payment_intent_id: pi.id.to_s,
+              stripe_charge_id: pi.latest_charge.to_s.presence,
+              amount_cents: txn.amount_cents,
+              admin_note: "payment_intent.payment_failed after local succeeded. Unconfirmed — not auto-classified as ACH return.",
+              metadata: {
+                "stripe_status" => pi.status.to_s,
+                "error" => pi.last_payment_error&.message.to_s
+              }
+            )
+            next
+          end
+
+          txn.update!(
+            status: :failed,
+            error_message: pi.last_payment_error&.message || "Payment failed",
+            **payment_method_attrs_from_intent(pi)
+          )
+          job = Job.lock.find(txn.job_id)
+          payment = Payment.lock.find_by(id: txn.payment_id)
+          payment&.update!(status: "failed") if payment&.status == "pending"
+          if txn.initial_job_charge? && job.pending_funding?
+            job.update!(funding_status: :funding_failed)
+          elsif txn.counteroffer_top_up? || txn.final_hours_top_up?
+            job.update!(funding_status: :adjustment_required, settlement_status: :settlement_blocked)
+          end
+          begin
+            PaymentRiskEvent.record!(
+              job: job,
+              risk_kind: "pre_success_failure",
+              amount_cents: txn.amount_cents,
+              job_payment_transaction: txn,
+              stripe_payment_intent_id: pi.id.to_s,
+              correlation_key: "pre_fail:#{pi.id}",
+              lifecycle_state: "outcome_unknown",
+              admin_note: "Payment failed before success.",
+              metadata: { "error" => pi.last_payment_error&.message.to_s }
+            )
+          rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
+            # Duplicate webhook — correlation_key already recorded.
+          end
+        end
+      end
+
+      def reconcile_setup_intent(setup_intent, event_type:)
+        customer_id = setup_intent.customer.to_s.presence
+        user = User.find_by(stripe_customer_id: customer_id) if customer_id
+        unless user&.company?
+          Rails.logger.warn("[stripe webhook] setup_intent ignored id=#{setup_intent.id} customer=#{customer_id} reason=no_company_user")
+          return
+        end
+        if user.stripe_customer_id.to_s != customer_id
+          Rails.logger.warn("[stripe webhook] setup_intent ignored id=#{setup_intent.id} reason=customer_mismatch")
+          return
+        end
+
+        StripeSetupRecord.transaction do
+          StripeSetupRecord.upsert_from_setup_intent!(setup_intent, user: user)
+        end
+
+        Rails.logger.info(
+          "[stripe webhook] #{event_type} id=#{setup_intent.id} customer=#{customer_id} " \
+          "payment_method=#{setup_intent.payment_method} status=#{setup_intent.status} user_id=#{user.id}"
+        )
+      end
+
+      def reconcile_refund_object(refund, event_type:)
+        charge_id = refund.charge.to_s.presence
+        return if charge_id.blank?
+
+        charge =
+          begin
+            Stripe::Charge.retrieve(charge_id)
+          rescue Stripe::StripeError => e
+            Rails.logger.warn("[stripe webhook] #{event_type} could not retrieve charge=#{charge_id} error=#{e.class}")
+            OpenStruct.new(id: charge_id, payment_intent: refund.payment_intent.to_s.presence, "refunds" => { "data" => [refund], "has_more" => false })
+          end
+
+        reconcile_refund!(charge, refund)
+      end
+
+      def reconcile_platform_transfer(transfer, event_type:)
+        PaymentService.reconcile_transfer_from_stripe_object!(transfer)
+        Rails.logger.info("[stripe webhook] #{event_type} transfer=#{transfer.id} reconciled_local_txn")
+      rescue StandardError => e
+        Rails.logger.warn("[stripe webhook] #{event_type} transfer=#{transfer&.id} error=#{e.class}")
+        raise
+      end
+
+      def reconcile_charge_dispute(dispute, event_type:, stripe_event_id: nil, stripe_event_created_at: nil)
+        charge_id = dispute.charge.to_s.presence
+        pi_id = dispute.payment_intent.to_s.presence
+        txn = nil
+        txn = JobPaymentTransaction.find_by(stripe_charge_id: charge_id) if charge_id
+        txn ||= JobPaymentTransaction.company_collections.find_by(stripe_payment_intent_id: pi_id) if pi_id
+        return unless txn
+
+        # Preserve historical succeeded collection — dispute/return is layered on top.
+        txn.update!(
+          dispute_status: dispute.status.to_s.presence || event_type.to_s,
+          stripe_dispute_id: dispute.id.to_s,
+          investigation_required: true,
+          metadata_json: txn.metadata_json.to_h.merge(
+            "dispute" => {
+              "id" => dispute.id.to_s,
+              "status" => dispute.status.to_s,
+              "reason" => dispute.reason.to_s,
+              "amount" => dispute.amount,
+              "event_type" => event_type.to_s,
+              "updated_at" => Time.current.iso8601
+            }
+          )
+        )
+
+        # ACH Direct Debit post-success returns arrive as charge.dispute.* (final per Stripe).
+        # Card/other disputes remain post_success_dispute. Never equate every dispute to ACH return.
+        # Never equate payment_intent.payment_failed alone to a confirmed return.
+        ach_confirmed = ach_collection?(txn)
+
+        PaymentRiskEvent.upsert_dispute!(
+          job: txn.job,
+          dispute: dispute,
+          job_payment_transaction: txn,
+          event_type: event_type,
+          stripe_event_id: stripe_event_id,
+          stripe_event_created_at: stripe_event_created_at,
+          ach_confirmed_return: ach_confirmed
+        )
+
+        Rails.logger.warn(
+          "[stripe webhook] dispute job_id=#{txn.job_id} txn_id=#{txn.id} dispute=#{dispute.id} " \
+          "status=#{dispute.status} ach_return=#{ach_confirmed} event=#{event_type}"
+        )
+      end
+
+      def ach_collection?(txn)
+        return true if txn.ach?
+        return true if txn.payment_method_type.to_s == "us_bank_account"
+
+        # Fallback: metadata recorded at funding time.
+        txn.metadata_json.to_h["payment_method_type"].to_s == "us_bank_account"
+      end
+
+      def reconcile_connected_payout(event, connected_account_id:)
+        payout = event.data.object
+        account_id = connected_account_id.presence || event["account"].to_s.presence
+        if account_id.blank?
+          Rails.logger.warn("[stripe webhook] payout event missing account id=#{event.id}")
+          return
+        end
+
+        profile = TechnicianProfile.find_by(stripe_account_id: account_id)
+        unless profile
+          Rails.logger.info("[stripe webhook] payout for unknown connected account=#{account_id} event=#{event.id}")
+          return
+        end
+
+        # Account-level payout only. Do NOT invent job-level bank payout certainty.
+        # Transfer success ≠ bank arrival; payout.paid ≠ proven per-job attribution.
+        Rails.logger.info(
+          "[stripe webhook] connected payout type=#{event.type} account=#{account_id} " \
+          "payout=#{payout.id} status=#{payout.status} amount=#{payout.amount} tech_profile=#{profile.id} " \
+          "job_attribution=unknown"
+        )
+      end
+
+      def find_locked_collection_txn(pi)
+        txn = JobPaymentTransaction.lock.find_by(stripe_payment_intent_id: pi.id)
+        txn ||= JobPaymentTransaction.lock.find_by(id: pi.metadata&.[]("transaction_id").to_i) if pi.metadata&.[]("transaction_id").present?
+        txn
+      end
+
+      def payment_method_attrs_from_intent(pi)
+        pm_id = pi.payment_method.to_s.presence
+        return {} if pm_id.blank?
+
+        JobStripeOps.payment_method_display(pm_id).transform_keys do |key|
+          key == :payment_method_id ? :stripe_payment_method_id : key
+        end
+      rescue StandardError
+        { stripe_payment_method_id: pm_id }
       end
 
       # charge.refunded carries the Charge (with every refund so far), not a single Refund.

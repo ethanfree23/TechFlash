@@ -15,6 +15,18 @@ class BackgroundCheckStartService
   end
 
   def launch_checkr_invitation!
+    if defined?(StagingSandbox) && StagingSandbox.simulate_checkr?
+      StagingSandbox.log_blocked("checkr", "background_check_id=#{@background_check.id}")
+      invitation = {
+        "id" => "inv_staging_#{SecureRandom.hex(6)}",
+        "candidate_id" => "cand_staging_#{SecureRandom.hex(6)}",
+        "status" => "pending"
+      }
+      persist_invitation_state!(invitation: invitation, candidate_id: invitation["candidate_id"])
+      VerificationProfile.for_user!(@user).update!(background_status: :pending)
+      return invitation
+    end
+
     client = CheckrClient.new
     raise Error, "Checkr is not configured." unless client.configured?
 
