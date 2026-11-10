@@ -51,9 +51,31 @@ Do not invent routing/account numbers.
 - [ ] 29. Verify no critical backend errors.
 - [ ] 30. Record E2E results and outstanding blockers.
 
+## Automated runner
+
+```bash
+RAILS_ENV=staging bin/rails staging:ach_e2e
+```
+
+Requires Connect-capable `sk_test` platform key. See `skilled_hub_api/lib/staging_ach_e2e_runner.rb`.
+
+### Defects fixed after first staging run (head `a6e39c9`)
+
+| Symptom | Root cause | Fix |
+|---|---|---|
+| `PG::UndefinedColumn: failed_at` in `signed_webhooks_persisted` | **Runner-only** SQL on `job_payment_transactions.failed_at` (column exists only on `stripe_setup_records`) | Query `status` / `succeeded_at` / `processing_at`; regression in `staging_ach_e2e_runner_test.rb` |
+| `PaymentMethods of type us_bank_account must be verified before they can be attached` | Runner attached unverified raw bank PMs | Confirm SetupIntent with official test bank + mandate on **confirm** (not create); microdeposit path when required |
+| False “Connect platform OK” | Detection short-circuited (`\|\| true`) / Customer+PI alone | Authoritative `Account.list` + `Account.create` probe; otherwise **BLOCKED** |
+
+### Webhook delivery classes (not equivalent)
+
+1. Stripe genuinely generated and delivered `evt_` to the staging endpoint
+2. Stripe CLI / test event forwarded to endpoint
+3. Synthetic locally signed fixture (deterministic unit/integration only)
+
 ## Classification legend
 
 - Unit/mock: Rails tests with stubs
 - Integration: real Stripe test API (optional script / CLI)
-- Staging E2E: this checklist
+- Staging E2E: this checklist / `staging:ach_e2e`
 - Synthetic: signed webhook fixtures
