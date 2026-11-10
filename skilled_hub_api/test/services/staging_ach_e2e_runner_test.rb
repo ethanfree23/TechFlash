@@ -112,6 +112,34 @@ class StagingAchE2eRunnerTest < ActiveSupport::TestCase
     refute_includes StagingAchE2eRunner::VALID_VERIFICATION_METHODS, "skip"
   end
 
+  test "runner uses pending_funding? not status_pending_funding?" do
+    source = File.read(Rails.root.join("lib/staging_ach_e2e_runner.rb"))
+    code_only = source.lines.reject { |l| l.match?(/^\s*#/) }.join
+    refute_match(/status_pending_funding\?/, code_only)
+    assert_match(/\.pending_funding\?/, code_only)
+    # App Job enum has no status_ prefix on status — confirm real API.
+    job = Job.new(status: :pending_funding)
+    assert_respond_to job, :pending_funding?
+    refute_respond_to job, :status_pending_funding?
+  end
+
+  test "bank_account_status tolerates empty Stripe status_details" do
+    bank = Stripe::StripeObject.construct_from(
+      bank_name: "STRIPE TEST BANK",
+      last4: "6789",
+      status_details: {},
+      networks: {}
+    )
+    status = CompanyPaymentMethodsService.send(:bank_account_status, bank)
+    assert_equal "verified", status
+
+    blocked_bank = Stripe::StripeObject.construct_from(
+      status_details: { "blocked" => { "reason" => "bank_account_restricted" } },
+      networks: {}
+    )
+    assert_equal "blocked", CompanyPaymentMethodsService.send(:bank_account_status, blocked_bank)
+  end
+
   test "webhook_event_for_payment_intent correlates exact pi payload" do
     pi = "pi_e2e_correlate_#{SecureRandom.hex(4)}"
     StripeWebhookEvent.create!(

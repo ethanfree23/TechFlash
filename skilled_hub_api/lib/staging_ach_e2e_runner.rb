@@ -17,6 +17,8 @@ class StagingAchE2eRunner
   Scenario = Struct.new(:name, :status, :detail, keyword_init: true)
 
   POLL_TIMEOUT = (ENV["ACH_E2E_POLL_TIMEOUT_SEC"].presence || 120).to_i
+  # ACH dispute/return webhooks in test mode can take several minutes after succeed.
+  DISPUTE_POLL_TIMEOUT = (ENV["ACH_E2E_DISPUTE_POLL_TIMEOUT_SEC"].presence || 360).to_i
   POLL_INTERVAL = 2
 
   # Official Stripe test routing / account numbers (ACH Direct Debit testing docs).
@@ -118,6 +120,7 @@ class StagingAchE2eRunner
   end
 
   # Authoritative Connect detection. Never PASS based on Customer/PI/key alone.
+  # Empty Account.list is normal for a new platform — Account.create is the proof.
   # Returns hash: status OK|BLOCKED, platform_id, probe_account_id, detail
   def verify_connect_platform!
     platform = Stripe::Account.retrieve
@@ -125,7 +128,7 @@ class StagingAchE2eRunner
     raise Fail, "platform account id missing" unless platform_id.start_with?("acct_")
 
     begin
-      Stripe::Account.list(limit: 1)
+      listed = Stripe::Account.list(limit: 1)
     rescue Stripe::PermissionError, Stripe::AuthenticationError => e
       return {
         status: "BLOCKED",
@@ -136,21 +139,59 @@ class StagingAchE2eRunner
     end
 
     begin
-      probe = Stripe::Account.create(
+      probe = create_connect_test_account!(suffix: "probe")
+      transfers = probe.capabilities&.transfers.to_s.presence ||
+        (probe["capabilities"].is_a?(Hash) ? probe["capabilities"]["transfers"].to_s : "")
+      {
+        status: "OK",
+        platform_id: platform_id,
+        probe_account_id: probe.id,
+        detail: "list_count=#{listed.data.size} created probe=#{probe.id} " \
+                "transfers_capability=#{transfers.presence || 'n/a'}"
+      }
+    rescue Stripe::PermissionError, Stripe::InvalidRequestError, Stripe::AuthenticationError => e
+      detail = "Cannot create Connect test account: #{e.message}"
+      if e.message.match?(/platform-profile|responsibilities of collecting requirements/i)
+        detail += " — complete Connect platform profile at " \
+                  "https://dashboard.stripe.com/test/settings/connect/platform-profile then re-run"
+      end
+      {
+        status: "BLOCKED",
+        platform_id: platform_id,
+        probe_account_id: nil,
+        detail: detail
+      }
+    end
+  rescue Stripe::StripeError => e
+    {
+      status: "BLOCKED",
+      platform_id: nil,
+      probe_account_id: nil,
+      detail: "Cannot retrieve platform account: #{e.message}"
+    }
+  end
+
+  # Create a test connected account with card_payments + transfers.
+  # Prefers Custom with Stripe test onboarding values; falls back to Express.
+  def create_connect_test_account!(suffix:)
+    email = "e2e+connect-#{suffix}-#{SecureRandom.hex(3)}@techflash.staging"
+    common_caps = {
+      card_payments: { requested: true },
+      transfers: { requested: true }
+    }
+    begin
+      account = Stripe::Account.create(
         type: "custom",
         country: "US",
-        email: "e2e+connect-probe-#{SecureRandom.hex(3)}@techflash.staging",
-        capabilities: {
-          card_payments: { requested: true },
-          transfers: { requested: true }
-        },
+        email: email,
+        capabilities: common_caps,
         business_type: "individual",
         tos_acceptance: { date: Time.now.to_i, ip: "127.0.0.1" },
         business_profile: { mcc: "5734", url: "https://techflash.example" },
         individual: {
           first_name: "E2E",
-          last_name: "Probe",
-          email: "e2e+probe@techflash.staging",
+          last_name: "Tech",
+          email: email,
           dob: { day: 1, month: 1, year: 1901 },
           address: {
             line1: "address_full_match",
@@ -168,32 +209,20 @@ class StagingAchE2eRunner
           routing_number: TEST_ROUTING,
           account_number: TEST_ACCOUNT_SUCCESS
         },
-        metadata: { techflash_e2e: "connect_probe" }
+        metadata: { techflash_e2e: "true", suffix: suffix.to_s }
       )
-      @created[:accounts] << probe.id
-      transfers = probe.capabilities&.transfers.to_s.presence ||
-        (probe["capabilities"].is_a?(Hash) ? probe["capabilities"]["transfers"].to_s : "")
-      {
-        status: "OK",
-        platform_id: platform_id,
-        probe_account_id: probe.id,
-        detail: "created probe=#{probe.id} transfers_capability=#{transfers.presence || 'n/a'}"
-      }
-    rescue Stripe::PermissionError, Stripe::InvalidRequestError, Stripe::AuthenticationError => e
-      {
-        status: "BLOCKED",
-        platform_id: platform_id,
-        probe_account_id: nil,
-        detail: "Cannot create Connect test account: #{e.message}"
-      }
+    rescue Stripe::InvalidRequestError
+      account = Stripe::Account.create(
+        type: "express",
+        country: "US",
+        email: email,
+        capabilities: common_caps,
+        business_type: "individual",
+        metadata: { techflash_e2e: "true", suffix: suffix.to_s }
+      )
     end
-  rescue Stripe::StripeError => e
-    {
-      status: "BLOCKED",
-      platform_id: nil,
-      probe_account_id: nil,
-      detail: "Cannot retrieve platform account: #{e.message}"
-    }
+    @created[:accounts] << account.id
+    account
   end
 
   def run_scenario(name)
@@ -570,7 +599,8 @@ class StagingAchE2eRunner
     succeeded = job.job_payment_transactions.company_collections.status_succeeded
     raise Fail, "expected exactly one succeeded collection, got #{succeeded.count}" unless succeeded.count == 1
 
-    JobFundingService.publish!(job) if job.reload.status_pending_funding? || !job.funding_funded?
+    # Job status enum helper is pending_funding? (Rails does not prefix :status).
+    JobFundingService.publish!(job) if job.reload.pending_funding? || !job.funding_funded?
     raise Fail, "job not funded after success" unless job.reload.funding_funded?
 
     # Real Stripe object correlation.
@@ -737,8 +767,22 @@ class StagingAchE2eRunner
   end
 
   def scenario_connect_transfer!
-    if @connect[:status] != "OK"
-      raise Blocked, "Connect platform not proven: #{@connect[:detail]}"
+    # Re-attempt connected-account create here so a mid-run platform-profile completion works
+    # without requiring a full runner restart — still BLOCKED if Stripe refuses create.
+    destination_id = @connect[:probe_account_id]
+    if destination_id.blank?
+      begin
+        account = create_connect_test_account!(suffix: "xfer")
+        destination_id = account.id
+        @connect[:status] = "OK"
+        @connect[:probe_account_id] = destination_id
+      rescue Stripe::PermissionError, Stripe::InvalidRequestError, Stripe::AuthenticationError => e
+        detail = e.message
+        if detail.match?(/platform-profile|responsibilities of collecting requirements/i)
+          detail += " — complete Connect platform profile then re-run"
+        end
+        raise Blocked, "Connect platform cannot create test connected account: #{detail}"
+      end
     end
 
     collection = @last_success_collection ||
@@ -747,33 +791,6 @@ class StagingAchE2eRunner
 
     job = collection.job
     payment = JobFundingService.ensure_header!(job)
-
-    # Prefer probe account from Connect verification; else create a fresh Custom account.
-    destination_id = @connect[:probe_account_id]
-    if destination_id.blank?
-      account = Stripe::Account.create(
-        type: "custom",
-        country: "US",
-        email: "e2e+xfer-#{SecureRandom.hex(3)}@techflash.staging",
-        capabilities: { transfers: { requested: true }, card_payments: { requested: true } },
-        business_type: "individual",
-        tos_acceptance: { date: Time.now.to_i, ip: "127.0.0.1" },
-        business_profile: { mcc: "5734", url: "https://techflash.example" },
-        individual: {
-          first_name: "E2E", last_name: "Tech", email: "e2e+tech@techflash.staging",
-          dob: { day: 1, month: 1, year: 1901 },
-          address: { line1: "address_full_match", city: "Houston", state: "TX", postal_code: "77002", country: "US" },
-          ssn_last_4: "0000"
-        },
-        external_account: {
-          object: "bank_account", country: "US", currency: "usd",
-          routing_number: TEST_ROUTING, account_number: TEST_ACCOUNT_SUCCESS
-        },
-        metadata: { techflash_e2e: "true" }
-      )
-      @created[:accounts] << account.id
-      destination_id = account.id
-    end
 
     tech_user = User.find_or_initialize_by(email: "e2e+tech-#{job.id}@techflash.staging")
     if tech_user.new_record?
@@ -956,6 +973,8 @@ class StagingAchE2eRunner
   end
 
   def scenario_ach_return_or_dispute!
+    # Official Stripe test value: routing 110000000 / account 000555555559
+    # (token pm_usBankAccount_dispute) — payment succeeds then triggers a dispute.
     user, profile, customer = ensure_e2e_company!(suffix: "dispute", ach_enabled: true)
     begin
       attach_verified_bank_via_setup!(user, customer, account_number: TEST_ACCOUNT_DISPUTE, verification_mode: :automatic)
@@ -964,13 +983,17 @@ class StagingAchE2eRunner
         job: job, amount_cents: 5_000, transaction_type: :initial_job_charge, revision: 1
       )
       txn = result[:transaction]
+      if txn&.status_processing?
+        poll_until(timeout: POLL_TIMEOUT) { txn.reload.status_succeeded? || txn.status_failed? || txn.disputed? }
+      end
       if txn&.stripe_payment_intent_id.present?
         saw_risk = false
         begin
-          poll_until(timeout: [POLL_TIMEOUT, 30].min) do
+          # Dispute/return webhooks can lag several minutes in test mode after succeed.
+          poll_until(timeout: DISPUTE_POLL_TIMEOUT) do
             txn.reload
             saw_risk = defined?(PaymentRiskEvent) && PaymentRiskEvent.where(job_id: job.id).exists?
-            txn.disputed? || saw_risk || txn.status_failed?
+            txn.disputed? || saw_risk
           end
         rescue Fail
           # fall through to SKIPPED only when Stripe simply does not emit a return
@@ -980,7 +1003,8 @@ class StagingAchE2eRunner
           pass!(
             "9_ach_return_or_dispute",
             "pi=#{txn.stripe_payment_intent_id} dispute=#{txn.stripe_dispute_id} " \
-            "risk=#{risk&.id} status=#{risk&.status} (no auto clawback)"
+            "risk=#{risk&.id} status=#{risk&.status} account=#{TEST_ACCOUNT_DISPUTE} " \
+            "(no auto clawback)"
           )
           return
         end
@@ -990,25 +1014,26 @@ class StagingAchE2eRunner
 
       raise SkipSandbox,
         "No automated ACH return/dispute sequence available in this sandbox (#{e.message}). " \
-        "Use signed snapshot webhook fixtures for deterministic coverage; " \
-        "do not label synthetic path as real Stripe E2E."
+        "Official dispute test account=#{TEST_ACCOUNT_DISPUTE} / routing=#{TEST_ROUTING}. " \
+        "Deterministic substitute: signed webhook fixtures; do not label synthetic as real Stripe E2E."
     rescue Fail => e
       raise if e.message.match?(/verification_method/i)
 
       raise SkipSandbox,
         "No automated ACH return/dispute sequence available in this sandbox (#{e.message}). " \
-        "Use signed snapshot webhook fixtures for deterministic coverage; " \
-        "do not label synthetic path as real Stripe E2E."
+        "Official dispute test account=#{TEST_ACCOUNT_DISPUTE}. " \
+        "Deterministic substitute: signed webhook fixtures; do not label synthetic as real Stripe E2E."
     rescue Stripe::StripeError => e
       raise SkipSandbox,
         "No automated ACH return/dispute sequence available in this sandbox (#{e.message}). " \
-        "Use signed snapshot webhook fixtures for deterministic coverage; " \
-        "do not label synthetic path as real Stripe E2E."
+        "Official dispute test account=#{TEST_ACCOUNT_DISPUTE}. " \
+        "Deterministic substitute: signed webhook fixtures; do not label synthetic as real Stripe E2E."
     end
 
     raise SkipSandbox,
-      "SKIPPED_SANDBOX_LIMIT: Stripe test platform did not emit ACH return/dispute for " \
-      "account #{TEST_ACCOUNT_DISPUTE} within poll window. Deterministic substitute: " \
-      "signed webhook fixtures in stripe_webhooks_controller_test / ach_webhooks_test."
+      "SKIPPED_SANDBOX_LIMIT: Stripe did not emit ACH return/dispute for official test account " \
+      "#{TEST_ACCOUNT_DISPUTE} (pm_usBankAccount_dispute) within #{DISPUTE_POLL_TIMEOUT}s. " \
+      "Deterministic substitute: signed webhook fixtures in stripe_webhooks_controller_test / " \
+      "ach_webhooks_test (not real Stripe E2E)."
   end
 end

@@ -164,7 +164,7 @@ class CompanyPaymentMethodsService
         account_type: bank&.account_type,
         account_holder_type: bank&.account_holder_type,
         routing_number_last4: bank&.routing_number, # Stripe returns masked / last4-style routing display
-        status: bank&.status_details&.blocked.present? ? "blocked" : (bank&.networks&.preferred || "verified"),
+        status: bank_account_status(bank),
         display_name: bank_display_name(bank)
       )
     else
@@ -187,6 +187,33 @@ class CompanyPaymentMethodsService
     suffix = bank.last4.present? ? "•••• #{bank.last4}" : nil
     [name, type&.capitalize, suffix].compact.join(" · ")
   end
+
+  # Stripe::StripeObject raises NoMethodError for absent keys via method_missing.
+  # Always dig with [] — status_details/networks may be {} on verified test PMs.
+  def self.bank_account_status(bank)
+    return "verified" if bank.blank?
+
+    details = stripe_dig(bank, "status_details")
+    blocked = stripe_dig(details, "blocked")
+    return "blocked" if blocked.present?
+
+    networks = stripe_dig(bank, "networks")
+    preferred = stripe_dig(networks, "preferred")
+    preferred.presence || "verified"
+  rescue NoMethodError, TypeError
+    "verified"
+  end
+  private_class_method :bank_account_status
+
+  def self.stripe_dig(obj, key)
+    return nil if obj.blank?
+    return nil unless obj.respond_to?(:[])
+
+    obj[key].presence || (key.is_a?(String) ? obj[key.to_sym] : obj[key.to_s])
+  rescue NoMethodError
+    nil
+  end
+  private_class_method :stripe_dig
 
   def self.next_payment_method_id(customer_id, exclude_id: nil)
     SUPPORTED_TYPES.each do |type|
