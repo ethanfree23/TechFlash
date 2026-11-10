@@ -225,6 +225,7 @@ Rails.application.routes.draw do
         resources :job_payments, only: %i[index show] do
           member do
             post :resolve_risk
+            post :reconcile_transfer
           end
         end
         post "payment_risk_events/:id/resolve", to: "job_payments#resolve_risk_event"

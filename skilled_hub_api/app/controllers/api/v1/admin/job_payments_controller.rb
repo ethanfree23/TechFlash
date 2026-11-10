@@ -29,7 +29,8 @@ module Api
                OR job_payment_transactions.job_id IN (:risk_jobs)",
               bad_status: [
                 JobPaymentTransaction.statuses[:failed],
-                JobPaymentTransaction.statuses[:processing]
+                JobPaymentTransaction.statuses[:processing],
+                JobPaymentTransaction.statuses[:outcome_unknown]
               ],
               risk_jobs: risk_job_ids.presence || [0]
             )
@@ -103,9 +104,37 @@ module Api
               risk_kind: risk.risk_kind,
               investigation_status: risk.investigation_status,
               lifecycle_state: risk.lifecycle_state,
-              resolved_at: risk.resolved_at&.iso8601
+              resolved_at: risk.resolved_at&.iso8601,
+              resolved_by: risk.resolved_by
             }
           }, status: :ok
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Not found" }, status: :not_found
+        end
+
+        # POST /api/v1/admin/job_payments/:id/reconcile_transfer
+        # Looks up Stripe for an outcome_unknown/pending technician transfer; never invents certainty.
+        def reconcile_transfer
+          txn = JobPaymentTransaction.find(params[:id])
+          result = PaymentService.reconcile_technician_transfer!(txn)
+          if result[:success]
+            render json: {
+              ok: true,
+              reconciled: true,
+              job_payment: serialize(txn.reload, detailed: true),
+              result: result.except(:payment, :transaction)
+            }, status: :ok
+          elsif result[:found] == false
+            render json: {
+              ok: true,
+              reconciled: false,
+              found: false,
+              message: result[:message],
+              job_payment: serialize(txn.reload, detailed: true)
+            }, status: :ok
+          else
+            render json: { ok: false, error: result[:error] || "Reconcile failed" }, status: :unprocessable_entity
+          end
         rescue ActiveRecord::RecordNotFound
           render json: { error: "Not found" }, status: :not_found
         end
@@ -116,6 +145,7 @@ module Api
           {
             processing: JobPaymentTransaction.status_processing.count,
             failed: JobPaymentTransaction.status_failed.count,
+            outcome_unknown: JobPaymentTransaction.status_outcome_unknown.count,
             disputed: JobPaymentTransaction.where.not(dispute_status: [nil, ""]).count,
             ach_processing: JobPaymentTransaction.ach.status_processing.count,
             open_risks: PaymentRiskEvent.open_cases.count,
@@ -162,7 +192,8 @@ module Api
             investigation_required: txn.investigation_required,
             bank_payout_status: txn.bank_payout_status.presence || "unknown",
             risk_kind: open_risk&.risk_kind,
-            review_required: txn.investigation_required || open_risk.present? || txn.disputed? || txn.status_processing?,
+            review_required: txn.investigation_required || open_risk.present? || txn.disputed? || txn.status_processing? || txn.status_outcome_unknown?,
+            outcome_unknown: txn.status_outcome_unknown?,
             payout_at_risk: open_risk.present? && %w[post_success_return post_success_dispute post_success_reversal_unconfirmed].include?(open_risk.risk_kind),
             collected_cents: ledger&.collected_cents,
             refunded_cents: ledger&.refunded_cents,
@@ -171,7 +202,7 @@ module Api
             succeeded_at: txn.succeeded_at&.iso8601,
             created_at: txn.created_at&.iso8601,
             error_message: txn.error_message,
-            needs_attention: txn.status_failed? || txn.status_processing? || txn.disputed? || txn.investigation_required || open_risk.present?,
+            needs_attention: txn.status_failed? || txn.status_processing? || txn.status_outcome_unknown? || txn.disputed? || txn.investigation_required || open_risk.present?,
             settlement_status: job&.settlement_status,
             funding_status: job&.funding_status,
             risk_events: risks.map { |r|

@@ -173,7 +173,14 @@ module Api
           reconcile_charge_refunded(event.data.object)
         when 'charge.dispute.created', 'charge.dispute.updated', 'charge.dispute.closed',
              'charge.dispute.funds_withdrawn', 'charge.dispute.funds_reinstated'
-          reconcile_charge_dispute(event.data.object, event_type: event.type, stripe_event_id: event.id)
+          reconcile_charge_dispute(
+            event.data.object,
+            event_type: event.type,
+            stripe_event_id: event.id,
+            stripe_event_created_at: event.created
+          )
+        when 'transfer.created', 'transfer.updated'
+          reconcile_platform_transfer(event.data.object, event_type: event.type)
         when 'account.updated'
           sync_connected_account(event, connected_account_id: connected_account_id)
         when 'payout.created', 'payout.updated', 'payout.paid', 'payout.failed', 'payout.canceled', 'payout.reconciliation_completed'
@@ -523,7 +530,15 @@ module Api
         reconcile_refund!(charge, refund)
       end
 
-      def reconcile_charge_dispute(dispute, event_type:, stripe_event_id: nil)
+      def reconcile_platform_transfer(transfer, event_type:)
+        PaymentService.reconcile_transfer_from_stripe_object!(transfer)
+        Rails.logger.info("[stripe webhook] #{event_type} transfer=#{transfer.id} reconciled_local_txn")
+      rescue StandardError => e
+        Rails.logger.warn("[stripe webhook] #{event_type} transfer=#{transfer&.id} error=#{e.class}")
+        raise
+      end
+
+      def reconcile_charge_dispute(dispute, event_type:, stripe_event_id: nil, stripe_event_created_at: nil)
         charge_id = dispute.charge.to_s.presence
         pi_id = dispute.payment_intent.to_s.presence
         txn = nil
@@ -559,6 +574,7 @@ module Api
           job_payment_transaction: txn,
           event_type: event_type,
           stripe_event_id: stripe_event_id,
+          stripe_event_created_at: stripe_event_created_at,
           ach_confirmed_return: ach_confirmed
         )
 

@@ -37,7 +37,9 @@ class JobPaymentTransaction < ApplicationRecord
     succeeded: 2,
     failed: 3,
     canceled: 4,
-    processing: 5
+    processing: 5,
+    # Ambiguous Stripe outcome (timeout/connection/5xx) — funds stay reserved until reconcile.
+    outcome_unknown: 6
   }, prefix: true
 
   validates :amount_cents, numericality: { greater_than: 0 }
@@ -46,7 +48,10 @@ class JobPaymentTransaction < ApplicationRecord
 
   scope :succeeded, -> { where(status: statuses[:succeeded]) }
   scope :processing, -> { where(status: statuses[:processing]) }
-  scope :in_flight, -> { where(status: statuses.values_at("pending", "requires_action", "processing")) }
+  scope :outcome_unknown, -> { where(status: statuses[:outcome_unknown]) }
+  scope :in_flight, -> {
+    where(status: statuses.values_at("pending", "requires_action", "processing", "outcome_unknown"))
+  }
   scope :company_collections, -> {
     where(transaction_type: transaction_types.values_at(*COLLECTION_TYPES))
   }
@@ -54,11 +59,17 @@ class JobPaymentTransaction < ApplicationRecord
     where(transaction_type: transaction_types.values_at(*REFUND_TYPES))
   }
   scope :ach, -> { where(payment_method_type: "us_bank_account") }
+  scope :funds_reserving, -> {
+    where(status: statuses.values_at("pending", "processing", "requires_action", "succeeded", "outcome_unknown"))
+  }
   scope :needs_attention, -> {
     where(
-      "status = :failed OR status = :processing OR dispute_status IS NOT NULL AND dispute_status != ''",
-      failed: statuses[:failed],
-      processing: statuses[:processing]
+      "status IN (:bad) OR (dispute_status IS NOT NULL AND dispute_status != '') OR investigation_required = TRUE",
+      bad: [
+        statuses[:failed],
+        statuses[:processing],
+        statuses[:outcome_unknown]
+      ]
     )
   }
 

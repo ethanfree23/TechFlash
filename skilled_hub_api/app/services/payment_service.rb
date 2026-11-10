@@ -158,6 +158,16 @@ class PaymentService
       end
 
       key = "tf_job_#{locked_job.id}_txn_technician_transfer_r#{locked_job.financial_revision}"
+
+      # Block only when a *different* transfer row is unresolved (never skip reconcile of this key).
+      other_unknown = locked_job.job_payment_transactions
+        .where(transaction_type: :technician_transfer, status: :outcome_unknown)
+        .where.not(idempotency_key: key)
+      if other_unknown.exists?
+        early = { error: "Technician transfer outcome is unknown; reconcile Stripe before retrying payout." }
+        next
+      end
+
       txn = JobPaymentTransaction.lock.find_or_initialize_by(idempotency_key: key)
       if txn.new_record?
         txn.assign_attributes(
@@ -174,6 +184,10 @@ class PaymentService
       elsif txn.status_succeeded?
         early = { success: true, payment: payment, transaction: txn }
         next
+      elsif txn.status_outcome_unknown?
+        # Must reconcile before any create/retry — never blind re-create.
+        early = :reconcile_required
+        next
       elsif txn.job_id != locked_job.id || !txn.technician_transfer?
         early = { error: "Transfer ledger row ownership mismatch; refusing payout." }
         next
@@ -182,7 +196,16 @@ class PaymentService
         next
       end
     end
-    return early if early
+
+    if early == :reconcile_required
+      reconciled = reconcile_technician_transfer!(txn)
+      return reconciled if reconciled[:success] || reconciled[:error]
+
+      # Reconcile found no Stripe transfer — allow retry only with identical persisted allocation.
+      early = nil
+    elsif early
+      return early
+    end
 
     allocation = persist_source_allocation!(txn, job: job, amount_cents: payout_amount)
     unless allocation[:safe]
@@ -195,36 +218,48 @@ class PaymentService
       return { error: "Transfer blocked: invalid_charge_id_shape (unsafe source allocation)." }
     end
 
+    transfer_metadata = JobFundingService.stripe_metadata(job, txn).merge(
+      "source_charge_id" => source_charge_id.to_s,
+      "source_transaction_mode" => allocation[:mode].to_s,
+      "source_allocation_reason" => allocation[:reason].to_s
+    )
+
     result = JobStripeOps.transfer!(
       amount_cents: payout_amount,
       destination: technician_profile.stripe_account_id,
-      metadata: JobFundingService.stripe_metadata(job, txn).merge(
-        "source_charge_id" => source_charge_id.to_s,
-        "source_transaction_mode" => allocation[:mode].to_s,
-        "source_allocation_reason" => allocation[:reason].to_s
-      ),
+      metadata: transfer_metadata,
       transfer_group: job.transfer_group,
       idempotency_key: key,
       source_transaction: source_charge_id
     )
 
-    # Timeout / network ambiguity: retry once with identical idempotency params.
-    # Stripe returns the original transfer for the same key when the first create succeeded.
-    if !result.succeeded? && transient_stripe_failure?(result)
+    # One same-key retry only for ambiguous/transient outcomes.
+    if !result.succeeded? && (result.outcome_unknown? || transient_stripe_failure?(result))
       result = JobStripeOps.transfer!(
         amount_cents: payout_amount,
         destination: technician_profile.stripe_account_id,
-        metadata: JobFundingService.stripe_metadata(job, txn).merge(
-          "source_charge_id" => source_charge_id.to_s,
-          "source_transaction_mode" => allocation[:mode].to_s,
-          "source_allocation_reason" => allocation[:reason].to_s
-        ),
+        metadata: transfer_metadata,
         transfer_group: job.transfer_group,
         idempotency_key: key,
         source_transaction: source_charge_id
       )
     end
 
+    apply_transfer_result!(
+      payment: payment,
+      txn: txn,
+      job: job,
+      technician_profile: technician_profile,
+      payout_amount: payout_amount,
+      source_charge_id: source_charge_id,
+      allocation: allocation,
+      result: result
+    )
+  rescue JobLedger::MissingCommissionSnapshotError => e
+    { error: e.message }
+  end
+
+  def self.apply_transfer_result!(payment:, txn:, job:, technician_profile:, payout_amount:, source_charge_id:, allocation:, result:)
     Job.transaction do
       locked_txn = JobPaymentTransaction.lock.find(txn.id)
       locked_payment = Payment.lock.find(payment.id)
@@ -233,57 +268,168 @@ class PaymentService
       end
 
       if result.succeeded?
-        locked_txn.update!(
-          status: :succeeded,
-          stripe_transfer_id: result.stripe_id,
+        finalize_succeeded_transfer!(
+          locked_txn: locked_txn,
+          locked_payment: locked_payment,
+          job: job,
+          technician_profile: technician_profile,
+          payout_amount: payout_amount,
           source_charge_id: source_charge_id,
-          bank_payout_status: "unknown",
-          succeeded_at: Time.current,
+          allocation: allocation,
+          stripe_transfer_id: result.stripe_id
+        )
+      elsif result.outcome_unknown? || transient_stripe_failure?(result)
+        # Do NOT mark failed — Stripe may have created the transfer.
+        locked_txn.update!(
+          status: :outcome_unknown,
+          error_message: result.error,
+          source_charge_id: source_charge_id,
+          investigation_required: true,
           metadata_json: locked_txn.metadata_json.to_h.merge(
+            "stripe_outcome" => "unknown",
+            "stripe_error_class" => result.error_class,
             "source_transaction" => source_charge_id,
             "source_transaction_mode" => allocation[:mode].to_s,
             "source_allocation_reason" => allocation[:reason].to_s,
-            "bank_payout_status" => "unknown"
+            "needs_reconcile" => true
           )
         )
-        locked_payment.update!(
-          status: "released",
-          stripe_transfer_id: result.stripe_id,
-          released_at: Time.current,
-          amount_cents: payout_amount
-        )
-        TimeEntry.where(job_id: job.id, status: TimeEntry.statuses[:approved]).update_all(
-          status: TimeEntry.statuses[:paid],
-          paid_at: Time.current,
-          updated_at: Time.current
-        )
-        PaymentRiskEvent.create!(
-          job: job,
-          job_payment_transaction: locked_txn,
-          risk_kind: "transfer_executed",
-          investigation_status: "resolved",
-          investigation_required: false,
-          amount_cents: payout_amount,
-          currency: "usd",
-          stripe_transfer_id: result.stripe_id,
-          stripe_connected_account_id: technician_profile.stripe_account_id,
-          stripe_charge_id: source_charge_id,
-          bank_payout_status: "unknown",
-          admin_note: "Transfer created on Stripe Connect. Bank payout status unknown (not proven).",
-          metadata_json: { "note" => "transfer_executed_is_not_bank_payout" },
-          detected_at: Time.current,
-          resolved_at: Time.current
-        )
-
-        MailDelivery.safe_deliver { UserMailer.payment_received_email(job, payout_amount).deliver_now }
-        { success: true, payment: locked_payment, transaction: locked_txn }
+        {
+          error: "Stripe transfer outcome unknown (#{result.error}). Funds remain reserved; reconcile before retry.",
+          outcome_unknown: true,
+          transaction: locked_txn
+        }
       else
         locked_txn.update!(status: :failed, error_message: result.error)
         { error: result.error }
       end
     end
-  rescue JobLedger::MissingCommissionSnapshotError => e
-    { error: e.message }
+  end
+
+  def self.finalize_succeeded_transfer!(locked_txn:, locked_payment:, job:, technician_profile:, payout_amount:, source_charge_id:, allocation:, stripe_transfer_id:)
+    locked_txn.update!(
+      status: :succeeded,
+      stripe_transfer_id: stripe_transfer_id,
+      source_charge_id: source_charge_id,
+      bank_payout_status: "unknown",
+      succeeded_at: Time.current,
+      investigation_required: false,
+      error_message: nil,
+      metadata_json: locked_txn.metadata_json.to_h.merge(
+        "source_transaction" => source_charge_id,
+        "source_transaction_mode" => allocation[:mode].to_s,
+        "source_allocation_reason" => allocation[:reason].to_s,
+        "bank_payout_status" => "unknown",
+        "needs_reconcile" => false
+      )
+    )
+    locked_payment.update!(
+      status: "released",
+      stripe_transfer_id: stripe_transfer_id,
+      released_at: Time.current,
+      amount_cents: payout_amount
+    )
+    TimeEntry.where(job_id: job.id, status: TimeEntry.statuses[:approved]).update_all(
+      status: TimeEntry.statuses[:paid],
+      paid_at: Time.current,
+      updated_at: Time.current
+    )
+    unless PaymentRiskEvent.where(job_id: job.id, stripe_transfer_id: stripe_transfer_id, risk_kind: "transfer_executed").exists?
+      PaymentRiskEvent.create!(
+        job: job,
+        job_payment_transaction: locked_txn,
+        risk_kind: "transfer_executed",
+        investigation_status: "resolved",
+        investigation_required: false,
+        correlation_key: "transfer:#{stripe_transfer_id}",
+        amount_cents: payout_amount,
+        currency: "usd",
+        stripe_transfer_id: stripe_transfer_id,
+        stripe_connected_account_id: technician_profile&.stripe_account_id,
+        stripe_charge_id: source_charge_id,
+        bank_payout_status: "unknown",
+        admin_note: "Transfer created on Stripe Connect. Bank payout status unknown (not proven).",
+        metadata_json: { "note" => "transfer_executed_is_not_bank_payout" },
+        detected_at: Time.current,
+        resolved_at: Time.current
+      )
+    end
+
+    MailDelivery.safe_deliver { UserMailer.payment_received_email(job, payout_amount).deliver_now }
+    { success: true, payment: locked_payment, transaction: locked_txn }
+  end
+
+  # Reconcile an outcome_unknown (or pending) technician transfer against Stripe.
+  # Admin-triggerable and required before any later create/retry.
+  def self.reconcile_technician_transfer!(txn)
+    return { error: "Not a technician transfer" } unless txn&.technician_transfer?
+    return { success: true, transaction: txn, payment: txn.payment } if txn.status_succeeded?
+
+    job = txn.job
+    payment = txn.payment
+    accepted = job.job_applications.find_by(status: :accepted)
+    tech = accepted&.technician_profile
+    destination = tech&.stripe_account_id
+    if destination.blank?
+      return { error: "Cannot reconcile: technician Stripe account missing." }
+    end
+
+    transfer = JobStripeOps.find_transfer_for_transaction(
+      destination: destination,
+      transfer_group: job.transfer_group,
+      transaction_id: txn.id,
+      job_id: job.id
+    )
+
+    if transfer.present?
+      allocation = persist_source_allocation!(txn, job: job, amount_cents: txn.amount_cents)
+      result = apply_transfer_result!(
+        payment: payment,
+        txn: txn,
+        job: job,
+        technician_profile: tech,
+        payout_amount: txn.amount_cents,
+        source_charge_id: allocation[:charge_id] || txn.source_charge_id,
+        allocation: allocation,
+        result: JobStripeOps::Result.new(status: "succeeded", stripe_id: transfer.id)
+      )
+      return result.merge(reconciled: true, created: false)
+    end
+
+    # No matching Stripe transfer. Safe to retry create only when still outcome_unknown/pending
+    # and caller will reuse persisted allocation + same idempotency key (if < ~24h) or a fresh
+    # reconcile-confirmed absence. Never invent certainty.
+    {
+      found: false,
+      transaction: txn,
+      message: "No matching Stripe transfer found; retry may proceed with identical persisted allocation."
+    }
+  end
+
+  # Webhook: platform transfer.created / transfer.updated resolves outcome_unknown rows.
+  def self.reconcile_transfer_from_stripe_object!(transfer)
+    meta = transfer.respond_to?(:metadata) ? transfer.metadata.to_h.transform_keys(&:to_s) : {}
+    txn_id = meta["transaction_id"].presence
+    txn = JobPaymentTransaction.find_by(id: txn_id) if txn_id
+    txn ||= JobPaymentTransaction.find_by(stripe_transfer_id: transfer.id)
+    return nil if txn.blank?
+    return txn if txn.status_succeeded?
+
+    if txn.technician_transfer? && (txn.status_outcome_unknown? || txn.status_pending? || txn.status_processing?)
+      tech = txn.job.job_applications.find_by(status: :accepted)&.technician_profile
+      allocation = persist_source_allocation!(txn, job: txn.job, amount_cents: txn.amount_cents)
+      apply_transfer_result!(
+        payment: txn.payment,
+        txn: txn,
+        job: txn.job,
+        technician_profile: tech,
+        payout_amount: txn.amount_cents,
+        source_charge_id: allocation[:charge_id] || txn.source_charge_id,
+        allocation: allocation,
+        result: JobStripeOps::Result.new(status: "succeeded", stripe_id: transfer.id)
+      )
+    end
+    txn.reload
   end
 
   # Persist a stable allocation decision on the pending transfer so Stripe idempotency
@@ -439,7 +585,8 @@ class PaymentService
       .where(status: [
         JobPaymentTransaction.statuses[:succeeded],
         JobPaymentTransaction.statuses[:pending],
-        JobPaymentTransaction.statuses[:processing]
+        JobPaymentTransaction.statuses[:processing],
+        JobPaymentTransaction.statuses[:outcome_unknown]
       ])
     scope = scope.where.not(id: exclude_id) if exclude_id.present?
     scope.sum(:amount_cents).to_i

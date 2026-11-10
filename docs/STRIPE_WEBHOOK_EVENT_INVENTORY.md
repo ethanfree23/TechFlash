@@ -33,6 +33,8 @@ Connected-account events (`event.account` present) are isolated to Connect handl
 | `charge.dispute.closed` | Platform | `reconcile_charge_dispute` | Lifecycle won/lost/unknown; **does not auto-unblock** transfers | Same dispute key | Yes | Yes |
 | `charge.dispute.funds_withdrawn` | Platform | `reconcile_charge_dispute` | Lifecycle funds_withdrawn; exposure confirmed | Same dispute key | Yes | Yes (ACH) |
 | `charge.dispute.funds_reinstated` | Platform | `reconcile_charge_dispute` | Lifecycle funds_reinstated; still needs admin resolve to clear block | Same dispute key | Yes | Yes (ACH) |
+| `transfer.created` | Platform | `reconcile_platform_transfer` → `PaymentService.reconcile_transfer_from_stripe_object!` | Resolves `outcome_unknown` technician transfer to succeeded when metadata matches | Transfer ID / txn metadata | Yes | Yes |
+| `transfer.updated` | Platform | same | Same idempotent resolve | Same | Yes | Recommended |
 
 ## Connect destination — one row per event
 
@@ -50,7 +52,7 @@ Connected-account events (`event.account` present) are isolated to Connect handl
 
 | Event | Reason |
 |---|---|
-| `transfer.created` / `transfer.updated` / `transfer.reversed` | Platform creates transfers with local ledger; no auto-reversal |
+| `transfer.reversed` | Platform creates transfers with local ledger; no auto-reversal. `transfer.created`/`updated` are handled (see Platform table) |
 | `account.external_account.updated` | Not required for current readiness path |
 | All other Stripe events | Persisted if delivered; logged unhandled; HTTP 200 after persistence |
 

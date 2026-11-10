@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_09_210000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_09_220000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -964,6 +964,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_09_210000) do
     t.integer "confirmed_loss_cents"
     t.boolean "exposure_confirmed", default: false, null: false
     t.boolean "transfer_already_executed", default: false, null: false
+    t.datetime "last_stripe_event_created_at"
+    t.string "resolved_by"
+    t.datetime "reopened_at"
+    t.string "reopened_by_event_id"
     t.index ["correlation_key"], name: "index_payment_risk_events_on_correlation_key_unique", unique: true
     t.index ["investigation_status"], name: "index_payment_risk_events_on_investigation_status"
     t.index ["job_id", "investigation_status"], name: "index_payment_risk_events_on_job_id_and_investigation_status"

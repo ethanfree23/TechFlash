@@ -275,23 +275,31 @@ class TransferAllocationIntegrityTest < ActiveSupport::TestCase
       id: "dp_ord", charge: "ch_ord", payment_intent: txn.stripe_payment_intent_id,
       status: "won", reason: "fraudulent", amount: 1000
     )
+    t_reinstated = Time.current
     PaymentRiskEvent.upsert_dispute!(
       job: job, dispute: dispute, job_payment_transaction: txn,
-      event_type: "charge.dispute.funds_reinstated", ach_confirmed_return: false
+      event_type: "charge.dispute.funds_reinstated",
+      stripe_event_id: "evt_ord_re",
+      stripe_event_created_at: t_reinstated,
+      ach_confirmed_return: false
     )
     rec = PaymentRiskEvent.find_by!(correlation_key: "dispute:dp_ord")
     assert_equal "funds_reinstated", rec.lifecycle_state
 
+    # Older Stripe event arriving late must not regress.
     dispute.status = "needs_response"
     PaymentRiskEvent.upsert_dispute!(
       job: job, dispute: dispute, job_payment_transaction: txn,
-      event_type: "charge.dispute.updated", ach_confirmed_return: false
+      event_type: "charge.dispute.updated",
+      stripe_event_id: "evt_ord_old",
+      stripe_event_created_at: t_reinstated - 1.hour,
+      ach_confirmed_return: false
     )
     assert_equal "funds_reinstated", rec.reload.lifecycle_state
     assert PaymentRiskEvent.open_for_job?(job)
   end
 
-  test "admin resolved dispute is not reopened by later webhook" do
+  test "admin resolved dispute stays resolved for older replayed event" do
     job, _payment, txn = build_job(title: "admin hold", charge_id: "ch_ah", pm_type: "card")
     dispute = OpenStruct.new(
       id: "dp_ah", charge: "ch_ah", payment_intent: txn.stripe_payment_intent_id,
@@ -299,21 +307,56 @@ class TransferAllocationIntegrityTest < ActiveSupport::TestCase
     )
     PaymentRiskEvent.upsert_dispute!(
       job: job, dispute: dispute, job_payment_transaction: txn,
-      event_type: "charge.dispute.created"
+      event_type: "charge.dispute.created",
+      stripe_event_id: "evt_ah_1",
+      stripe_event_created_at: 2.hours.ago
     )
     risk = PaymentRiskEvent.find_by!(correlation_key: "dispute:dp_ah")
     risk.resolve!(note: "cleared by admin", actor: "admin@example.com")
     refute PaymentRiskEvent.open_for_job?(job)
 
-    dispute.status = "lost"
+    # Older replay after resolve — history only.
+    dispute.status = "needs_response"
     PaymentRiskEvent.upsert_dispute!(
       job: job, dispute: dispute, job_payment_transaction: txn,
-      event_type: "charge.dispute.closed"
+      event_type: "charge.dispute.updated",
+      stripe_event_id: "evt_ah_old",
+      stripe_event_created_at: 3.hours.ago
     )
     risk.reload
     assert_equal "resolved", risk.investigation_status
     assert_equal "admin_resolved", risk.lifecycle_state
     refute PaymentRiskEvent.open_for_job?(job)
+  end
+
+  test "admin resolved dispute reopens on newer funds_withdrawn" do
+    job, _payment, txn = build_job(title: "admin reopen", charge_id: "ch_ar", pm_type: "card")
+    dispute = OpenStruct.new(
+      id: "dp_ar", charge: "ch_ar", payment_intent: txn.stripe_payment_intent_id,
+      status: "needs_response", reason: "fraudulent", amount: 1000
+    )
+    PaymentRiskEvent.upsert_dispute!(
+      job: job, dispute: dispute, job_payment_transaction: txn,
+      event_type: "charge.dispute.created",
+      stripe_event_id: "evt_ar_1",
+      stripe_event_created_at: 2.hours.ago
+    )
+    risk = PaymentRiskEvent.find_by!(correlation_key: "dispute:dp_ar")
+    risk.resolve!(note: "cleared", actor: "admin@example.com")
+    refute PaymentRiskEvent.open_for_job?(job)
+
+    dispute.status = "lost"
+    PaymentRiskEvent.upsert_dispute!(
+      job: job, dispute: dispute, job_payment_transaction: txn,
+      event_type: "charge.dispute.funds_withdrawn",
+      stripe_event_id: "evt_ar_withdraw",
+      stripe_event_created_at: Time.current
+    )
+    risk.reload
+    assert_equal "open", risk.investigation_status
+    assert risk.exposure_confirmed
+    assert_equal "evt_ar_withdraw", risk.reopened_by_event_id
+    assert PaymentRiskEvent.open_for_job?(job)
   end
 
   test "duplicate dispute webhook keeps single risk row" do
