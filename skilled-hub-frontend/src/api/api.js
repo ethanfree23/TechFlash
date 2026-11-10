@@ -565,6 +565,41 @@ export const adminJobPaymentsAPI = {
     return apiRequest(`/admin/job_payments${query ? `?${query}` : ''}`);
   },
   get: (id) => apiRequest(`/admin/job_payments/${id}`),
+  reconcileTransfer: (id, payload = {}) =>
+    apiRequest(`/admin/job_payments/${id}/reconcile_transfer`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+};
+
+export const adminAchSettingsAPI = {
+  get: () => apiRequest('/admin/ach_settings'),
+  monitoring: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v != null && String(v).trim() !== '') qs.set(k, String(v));
+    });
+    const query = qs.toString();
+    return apiRequest(`/admin/ach_settings/monitoring${query ? `?${query}` : ''}`);
+  },
+  audits: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v != null && String(v).trim() !== '') qs.set(k, String(v));
+    });
+    const query = qs.toString();
+    return apiRequest(`/admin/ach_settings/audits${query ? `?${query}` : ''}`);
+  },
+  setGlobal: (enabled) =>
+    apiRequest('/admin/ach_settings/global', {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled: !!enabled }),
+    }),
+  setCompany: (companyProfileId, enabled) =>
+    apiRequest(`/admin/ach_settings/companies/${companyProfileId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled: !!enabled }),
+    }),
 };
 
 export const adminEmailQaAPI = {

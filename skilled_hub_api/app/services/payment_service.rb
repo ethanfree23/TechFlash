@@ -197,19 +197,20 @@ class PaymentService
       end
     end
 
+    needs_admin_consume = false
     if early == :reconcile_required
       reconciled = reconcile_technician_transfer!(txn)
       return reconciled if reconciled[:success] || reconciled[:error] ||
         reconciled[:lookup_failed] || reconciled[:mismatch] ||
         reconciled[:requires_admin_authorization]
 
-      # Only proceed when reconcile explicitly allows same-key retry.
       unless reconciled[:allow_retry]
         return {
           error: reconciled[:message] || "Technician transfer reconcile did not authorize retry.",
           transaction: txn
         }
       end
+      needs_admin_consume = reconciled[:admin_authorized] == true
       early = nil
     elsif early
       return early
@@ -232,6 +233,25 @@ class PaymentService
       "source_allocation_reason" => allocation[:reason].to_s
     )
 
+    # Outside the 23h window: atomically consume single-use admin auth BEFORE create.
+    consumed_auth = nil
+    if needs_admin_consume || (!within_transfer_retry_window?(txn) && txn.status_outcome_unknown?)
+      consume = consume_admin_transfer_authorization!(
+        txn,
+        destination: technician_profile.stripe_account_id,
+        actor: nil
+      )
+      unless consume[:ok]
+        return {
+          error: consume[:error],
+          requires_admin_authorization: consume[:requires_admin_authorization],
+          lookup_failed: consume[:lookup_failed],
+          transaction: txn.reload
+        }
+      end
+      consumed_auth = consume[:authorization]
+    end
+
     mark_transfer_first_attempted!(txn)
 
     result = JobStripeOps.transfer!(
@@ -242,7 +262,7 @@ class PaymentService
       idempotency_key: key,
       source_transaction: source_charge_id
     )
-    # One same-key retry only for ambiguous/transient outcomes.
+    # One same-key retry only for ambiguous/transient outcomes (still within same request).
     if !result.succeeded? && (result.outcome_unknown? || transient_stripe_failure?(result))
       result = JobStripeOps.transfer!(
         amount_cents: payout_amount,
@@ -254,7 +274,7 @@ class PaymentService
       )
     end
 
-    apply_transfer_result!(
+    out = apply_transfer_result!(
       payment: payment,
       txn: txn,
       job: job,
@@ -264,6 +284,21 @@ class PaymentService
       allocation: allocation,
       result: result
     )
+    if consumed_auth
+      record_transfer_auth_audit!(
+        authorization: consumed_auth,
+        txn: txn,
+        event: "create_attempted",
+        decision: "executed",
+        lookup_outcome: "not_found_after_complete_search",
+        final_outcome: result.status.to_s,
+        actor: consumed_auth.granted_by_user,
+        reason: consumed_auth.reason,
+        acknowledged: consumed_auth.acknowledged_prior_timeout_risk,
+        metadata: { "stripe_id" => result.stripe_id, "error" => result.error }
+      )
+    end
+    out
   rescue JobLedger::MissingCommissionSnapshotError => e
     { error: e.message }
   end
@@ -277,7 +312,7 @@ class PaymentService
       end
 
       if result.succeeded?
-        out = finalize_succeeded_transfer!(
+        finalize_succeeded_transfer!(
           locked_txn: locked_txn,
           locked_payment: locked_payment,
           job: job,
@@ -287,8 +322,6 @@ class PaymentService
           allocation: allocation,
           stripe_transfer_id: result.stripe_id
         )
-        clear_admin_authorization!(locked_txn.reload)
-        out
       elsif result.outcome_unknown? || transient_stripe_failure?(result)
         # Do NOT mark failed — Stripe may have created the transfer.
         attrs = {
@@ -332,7 +365,7 @@ class PaymentService
         "lookup_failed" => false,
         "transfer_mismatch" => false
       )
-      .except("admin_authorized_retry_at", "admin_authorized_retry_by", "mismatch_fields", "candidate_stripe_transfer_id")
+      .except("mismatch_fields", "candidate_stripe_transfer_id")
     locked_txn.update!(
       status: :succeeded,
       stripe_transfer_id: stripe_transfer_id,
@@ -380,8 +413,8 @@ class PaymentService
     { success: true, payment: locked_payment, transaction: locked_txn }
   end
 
-  # Stripe idempotency keys are not reliable beyond ~24h — never auto re-create after that.
-  TRANSFER_IDEMPOTENCY_SAFE_WINDOW = 24.hours
+  # Stay clear of Stripe idempotency-key pruning at >=24h — auto retry only inside 23h.
+  TRANSFER_IDEMPOTENCY_SAFE_WINDOW = 23.hours
 
   def self.mark_transfer_first_attempted!(txn)
     return if txn.transfer_first_attempted_at.present?
@@ -396,31 +429,157 @@ class PaymentService
     attempted > TRANSFER_IDEMPOTENCY_SAFE_WINDOW.ago
   end
 
-  def self.admin_authorization_valid?(txn)
-    meta = txn.metadata_json.to_h
-    stamp = meta["admin_authorized_retry_at"]
-    return false if stamp.blank?
-
-    at = (Time.zone.parse(stamp.to_s) rescue nil)
-    return false if at.blank?
-
-    # Authorization is single-use and short-lived (1 hour).
-    at > 1.hour.ago
-  end
-
-  def self.stamp_admin_authorization!(txn, actor:)
-    txn.update!(
-      metadata_json: txn.metadata_json.to_h.merge(
-        "admin_authorized_retry_at" => Time.current.iso8601,
-        "admin_authorized_retry_by" => actor.to_s.presence || "admin",
-        "needs_reconcile" => true
-      )
+  def self.record_transfer_auth_audit!(authorization:, txn:, event:, decision:, lookup_outcome:, final_outcome:, actor:, reason:, acknowledged:, metadata: {})
+    TransferRetryAuthorizationAudit.create!(
+      job_payment_transaction_id: txn.id,
+      transfer_retry_authorization_id: authorization&.id,
+      actor_user_id: actor&.id,
+      actor_email: actor&.email || authorization&.granted_by_email,
+      event: event,
+      reason: reason,
+      acknowledged_prior_timeout_risk: acknowledged,
+      lookup_outcome: lookup_outcome,
+      decision: decision,
+      final_outcome: final_outcome,
+      metadata_json: metadata,
+      created_at: Time.current
     )
   end
 
-  def self.clear_admin_authorization!(txn)
-    meta = txn.metadata_json.to_h.except("admin_authorized_retry_at", "admin_authorized_retry_by")
-    txn.update!(metadata_json: meta) if txn.metadata_json.to_h.key?("admin_authorized_retry_at")
+  # Grant a single-use admin authorization after a complete not-found lookup.
+  def self.grant_admin_transfer_authorization!(txn, actor:, reason:, acknowledged_prior_timeout_risk:)
+    reason_text = reason.to_s.strip
+    raise ArgumentError, "reason is required" if reason_text.blank?
+    unless ActiveModel::Type::Boolean.new.cast(acknowledged_prior_timeout_risk)
+      raise ArgumentError, "acknowledged_prior_timeout_risk must be true"
+    end
+
+    auth = TransferRetryAuthorization.create!(
+      job_payment_transaction: txn,
+      granted_by_user_id: actor&.id,
+      granted_by_email: actor&.email || actor.to_s,
+      reason: reason_text,
+      acknowledged_prior_timeout_risk: true,
+      granted_at: Time.current,
+      expires_at: TransferRetryAuthorization::TTL.from_now,
+      status: "granted",
+      lookup_outcome_at_grant: "not_found_after_complete_search",
+      token: SecureRandom.uuid,
+      metadata_json: {}
+    )
+    record_transfer_auth_audit!(
+      authorization: auth,
+      txn: txn,
+      event: "granted",
+      decision: "authorize_retry",
+      lookup_outcome: "not_found_after_complete_search",
+      final_outcome: "pending_consume",
+      actor: actor.is_a?(User) ? actor : nil,
+      reason: reason_text,
+      acknowledged: true
+    )
+    auth
+  end
+
+  # Atomically consume an active grant AFTER a fresh complete not-found lookup.
+  # Must run immediately before Stripe create. Concurrent second consume fails.
+  def self.consume_admin_transfer_authorization!(txn, destination:, actor: nil)
+    lookup = JobStripeOps.find_transfer_for_transaction(
+      destination: destination,
+      transfer_group: txn.job.transfer_group,
+      transaction_id: txn.id,
+      job_id: txn.job_id
+    )
+
+    if lookup.lookup_failed?
+      record_transfer_auth_audit!(
+        authorization: TransferRetryAuthorization.active.where(job_payment_transaction_id: txn.id).first,
+        txn: txn,
+        event: "refused_lookup_failed",
+        decision: "refuse",
+        lookup_outcome: "lookup_failed",
+        final_outcome: "blocked",
+        actor: actor,
+        reason: nil,
+        acknowledged: nil,
+        metadata: { "error" => lookup.error }
+      )
+      return { ok: false, lookup_failed: true, error: "Stripe transfer lookup failed before authorized create; refused." }
+    end
+
+    if lookup.found?
+      validation = validate_recovered_transfer(lookup.transfer, txn, destination: destination)
+      unless validation[:ok]
+        flag_transfer_mismatch!(txn, transfer: lookup.transfer, mismatches: validation[:mismatches])
+        return { ok: false, mismatch: true, error: "Recovered transfer mismatch; create blocked." }
+      end
+      return { ok: false, found: true, error: "Matching Stripe transfer already exists; create blocked (reconcile instead)." }
+    end
+
+    unless lookup.not_found_after_complete_search?
+      return { ok: false, error: "Unexpected lookup status before authorized create: #{lookup.status}" }
+    end
+
+    auth = nil
+    TransferRetryAuthorization.transaction do
+      auth = TransferRetryAuthorization.lock
+        .active
+        .where(job_payment_transaction_id: txn.id)
+        .order(granted_at: :desc)
+        .first
+      unless auth
+        return {
+          ok: false,
+          requires_admin_authorization: true,
+          error: "No active admin authorization for this transfer retry."
+        }
+      end
+
+      updated = TransferRetryAuthorization.where(id: auth.id, status: "granted", consumed_at: nil)
+        .where("expires_at > ?", Time.current)
+        .update_all(
+          status: "consumed",
+          consumed_at: Time.current,
+          consumed_by_user_id: actor&.id,
+          updated_at: Time.current
+        )
+      if updated != 1
+        record_transfer_auth_audit!(
+          authorization: auth,
+          txn: txn,
+          event: "refused_already_consumed",
+          decision: "refuse",
+          lookup_outcome: "not_found_after_complete_search",
+          final_outcome: "blocked",
+          actor: actor,
+          reason: auth.reason,
+          acknowledged: auth.acknowledged_prior_timeout_risk
+        )
+        return {
+          ok: false,
+          requires_admin_authorization: true,
+          error: "Admin authorization already consumed or expired; refused."
+        }
+      end
+      auth.reload
+    end
+
+    record_transfer_auth_audit!(
+      authorization: auth,
+      txn: txn,
+      event: "consumed",
+      decision: "authorize_create",
+      lookup_outcome: "not_found_after_complete_search",
+      final_outcome: "pending_stripe_create",
+      actor: actor,
+      reason: auth.reason,
+      acknowledged: auth.acknowledged_prior_timeout_risk
+    )
+    { ok: true, authorization: auth }
+  end
+
+  def self.active_admin_authorization?(txn)
+    TransferRetryAuthorization.active.where(job_payment_transaction_id: txn.id).exists?
   end
 
   # Validate a Stripe transfer recovered via list/webhook against the local ledger row.
@@ -461,9 +620,16 @@ class PaymentService
   # Reconcile an outcome_unknown (or pending) technician transfer against Stripe.
   # Admin-triggerable and required before any later create/retry.
   #
-  # admin_authorize_retry: explicit admin action after a complete not-found lookup
-  # when the first attempt is >= 24h old. Still refuses on lookup_failed / mismatch.
-  def self.reconcile_technician_transfer!(txn, admin_authorize_retry: false, actor: nil)
+  # admin_authorize_retry: explicit admin grant after a complete not-found lookup when
+  # first attempt is >= 23h old. Requires reason + acknowledged_prior_timeout_risk.
+  # Grant is single-use and must be consumed atomically before Stripe create.
+  def self.reconcile_technician_transfer!(
+    txn,
+    admin_authorize_retry: false,
+    actor: nil,
+    reason: nil,
+    acknowledged_prior_timeout_risk: false
+  )
     return { error: "Not a technician transfer" } unless txn&.technician_transfer?
     return { success: true, transaction: txn, payment: txn.payment } if txn.status_succeeded?
 
@@ -532,7 +698,6 @@ class PaymentService
       return result.merge(reconciled: true, created: false, found: true)
     end
 
-    # Complete search — nothing found.
     unless lookup.not_found_after_complete_search?
       return {
         error: "Unexpected Stripe lookup status: #{lookup.status}",
@@ -546,29 +711,39 @@ class PaymentService
         found: false,
         allow_retry: true,
         transaction: txn,
-        message: "No matching Stripe transfer found within idempotency-safe window; same-key retry allowed with identical persisted allocation."
+        message: "No matching Stripe transfer found within 23h idempotency-safe window; same-key retry allowed with identical persisted allocation."
       }
     end
 
-    # >= 24h (or missing first-attempt timestamp): never auto re-create.
+    # >= 23h (or missing first-attempt timestamp): never auto re-create.
     if admin_authorize_retry
-      stamp_admin_authorization!(txn, actor: actor)
+      begin
+        auth = grant_admin_transfer_authorization!(
+          txn,
+          actor: actor,
+          reason: reason,
+          acknowledged_prior_timeout_risk: acknowledged_prior_timeout_risk
+        )
+      rescue ArgumentError => e
+        return { error: e.message, allow_retry: false, requires_admin_authorization: true }
+      end
       return {
         found: false,
         allow_retry: true,
         admin_authorized: true,
+        authorization_id: auth.id,
         transaction: txn.reload,
-        message: "Admin authorized same-allocation retry after complete not-found lookup outside 24h window."
+        message: "Admin granted single-use retry authorization after complete not-found lookup outside 23h window. Authorization must be consumed before create."
       }
     end
 
-    if admin_authorization_valid?(txn)
+    if active_admin_authorization?(txn)
       return {
         found: false,
         allow_retry: true,
         admin_authorized: true,
         transaction: txn,
-        message: "Prior admin authorization present; same-key retry allowed after complete not-found lookup."
+        message: "Active single-use admin authorization present; same-key retry may proceed (will consume atomically before create)."
       }
     end
 
@@ -576,7 +751,7 @@ class PaymentService
       found: false,
       allow_retry: false,
       requires_admin_authorization: true,
-      error: "No matching Stripe transfer found, but first attempt is outside the 24h idempotency-safe window. Explicit admin reconciliation + authorization required before any create.",
+      error: "No matching Stripe transfer found, but first attempt is outside the 23h idempotency-safe window. Explicit admin reconciliation + authorization (reason + acknowledgment) required before any create.",
       transaction: txn
     }
   end
@@ -610,7 +785,6 @@ class PaymentService
         allocation: allocation,
         result: JobStripeOps::Result.new(status: "succeeded", stripe_id: transfer.id)
       )
-      clear_admin_authorization!(txn.reload)
     end
     txn.reload
   end

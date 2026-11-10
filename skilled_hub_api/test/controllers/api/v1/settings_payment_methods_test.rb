@@ -13,8 +13,10 @@ module Api
           role: :company,
           stripe_customer_id: "cus_test_pm"
         )
-        profile = CompanyProfile.create!(user: @user, membership_level: "basic")
+        profile = CompanyProfile.create!(user: @user, membership_level: "basic", phone: "713-555-0199")
         @user.update_column(:company_profile_id, profile.id)
+        AchAccess.set_global!(enabled: true, actor: nil, source: "test")
+        AchAccess.set_company!(profile, enabled: true, actor: nil, source: "test")
         @token = JWT.encode({ user_id: @user.id, exp: 1.day.from_now.to_i }, Rails.application.secret_key_base, "HS256")
         @old_key = Stripe.api_key
         Stripe.api_key = "sk_test_ach_settings"

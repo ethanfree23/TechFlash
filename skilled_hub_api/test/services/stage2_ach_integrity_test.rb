@@ -12,8 +12,10 @@ class Stage2AchIntegrityTest < ActiveSupport::TestCase
       role: :company,
       stripe_customer_id: "cus_stage2_test"
     )
-    @company_profile = CompanyProfile.create!(user: @company_user, membership_level: "basic")
+    @company_profile = CompanyProfile.create!(user: @company_user, membership_level: "basic", phone: "713-555-0200")
     @company_user.update_column(:company_profile_id, @company_profile.id)
+    AchAccess.set_global!(enabled: true, actor: nil, source: "test")
+    AchAccess.set_company!(@company_profile, enabled: true, actor: nil, source: "test")
   end
 
   test "setup intent creation excludes mandate_data" do

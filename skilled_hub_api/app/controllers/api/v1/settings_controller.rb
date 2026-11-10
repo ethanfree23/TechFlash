@@ -40,6 +40,13 @@ module Api
         end
 
         payment_method_type = params[:payment_method_type].presence || params[:type].presence || "card"
+        if payment_method_type.to_s == "us_bank_account" && !AchAccess.allowed?(@current_user.company_profile)
+          return render json: {
+            error: AchAccess::USER_SAFE_MESSAGE,
+            code: "ach_disabled"
+          }, status: :forbidden
+        end
+
         payload = CompanyPaymentMethodsService.create_setup_intent!(
           @current_user,
           payment_method_type: payment_method_type,
@@ -48,7 +55,8 @@ module Api
         )
         render json: payload, status: :ok
       rescue CompanyPaymentMethodsService::Error => e
-        render json: { error: e.message }, status: :unprocessable_entity
+        status = e.message.to_s.include?("not enabled") ? :forbidden : :unprocessable_entity
+        render json: { error: e.message, code: (status == :forbidden ? "ach_disabled" : nil) }.compact, status: status
       rescue Stripe::StripeError => e
         render json: { error: e.message }, status: :unprocessable_entity
       end

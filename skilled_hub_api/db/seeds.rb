@@ -1,5 +1,33 @@
+# frozen_string_literal: true
+
+# Seeds refuse to run in production.
+if Rails.env.production?
+  abort("[seeds] Refusing to seed in production.")
+end
+
+# Idempotent membership tier configs MUST exist before any profile create
+# (TechnicianProfile/CompanyProfile normalize_membership_level via MembershipPolicy).
+def seed_membership_tiers!
+  now = Time.current
+  rows = [
+    { audience: "technician", slug: "basic", display_name: "Basic", monthly_fee_cents: 0, commission_percent: 20.0, early_access_delay_hours: 48, sort_order: 0, stripe_price_id: nil },
+    { audience: "technician", slug: "pro", display_name: "Pro", monthly_fee_cents: 4_900, commission_percent: 20.0, early_access_delay_hours: 24, sort_order: 1, stripe_price_id: nil },
+    { audience: "technician", slug: "premium", display_name: "Premium", monthly_fee_cents: 24_900, commission_percent: 10.0, early_access_delay_hours: 0, sort_order: 2, stripe_price_id: nil },
+    { audience: "company", slug: "basic", display_name: "Basic", monthly_fee_cents: 0, commission_percent: 10.0, early_access_delay_hours: nil, sort_order: 0, stripe_price_id: nil },
+    { audience: "company", slug: "pro", display_name: "Pro", monthly_fee_cents: 25_000, commission_percent: 5.0, early_access_delay_hours: nil, sort_order: 1, stripe_price_id: nil },
+    { audience: "company", slug: "premium", display_name: "Premium", monthly_fee_cents: 100_000, commission_percent: 10.0, early_access_delay_hours: nil, sort_order: 2, stripe_price_id: nil }
+  ]
+  MembershipTierConfig.insert_all(
+    rows.map { |r| r.merge(created_at: now, updated_at: now) },
+    unique_by: %i[audience slug]
+  )
+  MembershipTierConfig.where(audience: "technician", slug: "premium").update_all(waives_background_check_fee: true)
+  MembershipTierConfig.where(audience: "company", slug: "premium").update_all(commission_percent: 10.0)
+end
+
+seed_membership_tiers!
+
 # Clear old data — order matters when foreign keys are enabled (SQLite).
-# Clear users.company_profile_id before deleting company_profiles (FK users -> company_profiles).
 Message.delete_all
 Conversation.delete_all
 JobIssueReport.delete_all
@@ -28,6 +56,7 @@ tech1 = User.create!(email: "admin+tech1@techflash.app", password: "Falcon23$!",
 tech2 = User.create!(email: "admin+tech2@techflash.app", password: "Falcon23$!", password_confirmation: "Falcon23$!", role: :technician, phone: "713-555-0102")
 company1 = User.create!(email: "admin+company1@techflash.app", password: "Falcon23$!", password_confirmation: "Falcon23$!", role: :company, phone: "713-555-0201")
 company2 = User.create!(email: "admin+company2@techflash.app", password: "Falcon23$!", password_confirmation: "Falcon23$!", role: :company, phone: "713-555-0202")
+company3 = User.create!(email: "admin+company3@techflash.app", password: "Falcon23$!", password_confirmation: "Falcon23$!", role: :company, phone: "713-555-0203")
 admin_user = User.create!(email: "admin@techflash.app", password: "Falcon23$!", password_confirmation: "Falcon23$!", role: :admin, phone: "713-555-0000")
 
 # Profiles — tech1 is premium + Houston coords so dashboard map + membership delays match local dev (basic tier waits 48h after go-live per tier config).
@@ -61,13 +90,22 @@ TechnicianProfile.create!(
 )
 cp1 = CompanyProfile.create!(user: company1, company_name: "FixIt Inc", industry: "Construction", location: "Austin", phone: "713-555-0201")
 cp2 = CompanyProfile.create!(user: company2, company_name: "BuildRight Co", industry: "Commercial", location: "Dallas", phone: "713-555-0202")
+cp3 = CompanyProfile.create!(user: company3, company_name: "NoAch LLC", industry: "Residential", location: "Houston", phone: "713-555-0203")
+
+# Staging ACH pilot flags: global ON, two companies enabled, one disabled.
+if Rails.env.staging? || ENV["SEED_ACH_FLAGS"].to_s.strip.casecmp("true").zero?
+  AchAccess.set_global!(enabled: true, actor: admin_user, source: "seeds")
+  AchAccess.set_company!(cp1, enabled: true, actor: admin_user, source: "seeds")
+  AchAccess.set_company!(cp2, enabled: true, actor: admin_user, source: "seeds")
+  AchAccess.set_company!(cp3, enabled: false, actor: admin_user, source: "seeds")
+  puts "[seeds] ACH flags: global ON; FixIt+BuildRight enabled; NoAch LLC disabled"
+end
 
 # Open jobs at distinct Houston-metro coordinates (so distances from tech1 are not all 0.0 mi).
-# Tech home: downtown ~29.7604,-95.3698 — jobs placed a few–15+ miles away for realistic listings.
 seed_open_jobs = [
-  ["Emergency pipe repair", cp1, BigDecimal("29.7174"), BigDecimal("-95.4178")],      # southwest ~5 mi
-  ["Commercial HVAC inspection", cp1, BigDecimal("29.7489"), BigDecimal("-95.2594")], # east ~6–7 mi
-  ["Residential electrical panel", cp2, BigDecimal("29.8026"), BigDecimal("-95.5089")] # northwest ~8 mi
+  ["Emergency pipe repair", cp1, BigDecimal("29.7174"), BigDecimal("-95.4178")],
+  ["Commercial HVAC inspection", cp1, BigDecimal("29.7489"), BigDecimal("-95.2594")],
+  ["Residential electrical panel", cp2, BigDecimal("29.8026"), BigDecimal("-95.5089")]
 ]
 
 seed_open_jobs.each do |(title, company, job_lat, job_lng)|
@@ -91,3 +129,5 @@ seed_open_jobs.each do |(title, company, job_lat, job_lng)|
     go_live_at: 72.hours.ago
   )
 end
+
+puts "[seeds] Done (#{Rails.env})."

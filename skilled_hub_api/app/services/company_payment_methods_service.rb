@@ -9,7 +9,13 @@ class CompanyPaymentMethodsService
 
   def self.list_for(user)
     customer_id = StripeCustomerService.validate_or_clear_customer_id!(user)
-    return { payment_methods: [], default_payment_method_id: nil } if customer_id.blank?
+    ach_status = AchAccess.status_for(user.company_profile)
+    if customer_id.blank?
+      return {
+        payment_methods: [],
+        default_payment_method_id: nil
+      }.merge(ach_status)
+    end
 
     customer = Stripe::Customer.retrieve(customer_id, expand: ["invoice_settings.default_payment_method"])
     default_id = customer.invoice_settings&.default_payment_method
@@ -22,7 +28,7 @@ class CompanyPaymentMethodsService
     {
       payment_methods: methods,
       default_payment_method_id: default_id
-    }
+    }.merge(ach_status)
   rescue Stripe::StripeError => e
     raise Error, e.message
   end
@@ -30,6 +36,10 @@ class CompanyPaymentMethodsService
   def self.create_setup_intent!(user, payment_method_type:, ip_address: nil, user_agent: nil)
     type = payment_method_type.to_s
     raise Error, "Unsupported payment method type" unless SUPPORTED_TYPES.include?(type)
+
+    if type == "us_bank_account"
+      AchAccess.assert_allowed!(user.company_profile)
+    end
 
     customer_id = StripeCustomerService.ensure_customer_id!(user)
     params = {
@@ -65,6 +75,8 @@ class CompanyPaymentMethodsService
       setup_intent_id: intent.id,
       payment_method_type: type
     }
+  rescue AchAccess::DisabledError => e
+    raise Error, e.message
   rescue Stripe::StripeError => e
     raise Error, e.message
   end
@@ -80,12 +92,17 @@ class CompanyPaymentMethodsService
     unless SUPPORTED_TYPES.include?(pm.type.to_s)
       raise Error, "Unsupported payment method type"
     end
+    if pm.type.to_s == "us_bank_account"
+      AchAccess.assert_allowed!(user.company_profile)
+    end
 
     Stripe::Customer.update(
       customer_id,
       invoice_settings: { default_payment_method: payment_method_id }
     )
     serialize(pm, payment_method_id)
+  rescue AchAccess::DisabledError => e
+    raise Error, e.message
   rescue Stripe::StripeError => e
     raise Error, e.message
   end

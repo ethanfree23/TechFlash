@@ -123,7 +123,9 @@ module Api
           result = PaymentService.reconcile_technician_transfer!(
             txn,
             admin_authorize_retry: authorize_retry,
-            actor: current_user&.email
+            actor: current_user,
+            reason: params[:reason],
+            acknowledged_prior_timeout_risk: params[:acknowledged_prior_timeout_risk]
           )
           if result[:success]
             render json: {

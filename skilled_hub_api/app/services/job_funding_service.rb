@@ -222,15 +222,28 @@ class JobFundingService
     pm_id = default_payment_method_id(customer_id) unless skip_live_customer
     return { error: "Company has no payment method on file. Add a card or bank account in Settings." } if pm_id.blank? && !skip_live_customer
 
+    # Fail-closed ACH gate for any new bank debit (including retries / top-ups / off-session).
+    # Never bypass via a previously saved us_bank_account PaymentMethod.
+    if pm_id.present?
+      pm_type = payment_method_type_for(pm_id)
+      if pm_type == "us_bank_account" && !AchAccess.allowed?(job.company_profile)
+        return {
+          error: AchAccess::USER_SAFE_MESSAGE,
+          code: "ach_disabled",
+          ach_disabled: true
+        }
+      end
+    end
+
     result = JobStripeOps.create_payment_intent!(
       amount_cents: amount,
       customer_id: customer_id,
       payment_method_id: pm_id,
       metadata: stripe_metadata(job, txn),
       transfer_group: job.transfer_group,
-      idempotency_key: key
+      idempotency_key: key,
+      company_profile: job.company_profile
     )
-
     finalize_collection!(job: job, payment: payment, txn: txn, result: result)
   end
 
@@ -301,11 +314,20 @@ class JobFundingService
     pm_id = pm_id.id if pm_id.respond_to?(:id)
     return pm_id if pm_id.present?
 
+    # Prefer card; bank is only a fallback when present (ACH initiation still gated separately).
     %w[card us_bank_account].each do |type|
       id = Stripe::PaymentMethod.list(customer: customer_id, type: type, limit: 1).data.first&.id
       return id if id.present?
     end
     nil
+  rescue Stripe::StripeError
+    nil
+  end
+
+  def self.payment_method_type_for(payment_method_id)
+    return nil if payment_method_id.blank?
+
+    Stripe::PaymentMethod.retrieve(payment_method_id).type.to_s
   rescue Stripe::StripeError
     nil
   end

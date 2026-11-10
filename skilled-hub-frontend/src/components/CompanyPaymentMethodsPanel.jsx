@@ -11,6 +11,7 @@ const CompanyPaymentMethodsPanel = ({
 }) => {
   const [methods, setMethods] = useState([]);
   const [defaultId, setDefaultId] = useState(null);
+  const [achEnabled, setAchEnabled] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState(null);
   const [showAddCard, setShowAddCard] = useState(false);
@@ -31,6 +32,7 @@ const CompanyPaymentMethodsPanel = ({
       const res = await settingsAPI.listPaymentMethods();
       setMethods(Array.isArray(res?.payment_methods) ? res.payment_methods : []);
       setDefaultId(res?.default_payment_method_id || null);
+      setAchEnabled(!!res?.ach_payments_enabled);
     } catch (err) {
       setError(err.message || 'Could not load payment methods');
       setMethods([]);
@@ -213,16 +215,22 @@ const CompanyPaymentMethodsPanel = ({
           >
             {showAddCard ? 'Cancel' : '+ Add card'}
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              setShowAddBank((v) => !v);
-              setShowAddCard(false);
-            }}
-            className="px-4 py-2 text-sm rounded-lg bg-[#1d4ed8] text-white hover:bg-blue-800"
-          >
-            {showAddBank ? 'Cancel' : '+ Connect bank account'}
-          </button>
+          {achEnabled ? (
+            <button
+              type="button"
+              onClick={() => {
+                setShowAddBank((v) => !v);
+                setShowAddCard(false);
+              }}
+              className="px-4 py-2 text-sm rounded-lg bg-[#1d4ed8] text-white hover:bg-blue-800"
+            >
+              {showAddBank ? 'Cancel' : '+ Connect bank account'}
+            </button>
+          ) : (
+            <p className="text-sm text-slate-500 self-center">
+              Bank account (ACH) payments are not enabled for this company.
+            </p>
+          )}
         </div>
       </div>
 
@@ -238,7 +246,7 @@ const CompanyPaymentMethodsPanel = ({
         </div>
       )}
 
-      {showAddBank && (
+      {achEnabled && showAddBank && (
         <div className="rounded-xl border border-orange-100 bg-orange-50/40 p-4">
           <h4 className="text-sm font-semibold text-slate-900 mb-3">Connect US bank account</h4>
           <BankAccountSetupForm

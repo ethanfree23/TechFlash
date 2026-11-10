@@ -10,7 +10,23 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_10_153000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_10_190000) do
+  create_table "ach_feature_audits", force: :cascade do |t|
+    t.string "scope", null: false
+    t.integer "company_profile_id"
+    t.integer "actor_user_id"
+    t.string "actor_email"
+    t.boolean "old_value"
+    t.boolean "new_value", null: false
+    t.string "source", default: "admin", null: false
+    t.json "metadata_json", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["company_profile_id"], name: "index_ach_feature_audits_on_company_profile_id"
+    t.index ["created_at"], name: "index_ach_feature_audits_on_created_at"
+    t.index ["scope"], name: "index_ach_feature_audits_on_scope"
+  end
+
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -390,6 +406,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_10_153000) do
     t.string "staffing_intent"
     t.json "hiring_context", default: {}, null: false
     t.json "acquisition_attribution", default: {}, null: false
+    t.boolean "ach_payments_enabled", default: false, null: false
+    t.index ["ach_payments_enabled"], name: "index_company_profiles_on_ach_payments_enabled"
     t.index ["membership_level"], name: "index_company_profiles_on_membership_level"
     t.index ["staffing_intent"], name: "index_company_profiles_on_staffing_intent"
     t.index ["state"], name: "index_company_profiles_on_state"
@@ -1270,6 +1288,45 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_10_153000) do
     t.datetime "updated_at", null: false
     t.index ["job_id"], name: "index_time_entry_pay_lines_on_job_id"
     t.index ["time_entry_id"], name: "index_time_entry_pay_lines_on_time_entry_id"
+  end
+
+  create_table "transfer_retry_authorization_audits", force: :cascade do |t|
+    t.integer "job_payment_transaction_id", null: false
+    t.integer "transfer_retry_authorization_id"
+    t.integer "actor_user_id"
+    t.string "actor_email"
+    t.string "event", null: false
+    t.text "reason"
+    t.boolean "acknowledged_prior_timeout_risk"
+    t.string "lookup_outcome"
+    t.string "decision"
+    t.string "final_outcome"
+    t.json "metadata_json", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.index ["created_at"], name: "idx_xfer_retry_audit_on_created"
+    t.index ["job_payment_transaction_id"], name: "idx_xfer_retry_audit_on_txn"
+    t.index ["transfer_retry_authorization_id"], name: "idx_xfer_retry_audit_on_auth"
+  end
+
+  create_table "transfer_retry_authorizations", force: :cascade do |t|
+    t.integer "job_payment_transaction_id", null: false
+    t.integer "granted_by_user_id"
+    t.string "granted_by_email"
+    t.text "reason", null: false
+    t.boolean "acknowledged_prior_timeout_risk", default: false, null: false
+    t.datetime "granted_at", null: false
+    t.datetime "expires_at", null: false
+    t.datetime "consumed_at"
+    t.integer "consumed_by_user_id"
+    t.string "status", default: "granted", null: false
+    t.string "lookup_outcome_at_grant"
+    t.string "token", null: false
+    t.json "metadata_json", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["job_payment_transaction_id", "status"], name: "idx_xfer_retry_auth_on_txn_status"
+    t.index ["job_payment_transaction_id"], name: "idx_xfer_retry_auth_on_txn"
+    t.index ["token"], name: "idx_xfer_retry_auth_on_token", unique: true
   end
 
   create_table "user_login_events", force: :cascade do |t|

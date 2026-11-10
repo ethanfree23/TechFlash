@@ -70,7 +70,7 @@ class JobStripeOps
     false
   end
 
-  def self.create_payment_intent!(amount_cents:, customer_id:, payment_method_id:, metadata:, transfer_group:, idempotency_key:, off_session: true)
+  def self.create_payment_intent!(amount_cents:, customer_id:, payment_method_id:, metadata:, transfer_group:, idempotency_key:, off_session: true, company_profile: nil)
     if simulate_stripe?
       return Result.new(
         status: "succeeded",
@@ -87,6 +87,14 @@ class JobStripeOps
     return Result.new(status: "failed", error: "Stripe not configured") if Stripe.api_key.blank?
 
     pm_meta = payment_method_display(payment_method_id)
+    if pm_meta[:payment_method_type].to_s == "us_bank_account"
+      begin
+        AchAccess.assert_allowed!(company_profile)
+      rescue AchAccess::DisabledError => e
+        return Result.new(status: "failed", error: e.message, error_class: "AchAccess::DisabledError")
+      end
+    end
+
     params = {
       amount: amount_cents,
       currency: "usd",

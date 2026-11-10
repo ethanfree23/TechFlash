@@ -258,10 +258,10 @@ class TransferOutcomeAndDisputeReopenTest < ActiveSupport::TestCase
     assert_equal txn.idempotency_key, captured.first[:idempotency_key]
   end
 
-  test "complete not-found at or after 24h blocks auto create and requires admin path" do
+  test "complete not-found at or after 23h blocks auto create and requires admin path" do
     job, payment = build_job(title: "recon none old")
     tech = attach_tech!(job)
-    txn = unknown_txn!(job, payment, tech: tech, attempted_at: 25.hours.ago)
+    txn = unknown_txn!(job, payment, tech: tech, attempted_at: 24.hours.ago)
     creates = 0
     JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { not_found_lookup }) do
       result = PaymentService.reconcile_technician_transfer!(txn)
@@ -272,7 +272,7 @@ class TransferOutcomeAndDisputeReopenTest < ActiveSupport::TestCase
         JobStripeOps.stub(:transfer!, ->(**_k) { creates += 1; raise "no create" }) do
           release = PaymentService.release_to_technician(payment)
           refute release[:success]
-          assert release[:requires_admin_authorization] || release[:error].to_s.match?(/24h|admin/i)
+          assert release[:requires_admin_authorization] || release[:error].to_s.match?(/23h|admin/i)
         end
       end
     end
@@ -283,28 +283,34 @@ class TransferOutcomeAndDisputeReopenTest < ActiveSupport::TestCase
   test "admin path with lookup_failed is refused" do
     job, payment = build_job(title: "admin lookup fail")
     tech = attach_tech!(job)
-    txn = unknown_txn!(job, payment, tech: tech, attempted_at: 25.hours.ago)
+    txn = unknown_txn!(job, payment, tech: tech, attempted_at: 24.hours.ago)
+    admin = User.create!(email: "auth-admin-#{SecureRandom.hex(3)}@example.com", password: "password123", password_confirmation: "password123", role: :admin)
     JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { failed_lookup("timeout") }) do
       result = PaymentService.reconcile_technician_transfer!(
-        txn, admin_authorize_retry: true, actor: "admin@example.com"
+        txn, admin_authorize_retry: true, actor: admin,
+        reason: "retry after timeout", acknowledged_prior_timeout_risk: true
       )
       assert result[:lookup_failed]
       refute result[:allow_retry]
       refute result[:admin_authorized]
     end
-    refute txn.reload.metadata_json.to_h.key?("admin_authorized_retry_at")
+    assert_equal 0, TransferRetryAuthorization.where(job_payment_transaction_id: txn.id).count
   end
 
   test "admin authorize after complete not-found outside window allows same-key create" do
     job, payment = build_job(title: "admin authorize")
     tech = attach_tech!(job)
-    txn = unknown_txn!(job, payment, tech: tech, attempted_at: 30.hours.ago)
+    txn = unknown_txn!(job, payment, tech: tech, attempted_at: 24.hours.ago)
+    admin = User.create!(email: "auth-ok-#{SecureRandom.hex(3)}@example.com", password: "password123", password_confirmation: "password123", role: :admin)
     JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { not_found_lookup }) do
       auth = PaymentService.reconcile_technician_transfer!(
-        txn, admin_authorize_retry: true, actor: "admin@example.com"
+        txn, admin_authorize_retry: true, actor: admin,
+        reason: "manual retry after timeout window", acknowledged_prior_timeout_risk: true
       )
-      assert auth[:allow_retry]
+      assert auth[:allow_retry], auth.inspect
       assert auth[:admin_authorized]
+      assert TransferRetryAuthorization.active.where(job_payment_transaction_id: txn.id).exists?
+      assert TransferRetryAuthorizationAudit.where(job_payment_transaction_id: txn.id, event: "granted").exists?
     end
 
     captured = []
@@ -321,6 +327,38 @@ class TransferOutcomeAndDisputeReopenTest < ActiveSupport::TestCase
     end
     assert_equal 1, captured.size
     assert_equal txn.idempotency_key, captured.first[:idempotency_key]
+    assert TransferRetryAuthorization.where(job_payment_transaction_id: txn.id, status: "consumed").exists?
+    assert TransferRetryAuthorizationAudit.where(job_payment_transaction_id: txn.id, event: "granted").exists?
+    assert TransferRetryAuthorizationAudit.where(job_payment_transaction_id: txn.id, event: "consumed").exists?
+  end
+
+  test "admin authorization expires after 1 hour (frozen time)" do
+    job, payment = build_job(title: "auth expiry")
+    tech = attach_tech!(job)
+    admin = User.create!(email: "exp-#{SecureRandom.hex(3)}@example.com", password: "password123", password_confirmation: "password123", role: :admin)
+    travel_to Time.zone.parse("2026-11-10 12:00:00") do
+      txn = unknown_txn!(job, payment, tech: tech, attempted_at: Time.zone.parse("2026-11-09 10:00:00")) # >23h before frozen now
+      JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { not_found_lookup }) do
+        grant = PaymentService.reconcile_technician_transfer!(
+          txn, admin_authorize_retry: true, actor: admin,
+          reason: "grant then expire", acknowledged_prior_timeout_risk: true
+        )
+        assert grant[:admin_authorized], grant.inspect
+        assert TransferRetryAuthorization.active.where(job_payment_transaction_id: txn.id).exists?
+      end
+    end
+    txn = job.job_payment_transactions.find_by!(transaction_type: :technician_transfer)
+    assert TransferRetryAuthorizationAudit.where(job_payment_transaction_id: txn.id, event: "granted").exists?
+    travel_to Time.zone.parse("2026-11-10 13:05:00") do
+      refute TransferRetryAuthorization.active.where(job_payment_transaction_id: txn.id).exists?
+      JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { not_found_lookup }) do
+        consume = PaymentService.consume_admin_transfer_authorization!(
+          txn, destination: tech.stripe_account_id, actor: admin
+        )
+        refute consume[:ok], consume.inspect
+        assert consume[:requires_admin_authorization] || consume[:error].to_s.match?(/expired|No active/i)
+      end
+    end
   end
 
   test "found transfer with mismatched amount destination currency metadata is flagged not succeeded" do
@@ -441,6 +479,54 @@ class TransferOutcomeAndDisputeReopenTest < ActiveSupport::TestCase
   end
 
   if ActiveRecord::Base.connection.adapter_name.match?(/postgres/i)
+    test "postgresql concurrent authorized retries yield exactly one create attempt" do
+      job, payment = build_job(title: "auth concurrent")
+      tech = attach_tech!(job)
+      txn = unknown_txn!(job, payment, tech: tech, attempted_at: 24.hours.ago)
+      admin = User.create!(email: "conc-auth-#{SecureRandom.hex(3)}@example.com", password: "password123", password_confirmation: "password123", role: :admin)
+      JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { not_found_lookup }) do
+        PaymentService.reconcile_technician_transfer!(
+          txn, admin_authorize_retry: true, actor: admin,
+          reason: "concurrent consume test", acknowledged_prior_timeout_risk: true
+        )
+      end
+      creates_count = 0
+      mutex = Mutex.new
+      errors = []
+      results = []
+      ledger = OpenStruct.new(fully_funded: true, transferred_cents: 0, technician_net_payout_cents: 72_000, net_funded_cents: 110_000)
+      # Stub once outside threads — concurrent unstub races can undefine class methods.
+      JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { not_found_lookup }) do
+        JobStripeOps.stub(:transfer!, ->(**_k) {
+          mutex.synchronize { creates_count += 1 }
+          sleep 0.05
+          JobStripeOps::Result.new(status: "succeeded", stripe_id: "tr_conc_#{SecureRandom.hex(3)}")
+        }) do
+          StripeConnectAccountService.stub(:payout_ready?, true) do
+            JobLedger.stub(:for, ledger) do
+              JobLedger.stub(:new, OpenStruct.new(technician_commission_percent!: 20)) do
+                threads = 2.times.map do
+                  Thread.new do
+                    ActiveRecord::Base.connection_pool.with_connection do
+                      results << PaymentService.release_to_technician(payment)
+                    end
+                  rescue StandardError => e
+                    errors << e
+                  end
+                end
+                threads.each(&:join)
+              end
+            end
+          end
+        end
+      end
+      assert_empty errors.map(&:message)
+      assert_equal 1, creates_count, "expected exactly one Stripe create, got #{creates_count}; results=#{results.inspect}"
+      assert_equal 1, TransferRetryAuthorization.where(job_payment_transaction_id: txn.id, status: "consumed").count
+      assert TransferRetryAuthorizationAudit.where(job_payment_transaction_id: txn.id, event: "granted").exists?
+      assert TransferRetryAuthorizationAudit.where(job_payment_transaction_id: txn.id, event: "consumed").exists?
+    end
+
     test "postgresql concurrent first delivery with different dispute states keeps one row and adverse wins" do
       job, _payment = build_job(title: "disp concurrent states")
       txn = job.job_payment_transactions.company_collections.first

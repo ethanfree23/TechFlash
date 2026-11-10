@@ -144,6 +144,8 @@ class AdminUserDetail
         membership_level: MembershipPolicy.normalized_level(cp.membership_level, audience: :company),
         membership_fee_waived: cp.membership_fee_waived,
         job_funding_waived: cp.job_funding_waived,
+        ach_payments_enabled: cp.ach_payments_enabled,
+        effective_ach_payments_enabled: AchAccess.allowed?(cp),
         membership_fee_override_cents: cp.membership_fee_override_cents,
         commission_override_percent: cp.commission_override_percent,
         effective_membership_fee_cents: MembershipPolicy.company_monthly_fee_cents(cp),
