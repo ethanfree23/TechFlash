@@ -146,6 +146,21 @@ class StagingAchE2eRunner
     end
 
     begin
+      env_connect_id = ENV["STAGING_E2E_CONNECT_ACCOUNT_ID"].to_s.strip
+      # When a pre-onboarded destination is provided, skip controller-account create entirely.
+      if env_connect_id.present?
+        reused = reuse_env_connect_account!(env_connect_id)
+        transfers = reused.capabilities&.transfers.to_s
+        return {
+          status: "OK",
+          platform_id: platform_id,
+          probe_account_id: reused.id,
+          detail: "list_count=#{listed.data.size} reused STAGING_E2E_CONNECT_ACCOUNT_ID=#{reused.id} " \
+                  "transfers_capability=#{transfers.presence || 'n/a'} " \
+                  "(skipped controller-account create)"
+        }
+      end
+
       # Preflight only proves Account.create is permitted; scenario 6 creates a
       # transfer-ready account and waits for transfers=active.
       probe = create_connect_test_account!(suffix: "probe", ensure_transfers_active: false)
@@ -250,6 +265,42 @@ class StagingAchE2eRunner
     ensure_transfers_active ? ensure_transfers_capability_active!(account) : account
   end
 
+  # Connected Account objects often omit `livemode` (NoMethodError on .livemode).
+  # Prefer hash-style access; never assume the method exists.
+  def safe_stripe_livemode(obj)
+    return nil if obj.nil?
+    return obj[:livemode] if obj.is_a?(Hash) && obj.key?(:livemode)
+    return obj["livemode"] if obj.is_a?(Hash) && obj.key?("livemode")
+
+    if obj.respond_to?(:[])
+      begin
+        return obj[:livemode] unless obj[:livemode].nil?
+      rescue NoMethodError, TypeError
+        # fall through
+      end
+    end
+    nil
+  rescue NoMethodError
+    nil
+  end
+
+  # Prove TEST mode via platform secret key + StripeModeGuard + platform Account.retrieve.
+  # Do not rely on connected-account.livemode (field is not exposed).
+  def assert_test_mode_via_platform!(platform)
+    unless Stripe.api_key.to_s.start_with?("sk_test_")
+      raise Fail, "Stripe secret must be sk_test_ (TEST mode only); refusing Connect reuse/create"
+    end
+    if defined?(StripeModeGuard)
+      err = StripeModeGuard.error_message
+      raise Fail, "StripeModeGuard: #{err}" if err
+    end
+    platform_livemode = safe_stripe_livemode(platform)
+    if platform_livemode == true
+      raise Fail, "Platform Account.retrieve livemode=true — E2E is TEST mode only"
+    end
+    platform_livemode
+  end
+
   # Reuse a pre-onboarded TEST connected account (never deleted).
   def reuse_env_connect_account!(acct_id)
     raise Fail, "STAGING_E2E_CONNECT_ACCOUNT_ID must be acct_... (got #{acct_id.inspect})" unless acct_id.to_s.start_with?("acct_")
@@ -261,13 +312,20 @@ class StagingAchE2eRunner
         "Platform account #{platform_id} does not match expected #{EXPECTED_PLATFORM_ID} " \
         "(refusing to reuse STAGING_E2E_CONNECT_ACCOUNT_ID)"
     end
-    if platform.respond_to?(:livemode) && platform.livemode == true
-      raise Fail, "Platform is livemode=true — E2E is TEST mode only"
+    platform_livemode = assert_test_mode_via_platform!(platform)
+
+    # Reachable with this platform sk_test_ key ⇒ belongs to the Connect platform.
+    begin
+      acct = Stripe::Account.retrieve(acct_id.to_s)
+    rescue Stripe::PermissionError, Stripe::InvalidRequestError => e
+      raise Fail,
+        "STAGING_E2E_CONNECT_ACCOUNT_ID #{acct_id} not reachable from platform #{platform_id}: #{e.message}"
     end
 
-    acct = Stripe::Account.retrieve(acct_id.to_s)
-    if acct.respond_to?(:livemode) && acct.livemode == true
-      raise Fail, "STAGING_E2E_CONNECT_ACCOUNT_ID #{acct.id} is livemode=true — TEST mode only"
+    # Connected accounts do not expose livemode — never call acct.livemode.
+    connected_livemode = safe_stripe_livemode(acct)
+    if connected_livemode == true
+      raise Fail, "STAGING_E2E_CONNECT_ACCOUNT_ID #{acct.id} livemode=true — TEST mode only"
     end
 
     transfers = acct.capabilities&.transfers.to_s
@@ -277,15 +335,16 @@ class StagingAchE2eRunner
         "(need active). Complete onboarding or pick another test account."
     end
 
-    # Retrievable with the platform secret key ⇒ belongs to this Connect platform.
     @protected_accounts << acct.id
     puts "[ach_e2e] reusing STAGING_E2E_CONNECT_ACCOUNT_ID=#{acct.id} " \
-         "(platform=#{platform_id} livemode=#{acct.livemode} transfers=#{transfers}; never delete)"
+         "(platform=#{platform_id} platform_livemode=#{platform_livemode.inspect} " \
+         "key=sk_test transfers=#{transfers}; never delete; skipped controller create)"
     acct
   end
 
   def resolve_transfer_destination_account!
     env_id = ENV["STAGING_E2E_CONNECT_ACCOUNT_ID"].to_s.strip
+    # Env destination set ⇒ reuse only; never attempt controller-account create.
     return reuse_env_connect_account!(env_id) if env_id.present?
 
     create_connect_test_account!(suffix: "xfer", ensure_transfers_active: true)

@@ -25,14 +25,18 @@ namespace :staging do
     platform = Stripe::Account.retrieve
     platform_id = platform.id.to_s
     expected = StagingAchE2eRunner::EXPECTED_PLATFORM_ID
-    livemode = platform.respond_to?(:livemode) ? platform.livemode : "n/a"
+    # Platform Account.retrieve may expose livemode via hash key; never assume .livemode.
+    helper = StagingAchE2eRunner.new
+    livemode = helper.send(:safe_stripe_livemode, platform)
+    begin
+      helper.send(:assert_test_mode_via_platform!, platform)
+    rescue StagingAchE2eRunner::Fail => e
+      abort "[connect_onboarding_link] REFUSED: #{e.message}"
+    end
 
-    puts "[connect_onboarding_link] platform=#{platform_id} livemode=#{livemode}"
+    puts "[connect_onboarding_link] platform=#{platform_id} livemode=#{livemode.inspect}"
     unless platform_id == expected
       warn "[connect_onboarding_link] WARNING: platform #{platform_id} != expected #{expected}"
-    end
-    if platform.respond_to?(:livemode) && platform.livemode == true
-      abort "[connect_onboarding_link] REFUSED: platform is livemode=true (TEST mode only)"
     end
 
     email = "e2e+express-onboard-#{SecureRandom.hex(3)}@techflash.staging"

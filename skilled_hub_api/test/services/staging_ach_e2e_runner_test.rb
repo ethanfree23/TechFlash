@@ -203,9 +203,14 @@ class StagingAchE2eRunnerTest < ActiveSupport::TestCase
     assert_match(/STAGING_E2E_CONNECT_ACCOUNT_ID/, code_only)
     assert_match(/reuse_env_connect_account!/, code_only)
     assert_match(/@protected_accounts/, code_only)
+    assert_match(/safe_stripe_livemode/, code_only)
+    assert_match(/assert_test_mode_via_platform!/, code_only)
+    assert_match(/skipped controller-account create|skipped controller create/, code_only)
     assert_equal "acct_1T9R18Rsck7C7qtp", StagingAchE2eRunner::EXPECTED_PLATFORM_ID
     # Must not fall back to Express create + tos_acceptance in the runner create path.
     refute_match(/type:\s*["']express["'][\s\S]{0,400}tos_acceptance:/, code_only)
+    # Connected accounts must not be probed with bare .livemode (NoMethodError in Stripe ruby).
+    refute_match(/acct\.livemode\b/, code_only)
   end
 
   test "staging connect_onboarding_link rake task is defined" do
