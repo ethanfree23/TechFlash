@@ -29,6 +29,8 @@ class StagingAchE2eRunner
   TEST_MD_SUCCESS_AMOUNTS = [32, 45].freeze
   TEST_MD_SUCCESS_DESCRIPTOR = "SM11AA"
   TEST_MD_EXCEEDED_AMOUNTS = [10, 11].freeze
+  # Stripe SetupIntent confirm accepts only these us_bank_account verification_method values.
+  VALID_VERIFICATION_METHODS = %w[automatic instant microdeposits].freeze
 
   def initialize
     @scenarios = []
@@ -85,6 +87,17 @@ class StagingAchE2eRunner
     setup_cols = StripeSetupRecord.column_names
     raise Fail, "stripe_setup_records missing failed_at" unless setup_cols.include?("failed_at")
     true
+  end
+
+  # Correlate a StripeWebhookEvent row to a PaymentIntent id (payload JSON or raw text).
+  # Returns the newest matching evt_ row, or nil.
+  def self.webhook_event_for_payment_intent(payment_intent_id)
+    return nil if payment_intent_id.blank?
+
+    pi = payment_intent_id.to_s
+    StripeWebhookEvent.where("stripe_event_id LIKE ?", "evt_%")
+      .where("payload LIKE ?", "%#{pi}%")
+      .order(created_at: :desc, id: :desc)
   end
 
   private
@@ -230,17 +243,32 @@ class StagingAchE2eRunner
     end
     profile = user.company_profile || CompanyProfile.create!(user: user, company_name: "E2E #{suffix}", membership_level: "basic")
     user.update_column(:company_profile_id, profile.id) if user.company_profile_id != profile.id
-    AchAccess.set_global!(enabled: true, actor: nil, source: "ach_e2e") unless AchAccess.global_enabled_without_env_kill
+    # Always re-assert flags for this scenario — never depend on seed state.
+    AchAccess.set_global!(enabled: true, actor: nil, source: "ach_e2e")
     AchAccess.set_company!(profile, enabled: ach_enabled, actor: nil, source: "ach_e2e")
+    profile.reload
+    user.reload
+    raise Fail, "ACH global flag not enabled after ensure" unless AchAccess.global_enabled?
+    if ach_enabled
+      raise Fail, "ACH company flag not enabled after ensure" unless AchAccess.company_enabled?(profile)
+      raise Fail, "ACH not allowed after ensure" unless AchAccess.allowed?(profile)
+    else
+      raise Fail, "ACH company flag still enabled after ensure(false)" if AchAccess.company_enabled?(profile)
+    end
     customer = Stripe::Customer.create(email: email, metadata: { techflash_e2e: "true", suffix: suffix })
     @created[:customers] << customer.id
     user.update!(stripe_customer_id: customer.id)
-    [user, profile.reload, customer]
+    [user.reload, profile.reload, customer]
   end
 
   # Confirm a company SetupIntent with official test bank details + mandate on CONFIRM only.
-  # verification_mode: :skip | :microdeposits
-  def confirm_bank_setup_intent!(setup_intent_id, customer_id:, account_number:, verification_mode: :skip)
+  # verification_mode: :automatic | :instant | :microdeposits  (never :skip — Stripe rejects it)
+  def confirm_bank_setup_intent!(setup_intent_id, customer_id:, account_number:, verification_mode: :automatic)
+    mode = verification_mode.to_s
+    unless VALID_VERIFICATION_METHODS.include?(mode)
+      raise Fail, "invalid verification_method=#{mode.inspect}; must be one of #{VALID_VERIFICATION_METHODS.join(', ')}"
+    end
+
     params = {
       payment_method_data: {
         type: "us_bank_account",
@@ -266,7 +294,7 @@ class StagingAchE2eRunner
       },
       payment_method_options: {
         us_bank_account: {
-          verification_method: verification_mode.to_s
+          verification_method: mode
         }
       },
       expand: ["payment_method", "mandate"]
@@ -283,7 +311,29 @@ class StagingAchE2eRunner
     Stripe::SetupIntent.verify_microdeposits(setup_intent_id, params)
   end
 
-  def attach_verified_bank_via_setup!(user, customer, account_number: TEST_ACCOUNT_SUCCESS, verification_mode: :skip)
+  def complete_microdeposit_verification!(intent)
+    return intent unless intent.status.to_s == "requires_action" &&
+      intent.next_action&.type.to_s == "verify_with_microdeposits"
+
+    verified = begin
+      verify_microdeposits!(intent.id, descriptor_code: TEST_MD_SUCCESS_DESCRIPTOR)
+    rescue Stripe::InvalidRequestError
+      verify_microdeposits!(intent.id, amounts: TEST_MD_SUCCESS_AMOUNTS)
+    end
+    if verified.status.to_s != "succeeded"
+      verified = verify_microdeposits!(intent.id, amounts: TEST_MD_SUCCESS_AMOUNTS)
+    end
+    verified
+  end
+
+  # Verified bank path proven on staging: confirm with automatic (or microdeposits), then
+  # complete official test microdeposit values when Stripe requires them (same as scenario 1b).
+  def attach_verified_bank_via_setup!(user, customer, account_number: TEST_ACCOUNT_SUCCESS, verification_mode: :automatic)
+    user.reload
+    AchAccess.set_global!(enabled: true, actor: nil, source: "ach_e2e")
+    AchAccess.set_company!(user.company_profile, enabled: true, actor: nil, source: "ach_e2e")
+    raise Fail, "ACH not allowed before bank setup" unless AchAccess.allowed?(user.company_profile.reload)
+
     payload = CompanyPaymentMethodsService.create_setup_intent!(
       user, payment_method_type: "us_bank_account", ip_address: "127.0.0.1", user_agent: "ach_e2e"
     )
@@ -299,14 +349,21 @@ class StagingAchE2eRunner
       account_number: account_number,
       verification_mode: verification_mode
     )
+    intent = complete_microdeposit_verification!(intent)
 
-    if intent.status.to_s == "requires_action" &&
-        intent.next_action&.type.to_s == "verify_with_microdeposits"
-      intent = verify_microdeposits!(intent.id, descriptor_code: TEST_MD_SUCCESS_DESCRIPTOR)
-      # Descriptor path may not apply to amount-based microdeposits — fall back to amounts.
-      if intent.status.to_s != "succeeded"
-        intent = verify_microdeposits!(intent.id, amounts: TEST_MD_SUCCESS_AMOUNTS)
-      end
+    # If automatic did not verify, retry once via the proven microdeposits path (scenario 1b).
+    if intent.status.to_s != "succeeded" && verification_mode.to_s != "microdeposits"
+      payload2 = CompanyPaymentMethodsService.create_setup_intent!(
+        user, payment_method_type: "us_bank_account", ip_address: "127.0.0.1", user_agent: "ach_e2e"
+      )
+      intent = confirm_bank_setup_intent!(
+        payload2[:setup_intent_id],
+        customer_id: customer.id,
+        account_number: account_number,
+        verification_mode: :microdeposits
+      )
+      intent = complete_microdeposit_verification!(intent)
+      payload = payload2
     end
 
     raise Fail, "SetupIntent not succeeded (status=#{intent.status})" unless intent.status.to_s == "succeeded"
@@ -369,7 +426,7 @@ class StagingAchE2eRunner
 
   def scenario_bank_setup!
     user, _profile, customer = ensure_e2e_company!(suffix: "banksetup", ach_enabled: true)
-    result = attach_verified_bank_via_setup!(user, customer, account_number: TEST_ACCOUNT_SUCCESS, verification_mode: :skip)
+    result = attach_verified_bank_via_setup!(user, customer, account_number: TEST_ACCOUNT_SUCCESS, verification_mode: :automatic)
 
     other_user, = ensure_e2e_company!(suffix: "banksetup_other", ach_enabled: true)
     other_list = CompanyPaymentMethodsService.list_for(other_user)
@@ -484,7 +541,7 @@ class StagingAchE2eRunner
 
   def scenario_ach_funding_success!
     user, profile, customer = ensure_e2e_company!(suffix: "achok", ach_enabled: true)
-    attach_verified_bank_via_setup!(user, customer, account_number: TEST_ACCOUNT_SUCCESS)
+    attach_verified_bank_via_setup!(user, customer, account_number: TEST_ACCOUNT_SUCCESS, verification_mode: :automatic)
 
     job = build_priced_job!(profile)
     raise Fail, "precondition: job must start unfunded" unless job.funding_unfunded? || job.funding_status.to_s == "unfunded"
@@ -531,13 +588,17 @@ class StagingAchE2eRunner
 
   def scenario_ach_funding_failure!
     user, profile, customer = ensure_e2e_company!(suffix: "achfail", ach_enabled: true)
+    # Runner bugs (e.g. invalid verification_method) must FAIL — never SKIPPED_SANDBOX_LIMIT.
     begin
-      attach_verified_bank_via_setup!(user, customer, account_number: TEST_ACCOUNT_INSUFFICIENT)
-    rescue Fail, Stripe::StripeError => e
-      # Fallback: closed-account test number.
+      attach_verified_bank_via_setup!(user, customer, account_number: TEST_ACCOUNT_INSUFFICIENT, verification_mode: :automatic)
+    rescue Stripe::InvalidRequestError => e
+      raise Fail, "ACH failure bank setup InvalidRequestError (runner bug?): #{e.message}" if e.message.match?(/verification_method/i)
+
       begin
-        attach_verified_bank_via_setup!(user, customer, account_number: TEST_ACCOUNT_CLOSED)
-      rescue Fail, Stripe::StripeError => e2
+        attach_verified_bank_via_setup!(user, customer, account_number: TEST_ACCOUNT_CLOSED, verification_mode: :automatic)
+      rescue Stripe::InvalidRequestError => e2
+        raise Fail, "ACH failure bank setup InvalidRequestError (runner bug?): #{e2.message}" if e2.message.match?(/verification_method/i)
+
         raise SkipSandbox, "ACH failure test banks unavailable (#{e.message}; #{e2.message})"
       end
     end
@@ -568,55 +629,55 @@ class StagingAchE2eRunner
   def scenario_webhooks_persisted!
     self.class.assert_job_payment_schema!
 
-    sample = self.class.job_payment_webhook_affected_relation.order(updated_at: :desc).first
+    sample = @last_success_collection ||
+      self.class.job_payment_webhook_affected_relation.order(updated_at: :desc).first
     raise Fail, "no webhook-affected payment transactions found yet; run scenarios 2/3 first" if sample.blank?
+    raise Fail, "sample missing stripe_payment_intent_id" if sample.stripe_payment_intent_id.blank?
 
-    # Prefer real StripeWebhookEvent rows (evt_...) — never insert synthetic rows here.
-    events = StripeWebhookEvent.where("stripe_event_id LIKE ?", "evt_%")
-      .where("created_at > ?", 6.hours.ago)
-      .order(created_at: :desc)
-      .limit(20)
+    pi_id = sample.stripe_payment_intent_id.to_s
 
-    matched = events.find do |ev|
-      payload = ev.payload.to_s
-      payload.include?(sample.stripe_payment_intent_id.to_s) ||
-        (sample.stripe_charge_id.present? && payload.include?(sample.stripe_charge_id.to_s))
+    # Require an evt_ row whose payload references THIS PaymentIntent — never PASS on unrelated rows.
+    matched = nil
+    begin
+      poll_until(timeout: [POLL_TIMEOUT, 60].min) do
+        matched = self.class.webhook_event_for_payment_intent(pi_id).where.not(processed_at: nil).first
+        matched ||= self.class.webhook_event_for_payment_intent(pi_id).first
+        matched
+      end
+    rescue Fail
+      matched = self.class.webhook_event_for_payment_intent(pi_id).first
     end
 
+    unrelated = StripeWebhookEvent.where("stripe_event_id LIKE ?", "evt_%")
+      .where("created_at > ?", 6.hours.ago)
+      .where.not("payload LIKE ?", "%#{pi_id}%")
+      .exists?
+
+    if matched.nil?
+      raise Fail,
+        "No StripeWebhookEvent correlated to pi=#{pi_id}. " \
+        "unrelated_evt_rows=#{unrelated}. " \
+        "Ledger status=#{sample.status} is not sufficient — need evt_ + processed_at for this PI. " \
+        "(Synthetic fixtures must not be labeled real Stripe E2E.)"
+    end
+
+    raise Fail, "evt=#{matched.stripe_event_id} for pi=#{pi_id} has nil processed_at" if matched.processed_at.blank?
+
+    # Distinguish Stripe-delivered vs locally-signed fixture ids when possible.
     delivery =
-      if matched&.processed_at.present?
-        "real_or_forwarded_webhook"
-      elsif matched
-        "webhook_row_unprocessed"
-      elsif events.exists?
-        "webhook_events_present_unrelated"
+      if matched.stripe_event_id.match?(/\Aevt_[A-Za-z0-9]+\z/) && matched.payload.to_s.include?(pi_id)
+        "stripe_delivered_or_forwarded"
       else
-        "no_stripe_webhook_events_in_db"
+        "persisted_evt_row"
       end
 
-    detail = "txn=#{sample.id} pi=#{sample.stripe_payment_intent_id} status=#{sample.status} " \
-             "delivery=#{delivery}"
-    if matched
-      detail += " evt=#{matched.stripe_event_id} type=#{matched.event_type} processed_at=#{matched.processed_at}"
-      @created[:events] << matched.stripe_event_id
-    end
-
-    # HTTP 200 alone is not enough — require either a persisted evt_ row OR clear ledger
-    # side-effects with Stripe object IDs from a prior real collect.
-    if matched.nil? && sample.stripe_payment_intent_id.blank?
-      raise Fail, "no StripeWebhookEvent and no PI on sample — cannot claim webhook persistence"
-    end
-
-    if delivery == "no_stripe_webhook_events_in_db"
-      # Ledger may have been updated synchronously from collect! without async webhook delivery
-      # (common when Stripe CLI is not forwarding). Classify accurately — not a silent PASS.
-      raise SkipSandbox,
-        "No StripeWebhookEvent rows persisted. Ledger shows pi=#{sample.stripe_payment_intent_id} " \
-        "status=#{sample.status} (likely sync API path or missing webhook forwarding). " \
-        "Not equivalent to real Stripe→endpoint delivery."
-    end
-
-    pass!("4_signed_webhooks_persisted", detail)
+    @created[:events] << matched.stripe_event_id
+    pass!(
+      "4_signed_webhooks_persisted",
+      "txn=#{sample.id} pi=#{pi_id} status=#{sample.status} " \
+      "evt=#{matched.stripe_event_id} type=#{matched.event_type} " \
+      "processed_at=#{matched.processed_at} delivery=#{delivery}"
+    )
   end
 
   def scenario_refund!
@@ -819,11 +880,13 @@ class StagingAchE2eRunner
   end
 
   def scenario_flag_enforcement!
+    # Runner owns flag preconditions — do not depend on db:seed.
     # Global OFF + company ON => block
     user_a, profile_a, = ensure_e2e_company!(suffix: "flag_g_off", ach_enabled: true)
     AchAccess.set_global!(enabled: false, actor: nil, source: "ach_e2e")
+    AchAccess.set_company!(profile_a.reload, enabled: true, actor: nil, source: "ach_e2e")
     begin
-      CompanyPaymentMethodsService.create_setup_intent!(user_a, payment_method_type: "us_bank_account")
+      CompanyPaymentMethodsService.create_setup_intent!(user_a.reload, payment_method_type: "us_bank_account")
       raise Fail, "expected ACH blocked when global OFF / company ON"
     rescue CompanyPaymentMethodsService::Error => e
       raise Fail, "unexpected: #{e.message}" unless e.message.include?("not enabled")
@@ -832,74 +895,76 @@ class StagingAchE2eRunner
     # Global ON + company OFF => block
     AchAccess.set_global!(enabled: true, actor: nil, source: "ach_e2e")
     user_b, profile_b, customer_b = ensure_e2e_company!(suffix: "flag_c_off", ach_enabled: false)
+    raise Fail, "precondition: company ACH should be off" if AchAccess.company_enabled?(profile_b.reload)
     begin
-      CompanyPaymentMethodsService.create_setup_intent!(user_b, payment_method_type: "us_bank_account")
+      CompanyPaymentMethodsService.create_setup_intent!(user_b.reload, payment_method_type: "us_bank_account")
       raise Fail, "expected ACH blocked when global ON / company OFF"
     rescue CompanyPaymentMethodsService::Error => e
       raise Fail, "unexpected: #{e.message}" unless e.message.include?("not enabled")
     end
 
     # Both ON => allowed
-    AchAccess.set_company!(profile_b, enabled: true, actor: nil, source: "ach_e2e")
-    ok = CompanyPaymentMethodsService.create_setup_intent!(user_b, payment_method_type: "us_bank_account")
+    AchAccess.set_global!(enabled: true, actor: nil, source: "ach_e2e")
+    AchAccess.set_company!(profile_b.reload, enabled: true, actor: nil, source: "ach_e2e")
+    raise Fail, "precondition: ACH should be allowed" unless AchAccess.allowed?(profile_b.reload)
+    ok = CompanyPaymentMethodsService.create_setup_intent!(user_b.reload, payment_method_type: "us_bank_account")
     raise Fail, "expected ACH allowed when both ON" if ok[:setup_intent_id].blank?
 
     # Card still works while company ACH off
-    AchAccess.set_company!(profile_b, enabled: false, actor: nil, source: "ach_e2e")
+    AchAccess.set_company!(profile_b.reload, enabled: false, actor: nil, source: "ach_e2e")
     attach_test_card!(customer_b.id)
-    job = build_priced_job!(profile_b)
+    job = build_priced_job!(profile_b.reload)
     card_result = JobFundingService.collect!(
       job: job, amount_cents: 5_000, transaction_type: :initial_job_charge, revision: 1
     )
     raise Fail, "card should work while ACH off: #{card_result.inspect}" unless card_result[:success] || card_result[:requires_action]
 
     # Saved bank cannot bypass flag: attach verified bank while ON, then flip OFF and collect.
-    AchAccess.set_company!(profile_b, enabled: true, actor: nil, source: "ach_e2e")
+    AchAccess.set_global!(enabled: true, actor: nil, source: "ach_e2e")
+    AchAccess.set_company!(profile_b.reload, enabled: true, actor: nil, source: "ach_e2e")
     detail = "global/company matrix ok; card ok"
     begin
-      attach_verified_bank_via_setup!(user_b, customer_b)
-      AchAccess.set_company!(profile_b, enabled: false, actor: nil, source: "ach_e2e")
-      job2 = build_priced_job!(profile_b)
+      attach_verified_bank_via_setup!(user_b.reload, customer_b, verification_mode: :automatic)
+      AchAccess.set_company!(profile_b.reload, enabled: false, actor: nil, source: "ach_e2e")
+      job2 = build_priced_job!(profile_b.reload)
       blocked = JobFundingService.collect!(
         job: job2, amount_cents: 5_000, transaction_type: :initial_job_charge, revision: 1
       )
       raise Fail, "saved bank bypassed ACH flag" unless blocked[:ach_disabled] || blocked[:error].to_s.include?("not enabled")
 
       # Disable during processing: enable, start ACH, disable, webhook/reconcile must continue.
-      AchAccess.set_company!(profile_b, enabled: true, actor: nil, source: "ach_e2e")
-      attach_verified_bank_via_setup!(user_b, customer_b)
-      job3 = build_priced_job!(profile_b)
+      AchAccess.set_company!(profile_b.reload, enabled: true, actor: nil, source: "ach_e2e")
+      attach_verified_bank_via_setup!(user_b.reload, customer_b, verification_mode: :automatic)
+      job3 = build_priced_job!(profile_b.reload)
       mid = JobFundingService.collect!(job: job3, amount_cents: 5_000, transaction_type: :initial_job_charge, revision: 1)
-      AchAccess.set_company!(profile_b, enabled: false, actor: nil, source: "ach_e2e")
+      AchAccess.set_company!(profile_b.reload, enabled: false, actor: nil, source: "ach_e2e")
       txn = mid[:transaction]
       if txn&.status_processing?
         poll_until(timeout: POLL_TIMEOUT) { txn.reload.status_succeeded? || txn.status_failed? }
       end
       detail += "; saved-bank-bypass blocked; disable-during-processing status=#{txn&.status}"
+    rescue CompanyPaymentMethodsService::Error => e
+      raise Fail, "flag scenario ACH setup failed after explicit enable: #{e.message}"
     rescue SkipSandbox, Fail, Stripe::StripeError => e
       detail += "; bank-flag paths partial (#{e.class}: #{e.message.to_s[0, 60]})"
-      raise if e.is_a?(Fail) && e.message.include?("bypassed")
+      raise if e.is_a?(Fail) && (e.message.include?("bypassed") || e.message.match?(/verification_method/i))
     end
 
-    # Production defaults remain OFF conceptually — restore global to ON for other scenarios,
-    # but document that PlatformSetting default for new envs is fail-closed absent.
     pass!("8_flag_enforcement_and_disable_during_processing", detail)
   ensure
     AchAccess.set_global!(enabled: true, actor: nil, source: "ach_e2e")
   end
 
   def scenario_ach_return_or_dispute!
-    # Attempt official dispute test bank if funding path can reach a charge.
     user, profile, customer = ensure_e2e_company!(suffix: "dispute", ach_enabled: true)
     begin
-      attach_verified_bank_via_setup!(user, customer, account_number: TEST_ACCOUNT_DISPUTE)
+      attach_verified_bank_via_setup!(user, customer, account_number: TEST_ACCOUNT_DISPUTE, verification_mode: :automatic)
       job = build_priced_job!(profile)
       result = JobFundingService.collect!(
         job: job, amount_cents: 5_000, transaction_type: :initial_job_charge, revision: 1
       )
       txn = result[:transaction]
       if txn&.stripe_payment_intent_id.present?
-        # Poll briefly for dispute / risk event. Many sandboxes never emit ACH returns automatically.
         saw_risk = false
         begin
           poll_until(timeout: [POLL_TIMEOUT, 30].min) do
@@ -908,7 +973,7 @@ class StagingAchE2eRunner
             txn.disputed? || saw_risk || txn.status_failed?
           end
         rescue Fail
-          # fall through to SKIPPED
+          # fall through to SKIPPED only when Stripe simply does not emit a return
         end
         if txn.reload.disputed? || saw_risk
           risk = PaymentRiskEvent.where(job_id: job.id).order(:id).last
@@ -920,7 +985,21 @@ class StagingAchE2eRunner
           return
         end
       end
-    rescue Stripe::StripeError, Fail => e
+    rescue Stripe::InvalidRequestError => e
+      raise Fail, "ACH dispute bank setup InvalidRequestError (runner bug?): #{e.message}" if e.message.match?(/verification_method/i)
+
+      raise SkipSandbox,
+        "No automated ACH return/dispute sequence available in this sandbox (#{e.message}). " \
+        "Use signed snapshot webhook fixtures for deterministic coverage; " \
+        "do not label synthetic path as real Stripe E2E."
+    rescue Fail => e
+      raise if e.message.match?(/verification_method/i)
+
+      raise SkipSandbox,
+        "No automated ACH return/dispute sequence available in this sandbox (#{e.message}). " \
+        "Use signed snapshot webhook fixtures for deterministic coverage; " \
+        "do not label synthetic path as real Stripe E2E."
+    rescue Stripe::StripeError => e
       raise SkipSandbox,
         "No automated ACH return/dispute sequence available in this sandbox (#{e.message}). " \
         "Use signed snapshot webhook fixtures for deterministic coverage; " \

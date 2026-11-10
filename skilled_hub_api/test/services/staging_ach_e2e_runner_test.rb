@@ -103,6 +103,34 @@ class StagingAchE2eRunnerTest < ActiveSupport::TestCase
     end
   end
 
+  test "runner never uses invalid verification_method skip" do
+    source = File.read(Rails.root.join("lib/staging_ach_e2e_runner.rb"))
+    refute_match(/verification_mode:\s*:skip/, source)
+    refute_match(/verification_method:\s*["']skip["']/, source)
+    assert_includes StagingAchE2eRunner::VALID_VERIFICATION_METHODS, "automatic"
+    assert_includes StagingAchE2eRunner::VALID_VERIFICATION_METHODS, "microdeposits"
+    refute_includes StagingAchE2eRunner::VALID_VERIFICATION_METHODS, "skip"
+  end
+
+  test "webhook_event_for_payment_intent correlates exact pi payload" do
+    pi = "pi_e2e_correlate_#{SecureRandom.hex(4)}"
+    StripeWebhookEvent.create!(
+      stripe_event_id: "evt_unrelated_#{SecureRandom.hex(4)}",
+      event_type: "payment_intent.succeeded",
+      payload: { id: "pi_other" }.to_json,
+      processed_at: Time.current
+    )
+    matched = StripeWebhookEvent.create!(
+      stripe_event_id: "evt_matched_#{SecureRandom.hex(4)}",
+      event_type: "payment_intent.succeeded",
+      payload: { id: pi, object: "payment_intent" }.to_json,
+      processed_at: Time.current
+    )
+    found = StagingAchE2eRunner.webhook_event_for_payment_intent(pi).first
+    assert_equal matched.id, found.id
+    assert_nil StagingAchE2eRunner.webhook_event_for_payment_intent("pi_missing_zzz").first
+  end
+
   test "Connect detection does not short-circuit with || true" do
     source = File.read(Rails.root.join("lib/staging_ach_e2e_runner.rb"))
     refute_match(/\|\|\s*true/, source)
@@ -115,5 +143,13 @@ class StagingAchE2eRunnerTest < ActiveSupport::TestCase
     PlatformSetting.where(key: AchAccess::GLOBAL_SETTING_KEY).delete_all
     refute AchAccess.global_enabled_without_env_kill
     refute AchAccess.global_enabled?
+  end
+
+  test "seeds.rb is loadable and declares idempotent ACH flag re-assert" do
+    source = File.read(Rails.root.join("db/seeds.rb"))
+    assert_match(/seed_ach_flags!/, source)
+    assert_match(/JobPaymentTransaction/, source)
+    assert_match(/find_or_initialize_by|seed_or_find_user!/, source)
+    assert_match(/Idempotent re-seed|SEED_IDEMPOTENT/, source)
   end
 end
