@@ -169,31 +169,92 @@ class JobStripeOps
     classify_transfer_error(e)
   end
 
-  # Search platform transfers for reconciliation (separate charges and transfers).
-  def self.find_transfer_for_transaction(destination:, transfer_group:, transaction_id:, job_id: nil)
-    return nil if destination.blank? || Stripe.api_key.blank?
-    return nil if simulate_stripe?
+  # Explicit lookup outcomes — never conflate Stripe errors with "not found".
+  class LookupResult
+    STATUSES = %w[found not_found_after_complete_search lookup_failed].freeze
 
-    list = Stripe::Transfer.list(
-      {
+    attr_reader :status, :transfer, :error
+
+    def initialize(status:, transfer: nil, error: nil)
+      @status = status.to_s
+      @transfer = transfer
+      @error = error
+    end
+
+    def found?
+      status == "found"
+    end
+
+    def not_found_after_complete_search?
+      status == "not_found_after_complete_search"
+    end
+
+    def lookup_failed?
+      status == "lookup_failed"
+    end
+  end
+
+  # Hard cap on pages so a truncated / incomplete search cannot authorize create.
+  TRANSFER_LOOKUP_MAX_PAGES = 10
+  TRANSFER_LOOKUP_PAGE_SIZE = 100
+
+  # Search platform transfers for reconciliation (separate charges and transfers).
+  # Returns LookupResult: found / not_found_after_complete_search / lookup_failed.
+  def self.find_transfer_for_transaction(destination:, transfer_group:, transaction_id:, job_id: nil)
+    if destination.blank?
+      return LookupResult.new(status: "lookup_failed", error: "missing_destination")
+    end
+    if Stripe.api_key.blank? && !simulate_stripe?
+      return LookupResult.new(status: "lookup_failed", error: "stripe_not_configured")
+    end
+    # Demo/unit simulate has no Stripe list API; treat as complete empty search.
+    if simulate_stripe?
+      return LookupResult.new(status: "not_found_after_complete_search")
+    end
+
+    starting_after = nil
+    pages = 0
+
+    loop do
+      pages += 1
+      if pages > TRANSFER_LOOKUP_MAX_PAGES
+        return LookupResult.new(
+          status: "lookup_failed",
+          error: "pagination_cap_hit after #{TRANSFER_LOOKUP_MAX_PAGES} pages"
+        )
+      end
+
+      params = {
         destination: destination,
         transfer_group: transfer_group,
-        limit: 100
+        limit: TRANSFER_LOOKUP_PAGE_SIZE
       }.compact
-    )
-    list.auto_paging_each do |tr|
-      meta = tr.metadata.to_h.transform_keys(&:to_s)
-      if meta["transaction_id"].to_s == transaction_id.to_s
-        return tr
+      params[:starting_after] = starting_after if starting_after.present?
+
+      list = Stripe::Transfer.list(params)
+      Array(list.data).each do |tr|
+        meta = tr.metadata.to_h.transform_keys(&:to_s)
+        next unless meta["transaction_id"].to_s == transaction_id.to_s
+        next if job_id.present? && meta["job_id"].present? && meta["job_id"].to_s != job_id.to_s
+
+        return LookupResult.new(status: "found", transfer: tr)
       end
-      if job_id.present? && meta["job_id"].to_s == job_id.to_s &&
-          meta["transaction_id"].to_s == transaction_id.to_s
-        return tr
+
+      break unless list.respond_to?(:has_more) ? list.has_more : false
+
+      last_id = list.data&.last&.id
+      if last_id.blank?
+        return LookupResult.new(status: "lookup_failed", error: "incomplete_pagination")
       end
+      starting_after = last_id
     end
-    nil
-  rescue Stripe::StripeError
-    nil
+
+    LookupResult.new(status: "not_found_after_complete_search")
+  rescue Stripe::StripeError => e
+    LookupResult.new(status: "lookup_failed", error: e.message.to_s.presence || e.class.name)
+  rescue StandardError => e
+    # Timeouts / connection errors that may not subclass Stripe::StripeError.
+    LookupResult.new(status: "lookup_failed", error: e.message.to_s.presence || e.class.name)
   end
 
   def self.classify_transfer_error(error)

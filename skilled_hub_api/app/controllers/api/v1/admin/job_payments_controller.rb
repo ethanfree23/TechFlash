@@ -114,9 +114,17 @@ module Api
 
         # POST /api/v1/admin/job_payments/:id/reconcile_transfer
         # Looks up Stripe for an outcome_unknown/pending technician transfer; never invents certainty.
+        # Optional authorize_retry=true: after a complete not-found outside the 24h window, stamp
+        # admin authorization so a subsequent same-allocation create may proceed. Refuses when
+        # lookup_failed or recovered transfer mismatches local ledger.
         def reconcile_transfer
           txn = JobPaymentTransaction.find(params[:id])
-          result = PaymentService.reconcile_technician_transfer!(txn)
+          authorize_retry = ActiveModel::Type::Boolean.new.cast(params[:authorize_retry])
+          result = PaymentService.reconcile_technician_transfer!(
+            txn,
+            admin_authorize_retry: authorize_retry,
+            actor: current_user&.email
+          )
           if result[:success]
             render json: {
               ok: true,
@@ -124,11 +132,31 @@ module Api
               job_payment: serialize(txn.reload, detailed: true),
               result: result.except(:payment, :transaction)
             }, status: :ok
+          elsif result[:lookup_failed] || result[:mismatch]
+            render json: {
+              ok: false,
+              error: result[:error],
+              lookup_failed: result[:lookup_failed],
+              mismatch: result[:mismatch],
+              mismatches: result[:mismatches],
+              allow_retry: false,
+              job_payment: serialize(txn.reload, detailed: true)
+            }, status: :unprocessable_entity
+          elsif result[:requires_admin_authorization]
+            render json: {
+              ok: false,
+              error: result[:error],
+              requires_admin_authorization: true,
+              allow_retry: false,
+              job_payment: serialize(txn.reload, detailed: true)
+            }, status: :unprocessable_entity
           elsif result[:found] == false
             render json: {
               ok: true,
               reconciled: false,
               found: false,
+              allow_retry: result[:allow_retry],
+              admin_authorized: result[:admin_authorized],
               message: result[:message],
               job_payment: serialize(txn.reload, detailed: true)
             }, status: :ok
@@ -199,9 +227,12 @@ module Api
             refunded_cents: ledger&.refunded_cents,
             transferred_cents: ledger&.transferred_cents,
             processing_at: txn.processing_at&.iso8601,
+            transfer_first_attempted_at: txn.transfer_first_attempted_at&.iso8601,
             succeeded_at: txn.succeeded_at&.iso8601,
             created_at: txn.created_at&.iso8601,
             error_message: txn.error_message,
+            transfer_mismatch: ActiveModel::Type::Boolean.new.cast(txn.metadata_json.to_h["transfer_mismatch"]),
+            lookup_failed: ActiveModel::Type::Boolean.new.cast(txn.metadata_json.to_h["lookup_failed"]),
             needs_attention: txn.status_failed? || txn.status_processing? || txn.status_outcome_unknown? || txn.disputed? || txn.investigation_required || open_risk.present?,
             settlement_status: job&.settlement_status,
             funding_status: job&.funding_status,

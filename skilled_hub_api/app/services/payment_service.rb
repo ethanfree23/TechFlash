@@ -199,9 +199,17 @@ class PaymentService
 
     if early == :reconcile_required
       reconciled = reconcile_technician_transfer!(txn)
-      return reconciled if reconciled[:success] || reconciled[:error]
+      return reconciled if reconciled[:success] || reconciled[:error] ||
+        reconciled[:lookup_failed] || reconciled[:mismatch] ||
+        reconciled[:requires_admin_authorization]
 
-      # Reconcile found no Stripe transfer — allow retry only with identical persisted allocation.
+      # Only proceed when reconcile explicitly allows same-key retry.
+      unless reconciled[:allow_retry]
+        return {
+          error: reconciled[:message] || "Technician transfer reconcile did not authorize retry.",
+          transaction: txn
+        }
+      end
       early = nil
     elsif early
       return early
@@ -224,6 +232,8 @@ class PaymentService
       "source_allocation_reason" => allocation[:reason].to_s
     )
 
+    mark_transfer_first_attempted!(txn)
+
     result = JobStripeOps.transfer!(
       amount_cents: payout_amount,
       destination: technician_profile.stripe_account_id,
@@ -232,7 +242,6 @@ class PaymentService
       idempotency_key: key,
       source_transaction: source_charge_id
     )
-
     # One same-key retry only for ambiguous/transient outcomes.
     if !result.succeeded? && (result.outcome_unknown? || transient_stripe_failure?(result))
       result = JobStripeOps.transfer!(
@@ -268,7 +277,7 @@ class PaymentService
       end
 
       if result.succeeded?
-        finalize_succeeded_transfer!(
+        out = finalize_succeeded_transfer!(
           locked_txn: locked_txn,
           locked_payment: locked_payment,
           job: job,
@@ -278,9 +287,11 @@ class PaymentService
           allocation: allocation,
           stripe_transfer_id: result.stripe_id
         )
+        clear_admin_authorization!(locked_txn.reload)
+        out
       elsif result.outcome_unknown? || transient_stripe_failure?(result)
         # Do NOT mark failed — Stripe may have created the transfer.
-        locked_txn.update!(
+        attrs = {
           status: :outcome_unknown,
           error_message: result.error,
           source_charge_id: source_charge_id,
@@ -293,20 +304,35 @@ class PaymentService
             "source_allocation_reason" => allocation[:reason].to_s,
             "needs_reconcile" => true
           )
-        )
+        }
+        attrs[:transfer_first_attempted_at] = Time.current if locked_txn.transfer_first_attempted_at.blank?
+        locked_txn.update!(attrs)
         {
           error: "Stripe transfer outcome unknown (#{result.error}). Funds remain reserved; reconcile before retry.",
           outcome_unknown: true,
           transaction: locked_txn
         }
       else
-        locked_txn.update!(status: :failed, error_message: result.error)
+        attrs = { status: :failed, error_message: result.error }
+        attrs[:transfer_first_attempted_at] = Time.current if locked_txn.transfer_first_attempted_at.blank?
+        locked_txn.update!(attrs)
         { error: result.error }
       end
     end
   end
 
   def self.finalize_succeeded_transfer!(locked_txn:, locked_payment:, job:, technician_profile:, payout_amount:, source_charge_id:, allocation:, stripe_transfer_id:)
+    meta = locked_txn.metadata_json.to_h
+      .merge(
+        "source_transaction" => source_charge_id,
+        "source_transaction_mode" => allocation[:mode].to_s,
+        "source_allocation_reason" => allocation[:reason].to_s,
+        "bank_payout_status" => "unknown",
+        "needs_reconcile" => false,
+        "lookup_failed" => false,
+        "transfer_mismatch" => false
+      )
+      .except("admin_authorized_retry_at", "admin_authorized_retry_by", "mismatch_fields", "candidate_stripe_transfer_id")
     locked_txn.update!(
       status: :succeeded,
       stripe_transfer_id: stripe_transfer_id,
@@ -315,13 +341,8 @@ class PaymentService
       succeeded_at: Time.current,
       investigation_required: false,
       error_message: nil,
-      metadata_json: locked_txn.metadata_json.to_h.merge(
-        "source_transaction" => source_charge_id,
-        "source_transaction_mode" => allocation[:mode].to_s,
-        "source_allocation_reason" => allocation[:reason].to_s,
-        "bank_payout_status" => "unknown",
-        "needs_reconcile" => false
-      )
+      transfer_first_attempted_at: locked_txn.transfer_first_attempted_at || Time.current,
+      metadata_json: meta
     )
     locked_payment.update!(
       status: "released",
@@ -359,9 +380,90 @@ class PaymentService
     { success: true, payment: locked_payment, transaction: locked_txn }
   end
 
+  # Stripe idempotency keys are not reliable beyond ~24h — never auto re-create after that.
+  TRANSFER_IDEMPOTENCY_SAFE_WINDOW = 24.hours
+
+  def self.mark_transfer_first_attempted!(txn)
+    return if txn.transfer_first_attempted_at.present?
+
+    txn.update!(transfer_first_attempted_at: Time.current)
+  end
+
+  def self.within_transfer_retry_window?(txn)
+    attempted = txn.transfer_first_attempted_at
+    return false if attempted.blank?
+
+    attempted > TRANSFER_IDEMPOTENCY_SAFE_WINDOW.ago
+  end
+
+  def self.admin_authorization_valid?(txn)
+    meta = txn.metadata_json.to_h
+    stamp = meta["admin_authorized_retry_at"]
+    return false if stamp.blank?
+
+    at = (Time.zone.parse(stamp.to_s) rescue nil)
+    return false if at.blank?
+
+    # Authorization is single-use and short-lived (1 hour).
+    at > 1.hour.ago
+  end
+
+  def self.stamp_admin_authorization!(txn, actor:)
+    txn.update!(
+      metadata_json: txn.metadata_json.to_h.merge(
+        "admin_authorized_retry_at" => Time.current.iso8601,
+        "admin_authorized_retry_by" => actor.to_s.presence || "admin",
+        "needs_reconcile" => true
+      )
+    )
+  end
+
+  def self.clear_admin_authorization!(txn)
+    meta = txn.metadata_json.to_h.except("admin_authorized_retry_at", "admin_authorized_retry_by")
+    txn.update!(metadata_json: meta) if txn.metadata_json.to_h.key?("admin_authorized_retry_at")
+  end
+
+  # Validate a Stripe transfer recovered via list/webhook against the local ledger row.
+  def self.validate_recovered_transfer(transfer, txn, destination:)
+    meta = transfer.respond_to?(:metadata) ? transfer.metadata.to_h.transform_keys(&:to_s) : {}
+    mismatches = []
+    amount = transfer.respond_to?(:amount) ? transfer.amount.to_i : nil
+    currency = transfer.respond_to?(:currency) ? transfer.currency.to_s.downcase : nil
+    dest = transfer.respond_to?(:destination) ? transfer.destination.to_s : nil
+    group = transfer.respond_to?(:transfer_group) ? transfer.transfer_group.to_s : nil
+
+    mismatches << "amount" unless amount == txn.amount_cents.to_i
+    mismatches << "currency" unless currency == txn.currency.to_s.downcase
+    mismatches << "destination" unless dest == destination.to_s
+    mismatches << "transfer_group" unless group == txn.job.transfer_group.to_s
+    mismatches << "transaction_id" unless meta["transaction_id"].to_s == txn.id.to_s
+    mismatches << "job_id" unless meta["job_id"].to_s == txn.job_id.to_s
+    mismatches << "revision" unless meta["revision"].to_s == txn.revision.to_s
+
+    { ok: mismatches.empty?, mismatches: mismatches }
+  end
+
+  def self.flag_transfer_mismatch!(txn, transfer:, mismatches:)
+    txn.update!(
+      status: :outcome_unknown,
+      investigation_required: true,
+      error_message: "Recovered Stripe transfer mismatch: #{mismatches.join(', ')}",
+      metadata_json: txn.metadata_json.to_h.merge(
+        "needs_reconcile" => true,
+        "transfer_mismatch" => true,
+        "mismatch_fields" => mismatches,
+        "candidate_stripe_transfer_id" => (transfer.respond_to?(:id) ? transfer.id : nil),
+        "flagged_at" => Time.current.iso8601
+      )
+    )
+  end
+
   # Reconcile an outcome_unknown (or pending) technician transfer against Stripe.
   # Admin-triggerable and required before any later create/retry.
-  def self.reconcile_technician_transfer!(txn)
+  #
+  # admin_authorize_retry: explicit admin action after a complete not-found lookup
+  # when the first attempt is >= 24h old. Still refuses on lookup_failed / mismatch.
+  def self.reconcile_technician_transfer!(txn, admin_authorize_retry: false, actor: nil)
     return { error: "Not a technician transfer" } unless txn&.technician_transfer?
     return { success: true, transaction: txn, payment: txn.payment } if txn.status_succeeded?
 
@@ -374,14 +476,48 @@ class PaymentService
       return { error: "Cannot reconcile: technician Stripe account missing." }
     end
 
-    transfer = JobStripeOps.find_transfer_for_transaction(
+    lookup = JobStripeOps.find_transfer_for_transaction(
       destination: destination,
       transfer_group: job.transfer_group,
       transaction_id: txn.id,
       job_id: job.id
     )
 
-    if transfer.present?
+    if lookup.lookup_failed?
+      txn.update!(
+        status: :outcome_unknown,
+        investigation_required: true,
+        error_message: "Stripe transfer lookup failed: #{lookup.error}",
+        metadata_json: txn.metadata_json.to_h.merge(
+          "needs_reconcile" => true,
+          "lookup_failed" => true,
+          "lookup_error" => lookup.error,
+          "lookup_failed_at" => Time.current.iso8601
+        )
+      )
+      return {
+        error: "Stripe transfer lookup failed (#{lookup.error}). Transfer remains outcome_unknown; create blocked.",
+        lookup_failed: true,
+        outcome_unknown: true,
+        allow_retry: false,
+        transaction: txn.reload
+      }
+    end
+
+    if lookup.found?
+      validation = validate_recovered_transfer(lookup.transfer, txn, destination: destination)
+      unless validation[:ok]
+        flag_transfer_mismatch!(txn, transfer: lookup.transfer, mismatches: validation[:mismatches])
+        return {
+          error: "Recovered Stripe transfer does not match local transaction (#{validation[:mismatches].join(', ')}). Flagged for investigation; create blocked.",
+          mismatch: true,
+          mismatches: validation[:mismatches],
+          allow_retry: false,
+          outcome_unknown: true,
+          transaction: txn.reload
+        }
+      end
+
       allocation = persist_source_allocation!(txn, job: job, amount_cents: txn.amount_cents)
       result = apply_transfer_result!(
         payment: payment,
@@ -391,18 +527,57 @@ class PaymentService
         payout_amount: txn.amount_cents,
         source_charge_id: allocation[:charge_id] || txn.source_charge_id,
         allocation: allocation,
-        result: JobStripeOps::Result.new(status: "succeeded", stripe_id: transfer.id)
+        result: JobStripeOps::Result.new(status: "succeeded", stripe_id: lookup.transfer.id)
       )
-      return result.merge(reconciled: true, created: false)
+      return result.merge(reconciled: true, created: false, found: true)
     end
 
-    # No matching Stripe transfer. Safe to retry create only when still outcome_unknown/pending
-    # and caller will reuse persisted allocation + same idempotency key (if < ~24h) or a fresh
-    # reconcile-confirmed absence. Never invent certainty.
+    # Complete search — nothing found.
+    unless lookup.not_found_after_complete_search?
+      return {
+        error: "Unexpected Stripe lookup status: #{lookup.status}",
+        allow_retry: false,
+        transaction: txn
+      }
+    end
+
+    if within_transfer_retry_window?(txn)
+      return {
+        found: false,
+        allow_retry: true,
+        transaction: txn,
+        message: "No matching Stripe transfer found within idempotency-safe window; same-key retry allowed with identical persisted allocation."
+      }
+    end
+
+    # >= 24h (or missing first-attempt timestamp): never auto re-create.
+    if admin_authorize_retry
+      stamp_admin_authorization!(txn, actor: actor)
+      return {
+        found: false,
+        allow_retry: true,
+        admin_authorized: true,
+        transaction: txn.reload,
+        message: "Admin authorized same-allocation retry after complete not-found lookup outside 24h window."
+      }
+    end
+
+    if admin_authorization_valid?(txn)
+      return {
+        found: false,
+        allow_retry: true,
+        admin_authorized: true,
+        transaction: txn,
+        message: "Prior admin authorization present; same-key retry allowed after complete not-found lookup."
+      }
+    end
+
     {
       found: false,
-      transaction: txn,
-      message: "No matching Stripe transfer found; retry may proceed with identical persisted allocation."
+      allow_retry: false,
+      requires_admin_authorization: true,
+      error: "No matching Stripe transfer found, but first attempt is outside the 24h idempotency-safe window. Explicit admin reconciliation + authorization required before any create.",
+      transaction: txn
     }
   end
 
@@ -417,6 +592,13 @@ class PaymentService
 
     if txn.technician_transfer? && (txn.status_outcome_unknown? || txn.status_pending? || txn.status_processing?)
       tech = txn.job.job_applications.find_by(status: :accepted)&.technician_profile
+      destination = tech&.stripe_account_id.to_s
+      validation = validate_recovered_transfer(transfer, txn, destination: destination)
+      unless validation[:ok]
+        flag_transfer_mismatch!(txn, transfer: transfer, mismatches: validation[:mismatches])
+        return txn.reload
+      end
+
       allocation = persist_source_allocation!(txn, job: txn.job, amount_cents: txn.amount_cents)
       apply_transfer_result!(
         payment: txn.payment,
@@ -428,6 +610,7 @@ class PaymentService
         allocation: allocation,
         result: JobStripeOps::Result.new(status: "succeeded", stripe_id: transfer.id)
       )
+      clear_admin_authorization!(txn.reload)
     end
     txn.reload
   end

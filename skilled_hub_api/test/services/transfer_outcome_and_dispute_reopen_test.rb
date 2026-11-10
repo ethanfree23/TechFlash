@@ -43,11 +43,11 @@ class TransferOutcomeAndDisputeReopenTest < ActiveSupport::TestCase
     [job, payment]
   end
 
-  def attach_tech!(job)
+  def attach_tech!(job, account_id: nil)
     tech = User.create!(email: "out-tech-#{SecureRandom.hex(3)}@example.com", password: "password123", password_confirmation: "password123", role: :technician)
     tp = TechnicianProfile.create!(
       user: tech, trade_type: "General", availability: "Full-time", membership_level: "basic",
-      stripe_account_id: "acct_out_#{SecureRandom.hex(3)}",
+      stripe_account_id: account_id || "acct_out_#{SecureRandom.hex(3)}",
       stripe_charges_enabled: true, stripe_payouts_enabled: true, stripe_details_submitted: true,
       stripe_transfers_capability_status: "active"
     )
@@ -71,6 +71,48 @@ class TransferOutcomeAndDisputeReopenTest < ActiveSupport::TestCase
     end
   end
 
+  def not_found_lookup
+    JobStripeOps::LookupResult.new(status: "not_found_after_complete_search")
+  end
+
+  def failed_lookup(error = "Net::ReadTimeout")
+    JobStripeOps::LookupResult.new(status: "lookup_failed", error: error)
+  end
+
+  def found_lookup(transfer)
+    JobStripeOps::LookupResult.new(status: "found", transfer: transfer)
+  end
+
+  def matching_transfer(txn:, tech:, id: "tr_match")
+    OpenStruct.new(
+      id: id,
+      amount: txn.amount_cents,
+      currency: txn.currency,
+      destination: tech.stripe_account_id,
+      transfer_group: txn.job.transfer_group,
+      metadata: {
+        "transaction_id" => txn.id.to_s,
+        "job_id" => txn.job_id.to_s,
+        "revision" => txn.revision.to_s
+      }
+    )
+  end
+
+  def unknown_txn!(job, payment, tech:, attempted_at: Time.current)
+    JobPaymentTransaction.create!(
+      payment: payment, job: job, transaction_type: :technician_transfer, direction: :outbound,
+      amount_cents: 72_000, currency: "usd", status: :outcome_unknown, revision: 1,
+      idempotency_key: "tf_job_#{job.id}_txn_technician_transfer_r1",
+      transfer_first_attempted_at: attempted_at,
+      investigation_required: true,
+      metadata_json: {
+        "source_allocation" => {
+          "charge_id" => "ch_out", "mode" => "single_charge", "reason" => "ok", "safe" => true
+        }
+      }
+    )
+  end
+
   test "timeout on both attempts marks outcome_unknown and reserves funds" do
     job, payment = build_job(title: "unk timeout")
     attach_tech!(job)
@@ -86,13 +128,13 @@ class TransferOutcomeAndDisputeReopenTest < ActiveSupport::TestCase
     txn = job.job_payment_transactions.find_by!(transaction_type: :technician_transfer)
     assert txn.status_outcome_unknown?
     refute txn.status_failed?
+    assert txn.transfer_first_attempted_at.present?
     reserved = PaymentService.reserved_transfer_cents(job)
     assert_equal 72_000, reserved
 
-    # Same-key retry after reconcile-none reuses identical allocation (no blind new key).
     captured = []
     stub_release(job, payment) do
-      JobStripeOps.stub(:find_transfer_for_transaction, nil) do
+      JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { not_found_lookup }) do
         JobStripeOps.stub(:transfer!, ->(**kwargs) {
           captured << kwargs
           JobStripeOps::Result.new(status: "succeeded", stripe_id: "tr_after_reconcile")
@@ -127,18 +169,13 @@ class TransferOutcomeAndDisputeReopenTest < ActiveSupport::TestCase
   test "reconcile finds existing transfer and marks succeeded without create" do
     job, payment = build_job(title: "recon find")
     tech = attach_tech!(job)
-    txn = JobPaymentTransaction.create!(
-      payment: payment, job: job, transaction_type: :technician_transfer, direction: :outbound,
-      amount_cents: 72_000, currency: "usd", status: :outcome_unknown, revision: 1,
-      idempotency_key: "tf_job_#{job.id}_txn_technician_transfer_r1",
-      metadata_json: { "source_allocation" => { "charge_id" => "ch_out", "mode" => "single_charge", "reason" => "ok", "safe" => true } }
-    )
-    fake_tr = OpenStruct.new(id: "tr_found_1", metadata: { "transaction_id" => txn.id.to_s, "job_id" => job.id.to_s })
+    txn = unknown_txn!(job, payment, tech: tech)
+    fake_tr = matching_transfer(txn: txn, tech: tech, id: "tr_found_1")
     creates = 0
-    JobStripeOps.stub(:find_transfer_for_transaction, fake_tr) do
+    JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { found_lookup(fake_tr) }) do
       JobStripeOps.stub(:transfer!, ->(**_k) { creates += 1; raise "should not create" }) do
         result = PaymentService.reconcile_technician_transfer!(txn)
-        assert result[:success]
+        assert result[:success], result.inspect
         assert result[:reconciled]
       end
     end
@@ -147,52 +184,178 @@ class TransferOutcomeAndDisputeReopenTest < ActiveSupport::TestCase
     assert_equal "tr_found_1", txn.stripe_transfer_id
   end
 
-  test "reconcile finds none allows retry with identical allocation" do
-    job, payment = build_job(title: "recon none")
-    attach_tech!(job)
-    txn = JobPaymentTransaction.create!(
-      payment: payment, job: job, transaction_type: :technician_transfer, direction: :outbound,
-      amount_cents: 72_000, currency: "usd", status: :outcome_unknown, revision: 1,
-      idempotency_key: "tf_job_#{job.id}_txn_technician_transfer_r1",
-      metadata_json: {
-        "source_allocation" => {
-          "charge_id" => "ch_out", "mode" => "single_charge", "reason" => "ok", "safe" => true
-        }
-      }
-    )
-    JobStripeOps.stub(:find_transfer_for_transaction, nil) do
-      result = PaymentService.reconcile_technician_transfer!(txn)
-      assert_equal false, result[:found]
-    end
+  test "lookup Stripe error is lookup_failed — no create, still outcome_unknown" do
+    job, payment = build_job(title: "lookup err")
+    tech = attach_tech!(job)
+    txn = unknown_txn!(job, payment, tech: tech)
+    creates = 0
+    JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { failed_lookup("connection reset") }) do
+      JobStripeOps.stub(:transfer!, ->(**_k) { creates += 1; raise "should not create" }) do
+        result = PaymentService.reconcile_technician_transfer!(txn)
+        assert result[:lookup_failed]
+        refute result[:allow_retry]
+        assert result[:error].present?
 
-    captured = []
-    stub_release(job, payment) do
-      # Clear the job-level outcome_unknown block by keeping same txn; release path reconciles first.
-      JobStripeOps.stub(:find_transfer_for_transaction, nil) do
-        JobStripeOps.stub(:transfer!, ->(**kwargs) {
-          captured << kwargs
-          JobStripeOps::Result.new(status: "succeeded", stripe_id: "tr_retry_ok")
-        }) do
-          # Manually flip to pending after reconcile-none so release can proceed through pending path;
-          # release_to_technician on outcome_unknown always reconciles first.
-          result = PaymentService.release_to_technician(payment)
-          # After reconcile-none, release continues and creates with same allocation.
-          assert result[:success] || result[:found] == false || result[:outcome_unknown] || result[:error]
+        release = nil
+        stub_release(job, payment) do
+          release = PaymentService.release_to_technician(payment)
+        end
+        refute release[:success]
+        assert release[:lookup_failed] || release[:error].to_s.match?(/lookup failed/i)
+      end
+    end
+    assert_equal 0, creates
+    assert txn.reload.status_outcome_unknown?
+  end
+
+  test "incomplete pagination is lookup_failed" do
+    list = OpenStruct.new(data: [], has_more: true)
+    Stripe::Transfer.stub(:list, ->(*_a) { list }) do
+      JobStripeOps.stub(:simulate_stripe?, false) do
+        # api_key blank would short-circuit; force a non-blank key for this unit path
+        previous = Stripe.api_key
+        Stripe.api_key = "sk_test_lookup"
+        begin
+          result = JobStripeOps.find_transfer_for_transaction(
+            destination: "acct_x",
+            transfer_group: "TECHFLASH_JOB_1",
+            transaction_id: 1,
+            job_id: 1
+          )
+          assert result.lookup_failed?, result.inspect
+          assert_match(/incomplete_pagination|pagination_cap/, result.error.to_s)
+        ensure
+          Stripe.api_key = previous
         end
       end
     end
   end
 
-  test "transfer webhook resolves outcome_unknown idempotently" do
-    job, payment = build_job(title: "wh resolve")
-    attach_tech!(job)
-    txn = JobPaymentTransaction.create!(
-      payment: payment, job: job, transaction_type: :technician_transfer, direction: :outbound,
-      amount_cents: 72_000, currency: "usd", status: :outcome_unknown, revision: 1,
-      idempotency_key: "tf_job_#{job.id}_txn_technician_transfer_r1",
-      metadata_json: { "source_allocation" => { "charge_id" => "ch_out", "mode" => "single_charge", "reason" => "ok", "safe" => true } }
+  test "complete not-found under 24h allows same-key retry with same allocation" do
+    job, payment = build_job(title: "recon none young")
+    tech = attach_tech!(job)
+    txn = unknown_txn!(job, payment, tech: tech, attempted_at: 1.hour.ago)
+    JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { not_found_lookup }) do
+      result = PaymentService.reconcile_technician_transfer!(txn)
+      assert_equal false, result[:found]
+      assert result[:allow_retry]
+    end
+
+    captured = []
+    stub_release(job, payment) do
+      JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { not_found_lookup }) do
+        JobStripeOps.stub(:transfer!, ->(**kwargs) {
+          captured << kwargs
+          JobStripeOps::Result.new(status: "succeeded", stripe_id: "tr_retry_ok")
+        }) do
+          result = PaymentService.release_to_technician(payment)
+          assert result[:success], result.inspect
+        end
+      end
+    end
+    assert_equal 1, captured.size
+    assert_equal "ch_out", captured.first[:source_transaction]
+    assert_equal txn.idempotency_key, captured.first[:idempotency_key]
+  end
+
+  test "complete not-found at or after 24h blocks auto create and requires admin path" do
+    job, payment = build_job(title: "recon none old")
+    tech = attach_tech!(job)
+    txn = unknown_txn!(job, payment, tech: tech, attempted_at: 25.hours.ago)
+    creates = 0
+    JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { not_found_lookup }) do
+      result = PaymentService.reconcile_technician_transfer!(txn)
+      refute result[:allow_retry]
+      assert result[:requires_admin_authorization]
+
+      stub_release(job, payment) do
+        JobStripeOps.stub(:transfer!, ->(**_k) { creates += 1; raise "no create" }) do
+          release = PaymentService.release_to_technician(payment)
+          refute release[:success]
+          assert release[:requires_admin_authorization] || release[:error].to_s.match?(/24h|admin/i)
+        end
+      end
+    end
+    assert_equal 0, creates
+    assert txn.reload.status_outcome_unknown?
+  end
+
+  test "admin path with lookup_failed is refused" do
+    job, payment = build_job(title: "admin lookup fail")
+    tech = attach_tech!(job)
+    txn = unknown_txn!(job, payment, tech: tech, attempted_at: 25.hours.ago)
+    JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { failed_lookup("timeout") }) do
+      result = PaymentService.reconcile_technician_transfer!(
+        txn, admin_authorize_retry: true, actor: "admin@example.com"
+      )
+      assert result[:lookup_failed]
+      refute result[:allow_retry]
+      refute result[:admin_authorized]
+    end
+    refute txn.reload.metadata_json.to_h.key?("admin_authorized_retry_at")
+  end
+
+  test "admin authorize after complete not-found outside window allows same-key create" do
+    job, payment = build_job(title: "admin authorize")
+    tech = attach_tech!(job)
+    txn = unknown_txn!(job, payment, tech: tech, attempted_at: 30.hours.ago)
+    JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { not_found_lookup }) do
+      auth = PaymentService.reconcile_technician_transfer!(
+        txn, admin_authorize_retry: true, actor: "admin@example.com"
+      )
+      assert auth[:allow_retry]
+      assert auth[:admin_authorized]
+    end
+
+    captured = []
+    stub_release(job, payment) do
+      JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { not_found_lookup }) do
+        JobStripeOps.stub(:transfer!, ->(**kwargs) {
+          captured << kwargs
+          JobStripeOps::Result.new(status: "succeeded", stripe_id: "tr_admin_ok")
+        }) do
+          result = PaymentService.release_to_technician(payment)
+          assert result[:success], result.inspect
+        end
+      end
+    end
+    assert_equal 1, captured.size
+    assert_equal txn.idempotency_key, captured.first[:idempotency_key]
+  end
+
+  test "found transfer with mismatched amount destination currency metadata is flagged not succeeded" do
+    job, payment = build_job(title: "mismatch")
+    tech = attach_tech!(job, account_id: "acct_dest_ok")
+    txn = unknown_txn!(job, payment, tech: tech)
+    bad = OpenStruct.new(
+      id: "tr_bad",
+      amount: 1,
+      currency: "eur",
+      destination: "acct_wrong",
+      transfer_group: "OTHER_GROUP",
+      metadata: { "transaction_id" => "999", "job_id" => "0", "revision" => "9" }
     )
-    transfer = OpenStruct.new(id: "tr_wh_1", metadata: { "transaction_id" => txn.id.to_s, "job_id" => job.id.to_s })
+    creates = 0
+    JobStripeOps.stub(:find_transfer_for_transaction, ->(**_k) { found_lookup(bad) }) do
+      JobStripeOps.stub(:transfer!, ->(**_k) { creates += 1; raise "no create" }) do
+        result = PaymentService.reconcile_technician_transfer!(txn)
+        assert result[:mismatch]
+        refute result[:success]
+        refute result[:allow_retry]
+      end
+    end
+    assert_equal 0, creates
+    assert txn.reload.status_outcome_unknown?
+    assert txn.investigation_required?
+    assert txn.metadata_json.to_h["transfer_mismatch"]
+    assert_nil txn.stripe_transfer_id
+  end
+
+  test "transfer webhook resolves outcome_unknown idempotently when fields match" do
+    job, payment = build_job(title: "wh resolve")
+    tech = attach_tech!(job)
+    txn = unknown_txn!(job, payment, tech: tech)
+    transfer = matching_transfer(txn: txn, tech: tech, id: "tr_wh_1")
     PaymentService.reconcile_transfer_from_stripe_object!(transfer)
     assert txn.reload.status_succeeded?
     assert_equal "tr_wh_1", txn.stripe_transfer_id
@@ -208,6 +371,40 @@ class TransferOutcomeAndDisputeReopenTest < ActiveSupport::TestCase
     inv = Stripe::InvalidRequestError.new("bad", "param")
     r2 = JobStripeOps.classify_transfer_error(inv)
     assert r2.failed?
+  end
+
+  test "funds_reinstated does not auto-unblock technician transfers" do
+    job, payment = build_job(title: "reinstated hold")
+    attach_tech!(job)
+    txn = job.job_payment_transactions.company_collections.first
+    dispute = OpenStruct.new(
+      id: "dp_reinst", charge: txn.stripe_charge_id, payment_intent: txn.stripe_payment_intent_id,
+      status: "won", reason: "fraudulent", amount: 1000
+    )
+    PaymentRiskEvent.upsert_dispute!(
+      job: job, dispute: dispute, job_payment_transaction: txn,
+      event_type: "charge.dispute.funds_withdrawn", stripe_event_id: "evt_fw",
+      stripe_event_created_at: 2.hours.ago
+    )
+    assert PaymentRiskEvent.open_for_job?(job)
+
+    PaymentRiskEvent.upsert_dispute!(
+      job: job, dispute: dispute, job_payment_transaction: txn,
+      event_type: "charge.dispute.funds_reinstated", stripe_event_id: "evt_fr",
+      stripe_event_created_at: Time.current
+    )
+    risk = PaymentRiskEvent.find_by!(correlation_key: "dispute:dp_reinst")
+    assert_equal "funds_reinstated", risk.lifecycle_state
+    assert_equal "reviewing", risk.investigation_status
+    assert PaymentRiskEvent.open_for_job?(job), "funds_reinstated must keep blocking until admin resolve"
+
+    stub_release(job, payment) do
+      JobStripeOps.stub(:transfer!, ->(**_k) { raise "must not transfer while risk open" }) do
+        result = PaymentService.release_to_technician(payment)
+        refute result[:success]
+        assert_match(/financial risk|blocked/i, result[:error].to_s)
+      end
+    end
   end
 
   test "newer dispute lost after resolve reopens; older replay does not" do

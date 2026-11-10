@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_09_220000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_10_153000) do
   create_table "active_storage_attachments", force: :cascade do |t|
     t.string "name", null: false
     t.string "record_type", null: false
@@ -695,6 +695,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_09_220000) do
     t.boolean "investigation_required", default: false, null: false
     t.string "source_charge_id"
     t.string "bank_payout_status"
+    t.datetime "transfer_first_attempted_at"
     t.index ["dispute_status"], name: "index_job_payment_transactions_on_dispute_status"
     t.index ["idempotency_key"], name: "index_job_payment_transactions_on_idempotency_key", unique: true
     t.index ["job_id", "transaction_type"], name: "index_job_payment_transactions_on_job_id_and_transaction_type"
