@@ -169,9 +169,12 @@ class JobStripeOps
     # String group already on the source charge/PI, or :unknown when lookup failed.
     inherited_group = nil
     if source_transaction.present?
-      # source_transaction must be a Charge ID (ch_...), never a PaymentIntent ID.
-      unless source_transaction.to_s.start_with?("ch_")
-        return Result.new(status: "failed", error: "source_transaction must be a Charge ID (ch_...)")
+      # source_transaction must be a Charge ID (ch_… or ACH py_…), never a PaymentIntent (pi_…).
+      unless StripeChargeId.valid_shape?(source_transaction)
+        return Result.new(
+          status: "failed",
+          error: "source_transaction must be a Charge ID (ch_… or py_…), got #{source_transaction.to_s[0, 12].inspect}"
+        )
       end
       params[:source_transaction] = source_transaction
 

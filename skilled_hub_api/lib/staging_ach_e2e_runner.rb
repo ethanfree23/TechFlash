@@ -442,7 +442,10 @@ class StagingAchE2eRunner
     puts
     puts "==== staging:ach_e2e results ===="
     @scenarios.each do |s|
-      puts format("%-55s %-24s %s", s.name, s.status, s.detail.to_s[0, 140])
+      # Never truncate FAIL/BLOCKED details — full Stripe / app error strings required.
+      detail = s.detail.to_s
+      detail = detail[0, 140] if s.status == "PASS" && detail.length > 140
+      puts format("%-55s %-24s %s", s.name, s.status, detail)
     end
     puts "================================="
   end

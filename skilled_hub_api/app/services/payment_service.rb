@@ -222,9 +222,12 @@ class PaymentService
     end
 
     source_charge_id = allocation[:charge_id]
-    # Never send a PaymentIntent ID as source_transaction.
-    if source_charge_id.present? && !source_charge_id.to_s.start_with?("ch_")
+    # Never send a PaymentIntent ID as source_transaction. Accept ch_ (card) and py_ (ACH).
+    if source_charge_id.present? && !StripeChargeId.valid_shape?(source_charge_id)
       return { error: "Transfer blocked: invalid_charge_id_shape (unsafe source allocation)." }
+    end
+    if source_charge_id.present? && !StripeChargeId.matches_job_succeeded_charge?(source_charge_id, job)
+      return { error: "Transfer blocked: mismatched_source_charge (unsafe source allocation)." }
     end
 
     transfer_metadata = JobFundingService.stripe_metadata(job, txn).merge(
@@ -834,7 +837,7 @@ class PaymentService
   # Prefer source_transaction only for a demonstrably single-charge funded job with
   # sufficient unallocated Charge funds. Multi-charge → safe Option B (platform balance).
   # Unsafe conditions return mode: "blocked" (caller must not transfer).
-  # source_transaction must be a Charge ID (ch_...), never a PaymentIntent ID.
+  # source_transaction must be a Charge ID (ch_… or ACH py_…), never a PaymentIntent ID.
   def self.source_charge_for_transfer(job, amount_cents: nil, exclude_transfer_id: nil)
     decision = source_transaction_decision(job, amount_cents: amount_cents, exclude_transfer_id: exclude_transfer_id)
     return nil unless decision[:safe]
@@ -888,8 +891,11 @@ class PaymentService
     end
 
     charge_id = charge_ids.first
-    unless charge_id.start_with?("ch_")
+    unless StripeChargeId.valid_shape?(charge_id)
       return blocked_decision("invalid_charge_id_shape", allocatable_cents: allocatable)
+    end
+    unless StripeChargeId.matches_job_succeeded_charge?(charge_id, job)
+      return blocked_decision("mismatched_source_charge", allocatable_cents: allocatable)
     end
 
     {
