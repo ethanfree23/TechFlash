@@ -180,4 +180,16 @@ class StagingAchE2eRunnerTest < ActiveSupport::TestCase
     assert_match(/find_or_initialize_by|seed_or_find_user!/, source)
     assert_match(/Idempotent re-seed|SEED_IDEMPOTENT/, source)
   end
+
+  test "runner connect fixture sets technician phone and does not call PaymentRiskEvent#status" do
+    source = File.read(Rails.root.join("lib/staging_ach_e2e_runner.rb"))
+    code_only = source.lines.reject { |l| l.match?(/^\s*#/) }.join
+    assert_match(/phone:\s*["']713-555-0198["']/, code_only)
+    refute_match(/risk&\.status\b|risk\.status\b/, code_only)
+    assert_match(/investigation_status/, code_only)
+    assert_match(/ensure_transfers_capability_active!/, code_only)
+    assert_match(/cleanup_connect_probe_accounts!/, code_only)
+    assert_includes PaymentRiskEvent.column_names, "investigation_status"
+    refute_includes PaymentRiskEvent.column_names, "status"
+  end
 end

@@ -65,6 +65,8 @@ class StagingAchE2eRunner
     print_table!
     failed = @scenarios.count { |s| s.status == "FAIL" }
     exit(failed.positive? ? 1 : 0)
+  ensure
+    cleanup_connect_probe_accounts!
   end
 
   # --- Schema helpers (unit-testable; never invent columns) -------------------
@@ -139,7 +141,9 @@ class StagingAchE2eRunner
     end
 
     begin
-      probe = create_connect_test_account!(suffix: "probe")
+      # Preflight only proves Account.create is permitted; scenario 6 creates a
+      # transfer-ready account and waits for transfers=active.
+      probe = create_connect_test_account!(suffix: "probe", ensure_transfers_active: false)
       transfers = probe.capabilities&.transfers.to_s.presence ||
         (probe["capabilities"].is_a?(Hash) ? probe["capabilities"]["transfers"].to_s : "")
       {
@@ -172,12 +176,29 @@ class StagingAchE2eRunner
   end
 
   # Create a test connected account with card_payments + transfers.
-  # Prefers Custom with Stripe test onboarding values; falls back to Express.
-  def create_connect_test_account!(suffix:)
+  # Prefers Custom with Stripe test onboarding values (id_number 222222222 = immediate verify);
+  # falls back to Express. Ensures transfers capability reaches active when Stripe allows.
+  def create_connect_test_account!(suffix:, ensure_transfers_active: true)
     email = "e2e+connect-#{suffix}-#{SecureRandom.hex(3)}@techflash.staging"
     common_caps = {
       card_payments: { requested: true },
       transfers: { requested: true }
+    }
+    individual = {
+      first_name: "E2E",
+      last_name: "Tech",
+      email: email,
+      phone: "7135550100",
+      dob: { day: 1, month: 1, year: 1901 },
+      address: {
+        line1: "address_full_match",
+        city: "Houston",
+        state: "TX",
+        postal_code: "77002",
+        country: "US"
+      },
+      # Official Stripe Connect test ID — successful immediate match in test mode.
+      id_number: "222222222"
     }
     begin
       account = Stripe::Account.create(
@@ -188,20 +209,7 @@ class StagingAchE2eRunner
         business_type: "individual",
         tos_acceptance: { date: Time.now.to_i, ip: "127.0.0.1" },
         business_profile: { mcc: "5734", url: "https://techflash.example" },
-        individual: {
-          first_name: "E2E",
-          last_name: "Tech",
-          email: email,
-          dob: { day: 1, month: 1, year: 1901 },
-          address: {
-            line1: "address_full_match",
-            city: "Houston",
-            state: "TX",
-            postal_code: "77002",
-            country: "US"
-          },
-          ssn_last_4: "0000"
-        },
+        individual: individual,
         external_account: {
           object: "bank_account",
           country: "US",
@@ -218,11 +226,76 @@ class StagingAchE2eRunner
         email: email,
         capabilities: common_caps,
         business_type: "individual",
+        tos_acceptance: { date: Time.now.to_i, ip: "127.0.0.1" },
+        business_profile: { mcc: "5734", url: "https://techflash.example" },
+        individual: individual,
         metadata: { techflash_e2e: "true", suffix: suffix.to_s }
       )
     end
     @created[:accounts] << account.id
-    account
+    ensure_transfers_active ? ensure_transfers_capability_active!(account) : account
+  end
+
+  def ensure_transfers_capability_active!(account)
+    deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + [POLL_TIMEOUT, 60].min
+    acct = account
+    loop do
+      acct = Stripe::Account.retrieve(account.id)
+      transfers = acct.capabilities&.transfers.to_s
+      return acct if transfers == "active"
+
+      begin
+        Stripe::Account.update(
+          account.id,
+          {
+            tos_acceptance: { date: Time.now.to_i, ip: "127.0.0.1" },
+            individual: {
+              id_number: "222222222",
+              phone: "7135550100",
+              address: {
+                line1: "address_full_match",
+                city: "Houston",
+                state: "TX",
+                postal_code: "77002",
+                country: "US"
+              }
+            },
+            business_profile: { mcc: "5734", url: "https://techflash.example" },
+            capabilities: {
+              card_payments: { requested: true },
+              transfers: { requested: true }
+            }
+          }
+        )
+      rescue Stripe::InvalidRequestError
+        # Ignore update races; re-retrieve below.
+      end
+
+      break if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
+
+      sleep POLL_INTERVAL
+    end
+
+    acct = Stripe::Account.retrieve(account.id)
+    transfers = acct.capabilities&.transfers.to_s
+    if transfers != "active"
+      raise Fail,
+        "Connect test account #{acct.id} transfers capability=#{transfers.inspect} " \
+        "(charges_enabled=#{acct.charges_enabled} payouts_enabled=#{acct.payouts_enabled} " \
+        "requirements=#{Array(acct.requirements&.currently_due).join(',')})"
+    end
+    acct
+  end
+
+  def cleanup_connect_probe_accounts!
+    Array(@created[:accounts]).uniq.each do |acct_id|
+      begin
+        Stripe::Account.delete(acct_id)
+        puts "[ach_e2e] cleaned Connect test account #{acct_id}"
+      rescue Stripe::StripeError => e
+        puts "[ach_e2e] Connect cleanup skip #{acct_id}: #{e.message}"
+      end
+    end
   end
 
   def run_scenario(name)
@@ -767,22 +840,24 @@ class StagingAchE2eRunner
   end
 
   def scenario_connect_transfer!
-    # Re-attempt connected-account create here so a mid-run platform-profile completion works
-    # without requiring a full runner restart — still BLOCKED if Stripe refuses create.
-    destination_id = @connect[:probe_account_id]
-    if destination_id.blank?
-      begin
-        account = create_connect_test_account!(suffix: "xfer")
-        destination_id = account.id
-        @connect[:status] = "OK"
-        @connect[:probe_account_id] = destination_id
-      rescue Stripe::PermissionError, Stripe::InvalidRequestError, Stripe::AuthenticationError => e
-        detail = e.message
-        if detail.match?(/platform-profile|responsibilities of collecting requirements/i)
-          detail += " — complete Connect platform profile then re-run"
-        end
-        raise Blocked, "Connect platform cannot create test connected account: #{detail}"
+    # Always create a transfer-ready connected account (do not reuse a probe that may still be
+    # transfers=inactive). BLOCKED only if platform refuses Account.create.
+    begin
+      account = create_connect_test_account!(suffix: "xfer", ensure_transfers_active: true)
+      destination_id = account.id
+      @connect[:status] = "OK"
+      @connect[:probe_account_id] = destination_id
+      transfers_cap = account.capabilities&.transfers.to_s
+    rescue Fail => e
+      raise Blocked, e.message if e.message.match?(/transfers capability/i)
+
+      raise
+    rescue Stripe::PermissionError, Stripe::InvalidRequestError, Stripe::AuthenticationError => e
+      detail = e.message
+      if detail.match?(/platform-profile|responsibilities of collecting requirements/i)
+        detail += " — complete Connect platform profile then re-run"
       end
+      raise Blocked, "Connect platform cannot create test connected account: #{detail}"
     end
 
     collection = @last_success_collection ||
@@ -794,13 +869,30 @@ class StagingAchE2eRunner
 
     tech_user = User.find_or_initialize_by(email: "e2e+tech-#{job.id}@techflash.staging")
     if tech_user.new_record?
-      tech_user.assign_attributes(password: "Falcon23$!", password_confirmation: "Falcon23$!", role: :technician)
+      tech_user.assign_attributes(
+        password: "Falcon23$!",
+        password_confirmation: "Falcon23$!",
+        role: :technician,
+        phone: "713-555-0198"
+      )
       tech_user.save!
+    else
+      tech_user.update!(phone: "713-555-0198") if tech_user.phone.blank?
     end
-    tp = tech_user.technician_profile || TechnicianProfile.create!(
-      user: tech_user, trade_type: "General", availability: "Full-time", membership_level: "basic"
-    )
+
+    # TechnicianProfile validates phone presence on :update — set phone before any update!.
+    tp = tech_user.technician_profile
+    if tp.nil?
+      tp = TechnicianProfile.create!(
+        user: tech_user,
+        trade_type: "General",
+        availability: "Full-time",
+        membership_level: "basic",
+        phone: "713-555-0198"
+      )
+    end
     tp.update!(
+      phone: "713-555-0198",
       stripe_account_id: destination_id,
       stripe_charges_enabled: true,
       stripe_payouts_enabled: true,
@@ -837,11 +929,13 @@ class StagingAchE2eRunner
         stripe_tr = Stripe::Transfer.retrieve(ops.stripe_id)
         raise Fail, "destination mismatch" unless stripe_tr.destination.to_s == destination_id
         raise Fail, "amount mismatch" unless stripe_tr.amount.to_i == amount
+        raise Fail, "missing transfer_group" if stripe_tr.transfer_group.blank? && transfer_group.present?
         pass!(
           "6_connect_transfer",
           "PaymentService blocked (#{result[:error].to_s[0, 60]}); JobStripeOps.transfer! OK " \
           "tr=#{ops.stripe_id} dest=#{destination_id} amount=#{amount} " \
-          "source=#{collection.stripe_charge_id} (no automatic bank payout claimed)"
+          "source=#{collection.stripe_charge_id} transfer_group=#{stripe_tr.transfer_group} " \
+          "transfers_cap=#{transfers_cap} (no automatic bank payout claimed)"
         )
         return
       end
@@ -866,8 +960,9 @@ class StagingAchE2eRunner
     pass!(
       "6_connect_transfer",
       "tr=#{xfer.stripe_transfer_id} dest=#{destination_id} amount=#{xfer.amount_cents} " \
-      "source=#{xfer.source_charge_id || collection.stripe_charge_id} via PaymentService " \
-      "(no automatic bank payout claimed)"
+      "source=#{xfer.source_charge_id || collection.stripe_charge_id} " \
+      "transfer_group=#{stripe_tr.transfer_group} transfers_cap=#{transfers_cap} " \
+      "via PaymentService (no automatic bank payout claimed)"
     )
   rescue Stripe::InvalidRequestError => e
     if e.message.match?(/insufficient|available|balance|funds/i)
@@ -1000,12 +1095,31 @@ class StagingAchE2eRunner
         end
         if txn.reload.disputed? || saw_risk
           risk = PaymentRiskEvent.where(job_id: job.id).order(:id).last
-          pass!(
-            "9_ach_return_or_dispute",
+          # PaymentRiskEvent has investigation_status / risk_kind / lifecycle_state — not `status`.
+          evt_id = risk&.stripe_event_id.to_s
+          webhook = evt_id.start_with?("evt_") ? StripeWebhookEvent.find_by(stripe_event_id: evt_id) : nil
+          real_stripe =
+            evt_id.start_with?("evt_") &&
+            (webhook&.processed_at.present? || txn.stripe_dispute_id.present? || risk&.exposure_confirmed)
+
+          detail =
             "pi=#{txn.stripe_payment_intent_id} dispute=#{txn.stripe_dispute_id} " \
-            "risk=#{risk&.id} status=#{risk&.status} account=#{TEST_ACCOUNT_DISPUTE} " \
-            "(no auto clawback)"
-          )
+            "risk=#{risk&.id} risk_kind=#{risk&.risk_kind} " \
+            "investigation_status=#{risk&.investigation_status} " \
+            "lifecycle_state=#{risk&.lifecycle_state} " \
+            "stripe_event_id=#{evt_id.presence || 'none'} " \
+            "transfer_already_executed=#{risk&.transfer_already_executed} " \
+            "account=#{TEST_ACCOUNT_DISPUTE} (no auto clawback)"
+
+          unless real_stripe
+            raise SkipSandbox,
+              "PaymentRiskEvent #{risk&.id} present but not proven as Stripe-delivered " \
+              "(stripe_event_id=#{evt_id.inspect}, webhook_processed_at=#{webhook&.processed_at}). " \
+              "#{detail}. Deterministic substitute: signed webhook fixtures in " \
+              "stripe_webhooks_controller_test / ach_webhooks_test (not real Stripe E2E)."
+          end
+
+          pass!("9_ach_return_or_dispute", "REAL_STRIPE_EVENT #{detail}")
           return
         end
       end
