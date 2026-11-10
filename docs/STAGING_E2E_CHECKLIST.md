@@ -59,6 +59,19 @@ RAILS_ENV=staging bin/rails staging:ach_e2e
 
 Requires Connect-capable `sk_test` platform key. See `skilled_hub_api/lib/staging_ach_e2e_runner.rb`.
 
+Connect transfer destination (scenario 6), TEST mode only:
+
+1. Runner creates a controller account (`requirement_collection=application`, fees/losses on application, `stripe_dashboard.type=none`) with test ToS — never Express + ToS.
+2. If create is rejected, set `STAGING_E2E_CONNECT_ACCOUNT_ID=acct_...` (must be on platform `acct_1T9R18Rsck7C7qtp`, livemode false, `transfers=active`; never deleted).
+3. To mint an Express account for hosted onboarding:
+
+```bash
+RAILS_ENV=staging bin/rails staging:connect_onboarding_link
+# complete URL with Stripe TEST data, then:
+STAGING_E2E_CONNECT_ACCOUNT_ID=acct_... RAILS_ENV=staging bin/rails staging:ach_e2e
+```
+
+
 ### Defects fixed after first staging run (head `a6e39c9`)
 
 | Symptom | Root cause | Fix |

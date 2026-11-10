@@ -192,4 +192,32 @@ class StagingAchE2eRunnerTest < ActiveSupport::TestCase
     assert_includes PaymentRiskEvent.column_names, "investigation_status"
     refute_includes PaymentRiskEvent.column_names, "status"
   end
+
+  test "runner creates Connect accounts with controller requirement_collection application" do
+    source = File.read(Rails.root.join("lib/staging_ach_e2e_runner.rb"))
+    code_only = source.lines.reject { |l| l.match?(/^\s*#/) }.join
+    assert_match(/requirement_collection:\s*["']application["']/, code_only)
+    assert_match(/fees:\s*\{\s*payer:\s*["']application["']/, code_only)
+    assert_match(/losses:\s*\{\s*payments:\s*["']application["']/, code_only)
+    assert_match(/stripe_dashboard:\s*\{\s*type:\s*["']none["']/, code_only)
+    assert_match(/STAGING_E2E_CONNECT_ACCOUNT_ID/, code_only)
+    assert_match(/reuse_env_connect_account!/, code_only)
+    assert_match(/@protected_accounts/, code_only)
+    assert_equal "acct_1T9R18Rsck7C7qtp", StagingAchE2eRunner::EXPECTED_PLATFORM_ID
+    # Must not fall back to Express create + tos_acceptance in the runner create path.
+    refute_match(/type:\s*["']express["'][\s\S]{0,400}tos_acceptance:/, code_only)
+  end
+
+  test "staging connect_onboarding_link rake task is defined" do
+    rake = File.read(Rails.root.join("lib/tasks/staging_ach_e2e.rake"))
+    assert_match(/task connect_onboarding_link/, rake)
+    assert_match(/AccountLink\.create/, rake)
+    assert_match(/type:\s*["']express["']/, rake)
+    assert_match(/STAGING_E2E_CONNECT_ACCOUNT_ID/, rake)
+    # Express onboarding link path must not attest ToS on behalf of the account.
+    express_block = rake[/task connect_onboarding_link.*?end\nend/m]
+    refute_nil express_block
+    code_only = express_block.lines.reject { |l| l.match?(/^\s*#/) }.join
+    refute_match(/tos_acceptance/, code_only)
+  end
 end

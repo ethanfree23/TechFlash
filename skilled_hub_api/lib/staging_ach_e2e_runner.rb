@@ -34,12 +34,17 @@ class StagingAchE2eRunner
   # Stripe SetupIntent confirm accepts only these us_bank_account verification_method values.
   VALID_VERIFICATION_METHODS = %w[automatic instant microdeposits].freeze
 
+  # Staging Connect platform used for ACH E2E (test mode).
+  EXPECTED_PLATFORM_ID = "acct_1T9R18Rsck7C7qtp"
+
   def initialize
     @scenarios = []
     @created = {
       customers: [], payment_methods: [], setup_intents: [], payment_intents: [],
       accounts: [], transfers: [], refunds: [], events: []
     }
+    # Accounts listed here are never deleted (e.g. STAGING_E2E_CONNECT_ACCOUNT_ID).
+    @protected_accounts = []
     @connect = { status: "UNKNOWN", platform_id: nil, probe_account_id: nil, detail: nil }
     @last_success_collection = nil
   end
@@ -153,6 +158,13 @@ class StagingAchE2eRunner
         detail: "list_count=#{listed.data.size} created probe=#{probe.id} " \
                 "transfers_capability=#{transfers.presence || 'n/a'}"
       }
+    rescue Fail => e
+      {
+        status: "BLOCKED",
+        platform_id: platform_id,
+        probe_account_id: nil,
+        detail: e.message
+      }
     rescue Stripe::PermissionError, Stripe::InvalidRequestError, Stripe::AuthenticationError => e
       detail = "Cannot create Connect test account: #{e.message}"
       if e.message.match?(/platform-profile|responsibilities of collecting requirements/i)
@@ -175,15 +187,11 @@ class StagingAchE2eRunner
     }
   end
 
-  # Create a test connected account with card_payments + transfers.
-  # Prefers Custom with Stripe test onboarding values (id_number 222222222 = immediate verify);
-  # falls back to Express. Ensures transfers capability reaches active when Stripe allows.
+  # Create a TEST-mode connected account where the platform collects requirements
+  # (controller.requirement_collection=application). Never fall back to Express +
+  # tos_acceptance — Stripe rejects ToS attestation when requirement_collection is stripe.
   def create_connect_test_account!(suffix:, ensure_transfers_active: true)
     email = "e2e+connect-#{suffix}-#{SecureRandom.hex(3)}@techflash.staging"
-    common_caps = {
-      card_payments: { requested: true },
-      transfers: { requested: true }
-    }
     individual = {
       first_name: "E2E",
       last_name: "Tech",
@@ -200,12 +208,21 @@ class StagingAchE2eRunner
       # Official Stripe Connect test ID — successful immediate match in test mode.
       id_number: "222222222"
     }
+
     begin
       account = Stripe::Account.create(
-        type: "custom",
         country: "US",
         email: email,
-        capabilities: common_caps,
+        controller: {
+          requirement_collection: "application",
+          fees: { payer: "application" },
+          losses: { payments: "application" },
+          stripe_dashboard: { type: "none" }
+        },
+        capabilities: {
+          card_payments: { requested: true },
+          transfers: { requested: true }
+        },
         business_type: "individual",
         tos_acceptance: { date: Time.now.to_i, ip: "127.0.0.1" },
         business_profile: { mcc: "5734", url: "https://techflash.example" },
@@ -219,21 +236,59 @@ class StagingAchE2eRunner
         },
         metadata: { techflash_e2e: "true", suffix: suffix.to_s }
       )
-    rescue Stripe::InvalidRequestError
-      account = Stripe::Account.create(
-        type: "express",
-        country: "US",
-        email: email,
-        capabilities: common_caps,
-        business_type: "individual",
-        tos_acceptance: { date: Time.now.to_i, ip: "127.0.0.1" },
-        business_profile: { mcc: "5734", url: "https://techflash.example" },
-        individual: individual,
-        metadata: { techflash_e2e: "true", suffix: suffix.to_s }
-      )
+    rescue Stripe::InvalidRequestError, Stripe::PermissionError => e
+      hint =
+        "Exact Stripe error: #{e.message}. " \
+        "Set STAGING_E2E_CONNECT_ACCOUNT_ID to an existing test-mode connected account " \
+        "with transfers=active on platform #{EXPECTED_PLATFORM_ID}, or run " \
+        "`bin/rails staging:connect_onboarding_link` and complete hosted Express onboarding."
+      # Fail (not Blocked) so verify_connect_platform! can map it to Connect status BLOCKED.
+      raise Fail, "Connect controller-account create rejected. #{hint}"
     end
+
     @created[:accounts] << account.id
     ensure_transfers_active ? ensure_transfers_capability_active!(account) : account
+  end
+
+  # Reuse a pre-onboarded TEST connected account (never deleted).
+  def reuse_env_connect_account!(acct_id)
+    raise Fail, "STAGING_E2E_CONNECT_ACCOUNT_ID must be acct_... (got #{acct_id.inspect})" unless acct_id.to_s.start_with?("acct_")
+
+    platform = Stripe::Account.retrieve
+    platform_id = platform.id.to_s
+    unless platform_id == EXPECTED_PLATFORM_ID
+      raise Fail,
+        "Platform account #{platform_id} does not match expected #{EXPECTED_PLATFORM_ID} " \
+        "(refusing to reuse STAGING_E2E_CONNECT_ACCOUNT_ID)"
+    end
+    if platform.respond_to?(:livemode) && platform.livemode == true
+      raise Fail, "Platform is livemode=true — E2E is TEST mode only"
+    end
+
+    acct = Stripe::Account.retrieve(acct_id.to_s)
+    if acct.respond_to?(:livemode) && acct.livemode == true
+      raise Fail, "STAGING_E2E_CONNECT_ACCOUNT_ID #{acct.id} is livemode=true — TEST mode only"
+    end
+
+    transfers = acct.capabilities&.transfers.to_s
+    if transfers != "active"
+      raise Blocked,
+        "STAGING_E2E_CONNECT_ACCOUNT_ID #{acct.id} transfers capability=#{transfers.inspect} " \
+        "(need active). Complete onboarding or pick another test account."
+    end
+
+    # Retrievable with the platform secret key ⇒ belongs to this Connect platform.
+    @protected_accounts << acct.id
+    puts "[ach_e2e] reusing STAGING_E2E_CONNECT_ACCOUNT_ID=#{acct.id} " \
+         "(platform=#{platform_id} livemode=#{acct.livemode} transfers=#{transfers}; never delete)"
+    acct
+  end
+
+  def resolve_transfer_destination_account!
+    env_id = ENV["STAGING_E2E_CONNECT_ACCOUNT_ID"].to_s.strip
+    return reuse_env_connect_account!(env_id) if env_id.present?
+
+    create_connect_test_account!(suffix: "xfer", ensure_transfers_active: true)
   end
 
   def ensure_transfers_capability_active!(account)
@@ -244,31 +299,33 @@ class StagingAchE2eRunner
       transfers = acct.capabilities&.transfers.to_s
       return acct if transfers == "active"
 
+      req_collection = acct.controller&.requirement_collection.to_s
+      # Only attest ToS when the platform collects requirements. Express/Standard reject this.
       begin
-        Stripe::Account.update(
-          account.id,
-          {
-            tos_acceptance: { date: Time.now.to_i, ip: "127.0.0.1" },
-            individual: {
-              id_number: "222222222",
-              phone: "7135550100",
-              address: {
-                line1: "address_full_match",
-                city: "Houston",
-                state: "TX",
-                postal_code: "77002",
-                country: "US"
-              }
-            },
-            business_profile: { mcc: "5734", url: "https://techflash.example" },
-            capabilities: {
-              card_payments: { requested: true },
-              transfers: { requested: true }
+        update = {
+          individual: {
+            id_number: "222222222",
+            phone: "7135550100",
+            address: {
+              line1: "address_full_match",
+              city: "Houston",
+              state: "TX",
+              postal_code: "77002",
+              country: "US"
             }
+          },
+          business_profile: { mcc: "5734", url: "https://techflash.example" },
+          capabilities: {
+            card_payments: { requested: true },
+            transfers: { requested: true }
           }
-        )
-      rescue Stripe::InvalidRequestError
-        # Ignore update races; re-retrieve below.
+        }
+        if req_collection == "application"
+          update[:tos_acceptance] = { date: Time.now.to_i, ip: "127.0.0.1" }
+        end
+        Stripe::Account.update(account.id, update)
+      rescue Stripe::InvalidRequestError => e
+        puts "[ach_e2e] Connect account update skip #{account.id}: #{e.message}"
       end
 
       break if Process.clock_gettime(Process::CLOCK_MONOTONIC) > deadline
@@ -282,13 +339,19 @@ class StagingAchE2eRunner
       raise Fail,
         "Connect test account #{acct.id} transfers capability=#{transfers.inspect} " \
         "(charges_enabled=#{acct.charges_enabled} payouts_enabled=#{acct.payouts_enabled} " \
+        "requirement_collection=#{acct.controller&.requirement_collection} " \
         "requirements=#{Array(acct.requirements&.currently_due).join(',')})"
     end
     acct
   end
 
   def cleanup_connect_probe_accounts!
+    protected = Array(@protected_accounts).map(&:to_s)
     Array(@created[:accounts]).uniq.each do |acct_id|
+      if protected.include?(acct_id.to_s)
+        puts "[ach_e2e] keeping protected Connect account #{acct_id}"
+        next
+      end
       begin
         Stripe::Account.delete(acct_id)
         puts "[ach_e2e] cleaned Connect test account #{acct_id}"
@@ -840,16 +903,23 @@ class StagingAchE2eRunner
   end
 
   def scenario_connect_transfer!
-    # Always create a transfer-ready connected account (do not reuse a probe that may still be
-    # transfers=inactive). BLOCKED only if platform refuses Account.create.
+    # Prefer STAGING_E2E_CONNECT_ACCOUNT_ID (never deleted). Else create a controller
+    # (platform-collected) Custom-style account with test ToS — never Express + ToS.
     begin
-      account = create_connect_test_account!(suffix: "xfer", ensure_transfers_active: true)
+      account = resolve_transfer_destination_account!
       destination_id = account.id
       @connect[:status] = "OK"
       @connect[:probe_account_id] = destination_id
       transfers_cap = account.capabilities&.transfers.to_s
+      reused = Array(@protected_accounts).include?(destination_id)
+      puts "[ach_e2e] transfer destination=#{destination_id} transfers=#{transfers_cap} " \
+           "reused_env=#{reused}"
+    rescue Blocked
+      raise
     rescue Fail => e
-      raise Blocked, e.message if e.message.match?(/transfers capability/i)
+      raise Blocked, e.message if e.message.match?(
+        /transfers capability|STAGING_E2E_CONNECT|Platform account|controller-account create rejected/i
+      )
 
       raise
     rescue Stripe::PermissionError, Stripe::InvalidRequestError, Stripe::AuthenticationError => e
@@ -857,7 +927,9 @@ class StagingAchE2eRunner
       if detail.match?(/platform-profile|responsibilities of collecting requirements/i)
         detail += " — complete Connect platform profile then re-run"
       end
-      raise Blocked, "Connect platform cannot create test connected account: #{detail}"
+      raise Blocked,
+        "Connect platform cannot create/reuse test connected account: #{detail}. " \
+        "Set STAGING_E2E_CONNECT_ACCOUNT_ID or run bin/rails staging:connect_onboarding_link"
     end
 
     collection = @last_success_collection ||
