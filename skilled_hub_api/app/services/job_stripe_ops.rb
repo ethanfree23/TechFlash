@@ -163,18 +163,92 @@ class JobStripeOps
       amount: amount_cents,
       currency: "usd",
       destination: destination,
-      metadata: metadata,
-      transfer_group: transfer_group
+      metadata: metadata
     }
-    # source_transaction must be a Charge ID (ch_...), never a PaymentIntent ID.
-    params[:source_transaction] = source_transaction if source_transaction.present?
+
+    # String group already on the source charge/PI, or :unknown when lookup failed.
+    inherited_group = nil
+    if source_transaction.present?
+      # source_transaction must be a Charge ID (ch_...), never a PaymentIntent ID.
+      unless source_transaction.to_s.start_with?("ch_")
+        return Result.new(status: "failed", error: "source_transaction must be a Charge ID (ch_...)")
+      end
+      params[:source_transaction] = source_transaction
+
+      # Stripe invalid_request: "You cannot use transfer_group if the source_transaction
+      # already has one set." When the charge/PI has a group, omit the request param —
+      # the Transfer inherits it. Risk A recovery still validates / lists by that group.
+      inherited_group = transfer_group_on_source_charge(source_transaction)
+      source_already_grouped = inherited_group == :unknown || inherited_group.present?
+      if !source_already_grouped && transfer_group.present?
+        params[:transfer_group] = transfer_group
+      end
+    elsif transfer_group.present?
+      params[:transfer_group] = transfer_group
+    end
 
     transfer = Stripe::Transfer.create(params, { idempotency_key: idempotency_key })
+
+    # Validate returned/inherited transfer_group (do not require it as a create param).
+    expected_group =
+      if inherited_group.is_a?(String) && inherited_group.present?
+        inherited_group
+      else
+        transfer_group.to_s.presence
+      end
+    actual_group = stripe_obj_field(transfer, "transfer_group").to_s.presence
+    if expected_group.present? && actual_group != expected_group
+      return Result.new(
+        status: "failed",
+        stripe_id: transfer.id,
+        error: "transfer_group mismatch after create: expected=#{expected_group} got=#{actual_group.inspect}"
+      )
+    end
+
     Result.new(status: "succeeded", stripe_id: transfer.id)
   rescue Stripe::APIConnectionError, Stripe::RateLimitError => e
     classify_transfer_error(e)
   rescue Stripe::StripeError => e
     classify_transfer_error(e)
+  end
+
+  # Returns transfer_group on the Charge (or its PaymentIntent), nil if none,
+  # or :unknown if Stripe lookup failed (caller must omit transfer_group to be safe).
+  def self.transfer_group_on_source_charge(charge_id)
+    charge = Stripe::Charge.retrieve(charge_id)
+    group = stripe_obj_field(charge, "transfer_group")
+    return group if group.present?
+
+    pi_ref = stripe_obj_field(charge, "payment_intent")
+    return nil if pi_ref.blank?
+
+    pi = pi_ref.is_a?(String) ? Stripe::PaymentIntent.retrieve(pi_ref) : pi_ref
+    stripe_obj_field(pi, "transfer_group")
+  rescue Stripe::StripeError
+    :unknown
+  end
+
+  def self.stripe_obj_field(obj, key)
+    return nil if obj.nil?
+    if obj.is_a?(Hash)
+      val = obj[key].presence || obj[key.to_sym].presence
+      return val.to_s.presence
+    end
+
+    if obj.respond_to?(:[])
+      begin
+        val = obj[key]
+        return val.to_s.presence if val.present?
+      rescue NoMethodError, TypeError
+        # fall through
+      end
+    end
+    method_name = key.to_sym
+    return obj.public_send(method_name).to_s.presence if obj.respond_to?(method_name)
+
+    nil
+  rescue NoMethodError
+    nil
   end
 
   # Explicit lookup outcomes — never conflate Stripe errors with "not found".
@@ -207,6 +281,8 @@ class JobStripeOps
   TRANSFER_LOOKUP_PAGE_SIZE = 100
 
   # Search platform transfers for reconciliation (separate charges and transfers).
+  # Lists by transfer_group — matches groups inherited from source_transaction as well
+  # as groups set explicitly on Transfer.create.
   # Returns LookupResult: found / not_found_after_complete_search / lookup_failed.
   def self.find_transfer_for_transaction(destination:, transfer_group:, transaction_id:, job_id: nil)
     if destination.blank?

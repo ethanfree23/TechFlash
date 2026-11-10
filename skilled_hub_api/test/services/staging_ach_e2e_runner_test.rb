@@ -213,6 +213,19 @@ class StagingAchE2eRunnerTest < ActiveSupport::TestCase
     refute_match(/acct\.livemode\b/, code_only)
   end
 
+  test "runner R6 fully funds via company_required_cents and prints full transfer errors" do
+    source = File.read(Rails.root.join("lib/staging_ach_e2e_runner.rb"))
+    connect = source[/def scenario_connect_transfer!.*?^  end$/m]
+    refute_nil connect
+    code_only = connect.lines.reject { |l| l.match?(/^\s*#/) }.join
+    assert_match(/company_required_cents/, code_only)
+    assert_match(/fully_funded/, code_only)
+    # Transfer FAIL / pass detail must not truncate Stripe / PaymentService errors.
+    refute_match(/\[:error\]\.to_s\[0,\s*\d+\]/, code_only)
+    refute_match(/ops\.error\.to_s\[0,\s*\d+\]/, code_only)
+    assert_match(/transfer failed via PaymentService \(\#\{result\[:error\]\}\)/, code_only)
+  end
+
   test "staging connect_onboarding_link rake task is defined" do
     rake = File.read(Rails.root.join("lib/tasks/staging_ach_e2e.rake"))
     assert_match(/task connect_onboarding_link/, rake)

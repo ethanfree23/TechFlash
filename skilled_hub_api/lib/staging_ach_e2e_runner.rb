@@ -991,12 +991,42 @@ class StagingAchE2eRunner
         "Set STAGING_E2E_CONNECT_ACCOUNT_ID or run bin/rails staging:connect_onboarding_link"
     end
 
-    collection = @last_success_collection ||
-      JobPaymentTransaction.company_collections.status_succeeded.where.not(stripe_charge_id: nil).order(id: :desc).first
-    raise SkipSandbox, "no succeeded charge for source_transaction transfer" if collection.blank?
-
-    job = collection.job
+    # Fund a dedicated R6 job through the real ACH collect path for the FULL
+    # company_required amount (do not reuse a partial scenario-2 charge — that
+    # trips the real underfunded guard). Never weaken JobLedger.fully_funded.
+    user, profile, customer = ensure_e2e_company!(suffix: "xferpay", ach_enabled: true)
+    attach_verified_bank_via_setup!(
+      user, customer, account_number: TEST_ACCOUNT_SUCCESS, verification_mode: :automatic
+    )
+    job = build_priced_job!(profile)
     payment = JobFundingService.ensure_header!(job)
+    required = JobLedger.for(job).company_required_cents
+    raise Fail, "R6 job company_required_cents must be positive" unless required.positive?
+
+    fund = JobFundingService.collect!(
+      job: job, amount_cents: required, transaction_type: :initial_job_charge, revision: 1
+    )
+    collection = fund[:transaction] || job.job_payment_transactions.company_collections.order(:id).last
+    raise Fail, "R6 collect failed: #{fund.inspect}" if collection.blank?
+
+    @created[:payment_intents] << collection.stripe_payment_intent_id if collection.stripe_payment_intent_id
+    if collection.status_processing? || fund[:processing]
+      poll_until do
+        collection.reload
+        collection.status_succeeded? || collection.status_failed?
+      end
+    end
+    raise Fail, "R6 funding not succeeded (status=#{collection.reload.status})" unless collection.status_succeeded?
+    raise Fail, "R6 funding missing stripe_charge_id" if collection.stripe_charge_id.blank?
+
+    JobFundingService.publish!(job) if job.reload.pending_funding? || !job.funding_funded?
+    ledger = JobLedger.for(job.reload)
+    raise Fail,
+      "R6 job underfunded after real collect " \
+      "(net=#{ledger.net_funded_cents} required=#{ledger.company_required_cents} due=#{ledger.amount_due_cents})" \
+      unless ledger.fully_funded
+
+    @last_success_collection = collection
 
     tech_user = User.find_or_initialize_by(email: "e2e+tech-#{job.id}@techflash.staging")
     if tech_user.new_record?
@@ -1039,19 +1069,22 @@ class StagingAchE2eRunner
       settlement_status: :settled,
       funding_status: :funded
     )
+    raise Fail, "R6 underfunded after finish transition" unless JobLedger.for(job.reload).fully_funded
 
     before = job.job_payment_transactions.technician_transfer.count
     result = PaymentService.release_to_technician(payment.reload)
 
     if result[:error].to_s.match?(/not ready|underfunded|No approved payable|commission/i)
       # Fall through to direct JobStripeOps.transfer! to distinguish app vs funds readiness.
-      amount = [collection.amount_cents / 10, 100].max
-      transfer_group = "E2E_#{SecureRandom.hex(4)}"
+      # Pass job.transfer_group as the *expected* inherited group — JobStripeOps omits it
+      # from the create params when the source charge already has one.
+      amount = ledger.technician_net_payout_cents.to_i
+      amount = [collection.amount_cents / 10, 100].max if amount <= 0
       ops = JobStripeOps.transfer!(
         amount_cents: amount,
         destination: destination_id,
         metadata: { "e2e" => "true", "job_id" => job.id.to_s },
-        transfer_group: transfer_group,
+        transfer_group: job.transfer_group,
         idempotency_key: "e2e_tr_#{job.id}_#{SecureRandom.hex(3)}",
         source_transaction: collection.stripe_charge_id
       )
@@ -1060,10 +1093,13 @@ class StagingAchE2eRunner
         stripe_tr = Stripe::Transfer.retrieve(ops.stripe_id)
         raise Fail, "destination mismatch" unless stripe_tr.destination.to_s == destination_id
         raise Fail, "amount mismatch" unless stripe_tr.amount.to_i == amount
-        raise Fail, "missing transfer_group" if stripe_tr.transfer_group.blank? && transfer_group.present?
+        raise Fail, "missing inherited transfer_group on tr" if stripe_tr.transfer_group.blank?
+        raise Fail,
+          "transfer_group mismatch: expected=#{job.transfer_group} got=#{stripe_tr.transfer_group}" \
+          unless stripe_tr.transfer_group.to_s == job.transfer_group.to_s
         pass!(
           "6_connect_transfer",
-          "PaymentService blocked (#{result[:error].to_s[0, 60]}); JobStripeOps.transfer! OK " \
+          "PaymentService blocked (#{result[:error]}); JobStripeOps.transfer! OK " \
           "tr=#{ops.stripe_id} dest=#{destination_id} amount=#{amount} " \
           "source=#{collection.stripe_charge_id} transfer_group=#{stripe_tr.transfer_group} " \
           "transfers_cap=#{transfers_cap} (no automatic bank payout claimed)"
@@ -1073,7 +1109,8 @@ class StagingAchE2eRunner
       if ops.error.to_s.match?(/insufficient|available|balance|funds/i)
         raise SkipSandbox, "Stripe settlement/balance limitation: #{ops.error}"
       end
-      raise Fail, "transfer failed via PaymentService (#{result[:error]}) and JobStripeOps (#{ops.error})"
+      raise Fail,
+        "transfer failed via PaymentService (#{result[:error]}) and JobStripeOps (#{ops.error})"
     end
 
     raise Fail, "PaymentService.release_to_technician failed: #{result.inspect}" unless result[:success]
@@ -1086,6 +1123,9 @@ class StagingAchE2eRunner
 
     stripe_tr = Stripe::Transfer.retrieve(xfer.stripe_transfer_id)
     raise Fail, "destination mismatch" unless stripe_tr.destination.to_s == destination_id
+    raise Fail,
+      "transfer_group mismatch: expected=#{job.transfer_group} got=#{stripe_tr.transfer_group}" \
+      unless stripe_tr.transfer_group.to_s == job.transfer_group.to_s
     @created[:transfers] << xfer.stripe_transfer_id
 
     pass!(
