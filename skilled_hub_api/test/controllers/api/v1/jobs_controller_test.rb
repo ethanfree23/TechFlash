@@ -298,7 +298,9 @@ module Api
 
         assert_response :created
         created_job = Job.order(:id).last
-        assert created_job.funding_funded?
+        assert created_job.funding_unfunded?
+        assert created_job.posted_under_funding_waiver?
+        refute created_job.funding_funded?
         assert_equal 0, created_job.job_payment_transactions.company_collections.status_succeeded.count
       end
 
@@ -427,7 +429,9 @@ module Api
         assert_response :ok
         draft.reload
         assert_equal "open", draft.status
-        assert draft.funding_funded?
+        assert draft.funding_unfunded?
+        assert draft.posted_under_funding_waiver?
+        refute draft.funding_funded?
       end
 
       test "technician cannot see draft jobs" do

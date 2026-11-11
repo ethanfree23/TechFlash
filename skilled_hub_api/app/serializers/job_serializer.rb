@@ -4,7 +4,7 @@ class JobSerializer < ActiveModel::Serializer
              :scheduled_start_at, :scheduled_end_at, :finished_at, :price_cents, :hourly_rate_cents, :hours_per_day, :days,
              :job_amount_cents, :company_charge_cents, :tech_payout_cents,
              :pay_basis, :agreed_hourly_rate_cents, :estimated_hours, :agreed_labor_cents,
-             :funding_status, :settlement_status, :financial_revision,
+             :funding_status, :posted_under_funding_waiver, :settlement_status, :financial_revision,
              :address, :city, :state, :zip_code, :country, :latitude, :longitude,
              :skill_class, :trade_type, :minimum_years_experience, :notes, :go_live_at, :start_mode,
              :require_background_check, :require_identity_verification, :minimum_verified_references,

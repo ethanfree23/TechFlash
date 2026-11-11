@@ -76,10 +76,23 @@ class JobFundingService
       return { success: false, error: "Company commission snapshot is missing; refusing to charge." }
     end
 
-    if !job.priced? || job.job_funding_waived?
+    if job.job_funding_waived?
+      # Admin posting exemption: publishable/open, financially unfunded. Never :funded.
+      job.update!(
+        status: :open,
+        funding_status: :unfunded,
+        posted_under_funding_waiver: true,
+        go_live_at: Time.current
+      )
+      record_revision!(job, source: "posting")
+      return { success: true, job: job, waived: true }
+    end
+
+    if !job.priced?
+      # Zero company_required ⇒ JobLedger.fully_funded with no collections (vacuous).
       job.update!(status: :open, funding_status: :funded, go_live_at: Time.current)
       record_revision!(job, source: "posting")
-      return { success: true, job: job, waived: job.job_funding_waived? }
+      return { success: true, job: job, waived: false }
     end
 
     charge = collect!(

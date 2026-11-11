@@ -80,7 +80,10 @@ module Jobs
           return { error: funding[:error] || "Could not fund the accepted counteroffer." }
         end
       else
-        unless @job.funding_funded? || !@job.priced? || @job.job_funding_waived?
+        # funding_allows_claim? covers cash-funded, posted_under_funding_waiver, and unpriced.
+        # Company job_funding_waived remains a transitional fallback for mislabeled legacy rows
+        # until the audited reclassify rake has been run (does not authorize payouts).
+        unless @job.funding_allows_claim? || @job.job_funding_waived?
           return { error: "This job is not funded yet and cannot be claimed." }
         end
       end

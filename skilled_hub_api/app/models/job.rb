@@ -6,6 +6,8 @@ class Job < ApplicationRecord
 
   enum :status, { open: 0, reserved: 1, accepted: 2, completed: 3, filled: 4, finished: 5, pending_funding: 6, draft: 7 }
   enum :pay_basis, { actual_hours_worked: 0, guaranteed_job_pay: 1 }
+  # funded = verified collections cover company_required (same truth as JobLedger.fully_funded).
+  # Posting without payment uses posted_under_funding_waiver (boolean), not a funding_status value.
   enum :funding_status, { unfunded: 0, funded: 1, adjustment_required: 2, funding_failed: 3 }, prefix: :funding
   enum :settlement_status, { unsettled: 0, settling: 1, settled: 2, settlement_blocked: 3 }, prefix: :settlement
   enum :start_mode, { hard_start: 0, rolling_start: 1 }
@@ -109,8 +111,19 @@ class Job < ApplicationRecord
     !!company_profile&.job_funding_waived?
   end
 
+  def posted_under_funding_waiver?
+    has_attribute?(:posted_under_funding_waiver) && !!self[:posted_under_funding_waiver]
+  end
+
+  # Claim / visibility eligibility for paywalled jobs. Distinct from payout authorization
+  # (PaymentService / JobLedger). Does NOT authorize Stripe transfers.
+  def funding_allows_claim?
+    funding_funded? || posted_under_funding_waiver? || !priced?
+  end
+
   def funded_terms_locked?
-    funding_funded? || funding_adjustment_required?
+    # Exempt-posted jobs keep the same pay-term lock they had when mislabeled as funded.
+    funding_funded? || posted_under_funding_waiver? || funding_adjustment_required?
   end
 
   # How many accepted claims this job can hold. Single-technician today; centralised so

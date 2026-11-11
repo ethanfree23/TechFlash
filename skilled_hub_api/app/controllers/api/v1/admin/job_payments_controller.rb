@@ -238,6 +238,7 @@ module Api
             needs_attention: txn.status_failed? || txn.status_processing? || txn.status_outcome_unknown? || txn.disputed? || txn.investigation_required || open_risk.present?,
             settlement_status: job&.settlement_status,
             funding_status: job&.funding_status,
+            posted_under_funding_waiver: job&.posted_under_funding_waiver?,
             risk_events: risks.map { |r|
               {
                 id: r.id,

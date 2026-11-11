@@ -232,7 +232,12 @@ module Api
           job.reload
         else
           JobFundingService.snapshot_company!(job)
-          job.update!(funding_status: :funded)
+          if job.job_funding_waived?
+            job.update!(funding_status: :unfunded, posted_under_funding_waiver: true)
+          else
+            # Unpriced path only — vacuous :funded when company_required is 0.
+            job.update!(funding_status: :funded)
+          end
           JobFundingService.record_revision!(job, source: "posting")
         end
 
@@ -795,7 +800,12 @@ module Api
         end
 
         JobFundingService.snapshot_company!(job)
-        job.update!(funding_status: :funded) unless job.funding_funded?
+        if job.job_funding_waived?
+          job.update!(funding_status: :unfunded, posted_under_funding_waiver: true)
+        else
+          # Unpriced publish path only — cash :funded requires verified collections elsewhere.
+          job.update!(funding_status: :funded) unless job.funding_funded?
+        end
         JobFundingService.record_revision!(job, source: "posting")
         :ok
       end

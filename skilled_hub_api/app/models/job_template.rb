@@ -78,6 +78,7 @@ class JobTemplate < ApplicationRecord
     company_membership_tier_config_id
     technician_membership_tier_config_id
     funding_status
+    posted_under_funding_waiver
     settlement_status
     financial_revision
     rolling_start_exact_start_at

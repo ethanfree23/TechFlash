@@ -26,7 +26,20 @@ class JobFundingAdjustmentService
     # compensation counter offer must do the same: the ledger would otherwise treat the
     # waived job as uncollected and try to charge a card that was never required.
     if job.job_funding_waived?
-      job.update!(funding_status: :funded)
+      # Keep cash :funded only when verified collections already cover required;
+      # otherwise remain financially unfunded with an explicit posting-exemption marker.
+      attrs =
+        begin
+          ledger = JobLedger.for(job)
+          if ledger.fully_funded && ledger.net_funded_cents.positive?
+            { funding_status: :funded }
+          else
+            { funding_status: :unfunded, posted_under_funding_waiver: true }
+          end
+        rescue JobLedger::MissingCommissionSnapshotError
+          { funding_status: :unfunded, posted_under_funding_waiver: true }
+        end
+      job.update!(attrs)
       JobFundingService.record_revision!(job, source: source)
       return { success: true, job: job, waived: true }
     end
