@@ -51,13 +51,23 @@ namespace :jobs do
       next
     end
 
+    puts "---- DRY-RUN CORRECTION REPORT (from -> to) ----"
+    puts "job_id | company | job_status | funding_status | posted_under_funding_waiver | collected_cents | labor_cents"
     lines = candidates.map do |row|
-      "job_id=#{row[:job_id]} company=#{row[:company_profile_id]} status=#{row[:job_status]} " \
+      detail =
+        "job_id=#{row[:job_id]} company=#{row[:company_profile_id]} status=#{row[:job_status]} " \
         "funding: #{row[:funding_before]} -> #{row[:funding_after]} " \
         "posted_under_funding_waiver: #{row[:waiver_before]} -> #{row[:waiver_after]} " \
         "collected_cents=#{row[:collected_cents]} labor_cents=#{row[:labor_cents]}"
+      table =
+        "#{row[:job_id]} | #{row[:company_profile_id]} | #{row[:job_status]} | " \
+        "#{row[:funding_before]} -> #{row[:funding_after]} | " \
+        "#{row[:waiver_before]} -> #{row[:waiver_after]} | " \
+        "#{row[:collected_cents]} | #{row[:labor_cents]}"
+      puts table
+      detail
     end
-    lines.each { |line| puts line }
+    puts "---- end report ----"
     puts "Total candidates: #{candidates.size}"
 
     if audit_path

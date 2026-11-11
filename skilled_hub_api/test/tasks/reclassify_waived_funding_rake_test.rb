@@ -76,8 +76,9 @@ class ReclassifyWaivedFundingRakeTest < ActiveSupport::TestCase
     out = capture_io { @task.invoke }.first
 
     assert_match(/DRY-RUN/, out)
-    assert_match(/job_id=#{mislabeled.id}/, out)
-    refute_match(/job_id=#{with_money.id}/, out)
+    assert_match(/DRY-RUN CORRECTION REPORT/, out)
+    assert_match(/#{mislabeled.id} \| #{@waived_company.id} \| open \| funded -> unfunded/, out)
+    refute_match(/#{with_money.id} \|/, out)
     assert mislabeled.reload.funding_funded?
     assert_equal "open", mislabeled.status
     assert with_money.reload.funding_funded?
