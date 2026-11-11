@@ -1,8 +1,10 @@
 # Rolling Two-Week Job Funding (P3) — Architecture Proposal
 
-**Status:** DRAFT, revision 2 — design and documentation only. No application code, migrations, schema, scheduler, worker, payment-service, frontend, Stripe, Railway/Vercel, or production-data changes accompany this document.
+**Status:** DRAFT, revision 3 (final review corrections) — design and documentation only. No application code, migrations, schema, scheduler, worker, payment-service, frontend, Stripe, Railway/Vercel, or production-data changes accompany this document.
 
 **Base:** `origin/main` @ `f8d2753` (P2, PR #32 "Separate posting exemption from cash funding_status", is **merged**; `jobs.posted_under_funding_waiver` exists on `main`). Code references are to that commit.
+
+**Revision 3 changes (final architect review of rev 2 @ `f532857`, plus owner correction on D-13):** no fictional funding — requirement adjustments, verified cash allocations and platform-backed funding are distinct and only verified cash makes a period funded (§6.2); labor-available transfer limits — transfers are bounded by the labor portion of verified allocated cash after prior transfers, holds and platform-balance reservations, never by Stripe's raw balance (§12.4); whole-job work authorization requires verified succeeded funding or the zero-requirement exception — processing/failed never authorizes (§7.4); D-13 recorded as **open / not approved** with nothing reserve-related designed as enabled (§12.6, §20).
 
 **Revision 2 changes (architect review of rev 1 @ `0448080`, plus owner decisions):** period-aware payout/settlement policy for rolling jobs (§12); work authorization enforced at every entry point and never implied by dates (§7.4); dedicated Railway cron service, lease-expiry reconciliation and collection reconciliation rules (§8); allocation-based period funding (§6); cancel vs. processing-debit handling (§10.5); HSI legacy jobs require a funding/work decision before new work (§13); enforcement deployed before any rolling-funded job is activated (§17, §19); company #19 pilot described as bank-linking only (§13.1); all D-1…D-12 decisions recorded as approved (§20).
 
@@ -45,10 +47,10 @@ TechFlash today funds a job **once, in full, at publish time** (`JobFundingServi
 This proposal recommends:
 
 - **Period model.** `job_funding_periods` splits the working schedule (via `Schedule::WorkingIntervalExpander`) into consecutive 14-calendar-day windows anchored at the job's effective `scheduled_start_at` in `job_timezone`, recalculated on claim. Period 1 is the only thing collected at publish. Jobs of ≤ 14 calendar days have one period and behave as today.
-- **Allocation-based funding.** A period is funded when the sum of `job_funding_allocations` assigned to it (from net successful collections, carried-forward credit and approved adjustments) covers its requirement — never because "one succeeded transaction exists". Every cent of every successful collection on a rolling job is allocated to exactly one period or to the job's credit pool.
+- **Allocation-based funding.** A period is funded when the sum of `job_funding_allocations` assigned to it (verified succeeded collections and carried-forward credit only — never admin adjustments, which may only change the amount owed) covers its requirement — never because "one succeeded transaction exists". Every cent of every successful collection on a rolling job is allocated to exactly one period or to the job's credit pool.
 - **Durable scheduling.** A Postgres outbox (`scheduled_funding_collections`) holds every future collection as a persisted instruction with a stable idempotency key. A **dedicated, short-lived Railway cron service** runs `rake funding:run_due_collections` every 15 minutes and exits; rows are leased with `FOR UPDATE SKIP LOCKED`, no DB transaction or advisory lock is held across a Stripe HTTP call, execution time and leases are bounded, and an **expired lease is reconciled against Stripe before anything is retried**.
 - **Five separate truths.** Posting visibility, claim eligibility, funding coverage, work authorization and operational state have independent sources of truth. A job **never becomes active because a date arrives**; only a funded period covering that date moves `work_authorized_through_on`, and `Funding::WorkAuthorization` is consulted at every entry point (activation, start-work, schedule changes, time entries, approvals, pay lines).
-- **Payout policy.** Funding coverage, technician entitlement and Stripe transfer eligibility are three separate questions (§12). Legacy jobs keep the whole-job `JobLedger.fully_funded` gate unchanged. Rolling jobs use `Funding::RollingTransferPolicy`: company-funded transfers never exceed allocated, available, succeeded funds; legitimately due entitlement that company funds cannot cover is met from a **platform compensation reserve** (admin-authorized, capped, creating a company receivable) — never by weakening transfer safety, never by deducting from the technician, and without changing the payout schedule.
+- **Payout policy.** Funding coverage, technician entitlement and Stripe transfer eligibility are three separate questions (§12). Legacy jobs keep the whole-job `JobLedger.fully_funded` gate unchanged. Rolling jobs use `Funding::RollingTransferPolicy`: company-funded transfers never exceed the **labor portion** of allocated, available, verified funds after holds and platform-balance reservations (TechFlash fees are never transferable); legitimately due entitlement that company funds cannot cover is recorded as a `technician_compensation_obligation` with a company receivable and is never extinguished — never by weakening transfer safety, never by deducting from the technician, and without changing the payout schedule. A platform compensation reserve to advance such obligations is **D-13, open / not approved**; no reserve amount or reserve-funded transfer is designed as enabled.
 - **Legacy & HSI.** Existing jobs are backfilled to `whole_job_upfront` or `legacy_exempt` (HSI #32–38). Legacy jobs are never auto-debited; posting visibility is grandfathered; **new work on a `legacy_exempt` job requires a deliberate funding / work-authorization decision**.
 - **Rollout.** Work-authorization and pause enforcement ship and are verified **before** the first rolling-funded job is activated. All behaviour sits behind new flags distinct from the ACH kill switch.
 
@@ -131,7 +133,7 @@ Conclusion: every timer-based behaviour must be a **persisted instruction scanne
 | R4 | **No unfunded work.** ACH processing ≠ collected. Delay communicated clearly. A job is never active merely because the claim date or scheduled start arrives. | Work authorization requires an allocated-funded period covering the date (§7.4, §9, §11). |
 | R5 | Every later two-week period funded **in advance with lead time**. | §9, §10. |
 | R6 | Funding failure → pause, stop new work authorization, notify both parties, preserve records, allow safe resumption. | §11. |
-| R7 | Pausing never eliminates compensation for hours already worked. | Entitlement is independent of company funding; reserve mechanism (§12). |
+| R7 | Pausing never eliminates compensation for hours already worked. | Entitlement is independent of company funding and survives shortfalls as an obligation (§12). |
 | R8 | Card and ACH; off-session recurring charges need proper prior authorization; never assume an initiated ACH is funded. | §9, §18. |
 | R9 | No automatic clawbacks, transfer reversals or wage deductions by default. | No new reversal/deduction paths (§12.7). |
 | R10 | Do not change the technician payout schedule. | Payout timing stays finish / termination + 72 h or both ratings (§12.3). |
@@ -156,7 +158,7 @@ Conclusion: every timer-based behaviour must be a **persisted instruction scanne
                                 time entries (create/approve), pay lines, settlement
  Funding::RollingTransferPolicy / RollingSettlement  ← used by PaymentService / JobSettlementService
                                                         ONLY for funding_mode = rolling_two_week
- platform compensation reserve ──► technician_compensation_obligations ──► company_receivables
+ technician_compensation_obligations ──► company_receivables   (platform reserve: D-13 open, nothing enabled)
 ```
 
 Principles:
@@ -213,24 +215,34 @@ Base periods fund scheduled labor. Additional approved hours (overtime, weekend 
 | Column | Meaning |
 |---|---|
 | `job_id`, `job_funding_period_id` (nullable) | NULL period = the job's **credit pool** (unallocated). |
-| `source_type` | `collection` (succeeded `job_payment_transaction`), `refund` (negative, tied to a refund txn), `credit_transfer` (move between pool and a period; always paired +/−), `approved_adjustment` (admin, signed, with reason), `reserve_advance` (see §12.6; informational, excluded from company coverage). |
-| `source_id` | txn / adjustment / obligation id. |
+| `source_type` | **Verified cash only:** `collection` (succeeded `job_payment_transaction`), `refund` (negative, tied to a refund txn), `credit_transfer` (move between pool and a period; always paired +/−, so it never creates cash). `reserve_backing` is a reserved enum value only (see §12.6; it could exist only after D-13 is decided, written only against an explicitly authorized, financially backed `technician_compensation_obligation`; excluded from company coverage; no code path writes it in P3). There is **no** admin "adjustment" allocation type — no row in this table may originate from anything other than money that actually arrived. |
+| `source_id` | txn / obligation id. |
 | `amount_cents` | Signed integer. |
 | `created_by_type/id`, `reason`, `created_at` | Audit. |
 
+Three distinct things that must never be conflated:
+
+| | What it changes | Mechanism | Can it make a period funded? |
+|---|---|---|---|
+| (a) **Requirement adjustment** | the amount the company **owes** for the period (`company_required_cents`, `pending_adjustment_cents`) | audited `financial_revision` bump (D-4 true-ups, approved-hour overages, schedule changes, admin corrections with reason; audit row in `job_term_change_audits`, `change_type: funding_requirement_adjustment`) | Only by **lowering** the requirement to what verified cash already covers. It never adds cash. |
+| (b) **Cash allocation** | which period a **verified** dollar is assigned to | `collection` / `refund` / `credit_transfer` rows, written by `Funding::Allocator` from succeeded transactions or legitimately existing pool credit | Yes — this is the only ordinary way. |
+| (c) **Platform-backed funding** | technician compensation the company has not funded | `reserve_backing` rows mirroring an explicitly authorized, financially backed reserve obligation (§12.6) — **not available in P3; D-13 open** | Only where explicitly authorized for that obligation, and only after D-13; never counted as company cash, never fictional, never as coverage for new work authorization. |
+
 Rules:
 
-- `period.allocated_cents = Σ allocations where period_id = period.id and source_type != reserve_advance`.
-- `period.required_cents = company_required_cents + pending_adjustment_cents`.
-- **Period funded ⇔ `allocated_cents >= required_cents`** (or `required_cents == 0`). Multiple partial collections, pool credit and approved adjustments all count; a single succeeded transaction is neither necessary nor sufficient.
+- `period.required_cents = company_required_cents + pending_adjustment_cents` (requirement side; changes only via (a)).
+- `period.allocated_cents = Σ allocations where period_id = period.id and source_type ∈ {collection, refund, credit_transfer}` (verified cash side).
+- **Period funded ⇔ `allocated_cents >= required_cents`** (or `required_cents == 0`). Multiple partial collections and carried pool credit count; a single succeeded transaction is neither necessary nor sufficient; **no adjustment, override, note or admin action counts as cash**. `reserve_backing` never advances `work_authorized_through_on`.
+- An admin who believes a period is "really paid" must either locate the verified transaction (attach PI id via reconciliation, §8.5) or lower the requirement through (a) with a reason — there is no path that fabricates a credit.
 - For every succeeded collection txn on a rolling job: Σ its `collection` allocations == `txn.amount_cents` − Σ refunds against it. Every cent is allocated to exactly one period or to the pool.
 - `Funding::Allocator.allocate_collection!(txn)` runs under the Job row lock when a collection becomes `succeeded` (runner or webhook, idempotent on `source_id`): fill the targeted period up to `required_cents`; surplus → pool. Before scheduling a collection, `Allocator.apply_pool_credit!(period)` moves pool credit into the period and reduces the outbox amount (D-6: unused prepaid funds carry forward).
 - Pool credit remaining at job completion/termination is refunded via `period_funding_refund` (D-6) through the existing refund machinery; negative allocation rows record the refund.
-- `JobLedger` whole-job sums remain exactly Σ allocations (collections − refunds) — the two views reconcile by construction; `rake funding:verify_allocations` asserts it.
+- `JobLedger` whole-job sums remain exactly Σ cash allocations (collections − refunds) — the two views reconcile by construction; `rake funding:verify_allocations` asserts it and additionally asserts that no allocation row exists without a succeeded/refunded transaction or an authorized obligation behind it.
+- Each cash allocation carries the period's snapshotted split, so `labor_allocated_cents(k) = floor(min(allocated, required) × labor_cents(k) / required_cents(k))` and the remainder is the TechFlash fee portion. Only the labor portion can ever back a technician transfer (§12.4).
 
 ### 6.3 Transactions
 
-`job_payment_transactions.job_funding_period_id` (nullable) and `scheduled_funding_collection_id` (nullable). New `transaction_type` values: `period_funding_charge` (10, in `COLLECTION_TYPES`), `period_funding_refund` (11, in `REFUND_TYPES` and `SETTLEMENT_REFUND_TYPES`), `reserve_technician_transfer` (12, outbound, platform-funded; excluded from company coverage and from `net_funded_cents`). `initial_job_charge` stays for `whole_job_upfront` jobs.
+`job_payment_transactions.job_funding_period_id` (nullable) and `scheduled_funding_collection_id` (nullable). New `transaction_type` values: `period_funding_charge` (10, in `COLLECTION_TYPES`), `period_funding_refund` (11, in `REFUND_TYPES` and `SETTLEMENT_REFUND_TYPES`), `reserve_technician_transfer` (12, reserved value; outbound, would be funded only from TechFlash capital, never customer prepaid balances; excluded from company coverage and from `net_funded_cents`; **no executable path in P3 — disabled until the owner decides D-13**). `initial_job_charge` stays for `whole_job_upfront` jobs.
 
 ---
 
@@ -271,15 +283,17 @@ Inside `create_claim_atomically!`'s transaction:
 ```
 authorized_on?(d) =
   job.status ∈ {reserved, filled}
-  ∧ ( funding_mode == whole_job_upfront                       # funded in full at publish (or unpriced)
+  ∧ ( ( funding_mode == whole_job_upfront
+        ∧ ( verified_whole_job_funded?                          # JobLedger.fully_funded from SUCCEEDED collections, net_funded_cents > 0
+          ∨ !priced? ) )                                        # the documented zero-required-funding exception (company_required_cents == 0)
     ∨ (work_authorized_through_on.present? ∧ d <= work_authorized_through_on
        ∧ (paused_on.nil? ∨ d < paused_on))
     ∨ (admin_work_authorization_override_until.present? ∧ d <= it) )   # audited, time-bounded, §13.4
 ```
 
-`legacy_exempt` jobs have neither clause until a decision is recorded (§13), so they are not authorized for new work once enforcement is on.
+`verified_whole_job_funded?` is computed from succeeded `COLLECTION_TYPES` transactions minus refunds (`JobLedger.net_funded_cents >= company_required_cents`), exactly as P2's `funding_funded?` requires for priced jobs. A whole-job collection that is `processing` (ACH), `pending`, `requires_action`, `failed` or `canceled` does **not** authorize work; neither does `funding_status` alone, the `posted_under_funding_waiver` marker, or `legacy_funded_without_collections?` rows. `legacy_exempt` jobs have no clause until a decision is recorded (§13), so they are not authorized for new work once enforcement is on.
 
-**Statement of rule:** arrival of the claim date, the scheduled start, or any period's `period_start_on` never authorizes work. Only `PeriodStateService.mark_funded!(period)` (allocation covers requirement) advances `work_authorized_through_on`, and only an audited admin override can substitute for it.
+**Statement of rule:** arrival of the claim date, the scheduled start, or any period's `period_start_on` never authorizes work. For rolling jobs only `PeriodStateService.mark_funded!(period)` (verified cash allocation covers requirement) advances `work_authorized_through_on`; for whole-job jobs only verified succeeded collections covering the whole requirement (or the zero-requirement exception) authorize; only an audited admin override can substitute for either.
 
 Entry points that must call it (all return a user-safe reason):
 
@@ -290,7 +304,7 @@ Entry points that must call it (all return a user-safe reason):
 | `ClaimJobService` | claim allowed by `funding_allows_claim?`; result payload carries authorization status. |
 | Schedule changes: counteroffer acceptance, schedule proposals, `extend`, `WeekendWorkRequest` acceptance, `rolling_start` resolution | re-plan periods; never extend `work_authorized_through_on`; refuse weekend/extra-day requests dated beyond authorization unless a funded period covers them or the request is explicitly "subject to funding". |
 | `TimeEntriesController#create` | `authorized_on?(entry.work_date)`. |
-| `TimeEntriesController#approve` → `create_pay_line!` | `authorized_on?(work_date)`; otherwise refuse. Admin may approve an unauthorized-date entry only with an audited override (`approval_override_reason`), which creates technician entitlement that may need the reserve (§12.6) and a company receivable. |
+| `TimeEntriesController#approve` → `create_pay_line!` | `authorized_on?(work_date)`; otherwise refuse. Admin may approve an unauthorized-date entry only with an audited override (`approval_override_reason`), which creates technician entitlement that the company must fund (obligation + company receivable if it does not, §12.6). |
 | `Compensation::Calculator` pay-line creation | refuse for unauthorized dates unless override present. |
 | Settlement / transfer (`RollingSettlement`, `RollingTransferPolicy`) | entitlement counts only approved pay lines (authorized or override-approved). |
 | Auto-complete (`AutoCompleteExpiredService`) | unaffected (ends jobs; never authorizes). |
@@ -489,7 +503,7 @@ A pause for company funding reasons that lasts **7 calendar days** (`rolling_fun
 
 ### 11.5 Compensation guarantee (R7)
 
-Hours worked before the pause were authorized only while their period was funded, so allocated cash exists for them. If that cash is later lost (ACH return/dispute) the technician is still paid under §12.6; the loss is platform/company exposure, never the technician's.
+Hours worked before the pause were authorized only while their period was funded, so allocated cash exists for them. If that cash is later lost (ACH return/dispute) the technician's entitlement survives as an open obligation with a company receivable (§12.6); the loss is the company's debt, never the technician's. Whether TechFlash advances such amounts is D-13 (open).
 
 ---
 
@@ -500,8 +514,8 @@ Hours worked before the pause were authorized only while their period was funded
 | Question | Definition | Data |
 |---|---|---|
 | **Funding coverage** (per period) | `allocated_cents(k) >= required_cents(k)` | `job_funding_allocations`, `job_funding_periods` |
-| **Technician entitlement** (whole assignment to date) | `entitled_cents` = Σ technician amounts of approved `TimeEntryPayLine`s for authorized (or override-approved) dates, plus for `guaranteed_job_pay` the prorated guaranteed amount for authorized periods actually worked/ended; minus `transferred_cents` (company-funded + reserve-funded). Entitlement exists the moment hours are approved; it does **not** depend on whether the company's later collections succeed. | `time_entry_pay_lines`, `job_payment_transactions` (transfers), `technician_compensation_obligations` |
-| **Transfer eligibility** (Stripe) | Legacy modes: `PaymentService.release_to_technician` unchanged (whole-job `fully_funded`). Rolling: `Funding::RollingTransferPolicy` (§12.4). | `JobLedger`, allocations, `PaymentRiskEvent`, Connect state |
+| **Technician entitlement** (whole assignment to date) | `entitled_cents` = Σ technician amounts of approved `TimeEntryPayLine`s for authorized (or override-approved) dates, plus for `guaranteed_job_pay` the prorated guaranteed amount for authorized periods actually worked/ended; minus `transferred_cents`. Entitlement exists the moment hours are approved; it does **not** depend on whether the company's later collections succeed, and it is never extinguished by a shortfall. | `time_entry_pay_lines`, `job_payment_transactions` (transfers), `technician_compensation_obligations` |
+| **Transfer eligibility** (Stripe) | Legacy modes: `PaymentService.release_to_technician` unchanged (whole-job `fully_funded`). Rolling: `Funding::RollingTransferPolicy` (§12.4) — bounded by the **labor portion** of verified allocated cash, prior transfers, holds and platform-balance reservations. | `JobLedger`, allocations, `PaymentRiskEvent`, Connect state, `Funding::PlatformBalanceReservations` |
 
 ### 12.2 Legacy jobs (`whole_job_upfront`, `legacy_exempt`)
 
@@ -515,39 +529,51 @@ Unchanged for all modes: transfers are evaluated at finish or early termination,
 
 Preserved protections (identical to today): technician snapshot present; Connect account `payout_ready`; no pending refunds; no blocking `PaymentRiskEvent`; no `processing` collection **allocated to a period whose work is included in this payout** (a processing collection for a *future* or voided period does not block paying earned hours, because the cap below already excludes it); idempotency key per transfer; 23 h outcome-unknown discipline; `TransferRetryAuthorization` for admin retries; `source_transaction` decision unchanged (`platform_balance` for multi-charge jobs).
 
-Replaced protection: instead of whole-job `fully_funded`,
+Replaced protection: instead of whole-job `fully_funded`, a **labor-available** cap. Not every collected dollar is transferable: each company collection prepays **labor and TechFlash fees**, and the fee portion is never technician money.
 
 ```
-available_company_funds = Σ succeeded collection allocations − Σ refund allocations − Σ company-funded transfers
-                          − reserved_refund_cents − reserved_transfer_cents            # existing helpers
-due_entitlement         = entitled_cents (unpaid)
-company_funded_transfer = min(due_entitlement, available_company_funds)                 # never exceeds allocated, available, succeeded funds
-shortfall               = due_entitlement − company_funded_transfer                      # ≥ 0
+eligible_labor_funded     = Σ_k labor_allocated_cents(k)                      # labor portion of VERIFIED cash allocated to periods whose
+                                                                              # work is included in this payout (§6.2); fee portion excluded;
+                                                                              # periods with a processing/returned/disputed collection excluded
+holds                     = reserved_refund_cents + reserved_transfer_cents   # existing helpers: pending refunds, in-flight transfers
+                          + risk_holds (blocking PaymentRiskEvent amounts) + platform_obligations_against_these_funds
+available_technician_funds = eligible_labor_funded − Σ prior company-funded technician transfers (this job) − holds
+stripe_constraint         = spendable platform balance for THIS job's funds:
+                              Stripe available balance − Σ reservations for other jobs' pending transfers/refunds − platform fee retention
+                              (never the raw Stripe "available balance")
+due_entitlement           = entitled_cents (unpaid)
+company_funded_transfer   = max(0, min(due_entitlement, available_technician_funds, stripe_constraint))
+shortfall                 = due_entitlement − company_funded_transfer                                  # ≥ 0
 ```
 
-- `company_funded_transfer > 0` → `technician_transfer` with key `tf_job_<id>_txn_technician_transfer_r<rev>_s<settlement_sequence>` (the existing "one transfer per job" guard becomes "one transfer per settlement sequence"; `settlement_sequence` increments on each settlement event — finish, early termination, pause-deadline termination, reserve payment).
-- `shortfall > 0` → **not** blocked indefinitely: a `technician_compensation_obligations` row (`amount_cents = shortfall`, `reason`, `due_at = release_eligible_at`) is created (§12.6).
-- Invariant checked in tests: Σ company-funded transfers for a job ≤ Σ succeeded collections − refunds, at all times.
+- `company_funded_transfer > 0` → `technician_transfer` with key `tf_job_<id>_txn_technician_transfer_r<rev>_s<settlement_sequence>` (the existing "one transfer per job" guard becomes "one transfer per settlement sequence"; `settlement_sequence` increments on each settlement event — finish, early termination, pause-deadline termination).
+- `shortfall > 0` → **not** blocked indefinitely and **not** forgotten: a `technician_compensation_obligations` row (`amount_cents = shortfall`, `reason`, `due_at = release_eligible_at`) records the debt owed to the technician (§12.6). It is the company's debt; TechFlash's handling of it is D-13 (open).
+- `stripe_constraint` is computed by `Funding::PlatformBalanceReservations` from our own ledger of pending outbound transfers/refunds across **all** jobs plus the fee retention policy. Stripe's reported available balance is an upper bound only; it includes other companies' prepaid periods and TechFlash's fees and is **never** treated as money TechFlash may spend on this job.
+- Invariants checked in tests, at all times per job: Σ company-funded technician transfers ≤ Σ labor portion of verified allocated cash − refunds; and Σ company-funded transfers across all jobs ≤ Σ labor portions across all jobs (no cross-job borrowing).
 
 ### 12.5 `Funding::RollingSettlement` (replaces `settle!` for rolling jobs)
 
 1. Compute `consumed` (approved pay lines + company %) vs allocated across all periods; attempt the final collection for any company shortfall (`final_hours_top_up`, existing idempotency) and the refund of remaining credit (`period_funding_refund`, D-6).
-2. Compute technician entitlement and run `RollingTransferPolicy` **independently of step 1's outcome**: a failed or processing final collection does not block the company-funded portion already available, and the shortfall becomes an obligation.
-3. `settlement_status`: `settled` when entitlement fully transferred from company funds and no receivable; **new** `settled_with_receivable (4)` when the technician was paid (in part) from the reserve and a `company_receivables` row is open; `settlement_blocked` only for legacy reasons (missing snapshot, disputes) or when the obligation itself cannot be authorized.
+2. Compute technician entitlement and run `RollingTransferPolicy` **independently of step 1's outcome**: a failed or processing final collection does not block the company-funded portion already available, and the shortfall becomes an open obligation.
+3. `settlement_status`: `settled` when entitlement is fully transferred from company funds and no receivable is open; **new** `settled_with_obligation (4)` when an open `technician_compensation_obligation` and a `company_receivables` row exist (the technician is still owed money; recovery from the company is in progress); `settlement_blocked` only for legacy reasons (missing snapshot, disputes).
 
-### 12.6 Meeting obligations when company funds are unavailable — platform compensation reserve
+### 12.6 Obligations when company funds are unavailable — recorded debt; platform reserve is OPEN (D-13 not approved)
 
-Mechanism (recommended; funding source and cap are the one remaining owner/finance sign-off, D-13):
+What P3 designs now (independent of D-13):
 
-- `technician_compensation_obligations`: `job_id`, `technician_profile_id`, `amount_cents`, `reason` (`final_collection_failed`, `ach_return_after_work`, `pause_deadline_termination`, `override_approved_hours`), `status` (`open → authorized → paid | written_off`), `authorized_by_admin_id`, `paid_transaction_id`, timestamps.
-- Payment: a Connect transfer **from the platform balance** (`transaction_type: reserve_technician_transfer`, same `transfer_group`, idempotency key `tf_job_<id>_txn_reserve_transfer_o<obligation_id>`), executed by the existing release cron once `release_eligible?` and once **admin-authorized** (reusing the `TransferRetryAuthorization` pattern: single-use, audited, amount-bound). Auto-authorization below a configurable per-job cap (`rolling_funding_reserve_auto_cap_cents`, default 0 = always manual) is possible later.
-- Guardrails: `PlatformSetting rolling_funding_reserve_cap_cents` (aggregate open + paid-unrecovered), reserve payments never count toward company coverage or `net_funded_cents`, never create entitlement, never reduce the company's debt.
-- Recovery: `company_receivables` (`company_profile_id`, `job_id`, `obligation_id`, `amount_cents`, `status open → collecting → recovered | written_off`, `last_collection_attempt_at`) collected from the company by on-session or (authorized) off-session collection (`transaction_type: admin_adjustment` or a new `receivable_recovery` type) — **never** from the technician. Companies with open receivables cannot publish new priced jobs until recovered (flag `publish_blocked_receivable`).
-- Alternative recorded for D-13: external payroll disbursement for W-2 technicians, if counsel classifies them as employees (§18); the obligation record is the same, only the payout rail differs.
+- `technician_compensation_obligations`: `job_id`, `technician_profile_id`, `amount_cents`, `reason` (`final_collection_failed`, `ach_return_after_work`, `pause_deadline_termination`, `override_approved_hours`), `status` (`open → company_recovered | written_off`, with `authorized → paid` reachable **only** after D-13 is decided), `paid_transaction_id`, timestamps. An obligation is an auditable record that compensation is **owed** to the technician; nothing in P3 extinguishes it — not an insufficient or non-existent reserve, not a company default, not a write-off of the company receivable.
+- Recovery from the company: `company_receivables` (`company_profile_id`, `job_id`, `obligation_id`, `amount_cents`, `status open → collecting → recovered | written_off`, `last_collection_attempt_at`), collected by on-session or (authorized) off-session collection (`transaction_type: receivable_recovery`) — **never** from the technician. A recovered receivable is verified cash: it is allocated as labor-funded cash to the obligation's job, and the normal `RollingTransferPolicy` then pays the technician from it (the obligation moves to `company_recovered`). Companies with open receivables cannot publish new priced jobs until recovered (`publish_blocked_receivable`).
+- Admin dashboard: open obligations, age, company recovery status; owner-visible report of total outstanding technician compensation not yet covered by company cash.
+
+What is **not** designed as enabled (D-13 OPEN / NOT APPROVED, §20):
+
+- No platform compensation reserve exists in P3. No reserve amount, no reserve funding source, no reserve ledger balance and no capital commitment of any size is proposed as approved; the owner has not authorized any.
+- `reserve_technician_transfer` and `reserve_backing` are **reserved enum values only**; no code path may execute them. Live reserve-funded compensation transfers stay **disabled** (`rolling_funding_reserve_transfers_enabled` does not exist as a settable flag in P3 — the policy returns "not available" unconditionally) until the owner explicitly decides D-13 in the future.
+- Design constraints the eventual D-13 decision must respect, recorded so later work does not drift: any reserve would be TechFlash capital, segregated in its own ledger and **never** sourced from customer prepaid balances or other jobs' allocated cash; reserve disbursements would be capped by `min(authorized obligation, reserve ledger balance, stripe_constraint)` — never by Stripe's raw available balance; zero automatic authorization; manual audited approval per obligation; payment rail appropriate to worker classification (Stripe Connect only where appropriate; compliant payroll for W-2 if counsel so classifies); and an insufficient reserve never extinguishes owed compensation.
 
 ### 12.7 What P3 explicitly does not do
 
-No transfer reversals, no clawbacks from technicians, no wage deductions for company failures (R9); no mid-job refunds of credit; no changes to `TRANSFER_IDEMPOTENCY_SAFE_WINDOW`, admin reconcile endpoints or legacy gates; no payout-schedule change (R10).
+No transfer reversals, no clawbacks from technicians, no wage deductions for company failures (R9); no mid-job refunds of credit; no changes to `TRANSFER_IDEMPOTENCY_SAFE_WINDOW`, admin reconcile endpoints or legacy gates; no payout-schedule change (R10); no reserve funding or reserve-funded transfers (D-13 open).
 
 ---
 
@@ -606,7 +632,7 @@ Planner and runner refuse to create periods or collections for `whole_job_upfron
 | `POST /api/v1/admin/jobs/:id/funding/work_authorization_override` | admin | Time-bounded, audited (§13.3) |
 | `GET /api/v1/admin/funding/scheduler` | admin | §8.6 health |
 | `POST /api/v1/admin/funding/collections/:id/retry` / `reconcile` | admin | Re-queue exhausted row; resolve `needs_admin_reconciliation` |
-| `GET/POST /api/v1/admin/funding/obligations[/:id/authorize]` | admin | Reserve obligations (§12.6) |
+| `GET /api/v1/admin/funding/obligations` | admin | Open technician compensation obligations and company recovery status (§12.6). No `authorize`/pay action exists in P3 (D-13 open). |
 | `GET /api/v1/admin/funding/receivables` | admin | Company receivables |
 | `POST /api/v1/internal/funding/run_due_collections` | cron secret | Fallback trigger |
 | `PUT /api/v1/admin/rolling_funding_settings/global` / `companies/:id` | admin | Flags (mirrors `admin/ach_settings`) |
@@ -632,7 +658,7 @@ ALTER TABLE jobs
   ADD COLUMN paused_at timestamp, ADD COLUMN paused_on date, ADD COLUMN pause_reason varchar,
   ADD COLUMN admin_work_authorization_override_until date,
   ADD COLUMN settlement_sequence integer NOT NULL DEFAULT 0;
--- funding_status gains partially_funded = 4; settlement_status gains settled_with_receivable = 4
+-- funding_status gains partially_funded = 4; settlement_status gains settled_with_obligation = 4
 
 CREATE TABLE job_funding_periods (
   id bigserial PRIMARY KEY, job_id bigint NOT NULL REFERENCES jobs, sequence integer NOT NULL,
@@ -689,7 +715,8 @@ CREATE TABLE company_receivables (
 ALTER TABLE job_payment_transactions
   ADD COLUMN job_funding_period_id bigint REFERENCES job_funding_periods,
   ADD COLUMN scheduled_funding_collection_id bigint REFERENCES scheduled_funding_collections;
--- transaction_type gains period_funding_charge = 10, period_funding_refund = 11, reserve_technician_transfer = 12
+-- transaction_type gains period_funding_charge = 10, period_funding_refund = 11, reserve_technician_transfer = 12 (reserved; not executable until D-13)
+-- job_funding_allocations.source_type ∈ collection | refund | credit_transfer (reserve_backing reserved, unused until D-13); no adjustment type
 
 ALTER TABLE company_profiles
   ADD COLUMN rolling_funding_enabled boolean NOT NULL DEFAULT false,
@@ -698,7 +725,7 @@ ALTER TABLE company_profiles
 
 -- platform_settings rows: rolling_funding_enabled, rolling_funding_enforcement_enabled, rolling_funding_scheduler_enabled,
 --   rolling_funding_auto_pause_enabled, rolling_funding_ach_enabled, rolling_funding_card_lead_days (3), rolling_funding_ach_lead_days (7),
---   rolling_funding_pause_settlement_days (7), rolling_funding_reserve_cap_cents, rolling_funding_reserve_auto_cap_cents (0)
+--   rolling_funding_pause_settlement_days (7). No reserve settings (amount, cap, auto-authorization) exist in P3 — D-13 open.
 ```
 
 Pause history reuses `job_term_change_audits` (D-8) unless its mutability audit fails.
@@ -707,7 +734,7 @@ Pause history reuses `job_term_change_audits` (D-8) unless its mutability audit 
 
 ## 16. Test matrix (summary)
 
-Full matrix: `docs/ROLLING_FUNDING_TEST_MATRIX.md`. Groups: period planning; allocation and pool credit; publish; claim (24 h rule, start-at-risk options); scheduler leasing/bounds/reconciliation; webhooks; work authorization at every entry point; pause/resume/deadline; rolling transfer policy, settlement, reserve obligations and receivables; legacy/HSI decisions; API/admin; staging E2E; SQLite-CI compatibility (Postgres-only constructs adapter-guarded, plus a Postgres CI job).
+Full matrix: `docs/ROLLING_FUNDING_TEST_MATRIX.md`. Groups: period planning; allocation and pool credit; publish; claim (24 h rule, start-at-risk options); scheduler leasing/bounds/reconciliation; webhooks; work authorization at every entry point; pause/resume/deadline; rolling transfer policy (labor-available cap), settlement, obligations and receivables (reserve paths asserted disabled); legacy/HSI decisions; API/admin; staging E2E; SQLite-CI compatibility (Postgres-only constructs adapter-guarded, plus a Postgres CI job).
 
 ---
 
@@ -724,7 +751,8 @@ Full matrix: `docs/ROLLING_FUNDING_TEST_MATRIX.md`. Groups: period planning; all
 | `rolling_funding_auto_pause_enabled` | global | false | Due-date pauses applied (else alerts) |
 | `rolling_funding_ach_enabled` | global | false | ACH period charges (AND `AchAccess`) |
 | `company_profiles.rolling_funding_enabled` | company | false | Pilot opt-in |
-| lead days / pause deadline / reserve caps | global | 3 / 7 / 7 / 0 | tunables |
+| lead days / pause deadline | global | 3 / 7 / 7 | tunables |
+| reserve-funded transfers | — | **none** | no flag exists; `RollingTransferPolicy` reports reserve unavailable until the owner decides D-13 |
 
 Hard rule enforced in code: `rolling_funding_enabled` cannot be turned on while `rolling_funding_enforcement_enabled` is off (setting endpoint refuses; runner re-checks).
 
@@ -734,9 +762,9 @@ Hard rule enforced in code: `rolling_funding_enabled` cannot be turned on while 
 |---|---|---|---|
 | **A — Docs** | This proposal; decisions recorded. | — | Approved. |
 | **B — Schema + models** | Tables/columns, enums, `funding_mode` backfill, planner & allocator as pure services, serializers read-only. No behaviour change. | all off | Backfill verified: 0 periods/outbox rows; every job has a mode; `legacy_exempt_report` reviewed by owner. |
-| **C — Enforcement + pause/resume** | `WorkAuthorization` at every entry point, `PeriodStateService`, pause/resume/deadline, admin override/pause tools, notifications. Verified in staging, then **enabled in production** (affects only `legacy_exempt` jobs per D-11 at this point — no rolling jobs exist yet). | `enforcement_enabled` on | Staging scenario: unfunded date refused at every entry point; pause → pay_now → resume; deadline termination settles. Prod: HSI decisions applied; no regressions on `whole_job_upfront` jobs. |
+| **C — Enforcement + pause/resume** | `WorkAuthorization` at every entry point, `PeriodStateService`, pause/resume/deadline, admin override/pause tools, notifications. Verified in staging, then **enabled in production** (at this point affects `legacy_exempt` jobs per D-11 and any priced `whole_job_upfront` job whose whole-job collection has not actually succeeded — normally none, since unfunded priced jobs are not claimable; no rolling jobs exist yet). | `enforcement_enabled` on | Staging scenario: unfunded date refused at every entry point; pause → pay_now → resume; deadline termination settles. Prod: HSI decisions applied; `rake funding:legacy_exempt_report` also lists any claimed whole-job job lacking verified funding (expected empty); no regressions on verified-funded `whole_job_upfront` jobs. |
 | **D — Scheduler dry-run + reconciliation** | Railway cron service created (owner dashboard action); runner, reconciler, monitoring live in dry-run; staging E2E with Stripe test keys. Can run in parallel with C but must finish before E. | `scheduler_enabled` off | 7 days of heartbeats, zero stuck rows, reconciliation drills (kill runner mid-Stripe in staging) pass. |
-| **E — Pilot rolling publish (card)** | `rolling_funding_enabled` + one pilot company; auto-pause **on from day one**; rolling transfer policy + reserve tooling live. | enabled, scheduler on, pause on, ach off | ≥ 2 multi-period jobs replenished; one induced decline → pause → pay_now → resume; settlement and payout verified; allocations verified. |
+| **E — Pilot rolling publish (card)** | `rolling_funding_enabled` + one pilot company; auto-pause **on from day one**; rolling transfer policy, obligation and receivable recording live; **no reserve-funded transfers** (D-13 open). | enabled, scheduler on, pause on, ach off | ≥ 2 multi-period jobs replenished; one induced decline → pause → pay_now → resume; settlement and payout verified; allocations verified. |
 | **F — ACH periods** | After mandate copy update and counsel sign-off (§18 blockers). | `ach_enabled` for pilot | One ACH cycle end-to-end (≥ 4 business days). |
 | **G — GA + conversions** | Company flag default on for new companies; HSI conversion proposals only on explicit company request. | all on | Legacy jobs still untouched unless converted. |
 
@@ -751,11 +779,11 @@ Rollback at any phase = flip the relevant flag; outbox rows stay pending; enforc
 | ACH mandate scope | Current copy excludes recurring variable debits; Nacha requires authorization matching the debit pattern | Copy revision + `recurring_charge_authorized_*`; advance notice of amount/date | Phase F |
 | Card MIT rules | Off-session recurring/unscheduled charges need cardholder agreement | Explicit consent at publish/conversion; `off_session: true` | Phase E |
 | Nacha reinitiation / NSF | ≤ 2 reinitiations within 180 days | No automatic ACH retry (D-7) | Phase F |
-| ACH return/dispute after work | Funds leave after period consumed (returns ≤ 4 business days; disputes ≤ 60 days personal) | `PaymentRiskEvent` blocks company-funded transfers; technician paid via reserve; company receivable | Phase F |
+| ACH return/dispute after work | Funds leave after period consumed (returns ≤ 4 business days; disputes ≤ 60 days personal) | `PaymentRiskEvent` blocks company-funded transfers; technician entitlement recorded as obligation; company receivable; reserve advance only if D-13 is later approved | Phase F |
 | Holding advance funds | Platform balance holds one period ahead; refunds of unused credit | Connect structure review | Phase E |
 | Texas Payday Law / classification | If W-2 non-exempt, semi-monthly pay required; finish-based payout for long jobs may not comply | Payout schedule unchanged in P3 (D-10); compliance verified separately; reserve rail could become payroll (D-13) | Phase E (verification), not a design change |
 | Wage deductions | None for company failures | No deduction path | — |
-| Reserve as credit extension | Platform paying technicians on a company's behalf is a receivable; terms must permit recovery | Receivable terms; publish block | Phase E |
+| Reserve as credit extension | Platform paying technicians on a company's behalf would be a receivable; terms must permit recovery | Receivable terms; publish block; no reserve enabled until D-13 | D-13 |
 | Pause / termination for non-payment | Technician reliance; no fee in P3 (D-12) | Clear notices; separate fee policy after legal review | — |
 | Data | Masked payment-method data only | Unchanged | — |
 
@@ -770,7 +798,7 @@ Rollback at any phase = flip the relevant flag; outbox rows stay pending; enforc
 | PR-2 | `p3/period-planner-and-allocator` | `Funding::PeriodPlanner`, `Funding::Allocator`, `JobMoney` helpers, read-only serializer fields. | PR-1 | M |
 | PR-3 | `p3/work-authorization-and-pause` | `Funding::WorkAuthorization` wired into every entry point (§7.4), `PeriodStateService`, pause/resume/deadline, admin override/pause/resume endpoints, notifications, `rolling_funding_enforcement_enabled`. | PR-2 | L |
 | PR-4 | `p3/collection-runner-and-reconciler` | Outbox runner (bounded, leased), `CollectionReconciler`, `funding_scheduler_runs`, rake + internal trigger, admin scheduler/reconciliation endpoints, `CRON_JOBS.md`/`RAILWAY_SETUP.md` docs for the cron service; dry-run default. | PR-2 | L |
-| PR-5 | `p3/rolling-transfer-policy-and-reserve` | `RollingTransferPolicy`, `RollingSettlement`, obligations, receivables, `reserve_technician_transfer`, admin authorization UI; `PaymentService`/`JobSettlementService` branch by `funding_mode` (legacy paths untouched, covered by regression tests). | PR-3 | L |
+| PR-5 | `p3/rolling-transfer-policy-and-obligations` | `RollingTransferPolicy` (labor-available cap, `PlatformBalanceReservations`), `RollingSettlement`, obligations, receivables and recovery, admin obligation list; `PaymentService`/`JobSettlementService` branch by `funding_mode` (legacy paths untouched, covered by regression tests). No reserve transfer code path (D-13 open). | PR-3 | L |
 | PR-6 | `p3/publish-claim-integration` | Period-1 at publish, replenishment scheduling, exempt-claim deferred collection (24 h rule), `start_at_risk` options, webhook period handling, `partially_funded`, true-ups, cancel/void/processing resolver. **Flag flip requires PR-3 verified in production.** | PR-3, PR-4, PR-5 | L |
 | PR-7 | `p3/frontend` | §14.3. | PR-6 API | L |
 | PR-8 | `p3/ach-period-charges` | ACH lead-time path, mandate copy, `rolling_funding_ach_enabled`. | PR-6, counsel | S |
@@ -807,11 +835,11 @@ R1–R10 (§3).
 | D-11 | HSI legacy jobs #32–38: posting visibility grandfathered; funding required before new work; legacy jobs never auto-debited (§13.3). |
 | D-12 | No new cancellation/standby fee in P3; separate policy after legal review (§11.4). |
 
-### D — Remaining sign-off
+### D — Open / not approved
 
-| ID | Question | Recommended default |
+| ID | Question | Status |
 |---|---|---|
-| D-13 | Funding source and caps for the platform compensation reserve (§12.6), and whether W-2 classification (if any) requires a payroll rail instead of Connect transfers. | Platform-funded reserve, manual admin authorization per obligation, aggregate cap set by finance before Phase E; payroll rail only if counsel requires. |
+| D-13 | Whether TechFlash will operate a platform compensation reserve to advance technician compensation that a company failed to fund (§12.6): funding source, amount, exposure cap, authorization and payment rail. | **OPEN — NOT APPROVED.** The owner has not authorized any reserve, any reserve amount, any reserve funding or any capital commitment. Nothing reserve-related is designed as enabled: no settings, no authorize/pay action, no executable `reserve_technician_transfer` / `reserve_backing` path. Live reserve-funded compensation transfers stay disabled until the owner explicitly decides D-13 in the future. P3 records unfunded entitlement as open obligations with company receivables; an obligation is never extinguished by the absence of a reserve. Constraints any future decision must respect are listed in §12.6. |
 
 Counsel questions in §18 remain open and block the phases listed there.
 

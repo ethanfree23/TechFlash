@@ -1,4 +1,4 @@
-# Rolling Two-Week Funding — State Machines (rev 2)
+# Rolling Two-Week Funding — State Machines (rev 3)
 
 Companion to `docs/ROLLING_TWO_WEEK_FUNDING_ARCHITECTURE.md`. Design only; nothing here is implemented.
 
@@ -45,21 +45,22 @@ planned|collection_scheduled|collecting|funding_failed|paused_unfunded ──ter
 Invariants:
 
 - Only `Funding::PeriodStateService` writes `status`.
-- `funded` ⇔ Σ `job_funding_allocations` for the period (excluding `reserve_advance`) ≥ `company_required_cents + pending_adjustment_cents`, or requirement 0. Multiple partial collections, pool credit and approved adjustments all count; **no single transaction is required or sufficient**.
+- `funded` ⇔ Σ **verified cash** `job_funding_allocations` for the period (`collection`, `refund`, `credit_transfer` only) ≥ adjusted requirement `company_required_cents + pending_adjustment_cents`, or requirement 0. Multiple partial collections and carried pool credit count; **no single transaction is required or sufficient**; **no admin adjustment, override or note counts as cash**. A requirement adjustment (audited `financial_revision`) can only change the amount owed — it can make a period funded solely by lowering the requirement to what verified cash already covers. Platform-backed funding (`reserve_backing`) is not available in P3 (D-13 open) and, if ever enabled, would never count as company cash or authorize new work.
 - `voided` periods never receive new allocations; late-arriving money for them goes to the pool and is resolved by `ExcessCollectionResolver` (credit forward or refund, audited).
 - Every succeeded collection on a rolling job is fully allocated (periods + pool) — `funding:verify_allocations` asserts `Σ allocations == Σ succeeded collections − Σ refunds == JobLedger.net_funded_cents`.
 
 ## 4. `job_funding_allocations` (append-only)
 
 ```
-collection(+)  : succeeded period_funding_charge / final_hours_top_up → target period up to need, surplus → pool
+collection(+)  : succeeded period_funding_charge / final_hours_top_up / receivable_recovery → target period up to need, surplus → pool
 refund(−)      : period_funding_refund / cancellation refund → from pool or period it reduces
-credit_transfer: paired (−pool, +period) when pool credit is applied before a collection, or (−voided period, +pool)
-approved_adjustment(±): admin, reason required
-reserve_advance: informational mirror of a reserve_technician_transfer; excluded from coverage math
+credit_transfer: paired (−pool, +period) when pool credit is applied before a collection, or (−voided period, +pool); net zero, never creates cash
+reserve_backing: RESERVED, unused in P3 (D-13 open); would mirror an explicitly authorized, financially backed obligation; excluded from coverage math
 ```
 
-Rows are never updated or deleted; corrections are new rows.
+There is **no adjustment allocation type.** Changes to what a company owes are requirement adjustments on `job_funding_periods` (`pending_adjustment_cents`, `financial_revision`, audited in `job_term_change_audits` as `funding_requirement_adjustment`), never rows in this table.
+
+Rows are never updated or deleted; corrections are new rows. Every row traces to a succeeded/refunded `job_payment_transaction` (or, only after D-13, an authorized obligation). Each cash row carries the period's snapshotted labor/fee split, so the **labor portion** of allocated cash is derivable for transfer limits (§9).
 
 ## 5. `scheduled_funding_collections.status` (outbox)
 
@@ -93,13 +94,16 @@ Idempotency key: `tf_job_<job_id>_period_<sequence>_pfc_r<financial_revision>_a<
 ```
 authorized_on?(d) =
   job.status ∈ {reserved, filled}
-  ∧ ( funding_mode == whole_job_upfront
+  ∧ ( ( funding_mode == whole_job_upfront
+        ∧ ( verified_whole_job_funded?        # JobLedger.fully_funded from SUCCEEDED collections − refunds, net > 0
+          ∨ !priced? ) )                      # documented zero-required-funding exception only
     ∨ ( work_authorized_through_on.present? ∧ d <= work_authorized_through_on
         ∧ (paused_on.nil? ∨ d < paused_on) )
     ∨ ( admin_work_authorization_override_until.present? ∧ d <= admin_work_authorization_override_until ) )
 ```
 
-- `legacy_exempt` jobs satisfy no clause until a deliberate decision (conversion, whole-job payment, or audited override).
+- Ordinary priced `whole_job_upfront` jobs are authorized only by **verified succeeded** funding covering the whole requirement. A whole-job collection that is `pending`, `processing` (ACH), `requires_action`, `failed` or `canceled` authorizes nothing; `funding_status` alone, `posted_under_funding_waiver`, and `legacy_funded_without_collections?` rows authorize nothing.
+- `legacy_exempt` jobs satisfy no clause until a deliberate decision (conversion, whole-job payment that **succeeds**, or audited override).
 - `work_authorized_through_on` advances only in `PeriodStateService.mark_funded!`; it never advances on claim, on `scheduled_start_at`, on `period_start_on`, on schedule changes, or by the passage of time.
 - Enforcement points: `effective_status`, activation / start-work actions, `ClaimJobService` result, counteroffer / schedule proposal / `extend` / weekend-request acceptance (re-plan only, never authorize), `TimeEntriesController#create`, `#approve` → `create_pay_line!`, `Compensation::Calculator`, `RollingSettlement` (entitlement = approved pay lines on authorized or override-approved dates).
 
@@ -132,15 +136,23 @@ Effects: `status` unchanged; entries dated `< paused_on` remain submittable/appr
 ```
 settlement event (finish | termination | pause-deadline termination)
   └─ RollingSettlement: attempt final collection / refund credit  (outcome does NOT gate step below)
-  └─ RollingTransferPolicy:
-       available = Σ succeeded collection allocations − refunds − company-funded transfers − reserved
-       company_funded_transfer = min(unpaid entitlement, available)   → technician_transfer (key ..._s<settlement_sequence>)
-       shortfall = entitlement − company_funded_transfer              → technician_compensation_obligation(open)
-obligation: open ──admin authorizes (amount-bound, single-use)──► authorized ──release_eligible & cron──► paid (reserve_technician_transfer)
-                                                                                                  └─► company_receivable(open) ──recovered|written_off
+  └─ RollingTransferPolicy (labor-available cap):
+       eligible_labor_funded      = Σ labor portion of VERIFIED cash allocated to periods included in this payout (fee portion never transferable)
+       available_technician_funds = eligible_labor_funded − prior company-funded technician transfers − holds
+                                    (pending refunds, in-flight transfers, risk holds, platform obligations against these funds)
+       stripe_constraint          = spendable platform balance for this job after reservations for OTHER jobs' pending transfers/refunds
+                                    and fee retention — never Stripe's raw available balance
+       company_funded_transfer    = max(0, min(unpaid entitlement, available_technician_funds, stripe_constraint))
+                                    → technician_transfer (key ..._s<settlement_sequence>)
+       shortfall                  = entitlement − company_funded_transfer → technician_compensation_obligation(open)   # never extinguished
+obligation: open ──company_receivable(open) ──recovered (verified cash → labor allocation → normal transfer)──► company_recovered
+                 └──written_off (receivable only; the obligation to the technician remains open)
+            open ──[D-13 OPEN / NOT APPROVED: no authorize → paid transition exists in P3; no reserve_technician_transfer path]
 ```
 
-Preserved guards for every transfer: technician snapshot, Connect `payout_ready`, no pending refunds, no blocking `PaymentRiskEvent`, no processing collection allocated to a period included in the payout, idempotent key, 23 h outcome-unknown discipline, `TransferRetryAuthorization` for retries. Legacy modes use the unchanged whole-job gate.
+Reserve disbursements, if D-13 is ever approved, would follow the same discipline: ≤ min(authorized obligation, segregated TechFlash reserve ledger balance, stripe_constraint); TechFlash capital only, never customer prepaid balances; zero automatic authorization.
+
+Preserved guards for every transfer: technician snapshot, Connect `payout_ready`, no pending refunds, no blocking `PaymentRiskEvent`, no processing collection allocated to a period included in the payout, idempotent key, 23 h outcome-unknown discipline, `TransferRetryAuthorization` for retries. Legacy modes use the unchanged whole-job gate. Invariants: per job and across all jobs, Σ company-funded technician transfers ≤ Σ labor portion of verified allocated cash − refunds (no cross-job borrowing, no fee money paid out).
 
 ## 10. End-to-end flows
 
@@ -175,7 +187,7 @@ draft ─publish (waived)─► open · unfunded · posted_under_funding_waiver 
 ```
 open (grandfathered visibility, claimable) · funding_mode legacy_exempt · NOT authorized once enforcement is on
   ├─company converts (two-step, on-session P1) → rolling_two_week → normal flow
-  ├─company pays whole job on-session → whole_job_upfront → authorized through schedule end
+  ├─company pays whole job on-session → whole_job_upfront → authorized through schedule end ONLY once the collection has SUCCEEDED (processing/failed: not authorized)
   └─admin override_until (audited, time-bounded) → authorized through that date only
 never: automatic debit of any kind
 ```

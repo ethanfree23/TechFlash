@@ -1,4 +1,4 @@
-# Rolling Two-Week Funding — Test Matrix (rev 2)
+# Rolling Two-Week Funding — Test Matrix (rev 3)
 
 Companion to `docs/ROLLING_TWO_WEEK_FUNDING_ARCHITECTURE.md`. Lists the tests each implementation PR must ship (PR numbers per §19 of the architecture doc). Framework: Minitest, following `skilled_hub_api/test/services/*` and `test/controllers/api/v1/*`. CI runs on SQLite (`.github/workflows`), so Postgres-only constructs (`FOR UPDATE SKIP LOCKED`) must be adapter-guarded and covered by an additional Postgres CI job (PR-10).
 
@@ -33,12 +33,16 @@ Legend: **U** unit, **S** service, **C** controller/API, **W** webhook, **M** mi
 | AL-2 S | Two partial collections (e.g. pay_now after partial) | sum covers → funded; neither alone funds |
 | AL-3 S | Collection > requirement | surplus → pool allocation |
 | AL-4 S | Pool credit applied before scheduling | `credit_transfer` pair; outbox amount reduced; zero → funded without Stripe |
-| AL-5 S | Approved adjustment (admin) | counts toward coverage; reason required |
+| AL-5 S | Admin "adjustment" allocation | **rejected at model level** — no such `source_type`; `Allocator` exposes no method that writes cash without a succeeded transaction |
+| AL-5b S | Requirement adjustment (audited `financial_revision`) lowers requirement to what verified cash covers | period becomes funded via requirement side only; `allocated_cents` unchanged; audit row present |
+| AL-5c S | Requirement adjustment raises requirement above verified cash | period not funded; outbox true-up row created; no cash row created |
+| AL-5d S | Admin tries to "mark funded" without a verified transaction | refused; only reconciliation (attach PI id, §8.5) or requirement adjustment paths exist |
 | AL-6 S | Refund | negative allocation; coverage recomputed |
 | AL-7 S | Allocation idempotent on `source_id` | double webhook/runner → single allocation |
 | AL-8 S | Late success for voided period | → pool; resolver: credit forward (job continues) or `period_funding_refund` (job ended); audit row |
-| AL-9 U | `verify_allocations` | Σ allocations == Σ succeeded − refunds == `JobLedger.net_funded_cents` |
-| AL-10 S | `reserve_advance` rows | excluded from coverage and from `net_funded_cents` |
+| AL-9 U | `verify_allocations` | Σ allocations == Σ succeeded − refunds == `JobLedger.net_funded_cents`; every row traces to a succeeded/refunded txn; fails on any orphan row |
+| AL-10 S | `reserve_backing` rows | no code path writes them in P3 (D-13 open); if present in a fixture they are excluded from coverage, from `net_funded_cents` and from authorization |
+| AL-12 U | labor/fee split per allocation | `labor_allocated_cents(k)` = floor(min(allocated, required) × labor/required); fee portion = remainder; partial collection split is pro rata |
 | AL-11 S | Rows are append-only | update/delete raises |
 
 ## 3. Publish — PR-6
@@ -129,7 +133,12 @@ Legend: **U** unit, **S** service, **C** controller/API, **W** webhook, **M** mi
 
 | ID | Entry point | Case | Expect |
 |---|---|---|---|
-| WA-1 U | predicate | `whole_job_upfront` | authorized through schedule |
+| WA-1a U | predicate | `whole_job_upfront`, priced, verified succeeded collection covers requirement | authorized through schedule end |
+| WA-1b U | predicate | `whole_job_upfront`, priced, collection `processing` (ACH) | **not** authorized |
+| WA-1c U | predicate | `whole_job_upfront`, priced, collection `failed` / `canceled` / `requires_action` | **not** authorized |
+| WA-1d U | predicate | `whole_job_upfront`, unpriced (`company_required_cents == 0`) | authorized (documented zero-requirement exception) |
+| WA-1e U | predicate | `whole_job_upfront`, `funding_status: funded` stamp but zero succeeded collections (`legacy_funded_without_collections?`) | **not** authorized |
+| WA-1f U | predicate | `whole_job_upfront`, partial refund drops net below requirement | **not** authorized for new dates |
 | WA-2 U | predicate | `legacy_exempt`, no decision | **not** authorized |
 | WA-3 U | predicate | override_until set | authorized ≤ that date only |
 | WA-4 U | `effective_status` | claimed, start reached, not authorized | `awaiting_funding`, never `active` |
@@ -165,7 +174,7 @@ Legend: **U** unit, **S** service, **C** controller/API, **W** webhook, **M** mi
 | PR-11 S | reschedule via proposal after resume | re-plan |
 | PR-12 S | audit rows immutable | update raises |
 
-## 9. Transfer policy, settlement, reserve — PR-5
+## 9. Transfer policy, settlement, obligations — PR-5
 
 | ID | Case | Expect |
 |---|---|---|
@@ -173,17 +182,22 @@ Legend: **U** unit, **S** service, **C** controller/API, **W** webhook, **M** mi
 | TP-2 S | rolling, all periods funded, finished | company-funded transfer = entitlement; `platform_balance` source; `settled` |
 | TP-3 S | rolling, P2 processing at finish, work only in P1 | transfer for P1 hours not blocked by P2 processing; cap holds |
 | TP-4 S | rolling, P2 processing and includes paid work | blocked (processing allocated to paid period) |
-| TP-5 S | available < entitlement (final collection failed) | partial company-funded transfer; obligation = shortfall; `settled_with_receivable` after reserve pays |
-| TP-6 S | invariant Σ company-funded transfers ≤ Σ succeeded − refunds | property test over random sequences |
-| TP-7 S | obligation without admin authorization | not paid; cron skips |
-| TP-8 S | obligation authorized, `release_eligible?` | `reserve_technician_transfer` from platform balance; receivable opened |
-| TP-9 S | reserve cap exceeded | authorization refused |
-| TP-10 S | reserve transfer excluded from coverage/`net_funded_cents` | assert |
-| TP-11 S | receivable recovery | company collection; receivable `recovered`; never touches technician |
+| TP-5 S | available < entitlement (final collection failed) | partial company-funded transfer; obligation = shortfall; `settled_with_obligation`; obligation stays open |
+| TP-6 S | invariant Σ company-funded transfers ≤ Σ **labor portion** of verified allocated cash − refunds, per job and across all jobs | property test over random sequences incl. partial collections, refunds, multiple jobs |
+| TP-6b S | fee portion never transferable | job fully funded, entitlement artificially > labor portion → transfer capped at labor portion |
+| TP-6c S | holds reduce availability | pending refund / in-flight transfer / risk hold / obligation against funds → cap reduced accordingly |
+| TP-6d S | `stripe_constraint` | Stripe stub reports large available balance while other jobs have pending transfers/refunds → transfer limited by `PlatformBalanceReservations`, not by Stripe's balance |
+| TP-6e S | cross-job isolation | job A's prepaid cash never funds job B's transfer |
+| TP-7 S | open obligation, no D-13 | **no** authorize/pay transition exists; cron never pays it; obligation never auto-closes or expires |
+| TP-8 S | any attempt to create a `reserve_technician_transfer` | refused (`D13_NOT_DECIDED`); no Stripe call |
+| TP-9 S | reserve settings | none exist; settings endpoint rejects reserve keys |
+| TP-10 S | `reserve_technician_transfer` / `reserve_backing` fixture rows | excluded from coverage/`net_funded_cents`/authorization |
+| TP-11 S | receivable recovery | company collection succeeded → verified labor allocation to the job → `RollingTransferPolicy` pays technician → obligation `company_recovered`; never touches technician |
+| TP-11b S | receivable written off | receivable closed; **obligation remains open** (never extinguished) |
 | TP-12 S | company with open receivable publishes priced job | blocked |
 | TP-13 S | `settlement_sequence` increments per event; keys unique | two settlement events → two transfers, distinct keys |
 | TP-14 S | pause-deadline termination | settlement + payout clock starts |
-| TP-15 S | ACH return after transfer | `PaymentRiskEvent`; no reversal; obligation/receivable path; technician unaffected |
+| TP-15 S | ACH return after transfer | `PaymentRiskEvent`; no reversal; obligation/receivable recorded; technician unaffected; no reserve payment |
 | TP-16 S | pending refund / blocking risk event / missing snapshot | blocked as today |
 | TP-17 S | D-6 credit refund at completion | `period_funding_refund` for pool remainder |
 | TP-18 S | D-4 immediate top-up | approval exceeding coverage → `true_up` row `run_at: now`; `coverage_exceeded`; authorization does not advance until funded |
@@ -219,7 +233,7 @@ Legend: **U** unit, **S** service, **C** controller/API, **W** webhook, **M** mi
 | AP-6 C | admin retry exhausted / resolve reconciliation | audited; refused for voided period |
 | AP-7 C | flags endpoints | admin only; audit; enforcement-before-enable rule |
 | AP-8 C | billing history | period charges/refunds with period dates |
-| AP-9 C | obligations / receivables endpoints | admin only; authorization single-use |
+| AP-9 C | obligations / receivables endpoints | admin only; read + recovery actions; **no authorize/pay action exists** (D-13 open) |
 
 ## 12. Staging E2E (extend `lib/staging_ach_e2e_runner.rb`) — PR-10
 
@@ -233,5 +247,5 @@ Legend: **U** unit, **S** service, **C** controller/API, **W** webhook, **M** mi
 | E-6 | Exempt claim start > 24 h → row at +24 h → forced run → funded |
 | E-7 | Exempt claim, ACH default, start in 3 d → start_at_risk → card pay now |
 | E-8 | Termination mid-job → voids, credit refund, earned-hours transfer |
-| E-9 | Final collection failure → partial company transfer + obligation → admin authorizes → reserve transfer → receivable |
+| E-9 | Final collection failure → partial company transfer (labor-capped) + open obligation + receivable → company pays receivable → technician paid from recovered cash → obligation `company_recovered` |
 | E-10 | Pause 7 d → auto early termination → settlement |
