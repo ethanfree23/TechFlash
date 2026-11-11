@@ -2,47 +2,65 @@
 
 namespace :jobs do
   desc <<~DESC.gsub(/\s+/, " ").strip
-    Reclassify jobs whose funding_status=funded is not backed by succeeded company
-    collections, when the company has job_funding_waived. Sets funding_status=unfunded
-    and posted_under_funding_waiver=true. Preserves job.status (e.g. open). Uses ledger
-    evidence (succeeded collections sum), not a blanket status rewrite. Dry-run by
-    default; set CONFIRM=1 to write. Idempotent.
+    READ-ONLY dry-run report: jobs stamped funding_status=funded under company
+    job_funding_waived with zero succeeded collections. Prints from->to plan with
+    ledger evidence. NEVER writes. (Owner-approved write path is intentionally
+    omitted from this task.)
   DESC
   task reclassify_waived_funding: :environment do
-    confirm = ENV["CONFIRM"].to_s.strip == "1"
-    mode = confirm ? "WRITE" : "DRY-RUN"
-    audit_path = ENV["AUDIT_LOG"].presence
+    if ENV["CONFIRM"].to_s.strip == "1"
+      abort "[jobs:reclassify_waived_funding] REFUSED: this task is dry-run only and never writes. Unset CONFIRM."
+    end
 
-    puts "[jobs:reclassify_waived_funding] mode=#{mode}"
+    puts "[jobs:reclassify_waived_funding] mode=DRY-RUN (read-only; never writes)"
     puts "Selection: funding_status=funded AND company.job_funding_waived=true " \
          "AND sum(succeeded company collections)=0"
-    puts "Action: funding_status -> unfunded, posted_under_funding_waiver -> true " \
-         "(status unchanged)"
+    puts "Proposed: funding_status -> unfunded; posted_under_funding_waiver -> true; " \
+         "job.status / settlement_status unchanged"
 
     candidates = []
     Job.funding_funded.includes(:company_profile, :job_payment_transactions).find_each do |job|
       next unless job.company_profile&.job_funding_waived?
 
       collected = job.job_payment_transactions.company_collections.status_succeeded.sum(:amount_cents).to_i
+      refunded = job.job_payment_transactions.company_refunds.status_succeeded.sum(:amount_cents).to_i
+      net = collected - refunded
       next if collected.positive?
 
       # Skip vacuous cash-funded unpriced jobs (required 0 / already fully_funded with $0).
+      fully_funded = nil
+      net_funded = net
+      required = nil
+      ledger_error = nil
       begin
-        next if !job.priced? && JobLedger.for(job).fully_funded
-      rescue JobLedger::MissingCommissionSnapshotError
-        # Still a candidate if we cannot prove vacuous funding.
+        ledger = JobLedger.for(job)
+        next if !job.priced? && ledger.fully_funded
+
+        fully_funded = ledger.fully_funded
+        net_funded = ledger.net_funded_cents
+        required = ledger.company_required_cents
+      rescue JobLedger::MissingCommissionSnapshotError => e
+        ledger_error = e.message
       end
 
       candidates << {
         job_id: job.id,
         company_profile_id: job.company_profile_id,
+        company_name: job.company_profile.try(:company_name) || job.company_profile.try(:name),
         job_status: job.status,
+        settlement_status: job.settlement_status,
         funding_before: job.funding_status,
         funding_after: "unfunded",
         waiver_before: job.posted_under_funding_waiver?,
         waiver_after: true,
         collected_cents: collected,
-        labor_cents: job.agreed_labor_cents.to_i
+        refunded_cents: refunded,
+        net_funded_cents: net_funded,
+        company_required_cents: required,
+        fully_funded: fully_funded,
+        labor_cents: job.agreed_labor_cents.to_i,
+        reason: "admin job_funding_waived publish stamped funded without succeeded collections",
+        ledger_error: ledger_error
       }
     end
 
@@ -51,53 +69,26 @@ namespace :jobs do
       next
     end
 
-    puts "---- DRY-RUN CORRECTION REPORT (from -> to) ----"
-    puts "job_id | company | job_status | funding_status | posted_under_funding_waiver | collected_cents | labor_cents"
-    lines = candidates.map do |row|
-      detail =
-        "job_id=#{row[:job_id]} company=#{row[:company_profile_id]} status=#{row[:job_status]} " \
-        "funding: #{row[:funding_before]} -> #{row[:funding_after]} " \
-        "posted_under_funding_waiver: #{row[:waiver_before]} -> #{row[:waiver_after]} " \
-        "collected_cents=#{row[:collected_cents]} labor_cents=#{row[:labor_cents]}"
-      table =
-        "#{row[:job_id]} | #{row[:company_profile_id]} | #{row[:job_status]} | " \
-        "#{row[:funding_before]} -> #{row[:funding_after]} | " \
-        "#{row[:waiver_before]} -> #{row[:waiver_after]} | " \
-        "#{row[:collected_cents]} | #{row[:labor_cents]}"
-      puts table
-      detail
+    puts "---- DRY-RUN RECONCILIATION REPORT (read-only) ----"
+    puts "job_id | company_id | job_status | settlement | funding | waiver | " \
+         "collected | net_funded | required | fully_funded | reason"
+    candidates.each do |row|
+      puts [
+        row[:job_id],
+        row[:company_profile_id],
+        row[:job_status],
+        "#{row[:settlement_status]} (unchanged)",
+        "#{row[:funding_before]} -> #{row[:funding_after]}",
+        "#{row[:waiver_before]} -> #{row[:waiver_after]}",
+        row[:collected_cents],
+        row[:net_funded_cents],
+        row[:company_required_cents].inspect,
+        row[:fully_funded].inspect,
+        row[:reason]
+      ].join(" | ")
     end
     puts "---- end report ----"
     puts "Total candidates: #{candidates.size}"
-
-    if audit_path
-      File.open(audit_path, "a") do |f|
-        f.puts("# #{Time.now.utc.iso8601} mode=#{mode} candidates=#{candidates.size}")
-        lines.each { |line| f.puts(line) }
-      end
-      puts "Audit log appended: #{audit_path}"
-    end
-
-    unless confirm
-      puts "Dry-run only. Re-run with CONFIRM=1 to apply updates. Optional AUDIT_LOG=/path/to.log"
-      next
-    end
-
-    updated = 0
-    Job.transaction do
-      candidates.each do |row|
-        job = Job.lock.find(row[:job_id])
-        next unless job.funding_funded?
-        next unless job.company_profile&.job_funding_waived?
-
-        collected = job.job_payment_transactions.company_collections.status_succeeded.sum(:amount_cents).to_i
-        next if collected.positive?
-
-        job.update!(funding_status: :unfunded, posted_under_funding_waiver: true)
-        updated += 1
-      end
-    end
-
-    puts "Updated #{updated} job(s). status columns were not modified."
+    puts "This task does not write. Owner must approve a separate change window before any UPDATE."
   end
 end

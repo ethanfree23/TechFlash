@@ -43,6 +43,7 @@ class ReclassifyWaivedFundingRakeTest < ActiveSupport::TestCase
       description: "desc",
       status: :open,
       funding_status: funding,
+      settlement_status: :unsettled,
       hourly_rate_cents: 10_000,
       hours_per_day: 8,
       days: labor.positive? ? 1 : 0,
@@ -68,7 +69,7 @@ class ReclassifyWaivedFundingRakeTest < ActiveSupport::TestCase
     job
   end
 
-  test "dry-run prints candidates and does not write" do
+  test "dry-run prints candidates with ledger evidence and does not write" do
     mislabeled = make_job(company: @waived_company, funding: :funded)
     with_money = make_job(company: @paid_company, funding: :funded, with_collection: true)
 
@@ -76,9 +77,10 @@ class ReclassifyWaivedFundingRakeTest < ActiveSupport::TestCase
     out = capture_io { @task.invoke }.first
 
     assert_match(/DRY-RUN/, out)
-    assert_match(/DRY-RUN CORRECTION REPORT/, out)
-    assert_match(/#{mislabeled.id} \| #{@waived_company.id} \| open \| funded -> unfunded/, out)
-    refute_match(/#{with_money.id} \|/, out)
+    assert_match(/read-only|never writes/i, out)
+    assert_match(/#{mislabeled.id} \| #{@waived_company.id} \| open \| unsettled \(unchanged\) \| funded -> unfunded/, out)
+    assert_match(/collected \| net_funded|collected_cents|0 \|/, out)
+    refute_match(/\b#{with_money.id} \|/, out)
     assert mislabeled.reload.funding_funded?
     assert_equal "open", mislabeled.status
     assert with_money.reload.funding_funded?
@@ -86,35 +88,25 @@ class ReclassifyWaivedFundingRakeTest < ActiveSupport::TestCase
     ENV.delete("CONFIRM")
   end
 
-  test "CONFIRM=1 reclassifies only waived zero-collection funded jobs and preserves status" do
+  test "CONFIRM=1 is refused and never writes" do
     mislabeled = make_job(company: @waived_company, funding: :funded)
-    with_money = make_job(company: @waived_company, funding: :funded, with_collection: true)
-    normal = make_job(company: @paid_company, funding: :funded, with_collection: true)
 
     ENV["CONFIRM"] = "1"
-    @task.reenable
-    capture_io { @task.invoke }
-
-    mislabeled.reload
-    assert mislabeled.funding_unfunded?
-    assert mislabeled.posted_under_funding_waiver?
-    assert_equal "open", mislabeled.status
-    assert with_money.reload.funding_funded?
-    assert normal.reload.funding_funded?
+    assert_raises(SystemExit) { capture_io { @task.invoke } }
+    assert mislabeled.reload.funding_funded?
+    refute mislabeled.posted_under_funding_waiver?
   ensure
     ENV.delete("CONFIRM")
   end
 
-  test "idempotent when already corrected" do
+  test "already corrected rows are not candidates" do
     job = make_job(company: @waived_company, funding: :unfunded)
     job.update!(posted_under_funding_waiver: true)
 
-    ENV["CONFIRM"] = "1"
+    ENV.delete("CONFIRM")
     out = capture_io { @task.invoke }.first
-    assert_match(/No candidates|Updated 0/i, out)
+    assert_match(/No candidates found/i, out)
     assert job.reload.funding_unfunded?
     assert job.posted_under_funding_waiver?
-  ensure
-    ENV.delete("CONFIRM")
   end
 end
