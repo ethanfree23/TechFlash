@@ -45,7 +45,7 @@ planned|collection_scheduled|collecting|funding_failed|paused_unfunded ──ter
 Invariants:
 
 - Only `Funding::PeriodStateService` writes `status`.
-- `funded` ⇔ Σ **verified cash** `job_funding_allocations` for the period (`collection`, `refund`, `credit_transfer` only) ≥ adjusted requirement `company_required_cents + pending_adjustment_cents`, or requirement 0. Multiple partial collections and carried pool credit count; **no single transaction is required or sufficient**; **no admin adjustment, override or note counts as cash**. A requirement adjustment (audited `financial_revision`) can only change the amount owed — it can make a period funded solely by lowering the requirement to what verified cash already covers. Platform-backed funding (`reserve_backing`) is not available in P3 (D-13 open) and, if ever enabled, would never count as company cash or authorize new work.
+- `funded` ⇔ Σ **verified cash** `job_funding_allocations` for the period (`collection`, `refund`, `credit_transfer` only) ≥ adjusted requirement `company_required_cents + pending_adjustment_cents`, or requirement 0. Multiple partial collections and carried pool credit count; **no single transaction is required or sufficient**; **no admin adjustment, override or note counts as cash**. A requirement adjustment (audited `financial_revision`) can only change the amount owed — it can make a period funded solely by lowering the requirement to what verified cash already covers. Platform-backed funding (`reserve_backing`) mirrors only an executed reserve disbursement (reserve launches at $0 with transfers disabled) and never counts as company cash or authorizes new work.
 - `voided` periods never receive new allocations; late-arriving money for them goes to the pool and is resolved by `ExcessCollectionResolver` (credit forward or refund, audited).
 - Every succeeded collection on a rolling job is fully allocated (periods + pool) — `funding:verify_allocations` asserts `Σ allocations == Σ succeeded collections − Σ refunds == JobLedger.net_funded_cents`.
 
@@ -55,12 +55,13 @@ Invariants:
 collection(+)  : succeeded period_funding_charge / final_hours_top_up / receivable_recovery → target period up to need, surplus → pool
 refund(−)      : period_funding_refund / cancellation refund → from pool or period it reduces
 credit_transfer: paired (−pool, +period) when pool credit is applied before a collection, or (−voided period, +pool); net zero, never creates cash
-reserve_backing: RESERVED, unused in P3 (D-13 open); would mirror an explicitly authorized, financially backed obligation; excluded from coverage math
+reserve_backing: mirror of an EXECUTED reserve disbursement against an explicitly authorized obligation; excluded from coverage math;
+                 cannot be written while rolling_funding_reserve_transfers_enabled is false or the reserve ledger is 0 (launch state)
 ```
 
 There is **no adjustment allocation type.** Changes to what a company owes are requirement adjustments on `job_funding_periods` (`pending_adjustment_cents`, `financial_revision`, audited in `job_term_change_audits` as `funding_requirement_adjustment`), never rows in this table.
 
-Rows are never updated or deleted; corrections are new rows. Every row traces to a succeeded/refunded `job_payment_transaction` (or, only after D-13, an authorized obligation). Each cash row carries the period's snapshotted labor/fee split, so the **labor portion** of allocated cash is derivable for transfer limits (§9).
+Rows are never updated or deleted; corrections are new rows. Every row traces to a succeeded/refunded `job_payment_transaction` or to an executed, authorized reserve disbursement. Each cash row carries the period's snapshotted labor/fee split, so the **labor portion** of allocated cash is derivable for transfer limits (§9).
 
 ## 5. `scheduled_funding_collections.status` (outbox)
 
@@ -145,12 +146,25 @@ settlement event (finish | termination | pause-deadline termination)
        company_funded_transfer    = max(0, min(unpaid entitlement, available_technician_funds, stripe_constraint))
                                     → technician_transfer (key ..._s<settlement_sequence>)
        shortfall                  = entitlement − company_funded_transfer → technician_compensation_obligation(open)   # never extinguished
-obligation: open ──company_receivable(open) ──recovered (verified cash → labor allocation → normal transfer)──► company_recovered
-                 └──written_off (receivable only; the obligation to the technician remains open)
-            open ──[D-13 OPEN / NOT APPROVED: no authorize → paid transition exists in P3; no reserve_technician_transfer path]
+obligation (never extinguished; no write_off state exists for it):
+  open ──reserve cannot cover now (launch state: ledger $0, transfers disabled)──► escalated   (same txn; owner/admin, technician, company notified)
+  open|escalated ──company_receivable recovered (verified cash → labor allocation → normal transfer)──► company_recovered
+  escalated ──day-7 owner disposition (append-only obligation_dispositions): fund_reserve_and_pay | pay_out_of_band | continue_recovery | legal_referral
+  escalated ──pay_out_of_band (external reference recorded)──► paid (rail out_of_band)
+  escalated ──admin authorizes (amount-bound, single-use) ∧ reserve_transfers_enabled ∧ reserve_available ≥ amount──► authorized
+  authorized ──release_eligible & cron──► paid (rail stripe_connect → reserve_technician_transfer | payroll → external reference)
+  authorize attempt while disabled/unfunded ──► refused (RESERVE_TRANSFERS_DISABLED | RESERVE_UNFUNDED); stays escalated
+company_receivable: open ──collecting──► recovered (pays technician, or replenishes reserve ledger if reserve already paid) | written_off (receivable only)
+
+reserve ledger (platform_reserve_ledger_entries, append-only, balance starts 0):
+  owner_funding(+)  recorded by owner AFTER moving TechFlash earnings into the reserve outside the app — the app never charges anyone
+  recovery(+)       company receivable recovered for an obligation the reserve already paid
+  disbursement(−)   executed reserve payment
+  reserve_available = min(balance, max_exposure − outstanding_exposure)  → 0 until owner_funding exists
+enable flag: rolling_funding_reserve_transfers_enabled false ──designated owner/admin, explicit confirmation, balance > 0──► true (audited); true ──anyone admin──► false
 ```
 
-Reserve disbursements, if D-13 is ever approved, would follow the same discipline: ≤ min(authorized obligation, segregated TechFlash reserve ledger balance, stripe_constraint); TechFlash capital only, never customer prepaid balances; zero automatic authorization.
+Reserve disbursements follow the same discipline as company-funded transfers: ≤ min(authorized obligation, reserve_available, stripe_constraint); TechFlash capital only, never customer prepaid balances or other jobs' allocated cash; zero automatic authorization; manual audited approval per obligation; rail chosen by worker classification.
 
 Preserved guards for every transfer: technician snapshot, Connect `payout_ready`, no pending refunds, no blocking `PaymentRiskEvent`, no processing collection allocated to a period included in the payout, idempotent key, 23 h outcome-unknown discipline, `TransferRetryAuthorization` for retries. Legacy modes use the unchanged whole-job gate. Invariants: per job and across all jobs, Σ company-funded technician transfers ≤ Σ labor portion of verified allocated cash − refunds (no cross-job borrowing, no fee money paid out).
 
@@ -164,6 +178,8 @@ draft ─publish (card ok)─► open · partially_funded · P1 funded (allocati
       └─start date─► active (only because authorized_on?(today))
           ├─P2 collected at due−lead → allocation covers → funded → authorized_through = P2.end
           ├─P2 fails & due reached → paused → pay_now (card) → funded → active
+          ├─final collection fails → labor-capped company transfer + obligation(escalated) → receivable recovery → company_recovered
+          │     (reserve payment only after owner funds ledger and enables transfers — separate explicit action)
           ├─paused 7 d → ended_early(company_funding_lapsed) → settle earned hours → payout (72 h / ratings)
           ├─company terminates → ended_early · future periods voided · credit refunded · earned hours settled
           └─last period ends → finish → RollingSettlement → transfer(s) under unchanged schedule

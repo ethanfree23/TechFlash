@@ -41,7 +41,7 @@ Legend: **U** unit, **S** service, **C** controller/API, **W** webhook, **M** mi
 | AL-7 S | Allocation idempotent on `source_id` | double webhook/runner → single allocation |
 | AL-8 S | Late success for voided period | → pool; resolver: credit forward (job continues) or `period_funding_refund` (job ended); audit row |
 | AL-9 U | `verify_allocations` | Σ allocations == Σ succeeded − refunds == `JobLedger.net_funded_cents`; every row traces to a succeeded/refunded txn; fails on any orphan row |
-| AL-10 S | `reserve_backing` rows | no code path writes them in P3 (D-13 open); if present in a fixture they are excluded from coverage, from `net_funded_cents` and from authorization |
+| AL-10 S | `reserve_backing` rows | written only by an executed reserve disbursement; excluded from coverage, from `net_funded_cents` and from authorization; cannot be written while transfers disabled or ledger 0 |
 | AL-12 U | labor/fee split per allocation | `labor_allocated_cents(k)` = floor(min(allocated, required) × labor/required); fee portion = remainder; partial collection split is pro rata |
 | AL-11 S | Rows are append-only | update/delete raises |
 
@@ -188,16 +188,25 @@ Legend: **U** unit, **S** service, **C** controller/API, **W** webhook, **M** mi
 | TP-6c S | holds reduce availability | pending refund / in-flight transfer / risk hold / obligation against funds → cap reduced accordingly |
 | TP-6d S | `stripe_constraint` | Stripe stub reports large available balance while other jobs have pending transfers/refunds → transfer limited by `PlatformBalanceReservations`, not by Stripe's balance |
 | TP-6e S | cross-job isolation | job A's prepaid cash never funds job B's transfer |
-| TP-7 S | open obligation, no D-13 | **no** authorize/pay transition exists; cron never pays it; obligation never auto-closes or expires |
-| TP-8 S | any attempt to create a `reserve_technician_transfer` | refused (`D13_NOT_DECIDED`); no Stripe call |
-| TP-9 S | reserve settings | none exist; settings endpoint rejects reserve keys |
-| TP-10 S | `reserve_technician_transfer` / `reserve_backing` fixture rows | excluded from coverage/`net_funded_cents`/authorization |
+| TP-7 S | obligation created while reserve ledger 0 / transfers disabled (launch state) | created `open` and moved to `escalated` in the same transaction; owner/admin, technician and company notified; obligation never auto-closes, expires or writes off |
+| TP-7b S | authorize attempt while `reserve_transfers_enabled=false` | refused `RESERVE_TRANSFERS_DISABLED`; no Stripe call; stays `escalated` |
+| TP-7c S | flag true but ledger balance 0 (or < amount) | refused `RESERVE_UNFUNDED`; no Stripe call |
+| TP-7d S | enable flag set true with ledger 0, or without explicit confirmation, or by non-designated user | settings endpoint refuses; audit row |
+| TP-7e S | enable flag set true by designated owner with confirmation and balance > 0 | allowed; audited; disabling always allowed |
+| TP-7f S | day-7 escalation review | disposition required; `write_off` not an accepted disposition; `pay_out_of_band` → `paid` with external reference; `continue_recovery` requires note + date |
+| TP-7g S | standing reminders | owner/admin every 7 d, technician every 14 d until `paid`/`company_recovered` |
+| TP-8 S | any code path that would charge the owner, a company or a technician to fund the reserve | **does not exist** (negative test: `owner_funding` entry only records; no PaymentIntent/Transfer/Payout created) |
+| TP-8b S | authorized obligation, flag on, ledger funded, `release_eligible?` | disbursement ≤ min(authorized, `reserve_available`, `stripe_constraint`); `reserve_technician_transfer` or payroll reference per `payment_rail`; ledger `disbursement` entry; `reserve_backing` mirror |
+| TP-8c S | disbursement would exceed `max_exposure_cents` | refused; `reserve_available` derived correctly |
+| TP-8d S | receivable recovered after reserve paid | ledger `recovery` entry; technician not paid twice |
+| TP-9 S | reserve settings | target/max exposure admin-settable and audited; defaults 500000/500000; no auto-authorization key accepted; `reserve_available` = 0 on fresh install |
+| TP-10 S | `reserve_technician_transfer` / `reserve_backing` rows | excluded from coverage/`net_funded_cents`/authorization; never reduce company receivable |
 | TP-11 S | receivable recovery | company collection succeeded → verified labor allocation to the job → `RollingTransferPolicy` pays technician → obligation `company_recovered`; never touches technician |
 | TP-11b S | receivable written off | receivable closed; **obligation remains open** (never extinguished) |
 | TP-12 S | company with open receivable publishes priced job | blocked |
 | TP-13 S | `settlement_sequence` increments per event; keys unique | two settlement events → two transfers, distinct keys |
 | TP-14 S | pause-deadline termination | settlement + payout clock starts |
-| TP-15 S | ACH return after transfer | `PaymentRiskEvent`; no reversal; obligation/receivable recorded; technician unaffected; no reserve payment |
+| TP-15 S | ACH return after transfer | `PaymentRiskEvent`; no reversal; obligation/receivable recorded and escalated; technician unaffected; reserve payment only if enabled and funded |
 | TP-16 S | pending refund / blocking risk event / missing snapshot | blocked as today |
 | TP-17 S | D-6 credit refund at completion | `period_funding_refund` for pool remainder |
 | TP-18 S | D-4 immediate top-up | approval exceeding coverage → `true_up` row `run_at: now`; `coverage_exceeded`; authorization does not advance until funded |
@@ -233,7 +242,7 @@ Legend: **U** unit, **S** service, **C** controller/API, **W** webhook, **M** mi
 | AP-6 C | admin retry exhausted / resolve reconciliation | audited; refused for voided period |
 | AP-7 C | flags endpoints | admin only; audit; enforcement-before-enable rule |
 | AP-8 C | billing history | period charges/refunds with period dates |
-| AP-9 C | obligations / receivables endpoints | admin only; read + recovery actions; **no authorize/pay action exists** (D-13 open) |
+| AP-9 C | obligations / receivables / reserve endpoints | admin only; dispositions append-only; `authorize` refused while disabled/unfunded; reserve ledger POST records only (never charges); enable flag guarded |
 
 ## 12. Staging E2E (extend `lib/staging_ach_e2e_runner.rb`) — PR-10
 
@@ -247,5 +256,6 @@ Legend: **U** unit, **S** service, **C** controller/API, **W** webhook, **M** mi
 | E-6 | Exempt claim start > 24 h → row at +24 h → forced run → funded |
 | E-7 | Exempt claim, ACH default, start in 3 d → start_at_risk → card pay now |
 | E-8 | Termination mid-job → voids, credit refund, earned-hours transfer |
-| E-9 | Final collection failure → partial company transfer (labor-capped) + open obligation + receivable → company pays receivable → technician paid from recovered cash → obligation `company_recovered` |
+| E-9 | Final collection failure → partial company transfer (labor-capped) + escalated obligation + receivable → company pays receivable → technician paid from recovered cash → obligation `company_recovered` |
+| E-11 | Staging only: owner records `owner_funding` (no charge created — assert zero new Stripe objects), enables flag with confirmation, authorizes an escalated obligation → single bounded reserve disbursement → ledger balance and exposure correct → receivable recovery replenishes ledger |
 | E-10 | Pause 7 d → auto early termination → settlement |
