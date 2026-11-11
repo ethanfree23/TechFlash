@@ -1,18 +1,17 @@
 import assert from 'assert';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
 import {
+  PRODUCTION_API_BASE_URL,
   allowsLiveStripePublishableKey,
+  collectDeployEnvDeclarations,
   getStripePublishableKey,
   isStagingFrontend,
   isValidStripePublishableKey,
+  resolveConfiguredApiBaseUrl,
   resolveStripeDeployEnv,
+  validateApiForStripeDeploy,
 } from '../src/stripeConfig.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-
-const PROD_API = 'https://skilledhub-production.up.railway.app/api/v1';
+const PROD_API = PRODUCTION_API_BASE_URL;
 const STAGING_API = 'https://techflash-staging-api-staging.up.railway.app/api/v1';
 const LIVE_KEY = 'pk_live_test_live_key_for_unit_tests_only';
 const TEST_KEY = 'pk_test_test_publishable_key_for_unit_tests';
@@ -34,14 +33,24 @@ function env(overrides = {}) {
   };
 }
 
-function testProdApiUrlAloneDoesNotEnableLiveKeysFailClosed() {
+function testMissingEnvFailsClosed() {
+  const e = env({ VITE_API_BASE_URL: PROD_API, VITE_STRIPE_PUBLISHABLE_KEY: LIVE_KEY });
+  assert.strictEqual(resolveStripeDeployEnv(e), 'unknown');
+  assert.strictEqual(getStripePublishableKey(e), '');
+  assert.strictEqual(allowsLiveStripePublishableKey(e), false);
+}
+
+function testAppEnvProductionPlusVercelPreviewFailsClosed() {
   const e = env({
+    VITE_APP_ENV: 'production',
+    VITE_VERCEL_ENV: 'preview',
     VITE_API_BASE_URL: PROD_API,
     VITE_STRIPE_PUBLISHABLE_KEY: LIVE_KEY,
   });
+  const decls = collectDeployEnvDeclarations(e);
+  assert.strictEqual(decls.ok, false);
+  assert.strictEqual(decls.reason, 'contradictory_deploy_env');
   assert.strictEqual(resolveStripeDeployEnv(e), 'unknown');
-  assert.strictEqual(allowsLiveStripePublishableKey(e), false);
-  assert.strictEqual(isStagingFrontend(e), true);
   assert.strictEqual(getStripePublishableKey(e), '');
   assert.strictEqual(isValidStripePublishableKey(LIVE_KEY, e), false);
 }
@@ -49,57 +58,70 @@ function testProdApiUrlAloneDoesNotEnableLiveKeysFailClosed() {
 function testExplicitProductionWithProdApiAcceptsLiveKey() {
   const e = env({
     VITE_APP_ENV: 'production',
-    VITE_API_BASE_URL: PROD_API,
-    VITE_STRIPE_PUBLISHABLE_KEY: LIVE_KEY,
-  });
-  assert.strictEqual(resolveStripeDeployEnv(e), 'production');
-  assert.strictEqual(allowsLiveStripePublishableKey(e), true);
-  assert.strictEqual(getStripePublishableKey(e), LIVE_KEY);
-  assert.strictEqual(isValidStripePublishableKey(LIVE_KEY, e), true);
-}
-
-function testVercelEnvProductionInjectionPathAcceptsLiveKey() {
-  // Simulates vite.config copying VERCEL_ENV → VITE_VERCEL_ENV on Vercel production.
-  const e = env({
     VITE_VERCEL_ENV: 'production',
     VITE_API_BASE_URL: PROD_API,
     VITE_STRIPE_PUBLISHABLE_KEY: LIVE_KEY,
   });
   assert.strictEqual(resolveStripeDeployEnv(e), 'production');
+  assert.strictEqual(validateApiForStripeDeploy(e, 'production').ok, true);
+  assert.strictEqual(allowsLiveStripePublishableKey(e), true);
   assert.strictEqual(getStripePublishableKey(e), LIVE_KEY);
+  assert.strictEqual(isValidStripePublishableKey(LIVE_KEY, e), true);
 }
 
-function testProductionRejectsTestKey() {
+function testProductionPlusStagingApiFails() {
+  const e = env({
+    VITE_APP_ENV: 'production',
+    VITE_API_BASE_URL: STAGING_API,
+    VITE_STRIPE_PUBLISHABLE_KEY: LIVE_KEY,
+  });
+  assert.strictEqual(resolveStripeDeployEnv(e), 'production');
+  assert.strictEqual(validateApiForStripeDeploy(e, 'production').ok, false);
+  assert.strictEqual(allowsLiveStripePublishableKey(e), false);
+  assert.strictEqual(getStripePublishableKey(e), '');
+}
+
+function testProductionPlusUnknownApiFails() {
+  const e = env({
+    VITE_APP_ENV: 'production',
+    VITE_API_BASE_URL: 'https://example.com/api/v1',
+    VITE_STRIPE_PUBLISHABLE_KEY: LIVE_KEY,
+  });
+  assert.strictEqual(getStripePublishableKey(e), '');
+  assert.strictEqual(allowsLiveStripePublishableKey(e), false);
+}
+
+function testProductionMissingApiFails() {
+  const e = env({
+    VITE_APP_ENV: 'production',
+    VITE_STRIPE_PUBLISHABLE_KEY: LIVE_KEY,
+  });
+  assert.strictEqual(resolveConfiguredApiBaseUrl(e).reason, 'missing_api');
+  assert.strictEqual(getStripePublishableKey(e), '');
+}
+
+function testConflictingApiVarsFailClosed() {
   const e = env({
     VITE_APP_ENV: 'production',
     VITE_API_BASE_URL: PROD_API,
-    VITE_STRIPE_PUBLISHABLE_KEY: TEST_KEY,
-  });
-  assert.strictEqual(getStripePublishableKey(e), '');
-  assert.strictEqual(isValidStripePublishableKey(TEST_KEY, e), false);
-}
-
-function testContradictoryProductionWithStagingApiFailsClosed() {
-  const e = env({
-    VITE_APP_ENV: 'production',
-    VITE_API_BASE_URL: STAGING_API,
+    VITE_STAGING_API_BASE_URL: STAGING_API,
     VITE_STRIPE_PUBLISHABLE_KEY: LIVE_KEY,
   });
-  assert.strictEqual(resolveStripeDeployEnv(e), 'unknown');
+  assert.strictEqual(resolveConfiguredApiBaseUrl(e).ok, false);
   assert.strictEqual(getStripePublishableKey(e), '');
 }
 
-function testStagingHostRejectsLiveKey() {
+function testPreviewRejectsLiveKeyAndProdApi() {
   const e = env({
-    VITE_API_BASE_URL: STAGING_API,
+    VITE_VERCEL_ENV: 'preview',
+    VITE_API_BASE_URL: PROD_API,
     VITE_STRIPE_PUBLISHABLE_KEY: LIVE_KEY,
   });
-  assert.strictEqual(resolveStripeDeployEnv(e), 'staging');
+  assert.strictEqual(resolveStripeDeployEnv(e), 'preview');
   assert.strictEqual(getStripePublishableKey(e), '');
-  assert.strictEqual(isValidStripePublishableKey(LIVE_KEY, e), false);
 }
 
-function testStagingHostAcceptsTestKey() {
+function testStagingAcceptsTestKeyAgainstStagingApi() {
   const e = env({
     VITE_APP_ENV: 'staging',
     VITE_API_BASE_URL: STAGING_API,
@@ -109,66 +131,59 @@ function testStagingHostAcceptsTestKey() {
   assert.strictEqual(isValidStripePublishableKey(TEST_KEY, e), true);
 }
 
-function testPreviewEnvRejectsLiveKey() {
+function testStagingRejectsLiveKey() {
   const e = env({
-    VITE_VERCEL_ENV: 'preview',
-    VITE_API_BASE_URL: PROD_API,
+    VITE_APP_ENV: 'staging',
+    VITE_API_BASE_URL: STAGING_API,
     VITE_STRIPE_PUBLISHABLE_KEY: LIVE_KEY,
   });
-  assert.strictEqual(resolveStripeDeployEnv(e), 'preview');
   assert.strictEqual(getStripePublishableKey(e), '');
-  assert.strictEqual(isValidStripePublishableKey(LIVE_KEY, e), false);
 }
 
-function testDevEnvRejectsLiveKey() {
+function testDevRejectsProductionDeclarationAndLiveKey() {
   const e = env({
     DEV: true,
     MODE: 'development',
+    VITE_APP_ENV: 'production',
+    VITE_API_BASE_URL: 'http://localhost:3000/api/v1',
     VITE_STRIPE_PUBLISHABLE_KEY: LIVE_KEY,
   });
-  assert.strictEqual(resolveStripeDeployEnv(e), 'development');
-  assert.strictEqual(getStripePublishableKey(e), '');
-  assert.strictEqual(isValidStripePublishableKey(LIVE_KEY, e), false);
-}
-
-function testBareRailwayAppDoesNotImplyStagingOrProduction() {
-  const e = env({
-    VITE_API_BASE_URL: PROD_API,
-    VITE_STRIPE_PUBLISHABLE_KEY: LIVE_KEY,
-  });
-  assert.ok(!/staging/i.test(e.VITE_API_BASE_URL));
   assert.strictEqual(resolveStripeDeployEnv(e), 'unknown');
   assert.strictEqual(getStripePublishableKey(e), '');
 }
 
-function testViteConfigInjectsVercelEnvIntoViteNamespace() {
-  const viteConfig = fs.readFileSync(path.join(__dirname, '..', 'vite.config.js'), 'utf8');
-  assert.ok(
-    viteConfig.includes('process.env.VERCEL_ENV'),
-    'vite.config.js must read process.env.VERCEL_ENV',
-  );
-  assert.ok(
-    viteConfig.includes('VITE_VERCEL_ENV'),
-    'vite.config.js must assign VITE_VERCEL_ENV for client bundle exposure',
-  );
-  assert.ok(
-    viteConfig.includes('Do NOT invent') || viteConfig.includes('fail closed'),
-    'vite.config.js must document fail-closed (no silent production default)',
-  );
+function testDevAllowsLocalhostWithTestKey() {
+  const e = env({
+    DEV: true,
+    MODE: 'development',
+    VITE_API_BASE_URL: 'http://localhost:3000/api/v1',
+    VITE_STRIPE_PUBLISHABLE_KEY_TEST: TEST_KEY,
+  });
+  assert.strictEqual(resolveStripeDeployEnv(e), 'development');
+  assert.strictEqual(getStripePublishableKey(e), TEST_KEY);
+}
+
+function testBareRailwayProdUrlIsNotStagingClassification() {
+  const e = env({ VITE_API_BASE_URL: PROD_API });
+  assert.ok(!/staging/i.test(PROD_API));
+  assert.notStrictEqual(resolveStripeDeployEnv(e), 'staging');
+  assert.strictEqual(isStagingFrontend(e), true);
 }
 
 function run() {
-  testProdApiUrlAloneDoesNotEnableLiveKeysFailClosed();
+  testMissingEnvFailsClosed();
+  testAppEnvProductionPlusVercelPreviewFailsClosed();
   testExplicitProductionWithProdApiAcceptsLiveKey();
-  testVercelEnvProductionInjectionPathAcceptsLiveKey();
-  testProductionRejectsTestKey();
-  testContradictoryProductionWithStagingApiFailsClosed();
-  testStagingHostRejectsLiveKey();
-  testStagingHostAcceptsTestKey();
-  testPreviewEnvRejectsLiveKey();
-  testDevEnvRejectsLiveKey();
-  testBareRailwayAppDoesNotImplyStagingOrProduction();
-  testViteConfigInjectsVercelEnvIntoViteNamespace();
+  testProductionPlusStagingApiFails();
+  testProductionPlusUnknownApiFails();
+  testProductionMissingApiFails();
+  testConflictingApiVarsFailClosed();
+  testPreviewRejectsLiveKeyAndProdApi();
+  testStagingAcceptsTestKeyAgainstStagingApi();
+  testStagingRejectsLiveKey();
+  testDevRejectsProductionDeclarationAndLiveKey();
+  testDevAllowsLocalhostWithTestKey();
+  testBareRailwayProdUrlIsNotStagingClassification();
   console.log('stripeConfig.test.mjs: ok');
 }
 

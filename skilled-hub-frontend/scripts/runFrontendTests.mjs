@@ -21,6 +21,7 @@ const testFiles = [
   'jobAccessSettings.test.mjs',
   'demoRouting.test.mjs',
   'stripeConfig.test.mjs',
+  'stripeConfig.build.test.mjs',
   'payBasis.test.mjs',
   'jobStatus.test.mjs',
   'endAssignmentModal.test.mjs',
