@@ -1,80 +1,112 @@
 import { isDemoMode } from './utils/demoMode.js';
 
+const KNOWN_DEPLOY_ENVS = new Set(['production', 'staging', 'preview', 'development']);
+
 /**
- * True for staging/preview/dev Stripe safety mode (refuse pk_live_).
+ * Resolve Stripe deploy class from explicit build-time env only.
  *
- * Must NOT treat the production Railway API host as staging. Production API is
- * https://skilledhub-production.up.railway.app/api/v1 — a bare /railway\.app/
- * match incorrectly discarded pk_live_ on www.techflash.app after PR #29.
+ * Trusted sources (first wins): VITE_APP_ENV | VITE_DEPLOY_ENV | VITE_VERCEL_ENV.
+ * VITE_VERCEL_ENV is NOT automatic from Vercel — vite.config.js copies process.env.VERCEL_ENV
+ * into VITE_VERCEL_ENV at build time when present. Missing env ⇒ "unknown" (fail closed).
  *
- * Prefer explicit build-time env: VITE_APP_ENV | VITE_DEPLOY_ENV | VITE_VERCEL_ENV
- * (= production | staging | preview | development). Fall back to matching
- * "staging" in the API base URL only.
+ * Never infer production from API hostname (production API is also on *.up.railway.app).
  *
  * @param {ImportMetaEnv | Record<string, unknown>} [env]
+ * @returns {'production'|'staging'|'preview'|'development'|'unknown'}
  */
-export function isStagingFrontend(env = import.meta.env) {
-  const deployEnv = String(
-    env.VITE_APP_ENV || env.VITE_DEPLOY_ENV || env.VITE_VERCEL_ENV || ''
-  )
+export function resolveStripeDeployEnv(env = import.meta.env) {
+  const explicit = String(env.VITE_APP_ENV || env.VITE_DEPLOY_ENV || env.VITE_VERCEL_ENV || '')
     .trim()
     .toLowerCase();
-
-  if (deployEnv === 'production') return false;
-  if (deployEnv === 'staging' || deployEnv === 'preview' || deployEnv === 'development') {
-    return true;
-  }
-
-  if (String(env.VITE_STRIPE_MODE || '').trim().toLowerCase() === 'test') {
-    return true;
-  }
-
   const api = String(env.VITE_API_BASE_URL || env.VITE_STAGING_API_BASE_URL || '');
-  // Explicit staging API hosts only (e.g. techflash-staging-api-staging.up.railway.app).
-  // Never match bare railway.app — production also lives on *.up.railway.app.
-  return /staging/i.test(api);
+  const stripeMode = String(env.VITE_STRIPE_MODE || '').trim().toLowerCase();
+
+  if (explicit === 'production') {
+    if (/staging/i.test(api)) {
+      console.error('[stripe] contradictory deploy env: production with staging API URL — fail closed');
+      return 'unknown';
+    }
+    if (stripeMode === 'test') {
+      console.error('[stripe] contradictory deploy env: production with VITE_STRIPE_MODE=test — fail closed');
+      return 'unknown';
+    }
+    return 'production';
+  }
+
+  if (KNOWN_DEPLOY_ENVS.has(explicit)) return explicit;
+  if (env.DEV) return 'development';
+  if (stripeMode === 'test') return 'staging';
+  // API hostname may identify staging, but never production.
+  if (/staging/i.test(api)) return 'staging';
+
+  return 'unknown';
 }
 
-function rejectLiveKeyInNonProd(key, env = import.meta.env) {
+/** True only for an explicitly configured production Stripe deploy. */
+export function allowsLiveStripePublishableKey(env = import.meta.env) {
+  if (isDemoMode()) return false;
+  return resolveStripeDeployEnv(env) === 'production';
+}
+
+/**
+ * Historical name: true when pk_live_ must be refused (non-production / unknown / demo / DEV).
+ * Fail closed: missing deploy env ⇒ true (live keys blocked).
+ */
+export function isStagingFrontend(env = import.meta.env) {
+  return !allowsLiveStripePublishableKey(env);
+}
+
+function requireTestPublishableKey(key) {
   if (!key) return '';
-  if (
-    key.startsWith('pk_live_') &&
-    (isStagingFrontend(env) || isDemoMode() || Boolean(env.DEV))
-  ) {
-    // Never initialize Stripe.js with a live publishable key on staging/preview/demo/dev.
-    console.error('[stripe] pk_live_ is forbidden for staging/preview/demo/dev frontends');
+  if (key.startsWith('pk_live_')) {
+    console.error('[stripe] pk_live_ is forbidden for staging/preview/demo/dev/unknown frontends');
+    return '';
+  }
+  if (!key.startsWith('pk_test_')) {
+    console.error('[stripe] non-production builds require a pk_test_ publishable key');
     return '';
   }
   return key;
 }
 
-/** Live key for production builds (`vite build` / hosted deploy). */
-export function getStripePublishableKey(env = import.meta.env) {
-  let key = '';
-  if (isDemoMode()) {
-    key =
-      env.VITE_STRIPE_PUBLISHABLE_KEY_TEST ||
-      env.VITE_STRIPE_PUBLISHABLE_KEY ||
-      '';
-  } else if (env.DEV || isStagingFrontend(env)) {
-    key =
-      env.VITE_STRIPE_PUBLISHABLE_KEY_TEST ||
-      env.VITE_STRIPE_PUBLISHABLE_KEY ||
-      '';
-  } else {
-    key = env.VITE_STRIPE_PUBLISHABLE_KEY || '';
+function requireLivePublishableKey(key) {
+  if (!key) {
+    console.error('[stripe] production build requires VITE_STRIPE_PUBLISHABLE_KEY (pk_live_)');
+    return '';
   }
-  return rejectLiveKeyInNonProd(key, env);
+  if (!key.startsWith('pk_live_')) {
+    console.error('[stripe] production build requires a pk_live_ publishable key');
+    return '';
+  }
+  return key;
+}
+
+/** Publishable key for Stripe.js — fail closed on missing/contradictory deploy env. */
+export function getStripePublishableKey(env = import.meta.env) {
+  if (isDemoMode()) {
+    const key =
+      env.VITE_STRIPE_PUBLISHABLE_KEY_TEST ||
+      env.VITE_STRIPE_PUBLISHABLE_KEY ||
+      '';
+    return requireTestPublishableKey(key);
+  }
+
+  if (allowsLiveStripePublishableKey(env)) {
+    return requireLivePublishableKey(env.VITE_STRIPE_PUBLISHABLE_KEY || '');
+  }
+
+  const key =
+    env.VITE_STRIPE_PUBLISHABLE_KEY_TEST ||
+    env.VITE_STRIPE_PUBLISHABLE_KEY ||
+    '';
+  return requireTestPublishableKey(key);
 }
 
 export function isValidStripePublishableKey(key, env = import.meta.env) {
   if (typeof key !== 'string' || key.length === 0) return false;
   if (!key.startsWith('pk_')) return false;
-  if (
-    key.startsWith('pk_live_') &&
-    (isStagingFrontend(env) || isDemoMode() || Boolean(env.DEV))
-  ) {
-    return false;
+  if (allowsLiveStripePublishableKey(env)) {
+    return key.startsWith('pk_live_');
   }
-  return true;
+  return key.startsWith('pk_test_');
 }
