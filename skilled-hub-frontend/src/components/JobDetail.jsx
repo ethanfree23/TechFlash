@@ -1189,12 +1189,14 @@ const JobDetail = () => {
           <p>
             <span className="font-medium">Funding: </span>
             {job.funding_status === 'funded' && (job.payment_summary.fully_funded ? 'Funded.' : 'Partially funded.')}
+            {job.posted_under_funding_waiver && job.funding_status !== 'funded' &&
+              'Posted under funding exemption — no company payment collected.'}
             {job.funding_status === 'adjustment_required' &&
               (job.payment_summary?.ach_processing
                 ? 'ACH bank debit is processing. This job stays unpublished until the payment succeeds.'
                 : 'Additional payment is required before these terms can proceed.')}
             {job.funding_status === 'funding_failed' && 'The last collection attempt failed. This job is not listed until payment succeeds.'}
-            {job.funding_status === 'unfunded' && 'Not funded yet.'}
+            {job.funding_status === 'unfunded' && !job.posted_under_funding_waiver && 'Not funded yet.'}
             {!job.funding_status && 'Funding status unavailable.'}
             {job.payment_summary?.latest_payment_method_display && (
               <span className="block text-xs text-slate-500 mt-1">

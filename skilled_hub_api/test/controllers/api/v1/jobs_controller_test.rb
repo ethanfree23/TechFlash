@@ -298,7 +298,9 @@ module Api
 
         assert_response :created
         created_job = Job.order(:id).last
-        assert created_job.funding_funded?
+        assert created_job.funding_unfunded?
+        assert created_job.posted_under_funding_waiver?
+        refute created_job.funding_funded?
         assert_equal 0, created_job.job_payment_transactions.company_collections.status_succeeded.count
       end
 
@@ -427,7 +429,9 @@ module Api
         assert_response :ok
         draft.reload
         assert_equal "open", draft.status
-        assert draft.funding_funded?
+        assert draft.funding_unfunded?
+        assert draft.posted_under_funding_waiver?
+        refute draft.funding_funded?
       end
 
       test "technician cannot see draft jobs" do
@@ -498,6 +502,8 @@ module Api
           title: "Paid exempt claim",
           description: "desc",
           status: :open,
+          funding_status: :unfunded,
+          posted_under_funding_waiver: true,
           hourly_rate_cents: 5_000,
           hours_per_day: 1,
           days: 1,
@@ -607,6 +613,8 @@ module Api
             title: "Rolling start claim",
             description: "desc",
             status: :open,
+            funding_status: :unfunded,
+            posted_under_funding_waiver: true,
             go_live_at: 3.days.ago,
             start_mode: :rolling_start,
             rolling_start_rule_type: :none,
@@ -918,6 +926,7 @@ module Api
         travel_to Time.zone.parse("2026-04-29 08:00:00") do
           job = Job.create!(
             company_profile: company_profile, title: "Rolling days rule", description: "desc", status: :open,
+            funding_status: :unfunded, posted_under_funding_waiver: true,
             start_mode: :rolling_start, rolling_start_rule_type: :days_after_acceptance, rolling_start_days_after_acceptance: 2,
             hourly_rate_cents: 3_000, hours_per_day: 8, days: 5, go_live_at: 1.day.ago
           )
@@ -941,6 +950,7 @@ module Api
         travel_to Time.zone.parse("2026-04-27 10:00:00") do # Monday
           job = Job.create!(
             company_profile: company_profile, title: "Rolling weekday rule", description: "desc", status: :open,
+            funding_status: :unfunded, posted_under_funding_waiver: true,
             start_mode: :rolling_start, rolling_start_rule_type: :following_weekday, rolling_start_weekday: 1, rolling_start_weekday_time: "14:15",
             hourly_rate_cents: 3_000, hours_per_day: 8, days: 2, go_live_at: 1.day.ago
           )
@@ -968,6 +978,8 @@ module Api
             title: "Rolling late hour claim",
             description: "desc",
             status: :open,
+            funding_status: :unfunded,
+            posted_under_funding_waiver: true,
             start_mode: :rolling_start,
             rolling_start_rule_type: :exact_datetime,
             rolling_start_exact_start_at: required_start,
@@ -1429,6 +1441,8 @@ module Api
           title: "Verification gated job",
           description: "desc",
           status: :open,
+          funding_status: :unfunded,
+          posted_under_funding_waiver: true,
           require_background_check: true,
           go_live_at: 1.day.ago,
           scheduled_start_at: 1.day.from_now,

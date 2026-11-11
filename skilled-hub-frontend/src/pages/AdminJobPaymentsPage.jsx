@@ -176,7 +176,9 @@ const AdminJobPaymentsPage = ({ user, onLogout }) => {
                         <div className="text-xs text-slate-600 mt-1">Risk: {row.risk_kind}</div>
                       )}
                       <div className="text-xs text-slate-500 mt-1">
-                        funding: {row.funding_status || '—'} · settlement: {row.settlement_status || '—'}
+                        funding: {row.funding_status || '—'}
+                        {row.posted_under_funding_waiver ? ' (posting exemption)' : ''}
+                        {' · '}settlement: {row.settlement_status || '—'}
                       </div>
                       <div className="text-xs text-slate-500">
                         Transfer ≠ bank payout · bank: {row.bank_payout_status || 'unknown'}

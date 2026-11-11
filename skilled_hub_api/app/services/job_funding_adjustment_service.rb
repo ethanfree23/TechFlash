@@ -22,11 +22,26 @@ class JobFundingAdjustmentService
   end
 
   def self.reconcile!(job, source:, transaction_type_prefix:)
-    # Posting already skips Stripe when job funding is waived. Accepting a schedule or
-    # compensation counter offer must do the same: the ledger would otherwise treat the
-    # waived job as uncollected and try to charge a card that was never required.
-    if job.job_funding_waived?
-      job.update!(funding_status: :funded)
+    # Historical posting exemption requires the persisted per-job marker only.
+    # Must NOT consult live company.job_funding_waived, and must NOT invent waiver
+    # authorization from inconsistent funded-without-cash stamps (those need admin
+    # review). Granting the company flag must not skip charges on prior unpaid jobs;
+    # revoking it must not charge jobs that already carry posted_under_funding_waiver.
+    if job.historically_funding_exempt?
+      # Keep cash :funded only when verified collections already cover required;
+      # otherwise remain financially unfunded with the exemption marker preserved.
+      attrs =
+        begin
+          ledger = JobLedger.for(job)
+          if ledger.fully_funded && ledger.net_funded_cents.positive?
+            { funding_status: :funded }
+          else
+            { funding_status: :unfunded, posted_under_funding_waiver: true }
+          end
+        rescue JobLedger::MissingCommissionSnapshotError
+          { funding_status: :unfunded, posted_under_funding_waiver: true }
+        end
+      job.update!(attrs)
       JobFundingService.record_revision!(job, source: source)
       return { success: true, job: job, waived: true }
     end

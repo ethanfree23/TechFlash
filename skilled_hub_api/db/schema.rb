@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_10_190000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_11_010000) do
   create_table "ach_feature_audits", force: :cascade do |t|
     t.string "scope", null: false
     t.integer "company_profile_id"
@@ -871,6 +871,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_10_190000) do
     t.json "potential_full_time_details", default: {}, null: false
     t.integer "schedule_flexibility", default: 0, null: false
     t.datetime "terminated_at"
+    t.boolean "posted_under_funding_waiver", default: false, null: false
     t.index ["company_membership_tier_config_id"], name: "index_jobs_on_company_membership_tier_config_id"
     t.index ["company_profile_id"], name: "index_jobs_on_company_profile_id"
     t.index ["funding_status"], name: "index_jobs_on_funding_status"

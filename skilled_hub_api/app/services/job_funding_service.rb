@@ -76,10 +76,28 @@ class JobFundingService
       return { success: false, error: "Company commission snapshot is missing; refusing to charge." }
     end
 
-    if !job.priced? || job.job_funding_waived?
+    # NEW posting only: live company.job_funding_waived decides whether this publish
+    # may skip the PaymentIntent. Already-posted jobs use historically_funding_exempt?.
+    if job.job_funding_waived?
+      # Admin posting exemption: publishable/open, financially unfunded. Never :funded.
+      job.update!(
+        status: :open,
+        funding_status: :unfunded,
+        posted_under_funding_waiver: true,
+        go_live_at: Time.current
+      )
+      record_revision!(job, source: "posting")
+      return { success: true, job: job, waived: true }
+    end
+
+    if !job.priced?
+      # Zero-funding exception: unpriced jobs have company_required_cents == 0, so
+      # JobLedger.fully_funded is vacuously true with no collections. Only !priced?
+      # may stamp :funded without cash. A priced job with unpaid required funding
+      # must collect (or fail) — it cannot use this path.
       job.update!(status: :open, funding_status: :funded, go_live_at: Time.current)
       record_revision!(job, source: "posting")
-      return { success: true, job: job, waived: job.job_funding_waived? }
+      return { success: true, job: job, waived: false }
     end
 
     charge = collect!(
