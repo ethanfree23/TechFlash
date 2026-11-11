@@ -70,7 +70,7 @@ class ReclassifyWaivedFundingRakeTest < ActiveSupport::TestCase
     job
   end
 
-  test "dry-run prints each candidate separately with ledger evidence and does not write" do
+  test "category A verified waiver candidates propose correction and do not write" do
     mislabeled = make_job(company: @waived_company, funding: :funded)
     with_money = make_job(company: @paid_company, funding: :funded, with_collection: true)
     unpriced = make_job(company: @waived_company, funding: :funded, labor: 0)
@@ -79,17 +79,32 @@ class ReclassifyWaivedFundingRakeTest < ActiveSupport::TestCase
     out = capture_io { @task.invoke }.first
 
     assert_match(/DRY-RUN/, out)
-    assert_match(/read-only|never writes/i, out)
+    assert_match(/CATEGORY A/, out)
     assert_match(/job_id: #{mislabeled.id}/, out)
+    assert_match(/category: A/, out)
     assert_match(/funding_status: funded -> unfunded/, out)
     assert_match(/posted_under_funding_waiver: false -> true/, out)
-    assert_match(/settlement_status \(preserve\): unsettled/, out)
-    assert_match(/collected_cents: 0/, out)
     refute_match(/job_id: #{with_money.id}/, out)
     refute_match(/job_id: #{unpriced.id}/, out)
     assert mislabeled.reload.funding_funded?
     assert_equal "open", mislabeled.status
-    assert with_money.reload.funding_funded?
+  ensure
+    ENV.delete("CONFIRM")
+  end
+
+  test "category B inconsistent stamps do not propose invented waiver" do
+    inconsistent = make_job(company: @paid_company, funding: :funded)
+
+    ENV.delete("CONFIRM")
+    out = capture_io { @task.invoke }.first
+
+    assert_match(/CATEGORY B/, out)
+    assert_match(/job_id: #{inconsistent.id}/, out)
+    assert_match(/category: B/, out)
+    assert_match(/do NOT invent posted_under_funding_waiver/i, out)
+    refute_match(/posted_under_funding_waiver: false -> true/, out)
+    assert inconsistent.reload.funding_funded?
+    refute inconsistent.posted_under_funding_waiver?
   ensure
     ENV.delete("CONFIRM")
   end

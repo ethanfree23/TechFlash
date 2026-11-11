@@ -285,14 +285,10 @@ class FundingWaivedStatusTest < ActiveSupport::TestCase
     assert job.reload.filled? || job.job_applications.accepted.exists?
   end
 
-  test "financial adjustment on historically exempt job does not invent a charge" do
+  test "proven historical waiver adjustment does not invent a charge" do
     job = build_priced_job
     JobFundingService.fund_for_publish!(job)
-    # Simulate legacy mislabeled row (funded, no marker) then revoke company flag.
-    job.update_columns(funding_status: Job.funding_statuses[:funded], posted_under_funding_waiver: false)
-    @company_profile.update!(job_funding_waived: false)
-    job.reload
-    assert job.legacy_funded_without_collections?
+    assert job.reload.posted_under_funding_waiver?
     assert job.historically_funding_exempt?
 
     charge_called = false
@@ -309,6 +305,57 @@ class FundingWaivedStatusTest < ActiveSupport::TestCase
     job.reload
     assert job.funding_unfunded?
     assert job.posted_under_funding_waiver?
+  end
+
+  test "unproven legacy funded-without-cash does not invent waiver on adjustment" do
+    @company_profile.update!(job_funding_waived: false)
+    job = build_priced_job(status: :open, funding_status: :funded)
+    job.update!(
+      posted_under_funding_waiver: false,
+      company_commission_percent_snapshot: 10,
+      financial_revision: 1
+    )
+    job.reload
+
+    assert job.legacy_funded_without_collections?
+    refute job.historically_funding_exempt?, "inconsistent stamp must not authorize exemption"
+    assert job.funding_allows_claim?, "claim/visibility may still use funding_funded? without inventing waiver"
+    ledger = JobLedger.for(job)
+    assert ledger.amount_due_cents.positive?, "priced unfunded-cash job must still owe collection"
+
+    collect_called = false
+    JobFundingService.stub(:collect!, ->(*_args, **_kwargs) {
+      collect_called = true
+      { success: false, error: "card required" }
+    }) do
+      result = JobFundingAdjustmentService.reconcile!(
+        job,
+        source: "counteroffer",
+        transaction_type_prefix: "counteroffer"
+      )
+      assert collect_called, "unproven legacy must enter normal collection path, not auto-waive"
+      refute result[:waived]
+    end
+    job.reload
+    refute job.posted_under_funding_waiver?, "must not invent posted_under_funding_waiver"
+  end
+
+  test "legacy funded-without-cash stays claimable without inventing waiver permission" do
+    @company_profile.update!(job_funding_waived: false)
+    job = build_priced_job(
+      status: :open,
+      funding_status: :funded,
+      posted_under_funding_waiver: false,
+      scheduled_start_at: 2.days.from_now,
+      scheduled_end_at: 15.days.from_now
+    )
+    assert job.legacy_funded_without_collections?
+    refute job.historically_funding_exempt?
+    assert job.funding_allows_claim?
+
+    result = claim!(job)
+    refute result[:error], result[:error].to_s
+    refute job.reload.posted_under_funding_waiver?
   end
 
   test "normal unpaid priced job is not claimable" do

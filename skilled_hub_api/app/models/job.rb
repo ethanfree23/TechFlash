@@ -127,24 +127,27 @@ class Job < ApplicationRecord
     job_payment_transactions.company_collections.status_succeeded.sum(:amount_cents).to_i
   end
 
-  # Legacy pre-marker rows: priced job stamped :funded with zero succeeded collections.
-  # Evidence is the inconsistent stamp itself — NOT company.job_funding_waived — so
-  # granting/revoking the live company flag cannot broaden or revoke eligibility.
+  # Diagnostic only: priced job stamped :funded with zero succeeded collections.
+  # This is NOT admin-authorization evidence. Do not use it to invent a posting
+  # exemption or skip financial adjustments — ambiguous rows need admin review.
   # Unpriced vacuous :funded (!priced?, required=0) is excluded by priced?.
   def legacy_funded_without_collections?
     funding_funded? && priced? && succeeded_company_collected_cents.zero?
   end
 
   # Historical posting exemption for an already-posted job.
-  # Prefer posted_under_funding_waiver; legacy_funded_without_collections? is the
-  # narrow compatibility path until dry-run reclassify stamps the marker.
+  # ONLY the persisted admin marker authorizes exemption. Inconsistent
+  # funded-without-cash stamps must not auto-stamp posted_under_funding_waiver
+  # or waive adjustments.
   def historically_funding_exempt?
-    posted_under_funding_waiver? || legacy_funded_without_collections?
+    posted_under_funding_waiver?
   end
 
   # Claim / visibility eligibility for paywalled jobs. Distinct from payout authorization
   # (PaymentService / JobLedger). Does NOT authorize Stripe transfers.
-  # Uses persisted/legacy job evidence only — never the live company waiver flag.
+  # Never consults live company.job_funding_waived.
+  # funding_funded? preserves claim/visibility for legacy mislabeled rows without
+  # inventing waiver authorization (adjustment still requires the marker).
   def funding_allows_claim?
     funding_funded? || posted_under_funding_waiver? || !priced?
   end

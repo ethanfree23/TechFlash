@@ -22,13 +22,14 @@ class JobFundingAdjustmentService
   end
 
   def self.reconcile!(job, source:, transaction_type_prefix:)
-    # Historical posting exemption (persisted marker / legacy funded-without-cash).
-    # Must NOT consult live company.job_funding_waived: revoking that flag must not
-    # suddenly charge a previously exempt job, and granting it must not skip charges
-    # on unrelated previously unpaid jobs.
+    # Historical posting exemption requires the persisted per-job marker only.
+    # Must NOT consult live company.job_funding_waived, and must NOT invent waiver
+    # authorization from inconsistent funded-without-cash stamps (those need admin
+    # review). Granting the company flag must not skip charges on prior unpaid jobs;
+    # revoking it must not charge jobs that already carry posted_under_funding_waiver.
     if job.historically_funding_exempt?
       # Keep cash :funded only when verified collections already cover required;
-      # otherwise remain financially unfunded with an explicit posting-exemption marker.
+      # otherwise remain financially unfunded with the exemption marker preserved.
       attrs =
         begin
           ledger = JobLedger.for(job)
