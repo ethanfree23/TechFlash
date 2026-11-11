@@ -180,6 +180,58 @@ class HsiReclassify3238Test < ActiveSupport::TestCase
     end
   end
 
+  test "explicit apply: true raises outside Rails.env.test?" do
+    Rails.stub(:env, ActiveSupport::StringInquirer.new("production")) do
+      err = assert_raises(OneOff::HsiReclassify3238::GuardFailure) do
+        OneOff::HsiReclassify3238.run!(
+          job_ids: @job_ids,
+          company_profile_id: @company.id,
+          expected_required_cents: EXPECTED_REQUIRED,
+          expected_labor_cents: EXPECTED_LABOR,
+          apply: true,
+          operator_user_id: @admin.id,
+          authorization_note: "note",
+          git_sha: "sha",
+          stdout: @out
+        )
+      end
+      assert_match(/refused outside Rails\.env\.test/i, err.message)
+    end
+
+    @jobs.each do |job|
+      job.reload
+      assert job.funding_funded?
+      refute job.posted_under_funding_waiver?
+    end
+  end
+
+  test "ENV APPLY token enables write when apply omitted" do
+    previous = ENV["APPLY"]
+    ENV["APPLY"] = OneOff::HsiReclassify3238::APPLY_TOKEN
+    result = OneOff::HsiReclassify3238.run!(
+      job_ids: @job_ids,
+      company_profile_id: @company.id,
+      expected_required_cents: EXPECTED_REQUIRED,
+      expected_labor_cents: EXPECTED_LABOR,
+      operator_user_id: @admin.id,
+      authorization_note: "owner-authorized via ENV token",
+      git_sha: "envsha",
+      stdout: @out
+    )
+    assert result.apply
+    @jobs.each do |job|
+      job.reload
+      assert job.funding_unfunded?
+      assert job.posted_under_funding_waiver?
+    end
+  ensure
+    if previous.nil?
+      ENV.delete("APPLY")
+    else
+      ENV["APPLY"] = previous
+    end
+  end
+
   test "accepted claim guard blocks APPLY" do
     tech_user = User.create!(
       email: "hsi-tech-#{SecureRandom.hex(4)}@example.com",

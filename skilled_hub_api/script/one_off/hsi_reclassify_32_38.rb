@@ -84,8 +84,20 @@ module OneOff
 
     private
 
+    # Write authorization:
+    # - Outside Rails.env.test?, ONLY ENV["APPLY"] == "YES_HSI_32_38" may write.
+    # - explicit apply: true is allowed in test only; elsewhere it raises.
+    # - explicit apply: false always forces dry-run.
     def resolve_apply(explicit)
-      return !!explicit unless explicit.nil?
+      if explicit == true
+        unless Rails.env.test?
+          raise GuardFailure,
+                "explicit apply: true is refused outside Rails.env.test?; " \
+                "set ENV APPLY=#{APPLY_TOKEN} for writes"
+        end
+        return true
+      end
+      return false if explicit == false
 
       ENV["APPLY"].to_s == APPLY_TOKEN
     end
