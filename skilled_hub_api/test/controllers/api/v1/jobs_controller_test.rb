@@ -502,6 +502,8 @@ module Api
           title: "Paid exempt claim",
           description: "desc",
           status: :open,
+          funding_status: :unfunded,
+          posted_under_funding_waiver: true,
           hourly_rate_cents: 5_000,
           hours_per_day: 1,
           days: 1,
@@ -611,6 +613,8 @@ module Api
             title: "Rolling start claim",
             description: "desc",
             status: :open,
+            funding_status: :unfunded,
+            posted_under_funding_waiver: true,
             go_live_at: 3.days.ago,
             start_mode: :rolling_start,
             rolling_start_rule_type: :none,
@@ -922,6 +926,7 @@ module Api
         travel_to Time.zone.parse("2026-04-29 08:00:00") do
           job = Job.create!(
             company_profile: company_profile, title: "Rolling days rule", description: "desc", status: :open,
+            funding_status: :unfunded, posted_under_funding_waiver: true,
             start_mode: :rolling_start, rolling_start_rule_type: :days_after_acceptance, rolling_start_days_after_acceptance: 2,
             hourly_rate_cents: 3_000, hours_per_day: 8, days: 5, go_live_at: 1.day.ago
           )
@@ -945,6 +950,7 @@ module Api
         travel_to Time.zone.parse("2026-04-27 10:00:00") do # Monday
           job = Job.create!(
             company_profile: company_profile, title: "Rolling weekday rule", description: "desc", status: :open,
+            funding_status: :unfunded, posted_under_funding_waiver: true,
             start_mode: :rolling_start, rolling_start_rule_type: :following_weekday, rolling_start_weekday: 1, rolling_start_weekday_time: "14:15",
             hourly_rate_cents: 3_000, hours_per_day: 8, days: 2, go_live_at: 1.day.ago
           )
@@ -972,6 +978,8 @@ module Api
             title: "Rolling late hour claim",
             description: "desc",
             status: :open,
+            funding_status: :unfunded,
+            posted_under_funding_waiver: true,
             start_mode: :rolling_start,
             rolling_start_rule_type: :exact_datetime,
             rolling_start_exact_start_at: required_start,
@@ -1433,6 +1441,8 @@ module Api
           title: "Verification gated job",
           description: "desc",
           status: :open,
+          funding_status: :unfunded,
+          posted_under_funding_waiver: true,
           require_background_check: true,
           go_live_at: 1.day.ago,
           scheduled_start_at: 1.day.from_now,
