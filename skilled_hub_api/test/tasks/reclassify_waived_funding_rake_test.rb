@@ -36,7 +36,8 @@ class ReclassifyWaivedFundingRakeTest < ActiveSupport::TestCase
     @paid_user.update_column(:company_profile_id, @paid_company.id)
   end
 
-  def make_job(company:, funding:, with_collection: false, labor: 80_000)
+  def make_job(company:, funding:, with_collection: false, labor: 80_000, days: nil)
+    days ||= (labor.positive? ? 1 : 0)
     job = Job.create!(
       company_profile: company,
       title: "Reclass job",
@@ -44,11 +45,11 @@ class ReclassifyWaivedFundingRakeTest < ActiveSupport::TestCase
       status: :open,
       funding_status: funding,
       settlement_status: :unsettled,
-      hourly_rate_cents: 10_000,
-      hours_per_day: 8,
-      days: labor.positive? ? 1 : 0,
+      hourly_rate_cents: labor.positive? ? 10_000 : 0,
+      hours_per_day: labor.positive? ? 8 : 0,
+      days: days,
       agreed_labor_cents: labor,
-      company_commission_percent_snapshot: 10,
+      company_commission_percent_snapshot: labor.positive? ? 10 : nil,
       go_live_at: Time.current
     )
     if with_collection
@@ -69,18 +70,23 @@ class ReclassifyWaivedFundingRakeTest < ActiveSupport::TestCase
     job
   end
 
-  test "dry-run prints candidates with ledger evidence and does not write" do
+  test "dry-run prints each candidate separately with ledger evidence and does not write" do
     mislabeled = make_job(company: @waived_company, funding: :funded)
     with_money = make_job(company: @paid_company, funding: :funded, with_collection: true)
+    unpriced = make_job(company: @waived_company, funding: :funded, labor: 0)
 
     ENV.delete("CONFIRM")
     out = capture_io { @task.invoke }.first
 
     assert_match(/DRY-RUN/, out)
     assert_match(/read-only|never writes/i, out)
-    assert_match(/#{mislabeled.id} \| #{@waived_company.id} \| open \| unsettled \(unchanged\) \| funded -> unfunded/, out)
-    assert_match(/collected \| net_funded|collected_cents|0 \|/, out)
-    refute_match(/\b#{with_money.id} \|/, out)
+    assert_match(/job_id: #{mislabeled.id}/, out)
+    assert_match(/funding_status: funded -> unfunded/, out)
+    assert_match(/posted_under_funding_waiver: false -> true/, out)
+    assert_match(/settlement_status \(preserve\): unsettled/, out)
+    assert_match(/collected_cents: 0/, out)
+    refute_match(/job_id: #{with_money.id}/, out)
+    refute_match(/job_id: #{unpriced.id}/, out)
     assert mislabeled.reload.funding_funded?
     assert_equal "open", mislabeled.status
     assert with_money.reload.funding_funded?
@@ -108,5 +114,15 @@ class ReclassifyWaivedFundingRakeTest < ActiveSupport::TestCase
     assert_match(/No candidates found/i, out)
     assert job.reload.funding_unfunded?
     assert job.posted_under_funding_waiver?
+  end
+
+  test "jobs with succeeded collections are left unchanged" do
+    paid = make_job(company: @waived_company, funding: :funded, with_collection: true)
+    ENV.delete("CONFIRM")
+    out = capture_io { @task.invoke }.first
+    refute_match(/job_id: #{paid.id}/, out)
+    assert paid.reload.funding_funded?
+  ensure
+    ENV.delete("CONFIRM")
   end
 end

@@ -6,8 +6,12 @@ class Job < ApplicationRecord
 
   enum :status, { open: 0, reserved: 1, accepted: 2, completed: 3, filled: 4, finished: 5, pending_funding: 6, draft: 7 }
   enum :pay_basis, { actual_hours_worked: 0, guaranteed_job_pay: 1 }
-  # funded = verified collections cover company_required (same truth as JobLedger.fully_funded).
-  # Posting without payment uses posted_under_funding_waiver (boolean), not a funding_status value.
+  # funding_status=funded means verified collections cover company_required
+  # (JobLedger.fully_funded), OR the vacuous unpriced case where
+  # company_required_cents == 0 (!priced?) and no cash is owed.
+  # Admin posting exemptions must NOT use :funded — stamp :unfunded and set
+  # posted_under_funding_waiver. Priced jobs with unpaid required funding
+  # cannot claim the zero-funding exception.
   enum :funding_status, { unfunded: 0, funded: 1, adjustment_required: 2, funding_failed: 3 }, prefix: :funding
   enum :settlement_status, { unsettled: 0, settling: 1, settled: 2, settlement_blocked: 3 }, prefix: :settlement
   enum :start_mode, { hard_start: 0, rolling_start: 1 }
@@ -107,16 +111,40 @@ class Job < ApplicationRecord
     job_amount_cents.positive?
   end
 
+  # LIVE company admin flag — governs NEW posting eligibility / card requirements only.
+  # Do not use this for claim, adjustment, or historical exemption of already-posted jobs.
   def job_funding_waived?
     !!company_profile&.job_funding_waived?
   end
 
+  # Persisted per-job marker set at publish when the company held a posting exemption.
   def posted_under_funding_waiver?
     has_attribute?(:posted_under_funding_waiver) && !!self[:posted_under_funding_waiver]
   end
 
+  # Succeeded inbound company collections for this job (cash evidence).
+  def succeeded_company_collected_cents
+    job_payment_transactions.company_collections.status_succeeded.sum(:amount_cents).to_i
+  end
+
+  # Legacy pre-marker rows: priced job stamped :funded with zero succeeded collections.
+  # Evidence is the inconsistent stamp itself — NOT company.job_funding_waived — so
+  # granting/revoking the live company flag cannot broaden or revoke eligibility.
+  # Unpriced vacuous :funded (!priced?, required=0) is excluded by priced?.
+  def legacy_funded_without_collections?
+    funding_funded? && priced? && succeeded_company_collected_cents.zero?
+  end
+
+  # Historical posting exemption for an already-posted job.
+  # Prefer posted_under_funding_waiver; legacy_funded_without_collections? is the
+  # narrow compatibility path until dry-run reclassify stamps the marker.
+  def historically_funding_exempt?
+    posted_under_funding_waiver? || legacy_funded_without_collections?
+  end
+
   # Claim / visibility eligibility for paywalled jobs. Distinct from payout authorization
   # (PaymentService / JobLedger). Does NOT authorize Stripe transfers.
+  # Uses persisted/legacy job evidence only — never the live company waiver flag.
   def funding_allows_claim?
     funding_funded? || posted_under_funding_waiver? || !priced?
   end
