@@ -102,9 +102,9 @@ class JobStripeOps
       payment_method: payment_method_id,
       off_session: off_session,
       confirm: true,
-      metadata: metadata,
-      transfer_group: transfer_group
+      metadata: metadata
     }
+    params[:transfer_group] = transfer_group if transfer_group.present?
 
     if pm_meta[:payment_method_type].to_s == "us_bank_account"
       # Explicit ACH path — do not rely on automatic_payment_methods for bank debits.
@@ -130,7 +130,16 @@ class JobStripeOps
       **pm_meta_safe(payment_method_id)
     )
   rescue Stripe::StripeError => e
-    Result.new(status: "failed", error: e.message, **pm_meta_safe(payment_method_id))
+    classified = classify_transfer_error(e)
+    pi_id = e.json_body.dig(:error, :payment_intent, :id) if e.respond_to?(:json_body) && e.json_body.is_a?(Hash)
+    Result.new(
+      status: classified.status,
+      error: classified.error,
+      error_class: classified.error_class,
+      http_status: classified.http_status,
+      stripe_id: pi_id,
+      **pm_meta_safe(payment_method_id)
+    )
   end
 
   def self.refund!(amount_cents:, payment_intent_id:, metadata:, idempotency_key:)

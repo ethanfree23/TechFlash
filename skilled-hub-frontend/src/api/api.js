@@ -602,6 +602,29 @@ export const adminAchSettingsAPI = {
     }),
 };
 
+export const adminAchSmokeTestAPI = {
+  list: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v != null && String(v).trim() !== '') qs.set(k, String(v));
+    });
+    const query = qs.toString();
+    return apiRequest(`/admin/internal_financial_smoke_tests${query ? `?${query}` : ''}`);
+  },
+  create: (payload) =>
+    apiRequest('/admin/internal_financial_smoke_tests', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  execute: (id) =>
+    apiRequest(`/admin/internal_financial_smoke_tests/${id}/execute`, { method: 'POST', body: '{}' }),
+  refund: (id, refund_authorization_reason) =>
+    apiRequest(`/admin/internal_financial_smoke_tests/${id}/refund`, {
+      method: 'POST',
+      body: JSON.stringify({ refund_authorization_reason }),
+    }),
+};
+
 export const adminEmailQaAPI = {
   listTemplates: () => apiRequest('/admin/email_qa/templates'),
   preview: (templateKey, toEmail) => {

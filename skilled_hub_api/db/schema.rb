@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_11_010000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_12_120000) do
   create_table "ach_feature_audits", force: :cascade do |t|
     t.string "scope", null: false
     t.integer "company_profile_id"
@@ -584,6 +584,37 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_11_010000) do
     t.index ["ghl_contact_id"], name: "index_ghl_webhook_events_on_ghl_contact_id"
     t.index ["idempotency_key"], name: "index_ghl_webhook_events_on_idempotency_key", unique: true
     t.index ["user_id"], name: "index_ghl_webhook_events_on_user_id"
+  end
+
+  create_table "internal_financial_smoke_tests", force: :cascade do |t|
+    t.integer "company_profile_id", null: false
+    t.integer "authorized_by_user_id", null: false
+    t.text "authorization_reason", null: false
+    t.integer "amount_cents", null: false
+    t.string "idempotency_key"
+    t.integer "status", default: 0, null: false
+    t.string "stripe_payment_intent_id"
+    t.string "stripe_charge_id"
+    t.string "stripe_refund_id"
+    t.string "stripe_payment_method_id"
+    t.string "payment_method_type"
+    t.string "payment_method_last4"
+    t.string "payment_method_bank_name"
+    t.text "error_message"
+    t.boolean "investigation_required", default: false, null: false
+    t.datetime "charge_initiated_at"
+    t.datetime "processing_at"
+    t.datetime "succeeded_at"
+    t.datetime "refunded_at"
+    t.integer "refund_authorized_by_user_id"
+    t.text "refund_authorization_reason"
+    t.json "metadata_json", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["company_profile_id"], name: "index_internal_financial_smoke_tests_on_company_profile_id"
+    t.index ["idempotency_key"], name: "index_internal_financial_smoke_tests_on_idempotency_key", unique: true
+    t.index ["status"], name: "index_internal_financial_smoke_tests_on_status"
+    t.index ["stripe_payment_intent_id"], name: "idx_on_stripe_payment_intent_id_85bc743f87"
   end
 
   create_table "job_alert_preferences", force: :cascade do |t|
@@ -1514,6 +1545,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_11_010000) do
   add_foreign_key "favorite_technicians", "technician_profiles"
   add_foreign_key "feedback_submissions", "users"
   add_foreign_key "ghl_webhook_events", "users"
+  add_foreign_key "internal_financial_smoke_tests", "company_profiles"
+  add_foreign_key "internal_financial_smoke_tests", "users", column: "authorized_by_user_id"
+  add_foreign_key "internal_financial_smoke_tests", "users", column: "refund_authorized_by_user_id"
   add_foreign_key "job_alert_preferences", "users"
   add_foreign_key "job_applications", "jobs"
   add_foreign_key "job_applications", "technician_profiles"

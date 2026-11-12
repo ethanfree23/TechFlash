@@ -101,6 +101,10 @@ class PaymentService
         early = { error: "Company ACH payment is still processing; technician payout is blocked." }
         next
       end
+      if locked_job.job_payment_transactions.company_collections.status_outcome_unknown.exists?
+        early = { error: "Company payment outcome is unknown; technician payout is blocked pending reconcile." }
+        next
+      end
       if locked_job.job_payment_transactions.company_refunds.status_processing.exists? ||
           locked_job.job_payment_transactions.company_refunds.status_pending.exists?
         early = { error: "Company refund is still pending; technician payout is blocked." }

@@ -81,16 +81,22 @@ module Api
             ActiveModel::Type::Boolean.new.cast(t.metadata_json.to_h["transfer_mismatch"])
           }
 
+          failed_without_pi = ach_txns.status_failed.where(stripe_payment_intent_id: [nil, ""])
+          collections_outcome_unknown = ach_txns.company_collections.status_outcome_unknown
+
           render json: {
             pending_funding_days: days,
             ach_by_status: {
               processing: ach_txns.status_processing.count,
               succeeded: ach_txns.status_succeeded.count,
               failed: ach_txns.status_failed.count,
+              outcome_unknown: ach_txns.status_outcome_unknown.count,
               pending: ach_txns.status_pending.count,
               requires_action: ach_txns.status_requires_action.count,
               returned: JobPaymentTransaction.ach.where.not(dispute_status: [nil, ""]).count
             },
+            collections_failed_without_pi: failed_without_pi.count,
+            collections_outcome_unknown: collections_outcome_unknown.count,
             returned_or_disputed: JobPaymentTransaction.ach.where.not(dispute_status: [nil, ""]).count,
             open_risk_events: PaymentRiskEvent.open_cases.count,
             blocking_risk_events: PaymentRiskEvent.blocking.count,
@@ -100,6 +106,9 @@ module Api
               .where(status: :pending_funding)
               .where("updated_at < ?", cutoff)
               .count,
+            smoke_tests_by_status: InternalFinancialSmokeTest.statuses.keys.index_with { |name|
+              InternalFinancialSmokeTest.where(status: name).count
+            },
             global: {
               global_ach_payments_enabled: AchAccess.global_enabled_without_env_kill,
               effective_global_ach_payments_enabled: AchAccess.global_enabled?,
