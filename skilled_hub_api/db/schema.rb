@@ -11,9 +11,6 @@
 # It's strongly recommended that you check this file into your version control system.
 
 ActiveRecord::Schema[7.1].define(version: 2026_11_12_190000) do
-  # These are extensions that must be enabled in order to support this database
-  enable_extension "plpgsql"
-
   create_table "ach_feature_audits", force: :cascade do |t|
     t.string "scope", null: false
     t.integer "company_profile_id"
@@ -75,7 +72,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_190000) do
     t.datetime "updated_at", null: false
     t.index ["ghl_contact_id"], name: "index_ai_sms_sessions_on_ghl_contact_id"
     t.index ["status"], name: "index_ai_sms_sessions_on_status"
-    t.index ["user_id", "purpose"], name: "idx_ai_sms_sessions_one_live_per_user_purpose", unique: true, where: "((status)::text = ANY ((ARRAY['active'::character varying, 'waiting_for_reply'::character varying])::text[]))"
+    t.index ["user_id", "purpose"], name: "idx_ai_sms_sessions_one_live_per_user_purpose", unique: true, where: "status IN ('active', 'waiting_for_reply')"
     t.index ["user_id", "purpose"], name: "index_ai_sms_sessions_on_user_id_and_purpose"
     t.index ["user_id"], name: "index_ai_sms_sessions_on_user_id"
   end
@@ -99,7 +96,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_190000) do
     t.datetime "received_at"
     t.index ["ai_sms_session_id", "created_at"], name: "index_ai_sms_turns_on_ai_sms_session_id_and_created_at"
     t.index ["ai_sms_session_id"], name: "index_ai_sms_turns_on_ai_sms_session_id"
-    t.index ["ghl_message_id"], name: "index_ai_sms_turns_on_ghl_message_id", unique: true, where: "(ghl_message_id IS NOT NULL)"
+    t.index ["ghl_message_id"], name: "index_ai_sms_turns_on_ghl_message_id", unique: true, where: "ghl_message_id IS NOT NULL"
     t.index ["inbound_fingerprint", "received_at"], name: "index_ai_sms_turns_on_fingerprint_and_received_at"
   end
 
@@ -196,7 +193,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_190000) do
     t.index ["completed_at"], name: "index_assessment_attempts_on_completed_at"
     t.index ["technician_profile_id", "assessment_id", "attempt_number"], name: "index_assessment_attempts_on_tech_assessment_number", unique: true
     t.index ["technician_profile_id", "assessment_id", "status"], name: "index_assessment_attempts_on_tech_assessment_status"
-    t.index ["technician_profile_id", "assessment_id"], name: "index_assessment_attempts_one_in_progress_per_assessment", unique: true, where: "(status = 0)"
+    t.index ["technician_profile_id", "assessment_id"], name: "index_assessment_attempts_one_in_progress_per_assessment", unique: true, where: "status = 0"
     t.index ["technician_profile_id"], name: "index_assessment_attempts_on_technician_profile_id"
     t.index ["user_id"], name: "index_assessment_attempts_on_user_id"
   end
@@ -234,7 +231,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_190000) do
     t.index ["assessment_category_id", "active"], name: "index_assessment_questions_on_category_and_active"
     t.index ["assessment_category_id"], name: "index_assessment_questions_on_assessment_category_id"
     t.index ["assessment_version_id", "active"], name: "index_assessment_questions_on_version_and_active"
-    t.index ["assessment_version_id", "external_key"], name: "index_assessment_questions_on_version_and_external_key", unique: true, where: "(external_key IS NOT NULL)"
+    t.index ["assessment_version_id", "external_key"], name: "index_assessment_questions_on_version_and_external_key", unique: true, where: "external_key IS NOT NULL"
     t.index ["assessment_version_id"], name: "index_assessment_questions_on_assessment_version_id"
   end
 
