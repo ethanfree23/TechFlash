@@ -36,9 +36,10 @@ class AchAccessAndInitiationGateTest < ActiveSupport::TestCase
     refute AchAccess.allowed?(@cp_a)
   end
 
-  test "company A enabled does not enable company B" do
+  test "explicit company disable blocks only that company when global ON" do
     AchAccess.set_global!(enabled: true, actor: @admin)
-    AchAccess.set_company!(@cp_a, enabled: true, actor: @admin)
+    # GA default: companies are enabled; explicitly block B only.
+    AchAccess.set_company!(@cp_b, enabled: false, actor: @admin)
     assert AchAccess.allowed?(@cp_a)
     refute AchAccess.allowed?(@cp_b)
   end

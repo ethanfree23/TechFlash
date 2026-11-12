@@ -817,8 +817,20 @@ module Api
         if job.job_applications.where(status: :accepted).exists?
           return 'A technician has claimed this job. Deny the technician or end the assignment first.'
         end
-        if job.job_payment_transactions.status_succeeded.exists?
-          return 'This job has payment activity. Unpublish it to refund the company before removing it.'
+        # Financial significance: ANY payment transaction (incl. ACH processing),
+        # payment row, financial revision, or risk event blocks hard delete so
+        # cascade cannot erase ledger evidence while Stripe may still settle.
+        if job.job_payment_transactions.exists?
+          return 'This job has payment activity and cannot be deleted. Unpublish/refund first if eligible.'
+        end
+        if job.payments.exists?
+          return 'This job has payment records and cannot be deleted.'
+        end
+        if job.job_financial_revisions.exists?
+          return 'This job has financial revision history and cannot be deleted.'
+        end
+        if defined?(PaymentRiskEvent) && PaymentRiskEvent.where(job_id: job.id).exists?
+          return 'This job has payment risk records and cannot be deleted.'
         end
         if job_holds_funds?(job)
           return 'This job is funded. Unpublish it to refund the company before removing it.'
