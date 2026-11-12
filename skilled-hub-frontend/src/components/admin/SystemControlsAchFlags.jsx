@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { adminAchSettingsAPI } from '../../api/api';
+import SystemControlsAchSmokeTest from './SystemControlsAchSmokeTest';
 
 export default function SystemControlsAchFlags() {
   const [data, setData] = useState(null);
@@ -125,6 +126,9 @@ export default function SystemControlsAchFlags() {
           <Mon label="ACH processing" value={ach.processing} />
           <Mon label="ACH succeeded" value={ach.succeeded} />
           <Mon label="ACH failed" value={ach.failed} />
+          <Mon label="ACH outcome_unknown" value={ach.outcome_unknown} />
+          <Mon label="Failed w/o PI" value={monitoring?.collections_failed_without_pi} />
+          <Mon label="Collections unknown" value={monitoring?.collections_outcome_unknown} />
           <Mon label="ACH returned/disputed" value={ach.returned ?? monitoring?.returned_or_disputed} />
           <Mon label="Open risks" value={monitoring?.open_risk_events} />
           <Mon label="Transfers outcome_unknown" value={monitoring?.transfers_outcome_unknown} />
@@ -148,6 +152,8 @@ export default function SystemControlsAchFlags() {
           )}
         </ul>
       </div>
+
+      <SystemControlsAchSmokeTest />
     </div>
   );
 }

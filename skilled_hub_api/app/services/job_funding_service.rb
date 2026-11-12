@@ -127,6 +127,16 @@ class JobFundingService
         payment_method_type: charge[:transaction]&.payment_method_type,
         message: "Bank debit initiated. This job will be published when the ACH payment succeeds."
       }
+    elsif charge[:outcome_unknown]
+      job.update!(status: :pending_funding, funding_status: :adjustment_required)
+      {
+        success: false,
+        outcome_unknown: true,
+        job: job,
+        transaction: charge[:transaction],
+        error: charge[:error],
+        message: charge[:message] || "Payment outcome is unknown. This job stays unpublished until Stripe confirms."
+      }
     else
       job.update!(status: :pending_funding, funding_status: :funding_failed)
       { success: false, error: charge[:error], job: job }
@@ -214,6 +224,13 @@ class JobFundingService
           processing: true,
           transaction: existing,
           message: "A bank debit for this amount is already processing."
+        }
+      elsif existing&.status_outcome_unknown?
+        early = {
+          success: false,
+          outcome_unknown: true,
+          transaction: existing,
+          message: "A prior debit attempt has an unknown outcome. Wait for webhook reconciliation before retrying."
         }
       else
         txn = existing || JobPaymentTransaction.create!(
@@ -397,6 +414,41 @@ class JobFundingService
           }.merge(pm_attrs)
         )
         { success: false, requires_action: true, client_secret: result.client_secret, transaction: locked_txn }
+      elsif result.outcome_unknown?
+        locked_txn.update!(
+          {
+            status: :outcome_unknown,
+            error_message: result.error,
+            stripe_payment_intent_id: result.stripe_id,
+            investigation_required: true
+          }.merge(pm_attrs)
+        )
+        begin
+          PaymentRiskEvent.record!(
+            job: job,
+            risk_kind: "pre_success_failure",
+            amount_cents: locked_txn.amount_cents,
+            job_payment_transaction: locked_txn,
+            stripe_payment_intent_id: result.stripe_id,
+            correlation_key: "pi_create_unknown:txn_#{locked_txn.id}",
+            lifecycle_state: "outcome_unknown",
+            admin_note: "PaymentIntent create returned an ambiguous outcome; awaiting webhook or admin reconcile.",
+            metadata: {
+              "error" => result.error.to_s,
+              "error_class" => result.error_class.to_s,
+              "http_status" => result.http_status
+            }.compact
+          )
+        rescue ActiveRecord::RecordNotUnique, ActiveRecord::RecordInvalid
+          # Duplicate correlation — idempotent admin visibility.
+        end
+        {
+          success: false,
+          outcome_unknown: true,
+          transaction: locked_txn.reload,
+          error: result.error,
+          message: "Payment outcome is unknown. Do not re-post until Stripe or admin confirms."
+        }
       else
         locked_txn.update!(
           {

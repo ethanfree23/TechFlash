@@ -234,6 +234,12 @@ Rails.application.routes.draw do
         patch "ach_settings/companies/:company_profile_id", to: "ach_settings#update_company"
         get "ach_settings/audits", to: "ach_settings#audits"
         get "ach_settings/monitoring", to: "ach_settings#monitoring"
+        resources :internal_financial_smoke_tests, only: %i[index show create] do
+          member do
+            post :execute
+            post :refund
+          end
+        end
         get "storage_diagnostic/check", to: "storage_diagnostics#check"
         get "storage_diagnostic", to: "storage_diagnostics#show"
         get "email_qa/templates", to: "email_qa#templates"

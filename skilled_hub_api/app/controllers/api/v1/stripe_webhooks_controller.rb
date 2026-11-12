@@ -381,6 +381,11 @@ module Api
       end
 
       def reconcile_payment_intent_succeeded(pi)
+        if (smoke = find_smoke_test_for_pi(pi))
+          reconcile_smoke_test_succeeded(smoke, pi)
+          return
+        end
+
         Job.transaction do
           txn = find_locked_collection_txn(pi)
           next unless txn && !txn.status_succeeded?
@@ -409,10 +414,18 @@ module Api
       end
 
       def reconcile_payment_intent_processing(pi)
+        if (smoke = find_smoke_test_for_pi(pi))
+          reconcile_smoke_test_processing(smoke, pi)
+          return
+        end
+
         Job.transaction do
           txn = find_locked_collection_txn(pi)
           next unless txn
-          next if txn.status_succeeded? || txn.status_failed? || txn.status_canceled?
+          next if txn.status_succeeded? || txn.status_canceled?
+
+          recoverable_ambiguous = (txn.status_failed? || txn.status_outcome_unknown?) && txn.stripe_payment_intent_id.blank?
+          next if txn.status_failed? && !recoverable_ambiguous
 
           JobFundingService.mark_txn_processing!(
             txn,
@@ -420,6 +433,14 @@ module Api
             charge_id: pi.latest_charge.to_s.presence,
             payment_method_attrs: payment_method_attrs_from_intent(pi)
           )
+          if recoverable_ambiguous
+            txn.update!(
+              investigation_required: true,
+              metadata_json: txn.metadata_json.to_h.merge(
+                "recovered_from_ambiguous_create" => Time.current.iso8601
+              )
+            )
+          end
           job = Job.lock.find(txn.job_id)
           if txn.initial_job_charge? || txn.counteroffer_top_up? || txn.final_hours_top_up?
             attrs = { funding_status: :adjustment_required }
@@ -430,6 +451,11 @@ module Api
       end
 
       def reconcile_payment_intent_failed(pi)
+        if (smoke = find_smoke_test_for_pi(pi))
+          reconcile_smoke_test_failed(smoke, pi)
+          return
+        end
+
         Job.transaction do
           txn = find_locked_collection_txn(pi)
           next unless txn
@@ -619,6 +645,70 @@ module Api
         txn = JobPaymentTransaction.lock.find_by(stripe_payment_intent_id: pi.id)
         txn ||= JobPaymentTransaction.lock.find_by(id: pi.metadata&.[]("transaction_id").to_i) if pi.metadata&.[]("transaction_id").present?
         txn
+      end
+
+      def find_smoke_test_for_pi(pi)
+        meta = pi.metadata
+        return nil unless meta.respond_to?(:[]) && meta["techflash_smoke_test"].to_s == "true"
+
+        smoke_id = meta["smoke_test_id"].to_i
+        return nil unless smoke_id.positive?
+
+        InternalFinancialSmokeTest.lock.find_by(id: smoke_id)
+      end
+
+      def reconcile_smoke_test_succeeded(smoke, pi)
+        InternalFinancialSmokeTest.transaction do
+          row = InternalFinancialSmokeTest.lock.find(smoke.id)
+          return if row.status_refunded?
+
+          row.update!(
+            status: :succeeded,
+            stripe_payment_intent_id: pi.id,
+            stripe_charge_id: pi.latest_charge.to_s.presence,
+            succeeded_at: row.succeeded_at || Time.current,
+            **smoke_payment_method_attrs(pi)
+          )
+        end
+      end
+
+      def reconcile_smoke_test_processing(smoke, pi)
+        InternalFinancialSmokeTest.transaction do
+          row = InternalFinancialSmokeTest.lock.find(smoke.id)
+          return if row.status_succeeded? || row.status_refunded?
+
+          row.update!(
+            status: :processing,
+            stripe_payment_intent_id: pi.id,
+            stripe_charge_id: pi.latest_charge.to_s.presence,
+            processing_at: row.processing_at || Time.current,
+            **smoke_payment_method_attrs(pi)
+          )
+        end
+      end
+
+      def reconcile_smoke_test_failed(smoke, pi)
+        InternalFinancialSmokeTest.transaction do
+          row = InternalFinancialSmokeTest.lock.find(smoke.id)
+          return if row.status_succeeded? || row.status_refunded?
+
+          row.update!(
+            status: :failed,
+            stripe_payment_intent_id: pi.id,
+            error_message: pi.last_payment_error&.message || "Payment failed",
+            **smoke_payment_method_attrs(pi)
+          )
+        end
+      end
+
+      def smoke_payment_method_attrs(pi)
+        attrs = payment_method_attrs_from_intent(pi)
+        {
+          stripe_payment_method_id: attrs[:stripe_payment_method_id],
+          payment_method_type: attrs[:payment_method_type],
+          payment_method_last4: attrs[:payment_method_last4],
+          payment_method_bank_name: attrs[:payment_method_bank_name]
+        }.compact
       end
 
       def payment_method_attrs_from_intent(pi)
