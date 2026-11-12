@@ -439,7 +439,7 @@ module Api
             JobFundingService.record_revision!(job, source: "posting", transaction: txn) unless job.job_financial_revisions.exists?(revision_number: job.financial_revision)
             MailDelivery.safe_deliver { UserMailer.payment_confirmation_email(job, txn.amount_cents).deliver_now }
             JobAlertDispatcher.dispatch_for_job(job) if job.effectively_open?
-          elsif txn.counteroffer_top_up? || txn.final_hours_top_up?
+          elsif txn.counteroffer_top_up? || txn.final_hours_top_up? || txn.post_publish_top_up?
             JobFundingAdjustmentService.after_successful_collection!(job)
           elsif job.funding_adjustment_required?
             job.update!(funding_status: :funded)
@@ -472,7 +472,7 @@ module Api
           job = Job.lock.find(txn.job_id)
           payment = Payment.lock.find_by(id: txn.payment_id)
           payment&.update!(status: "pending") if payment&.status == "failed"
-          if txn.initial_job_charge? || txn.counteroffer_top_up? || txn.final_hours_top_up?
+          if txn.initial_job_charge? || txn.counteroffer_top_up? || txn.final_hours_top_up? || txn.post_publish_top_up?
             attrs = { funding_status: :adjustment_required }
             attrs[:status] = :pending_funding if txn.initial_job_charge? && !job.filled? && !job.finished? && !job.reserved?
             job.update!(attrs)
@@ -543,7 +543,7 @@ module Api
           payment&.update!(status: "failed") if payment&.status == "pending"
           if txn.initial_job_charge? && job.pending_funding?
             job.update!(funding_status: :funding_failed)
-          elsif txn.counteroffer_top_up? || txn.final_hours_top_up?
+          elsif txn.counteroffer_top_up? || txn.final_hours_top_up? || txn.post_publish_top_up?
             job.update!(funding_status: :adjustment_required, settlement_status: :settlement_blocked)
           end
           begin

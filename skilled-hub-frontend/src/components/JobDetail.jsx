@@ -201,6 +201,8 @@ const JobDetail = () => {
   const [reportBody, setReportBody] = useState('');
   const [reportSubmitting, setReportSubmitting] = useState(false);
   const [deletingJob, setDeletingJob] = useState(false);
+  const [fundingJob, setFundingJob] = useState(false);
+  const [fundPreview, setFundPreview] = useState(null);
   const [counterOffers, setCounterOffers] = useState([]);
   const [loadingCounterOffers, setLoadingCounterOffers] = useState(false);
   const [submittingCounter, setSubmittingCounter] = useState(false);
@@ -234,6 +236,35 @@ const JobDetail = () => {
     next.delete('endAssignment');
     setSearchParams(next, { replace: true });
   }, [job, searchParams, setSearchParams]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      if (!job?.id || !(job.payment_summary?.amount_due_cents > 0)) {
+        setFundPreview(null);
+        return;
+      }
+      const manage =
+        user?.role === 'admin' ||
+        auth.isAdmin() ||
+        (user?.role === 'company' && (
+          (companyProfileId && String(job.company_profile_id) === String(companyProfileId)) ||
+          (user?.id && String(job.company_profile?.user_id) === String(user.id))
+        ));
+      if (!manage) {
+        setFundPreview(null);
+        return;
+      }
+      try {
+        const preview = await jobsAPI.fundPreview(job.id);
+        if (!cancelled) setFundPreview(preview);
+      } catch {
+        if (!cancelled) setFundPreview(null);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [job, user, companyProfileId]);
 
   const fetchJobDetails = useCallback(async () => {
     try {
@@ -910,6 +941,47 @@ const JobDetail = () => {
     (currentUser?.id && String(job?.company_profile?.user_id) === String(currentUser.id))
   );
   const canManageJob = isAdmin || isCompanyOwner;
+
+  const confirmFundJob = async () => {
+    if (!job?.id || !fundPreview?.payment_method_id) return;
+    try {
+      setFundingJob(true);
+      const result = await jobsAPI.fundJob(job.id, {
+        confirmed_amount_cents: fundPreview.amount_due_cents,
+        confirmed_payment_method_id: fundPreview.payment_method_id,
+      });
+      if (result?.payment_adjustment_required && result?.client_secret) {
+        await confirmStripeCardPayment(result.client_secret);
+        await jobsAPI.confirmFunding(job.id);
+      }
+      await fetchJobDetails();
+      if (result?.payment_processing) {
+        setAlertModal({
+          isOpen: true,
+          title: 'Bank debit processing',
+          message: result.message || 'ACH payment is processing. Work stays blocked until the bank debit succeeds.',
+          variant: 'info',
+        });
+      } else {
+        setAlertModal({
+          isOpen: true,
+          title: 'Job funded',
+          message: 'The outstanding balance was collected. Work can proceed once funding shows as funded.',
+          variant: 'success',
+        });
+      }
+    } catch (err) {
+      setAlertModal({
+        isOpen: true,
+        title: 'Unable to fund job',
+        message: err.message || 'Funding failed',
+        variant: 'error',
+      });
+    } finally {
+      setFundingJob(false);
+    }
+  };
+
   const assignmentInProgress = ['reserved', 'filled', 'accepted'].includes(job.status) && !job.ended_early && job.effective_status !== 'ended_early' && job.effective_status !== 'completed' && job.status !== 'finished';
   const assignmentEndedEarly = Boolean(job.ended_early || job.terminated_at || job.effective_status === 'ended_early');
   const showTopTechOpenActions = currentUser?.role === 'technician' && canTechnicianClaim(job);
@@ -1211,6 +1283,26 @@ const JobDetail = () => {
             <p className="text-amber-800">Amount still due: ${((job.payment_summary.amount_due_cents) / 100).toFixed(2)}</p>
           )}
           {job.payment_summary.transferred_cents > 0 && <p>Released to technician.</p>}
+          {canManageJob && fundPreview?.amount_due_cents > 0 && (
+            <div className="mt-3 rounded border border-amber-200 bg-white px-3 py-2 space-y-2">
+              <p className="font-medium text-amber-950">Fund remaining balance</p>
+              <p>
+                Exact amount: ${((fundPreview.amount_due_cents || 0) / 100).toFixed(2)}
+                {fundPreview.payment_method_type ? ` · Method: ${fundPreview.payment_method_type}` : ''}
+              </p>
+              <p className="text-xs text-slate-600">
+                Confirming charges your default payment method. ACH processing does not unlock work until the bank debit succeeds.
+              </p>
+              <button
+                type="button"
+                disabled={fundingJob || !fundPreview.payment_method_id}
+                onClick={confirmFundJob}
+                className="rounded bg-amber-800 px-3 py-1.5 text-white text-sm disabled:opacity-50"
+              >
+                {fundingJob ? 'Funding…' : 'Confirm and fund'}
+              </button>
+            </div>
+          )}
         </div>
       )}
       {job.status === 'pending_funding' && canManageJob && (

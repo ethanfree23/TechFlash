@@ -190,9 +190,25 @@ class JobFundingService
       publish!(job)
       record_revision!(job, source: "posting", transaction: txn)
       MailDelivery.safe_deliver { UserMailer.payment_confirmation_email(job, txn.amount_cents).deliver_now }
-    elsif txn.counteroffer_top_up? || txn.final_hours_top_up?
+    elsif txn.counteroffer_top_up? || txn.final_hours_top_up? || txn.post_publish_top_up?
       JobFundingAdjustmentService.after_successful_collection!(job)
     end
+  end
+
+  # Default Stripe PM for a job's company. In simulate mode returns a stable
+  # sentinel so confirmation UX can be exercised without live Stripe.
+  def self.default_payment_method_id_for_job(job)
+    if JobStripeOps.simulate_stripe?
+      return "pm_sim_default"
+    end
+
+    user = job.company_profile&.user
+    return nil if user.blank?
+
+    customer_id = StripeCustomerService.validate_or_clear_customer_id!(user)
+    default_payment_method_id(customer_id)
+  rescue StandardError
+    nil
   end
 
   def self.collect!(job:, amount_cents:, transaction_type:, revision:)

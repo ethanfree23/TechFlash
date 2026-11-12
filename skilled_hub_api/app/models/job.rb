@@ -156,8 +156,35 @@ class Job < ApplicationRecord
   # Never consults live company.job_funding_waived.
   # funding_funded? preserves claim/visibility for legacy mislabeled rows without
   # inventing waiver authorization (adjustment still requires the marker).
+  # Waiver still allows claim WITHOUT cash — work-start uses funding_allows_work?.
   def funding_allows_claim?
     funding_funded? || posted_under_funding_waiver? || !priced?
+  end
+
+  # Work-start / time-entry-create / schedule-activation gate.
+  # Priced jobs require verified collected funds (JobLedger.fully_funded with cash).
+  # ACH processing, open disputes/returns, and stale funding_status labels are NOT funded.
+  # Unpriced / zero-required jobs need no cash. Does NOT authorize Stripe transfers.
+  def funding_allows_work?
+    return true unless priced?
+
+    if job_payment_transactions.company_collections.status_processing.exists?
+      return false
+    end
+    if job_payment_transactions.company_collections.status_succeeded.any?(&:disputed?)
+      return false
+    end
+
+    ledger = JobLedger.for(self)
+    ledger.fully_funded && ledger.net_funded_cents.positive?
+  rescue JobLedger::MissingCommissionSnapshotError
+    false
+  end
+
+  def work_funding_blocked_message
+    return nil if funding_allows_work?
+
+    "This job cannot start or record work until the company funds the outstanding balance. ACH processing does not count as funded."
   end
 
   # Shared hard-delete guard for controller destroy and association cascades.

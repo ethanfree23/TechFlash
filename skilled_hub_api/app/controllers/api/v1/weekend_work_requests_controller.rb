@@ -13,6 +13,9 @@ module Api
 
       def create
         return render_forbidden unless can_manage_job?(@job)
+        if (blocked = @job.work_funding_blocked_message)
+          return render json: { error: blocked }, status: :unprocessable_entity
+        end
 
         accepted_app = @job.job_applications.find_by(status: :accepted)
         unless accepted_app
@@ -39,12 +42,18 @@ module Api
           unless @current_user.technician? && request.technician_profile.user_id == @current_user.id
             return render_forbidden
           end
+          if status == "accepted_by_technician" && (blocked = @job.work_funding_blocked_message)
+            return render json: { error: blocked }, status: :unprocessable_entity
+          end
           request.assign_attributes(status: status, technician_response_note: params[:technician_response_note], responded_at: Time.current)
         elsif status == "cancelled"
           return render_forbidden unless can_manage_job?(@job)
           request.assign_attributes(status: :cancelled, cancelled_at: Time.current)
         elsif status == "completed"
           return render_forbidden unless can_manage_job?(@job)
+          if (blocked = @job.work_funding_blocked_message)
+            return render json: { error: blocked }, status: :unprocessable_entity
+          end
           request.assign_attributes(status: :completed, completed_at: Time.current)
         else
           return render json: { error: "Unsupported status transition." }, status: :unprocessable_entity

@@ -126,6 +126,94 @@ class JobFundingAdjustmentService
     JobFundingService.record_revision!(job, source: "collection_confirmed")
   end
 
+  # Company-initiated collect of remaining required funding after waived publish.
+  # Does NOT auto-debit: caller must pass confirmed_amount_cents matching ledger due
+  # and confirmed_payment_method_id matching the company's default PM.
+  # Bypasses historically_funding_exempt? short-circuit (that path is for counteroffers).
+  # Keeps posted_under_funding_waiver marker; stamps :funded only on succeeded cash.
+  # ACH processing leaves funding_status=adjustment_required (not funded).
+  def self.collect_remaining!(job, confirmed_amount_cents:, confirmed_payment_method_id:, source: "post_publish_fund")
+    unless job.priced?
+      return { success: false, error: "Unpriced jobs do not require funding.", job: job }
+    end
+
+    begin
+      ledger = JobLedger.for(job)
+    rescue JobLedger::MissingCommissionSnapshotError => e
+      return { success: false, error: e.message, job: job }
+    end
+
+    due = ledger.amount_due_cents.to_i
+    if due <= 0 && ledger.fully_funded && ledger.net_funded_cents.positive?
+      job.update!(funding_status: :funded) unless job.funding_funded?
+      return { success: true, job: job, already_funded: true }
+    end
+    if due <= 0
+      return { success: false, error: "No outstanding funding amount to collect.", job: job }
+    end
+
+    confirmed = confirmed_amount_cents.to_i
+    unless confirmed == due
+      return {
+        success: false,
+        error: "Confirmed amount must equal the outstanding requirement (#{due} cents).",
+        amount_due_cents: due,
+        job: job
+      }
+    end
+
+    default_pm = JobFundingService.default_payment_method_id_for_job(job)
+    if default_pm.blank?
+      return { success: false, error: "Add a payment method before funding this job.", job: job }
+    end
+    if confirmed_payment_method_id.to_s != default_pm.to_s
+      return {
+        success: false,
+        error: "Confirmed payment method must match the company default payment method.",
+        payment_method_id: default_pm,
+        job: job
+      }
+    end
+
+    # Idempotent: in-flight post_publish_top_up for this revision/amount returns existing state.
+    result = JobFundingService.collect!(
+      job: job,
+      amount_cents: due,
+      transaction_type: :post_publish_top_up,
+      revision: job.financial_revision
+    )
+
+    if result[:success]
+      job.update!(funding_status: :funded)
+      JobFundingService.record_revision!(job, source: source, transaction: result[:transaction])
+      { success: true, job: job, transaction: result[:transaction] }
+    elsif result[:requires_action]
+      job.update!(funding_status: :adjustment_required)
+      {
+        success: false,
+        requires_action: true,
+        client_secret: result[:client_secret],
+        job: job,
+        transaction: result[:transaction],
+        amount_due_cents: due,
+        error: "Additional authentication is required to complete this payment."
+      }
+    elsif result[:processing]
+      job.update!(funding_status: :adjustment_required)
+      {
+        success: false,
+        processing: true,
+        job: job,
+        transaction: result[:transaction],
+        amount_due_cents: due,
+        error: "ACH payment is processing. This job is not funded until the bank debit succeeds."
+      }
+    else
+      job.update!(funding_status: :adjustment_required) if job.funding_unfunded? || job.funding_failed?
+      { success: false, error: result[:error] || "Could not collect funding.", job: job, code: result[:code] }
+    end
+  end
+
   def self.refund_unfilled_job!(job)
     begin
       ledger = JobLedger.for(job)

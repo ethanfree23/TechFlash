@@ -727,6 +727,15 @@ export const jobsAPI = {
       method: 'POST',
     }),
 
+  fundPreview: (id) =>
+    apiRequest(`/jobs/${id}/fund_preview`),
+
+  fundJob: (id, payload) =>
+    apiRequest(`/jobs/${id}/fund`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+
   unpublish: (id) =>
     apiRequest(`/jobs/${id}/unpublish`, {
       method: 'POST',
