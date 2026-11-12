@@ -462,8 +462,12 @@ module Api
 
       def terminate
         job = Job.find(params[:id])
-        if (blocked = job.work_funding_blocked_message)
-          return render json: { error: blocked }, status: :unprocessable_entity
+        # Idempotent re-terminate / already-ended jobs must not re-check cash
+        # (settlement/refund can zero net_funded after the first successful end).
+        unless job.terminated_early? || job.finished? || job.completed?
+          if (blocked = job.work_funding_blocked_message)
+            return render json: { error: blocked }, status: :unprocessable_entity
+          end
         end
         result = Jobs::TerminateAssignmentService.call(
           job: job,
