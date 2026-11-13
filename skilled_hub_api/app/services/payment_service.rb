@@ -101,6 +101,12 @@ class PaymentService
         early = { error: "Company ACH payment is still processing; technician payout is blocked." }
         next
       end
+      # A collection whose Stripe outcome is unknown is neither funded nor failed; never pay out on it.
+      if locked_job.job_payment_transactions.company_collections.status_outcome_unknown.exists? ||
+          locked_job.job_payment_transactions.company_collections.status_pending.where.not(collection_first_attempted_at: nil).exists?
+        early = { error: "A company payment has an unconfirmed result; technician payout is blocked until it is reconciled." }
+        next
+      end
       if locked_job.job_payment_transactions.company_refunds.status_processing.exists? ||
           locked_job.job_payment_transactions.company_refunds.status_pending.exists?
         early = { error: "Company refund is still pending; technician payout is blocked." }

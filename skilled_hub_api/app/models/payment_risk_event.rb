@@ -15,6 +15,7 @@ class PaymentRiskEvent < ApplicationRecord
     bank_payout_pending
     bank_payout_paid
     payout_unknown
+    collection_outcome_unknown
     resolved
   ].freeze
 

@@ -94,6 +94,14 @@ class JobSettlementService
           error: "ACH payment is processing. Technician payout is blocked until the bank debit succeeds."
         }
       end
+      if result[:outcome_unknown]
+        job.update!(funding_status: :adjustment_required, settlement_status: :settlement_blocked)
+        return {
+          success: false,
+          outcome_unknown: true,
+          error: "The company payment result is unconfirmed. Technician payout is blocked until it is reconciled."
+        }
+      end
       unless result[:success]
         job.update!(funding_status: :adjustment_required, settlement_status: :settlement_blocked)
         return { success: false, error: result[:error] || "Could not collect the remaining job amount." }

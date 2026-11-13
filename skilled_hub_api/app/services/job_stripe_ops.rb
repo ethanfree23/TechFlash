@@ -1,6 +1,17 @@
 # frozen_string_literal: true
 
 class JobStripeOps
+  NETWORK_ERROR_CLASSES = [
+    Timeout::Error,
+    Errno::ECONNRESET,
+    Errno::ECONNREFUSED,
+    Errno::ETIMEDOUT,
+    Errno::EPIPE,
+    EOFError,
+    SocketError,
+    OpenSSL::SSL::SSLError
+  ].freeze
+
   class Result
     attr_reader :status, :stripe_id, :charge_id, :client_secret, :error, :error_class, :http_status, :simulated,
                 :payment_method_id, :payment_method_type, :payment_method_last4,
@@ -123,15 +134,76 @@ class JobStripeOps
       **pm_meta
     )
   rescue Stripe::CardError => e
+    # Authoritative decline: Stripe evaluated the request and rejected it.
     Result.new(
       status: "failed",
       error: e.message,
-      stripe_id: e.json_body.dig(:error, :payment_intent, :id),
+      error_class: e.class.name,
+      http_status: (e.http_status.to_i if e.respond_to?(:http_status)),
+      stripe_id: card_error_payment_intent_id(e),
       **pm_meta_safe(payment_method_id)
     )
   rescue Stripe::StripeError => e
-    Result.new(status: "failed", error: e.message, **pm_meta_safe(payment_method_id))
+    classify_payment_intent_error(e, payment_method_id: payment_method_id)
+  rescue *NETWORK_ERROR_CLASSES => e
+    # Transport-level failure that escaped the Stripe client wrapper: the request may have reached Stripe.
+    Result.new(
+      status: "outcome_unknown",
+      error: e.message.to_s.presence || e.class.name,
+      error_class: e.class.name,
+      **pm_meta_safe(payment_method_id)
+    )
   end
+
+  # PaymentIntent create/confirm error classification.
+  #
+  # DEFINITIVE FAILURE ("failed"): Stripe authoritatively rejected the request; this attempt
+  # cannot have produced a debit (4xx validation/auth/permission/card errors).
+  #
+  # OUTCOME UNKNOWN ("outcome_unknown"): the request may have reached Stripe and a PaymentIntent
+  # may exist — timeouts, connection interruptions, rate limiting, 5xx, and idempotency-key
+  # conflicts (which prove a prior attempt with this key already reached Stripe). Anything that
+  # cannot be classified is treated as unknown; a definitive failure is never invented.
+  def self.classify_payment_intent_error(error, payment_method_id: nil)
+    http = error.respond_to?(:http_status) ? error.http_status.to_i : 0
+    msg = error.message.to_s
+    code = error.respond_to?(:code) ? error.code.to_s : ""
+
+    ambiguous =
+      error.is_a?(Stripe::APIConnectionError) ||
+      error.is_a?(Stripe::RateLimitError) ||
+      error.is_a?(Stripe::IdempotencyError) ||
+      code == "idempotency_error" ||
+      http >= 500 ||
+      msg.match?(/timeout|timed out|connection reset|EOFError|Net::ReadTimeout|Net::OpenTimeout|temporarily unavailable/i)
+
+    definitive =
+      !ambiguous && (
+        error.is_a?(Stripe::InvalidRequestError) ||
+        error.is_a?(Stripe::AuthenticationError) ||
+        error.is_a?(Stripe::PermissionError) ||
+        error.is_a?(Stripe::CardError) ||
+        (http >= 400 && http < 500)
+      )
+
+    Result.new(
+      status: definitive ? "failed" : "outcome_unknown",
+      error: msg,
+      error_class: error.class.name,
+      http_status: http,
+      **pm_meta_safe(payment_method_id)
+    )
+  end
+
+  def self.card_error_payment_intent_id(error)
+    body = error.respond_to?(:json_body) ? error.json_body : nil
+    return nil unless body.respond_to?(:dig)
+
+    body.dig(:error, :payment_intent, :id) || body.dig("error", "payment_intent", "id")
+  rescue StandardError
+    nil
+  end
+  private_class_method :card_error_payment_intent_id
 
   def self.refund!(amount_cents:, payment_intent_id:, metadata:, idempotency_key:)
     if simulate_stripe?
@@ -342,6 +414,105 @@ class JobStripeOps
   rescue StandardError => e
     # Timeouts / connection errors that may not subclass Stripe::StripeError.
     LookupResult.new(status: "lookup_failed", error: e.message.to_s.presence || e.class.name)
+  end
+
+  # Explicit PaymentIntent lookup outcomes for collection reconciliation.
+  # `payment_intent` is set only for "found". An error or capped search is "lookup_failed" —
+  # never evidence that no PaymentIntent exists.
+  class PaymentIntentLookupResult
+    attr_reader :status, :payment_intent, :error
+
+    def initialize(status:, payment_intent: nil, error: nil)
+      @status = status.to_s
+      @payment_intent = payment_intent
+      @error = error
+    end
+
+    def found?
+      status == "found"
+    end
+
+    def not_found_after_complete_search?
+      status == "not_found_after_complete_search"
+    end
+
+    def lookup_failed?
+      status == "lookup_failed"
+    end
+  end
+
+  PI_LOOKUP_MAX_PAGES = 10
+  PI_LOOKUP_PAGE_SIZE = 100
+  # Clock skew / stamp-before-call margin when bounding the created window.
+  PI_LOOKUP_CREATED_MARGIN = 1.hour
+
+  # Retrieve a PaymentIntent by its stored ID. Any Stripe/transport error is lookup_failed.
+  def self.retrieve_payment_intent(payment_intent_id)
+    return PaymentIntentLookupResult.new(status: "lookup_failed", error: "missing_payment_intent_id") if payment_intent_id.blank?
+    return PaymentIntentLookupResult.new(status: "lookup_failed", error: "stripe_not_configured") if Stripe.api_key.blank? && !simulate_stripe?
+    return PaymentIntentLookupResult.new(status: "lookup_failed", error: "simulated_stripe") if simulate_stripe?
+
+    PaymentIntentLookupResult.new(status: "found", payment_intent: Stripe::PaymentIntent.retrieve(payment_intent_id))
+  rescue Stripe::InvalidRequestError => e
+    # resource_missing is definitive for a retrieve by ID.
+    if e.respond_to?(:code) && e.code.to_s == "resource_missing"
+      PaymentIntentLookupResult.new(status: "not_found_after_complete_search", error: e.message)
+    else
+      PaymentIntentLookupResult.new(status: "lookup_failed", error: e.message.to_s.presence || e.class.name)
+    end
+  rescue Stripe::StripeError, *NETWORK_ERROR_CLASSES => e
+    PaymentIntentLookupResult.new(status: "lookup_failed", error: e.message.to_s.presence || e.class.name)
+  end
+
+  # Complete search for a PaymentIntent created for a local attempt when no ID was stored
+  # (the create call timed out before a response). Lists the customer's PaymentIntents created
+  # since the attempt was stamped and matches on the metadata we set at create time.
+  # The Search API is eventually consistent and is deliberately not used here.
+  def self.find_payment_intent_for_attempt(customer_id:, metadata_key:, metadata_value:, created_after:, extra_metadata: {})
+    if customer_id.blank?
+      return PaymentIntentLookupResult.new(status: "lookup_failed", error: "missing_customer_id")
+    end
+    if created_after.blank?
+      return PaymentIntentLookupResult.new(status: "lookup_failed", error: "missing_first_attempt_timestamp")
+    end
+    return PaymentIntentLookupResult.new(status: "lookup_failed", error: "stripe_not_configured") if Stripe.api_key.blank? && !simulate_stripe?
+    return PaymentIntentLookupResult.new(status: "lookup_failed", error: "simulated_stripe") if simulate_stripe?
+
+    starting_after = nil
+    pages = 0
+    loop do
+      pages += 1
+      if pages > PI_LOOKUP_MAX_PAGES
+        return PaymentIntentLookupResult.new(status: "lookup_failed", error: "pagination_cap_hit after #{PI_LOOKUP_MAX_PAGES} pages")
+      end
+
+      params = {
+        customer: customer_id,
+        created: { gte: (created_after - PI_LOOKUP_CREATED_MARGIN).to_i },
+        limit: PI_LOOKUP_PAGE_SIZE
+      }
+      params[:starting_after] = starting_after if starting_after.present?
+
+      list = Stripe::PaymentIntent.list(params)
+      Array(list.data).each do |pi|
+        meta = pi.metadata.to_h.transform_keys(&:to_s)
+        next unless meta[metadata_key.to_s].to_s == metadata_value.to_s
+        next if extra_metadata.any? { |k, v| meta[k.to_s].present? && meta[k.to_s].to_s != v.to_s }
+
+        return PaymentIntentLookupResult.new(status: "found", payment_intent: pi)
+      end
+
+      break unless list.respond_to?(:has_more) ? list.has_more : false
+
+      last_id = list.data&.last&.id
+      return PaymentIntentLookupResult.new(status: "lookup_failed", error: "incomplete_pagination") if last_id.blank?
+
+      starting_after = last_id
+    end
+
+    PaymentIntentLookupResult.new(status: "not_found_after_complete_search")
+  rescue Stripe::StripeError, *NETWORK_ERROR_CLASSES => e
+    PaymentIntentLookupResult.new(status: "lookup_failed", error: e.message.to_s.presence || e.class.name)
   end
 
   def self.classify_transfer_error(error)

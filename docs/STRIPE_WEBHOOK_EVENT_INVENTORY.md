@@ -118,6 +118,12 @@ payout.canceled
 payout.reconciliation_completed
 ```
 
+### Handler inventory check (ACH hardening PR)
+
+Verified present in `Api::V1::StripeWebhooksController`: `payment_intent.processing` (`reconcile_payment_intent_processing`), `charge.dispute.created|updated|closed|funds_withdrawn|funds_reinstated` (`reconcile_charge_dispute`). **This PR does not change any live webhook subscription**; the six events above are added to the live platform destination by the coordinator.
+
+Routing order: signature verify → strict `livemode` boolean check (production ⇒ `true`, every other environment ⇒ `false`; nil/missing/string/mismatch ⇒ 400, never marked processed) → `StripeWebhookEvent` dedup → `InternalFinancialSmokeTestService.handle_webhook_event!` (claims `payment_intent.*`, `charge.dispute.*`, `refund.*` carrying `metadata.techflash_internal_smoke_test`, or whose PI/charge id belongs to a smoke-test row) → job collection handlers. Job handlers additionally verify amount / currency / customer / `metadata.transaction_id|job_id|payment_id` before mutating a `JobPaymentTransaction`.
+
 ## Signing secrets (env names)
 
 | Env | Platform secret | Connect secret |

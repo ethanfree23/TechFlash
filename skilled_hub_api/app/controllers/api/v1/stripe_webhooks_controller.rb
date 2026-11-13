@@ -41,6 +41,16 @@ module Api
         event = verified_event(payload, sig_header, secrets)
         return head :bad_request if event.nil?
 
+        # Signature proves origin; livemode proves the Stripe mode. Both must hold before any
+        # financial state is touched. Rejected events are never marked processed.
+        unless livemode_valid?(event)
+          Rails.logger.error(
+            "[stripe webhook] rejected livemode event=#{event.id} type=#{event.type} " \
+            "livemode=#{event_livemode(event).inspect} expected=#{expected_livemode.inspect}"
+          )
+          return head :bad_request
+        end
+
         existing = StripeWebhookEvent.find_by(stripe_event_id: event.id)
         return head :ok if existing&.processed_at.present?
 
@@ -113,6 +123,10 @@ module Api
           Rails.logger.info("[stripe webhook] ignoring connected-account event type=#{event.type} id=#{event.id}")
           return
         end
+
+        # Internal financial smoke tests are routed before any job-funding handler and never
+        # touch a Job, Payment, JobPaymentTransaction, or transfer.
+        return if InternalFinancialSmokeTestService.handle_webhook_event!(event)
 
         case event.type
         when 'payment_intent.succeeded'
@@ -380,11 +394,35 @@ module Api
         StripeConnectAccountService.sync!(profile) if profile
       end
 
+      # Production events must be livemode; staging events must not be. Events whose livemode
+      # flag is absent (older fixtures) are accepted. Mismatches are ignored, never applied.
+      # production receives live-mode events only; every other environment (staging, development,
+      # test) uses Stripe test keys and therefore must only ever see livemode=false.
+      def expected_livemode
+        Rails.env.production?
+      end
+
+      def event_livemode(event)
+        event["livemode"]
+      rescue StandardError
+        nil
+      end
+
+      # Strict: only the exact boolean matching the environment passes. nil, missing, strings
+      # ("true"/"false"), integers, and the opposite boolean are all rejected.
+      def livemode_valid?(event)
+        value = event_livemode(event)
+        return false unless value == true || value == false
+
+        value == expected_livemode
+      end
+
       def reconcile_payment_intent_succeeded(pi)
         Job.transaction do
-          txn = find_locked_collection_txn(pi)
+          txn = find_verified_collection_txn(pi, event_type: "payment_intent.succeeded")
           next unless txn && !txn.status_succeeded?
 
+          previous_status = txn.status
           was_initial = txn.initial_job_charge?
           JobFundingService.mark_txn_succeeded!(
             txn,
@@ -392,6 +430,7 @@ module Api
             charge_id: pi.latest_charge.to_s.presence,
             payment_method_attrs: payment_method_attrs_from_intent(pi)
           )
+          clear_unknown_investigation!(txn, previous_status: previous_status, via: "payment_intent.succeeded")
           job = Job.lock.find(txn.job_id)
           payment = Payment.lock.find(txn.payment_id)
           payment.update!(status: "held", stripe_payment_intent_id: pi.id, held_at: Time.current) if payment.status == "pending" || payment.status == "failed"
@@ -408,19 +447,31 @@ module Api
         end
       end
 
+      # Authoritative evidence that the debit was accepted: Stripe's own object says processing.
+      # Recovers pending / outcome_unknown / failed rows (a local "failed" written from a timed-out
+      # or misclassified API response is not authoritative). Never downgrades succeeded.
       def reconcile_payment_intent_processing(pi)
         Job.transaction do
-          txn = find_locked_collection_txn(pi)
+          txn = find_verified_collection_txn(pi, event_type: "payment_intent.processing")
           next unless txn
-          next if txn.status_succeeded? || txn.status_failed? || txn.status_canceled?
+          next if txn.status_succeeded? || txn.status_processing? || txn.status_canceled?
+          unless pi.status.to_s == "processing"
+            Rails.logger.warn("[stripe webhook] payment_intent.processing with status=#{pi.status} pi=#{pi.id}; not applied")
+            next
+          end
 
+          previous_status = txn.status
           JobFundingService.mark_txn_processing!(
             txn,
             stripe_id: pi.id,
             charge_id: pi.latest_charge.to_s.presence,
             payment_method_attrs: payment_method_attrs_from_intent(pi)
           )
+          txn.update!(error_message: nil) if previous_status == "failed"
+          clear_unknown_investigation!(txn, previous_status: previous_status, via: "payment_intent.processing")
           job = Job.lock.find(txn.job_id)
+          payment = Payment.lock.find_by(id: txn.payment_id)
+          payment&.update!(status: "pending") if payment&.status == "failed"
           if txn.initial_job_charge? || txn.counteroffer_top_up? || txn.final_hours_top_up?
             attrs = { funding_status: :adjustment_required }
             attrs[:status] = :pending_funding if txn.initial_job_charge? && !job.filled? && !job.finished? && !job.reserved?
@@ -431,7 +482,7 @@ module Api
 
       def reconcile_payment_intent_failed(pi)
         Job.transaction do
-          txn = find_locked_collection_txn(pi)
+          txn = find_verified_collection_txn(pi, event_type: "payment_intent.payment_failed")
           next unless txn
 
           # Never silently downgrade a legitimate success.
@@ -461,12 +512,32 @@ module Api
             )
             next
           end
+          next if txn.status_failed? || txn.status_canceled?
 
+          # Only a definitive Stripe state closes the attempt. "processing" with a failure event
+          # (or any other state) is not authoritative evidence that the debit cannot succeed.
+          unless %w[requires_payment_method canceled].include?(pi.status.to_s)
+            txn.update!(
+              investigation_required: true,
+              metadata_json: txn.metadata_json.to_h.merge(
+                "non_definitive_failure_signal" => {
+                  "stripe_status" => pi.status.to_s,
+                  "message" => pi.last_payment_error&.message.to_s,
+                  "at" => Time.current.iso8601
+                }
+              )
+            )
+            next
+          end
+
+          previous_status = txn.status
           txn.update!(
             status: :failed,
             error_message: pi.last_payment_error&.message || "Payment failed",
+            stripe_payment_intent_id: pi.id.to_s,
             **payment_method_attrs_from_intent(pi)
           )
+          clear_unknown_investigation!(txn, previous_status: previous_status, via: "payment_intent.payment_failed", resolved_as: "failed")
           job = Job.lock.find(txn.job_id)
           payment = Payment.lock.find_by(id: txn.payment_id)
           payment&.update!(status: "failed") if payment&.status == "pending"
@@ -491,6 +562,25 @@ module Api
             # Duplicate webhook — correlation_key already recorded.
           end
         end
+      end
+
+      # A webhook that resolves an unknown attempt also closes its monitoring case.
+      def clear_unknown_investigation!(txn, previous_status:, via:, resolved_as: "recovered")
+        return unless %w[outcome_unknown failed pending].include?(previous_status.to_s)
+
+        meta = txn.metadata_json.to_h
+        return if previous_status.to_s == "pending" && txn.collection_first_attempted_at.blank? && !meta["requires_admin_review"]
+
+        txn.update!(
+          investigation_required: false,
+          metadata_json: meta.merge(
+            "recovered_from" => previous_status.to_s,
+            "recovered_via" => via,
+            "recovered_at" => Time.current.iso8601,
+            "requires_admin_review" => false
+          )
+        )
+        CollectionOutcomeReconciler.resolve_risk_event!(txn, note: "Resolved by #{via} (#{resolved_as}).", resolved_by: "system:webhook")
       end
 
       def reconcile_setup_intent(setup_intent, event_type:)
@@ -619,6 +709,36 @@ module Api
         txn = JobPaymentTransaction.lock.find_by(stripe_payment_intent_id: pi.id)
         txn ||= JobPaymentTransaction.lock.find_by(id: pi.metadata&.[]("transaction_id").to_i) if pi.metadata&.[]("transaction_id").present?
         txn
+      end
+
+      # Locate the local collection for a PaymentIntent (by stored ID, else trusted
+      # metadata.transaction_id) and verify ownership: amount, currency, customer, job, payment,
+      # and transaction identity must all agree wherever Stripe supplies the field. A mismatch is
+      # flagged on the row and the event is NOT applied.
+      def find_verified_collection_txn(pi, event_type:)
+        txn = find_locked_collection_txn(pi)
+        return nil unless txn
+        unless JobPaymentTransaction::COLLECTION_TYPES.include?(txn.transaction_type.to_s)
+          Rails.logger.warn("[stripe webhook] #{event_type} pi=#{pi.id} matched non-collection txn=#{txn.id}; ignored")
+          return nil
+        end
+
+        mismatches = CollectionOutcomeReconciler.intent_mismatches(pi, txn)
+        return txn if mismatches.empty?
+
+        Rails.logger.warn("[stripe webhook] #{event_type} pi=#{pi.id} txn=#{txn.id} ownership mismatch=#{mismatches.join(',')}; not applied")
+        txn.update!(
+          investigation_required: true,
+          metadata_json: txn.metadata_json.to_h.merge(
+            "webhook_mismatch" => {
+              "event_type" => event_type,
+              "payment_intent_id" => pi.id.to_s,
+              "fields" => mismatches,
+              "at" => Time.current.iso8601
+            }
+          )
+        )
+        nil
       end
 
       def payment_method_attrs_from_intent(pi)

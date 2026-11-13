@@ -77,6 +77,15 @@ class JobFundingAdjustmentService
           transaction: result[:transaction],
           error: "ACH payment is processing. These terms will apply when the bank debit succeeds."
         }
+      elsif result[:outcome_unknown]
+        job.update!(funding_status: :adjustment_required)
+        {
+          success: false,
+          outcome_unknown: true,
+          job: job,
+          transaction: result[:transaction],
+          error: "The payment result is unconfirmed. These terms will apply once the payment is reconciled; do not retry."
+        }
       else
         job.update!(funding_status: :adjustment_required)
         { success: false, error: result[:error] || "Could not collect the additional amount.", job: job }
