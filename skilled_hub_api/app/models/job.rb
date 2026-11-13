@@ -66,6 +66,14 @@ class Job < ApplicationRecord
   has_many :time_entries, dependent: :destroy
   has_many :job_term_change_audits, dependent: :destroy
   has_one :job_termination, dependent: :destroy
+  # No dependent: :destroy — financial rows must survive; before_destroy aborts
+  # and the FK also blocks cascade when risk events exist.
+  has_many :payment_risk_events, inverse_of: :job
+
+  # Blocks hard-delete / company-profile cascade when financial evidence exists so
+  # dependent: :destroy on payments/JPTs/revisions cannot erase ledger history.
+  # prepend: true so this runs before association dependent: :destroy callbacks.
+  before_destroy :abort_destroy_if_financially_significant!, prepend: true
 
   # Total job amount (before platform fees): hourly_rate * hours_per_day * days
   # Falls back to price_cents for legacy jobs
@@ -150,6 +158,38 @@ class Job < ApplicationRecord
   # inventing waiver authorization (adjustment still requires the marker).
   def funding_allows_claim?
     funding_funded? || posted_under_funding_waiver? || !priced?
+  end
+
+  # Shared hard-delete guard for controller destroy and association cascades.
+  def financial_undeletable_reason
+    if job_payment_transactions.exists?
+      return "This job has payment activity and cannot be deleted. Unpublish/refund first if eligible."
+    end
+    if payments.exists?
+      return "This job has payment records and cannot be deleted."
+    end
+    if job_financial_revisions.exists?
+      return "This job has financial revision history and cannot be deleted."
+    end
+    if payment_risk_events.exists?
+      return "This job has payment risk records and cannot be deleted."
+    end
+    begin
+      if JobLedger.for(self).net_funded_cents.positive?
+        return "This job is funded. Unpublish it to refund the company before removing it."
+      end
+    rescue JobLedger::MissingCommissionSnapshotError
+      # ignore — other checks already cover financial rows
+    end
+    nil
+  end
+
+  def abort_destroy_if_financially_significant!
+    reason = financial_undeletable_reason
+    return if reason.blank?
+
+    errors.add(:base, reason)
+    throw :abort
   end
 
   def funded_terms_locked?

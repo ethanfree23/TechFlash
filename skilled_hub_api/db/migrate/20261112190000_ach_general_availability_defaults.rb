@@ -28,6 +28,8 @@ class AchGeneralAvailabilityDefaults < ActiveRecord::Migration[7.1]
   end
 
   def down
+    # Does NOT restore prior per-company ach_payments_enabled values.
+    # Only reverts the column default; companies flipped true in #up stay true.
     change_column_default :company_profiles, :ach_payments_enabled, from: true, to: false
   end
 end
