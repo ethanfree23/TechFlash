@@ -32,7 +32,12 @@ class CheckrLifecycleMapper
     assessment = extract_assessment(object).to_s.downcase.presence
 
     if event_type.to_s == "report.completed"
-      return completed_mapping(result: result, includes_canceled: includes_canceled, assessment: assessment)
+      return completed_mapping(
+        result: result,
+        includes_canceled: includes_canceled,
+        assessment: assessment,
+        status: provider_status
+      )
     end
 
     if event_type.to_s.start_with?("report.") && assessment.in?(%w[review escalated])
@@ -52,7 +57,20 @@ class CheckrLifecycleMapper
     fallback_from_provider_status(provider_status, result, includes_canceled)
   end
 
-  def self.completed_mapping(result:, includes_canceled:, assessment:)
+  # Automatic clear requires BOTH status=complete AND result=clear.
+  # status=complete alone is never treated as verified.
+  def self.completed_mapping(result:, includes_canceled:, assessment:, status: nil)
+    status = status.to_s.downcase.presence
+
+    if status.present? && status != "complete"
+      return {
+        normalized_status: "report_pending",
+        terminal: false,
+        technician_label: "Background Check Processing",
+        admin_label: "Report not complete (#{status})"
+      }
+    end
+
     if result == "clear" && includes_canceled
       return {
         normalized_status: "complete_with_canceled_screenings",
@@ -66,18 +84,20 @@ class CheckrLifecycleMapper
       return {
         normalized_status: "consider",
         terminal: true,
-        technician_label: "Review required",
+        technician_label: "Needs Review",
         admin_label: "Consider / review required"
       }
     end
 
-    return { normalized_status: "clear", terminal: true, technician_label: "Verified", admin_label: "Clear" } if result == "clear"
+    if result == "clear" && (status.blank? || status == "complete")
+      return { normalized_status: "clear", terminal: true, technician_label: "Completed — Clear", admin_label: "Clear" }
+    end
 
     {
       normalized_status: "report_complete",
       terminal: true,
-      technician_label: "Report complete",
-      admin_label: "Report complete"
+      technician_label: "Needs Review",
+      admin_label: "Report complete without clear result"
     }
   end
   private_class_method :completed_mapping

@@ -148,25 +148,62 @@ module Api
         assert_nil check.node_custom_id
       end
 
-      test "start background check rejects duplicate in-progress check" do
+      test "start background check reuses in-progress invitation instead of creating another" do
         user, = create_technician_with_membership("basic", "verification-duplicate@example.com")
+        accept_acknowledgements!(user)
+        existing = BackgroundCheck.create!(
+          user: user,
+          provider: "checkr",
+          package_name: "essential_plus",
+          status: :invited,
+          normalized_status: "invitation_sent",
+          invitation_url: "http://example.com/existing-invite",
+          payment_status: :waived,
+          paid_by: "platform"
+        )
+
+        assert_no_difference -> { BackgroundCheck.where(user_id: user.id).count } do
+          with_env("CHECKR_DEFAULT_PACKAGE" => "essential") do
+            post "/api/v1/verification/start_background_check",
+                 headers: auth_header_for(user),
+                 as: :json
+          end
+        end
+
+        assert_response :ok
+        body = JSON.parse(response.body)
+        assert_equal true, body["reused_existing_invitation"]
+        assert_equal "http://example.com/existing-invite", body["invitation_url"]
+        assert_equal existing.id, body.dig("background_check", "id")
+      end
+
+      test "historical pending technician checkout does not block platform-paid start" do
+        user, = create_technician_with_membership("basic", "verification-legacy-pending@example.com")
         accept_acknowledgements!(user)
         BackgroundCheck.create!(
           user: user,
           provider: "checkr",
           package_name: "essential_plus",
-          status: :invited,
-          payment_status: :waived,
-          paid_by: "platform"
+          status: :not_started,
+          payment_status: :pending,
+          paid_by: "technician"
         )
 
         with_env("CHECKR_DEFAULT_PACKAGE" => "essential") do
-          post "/api/v1/verification/start_background_check",
-               headers: auth_header_for(user),
-               as: :json
+          with_stubbed_checkr_options do
+            with_stubbed_background_launch("http://example.com/invite-platform") do
+              post "/api/v1/verification/start_background_check",
+                   headers: auth_header_for(user),
+                   as: :json
+            end
+          end
         end
 
-        assert_response :unprocessable_entity
+        assert_response :ok
+        body = JSON.parse(response.body)
+        assert_equal false, body["payment_required"]
+        assert_equal "http://example.com/invite-platform", body["invitation_url"]
+        assert_equal "platform", BackgroundCheck.order(:id).last.paid_by
       end
 
       test "start background check fails closed when work location missing" do

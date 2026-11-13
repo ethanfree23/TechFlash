@@ -4,7 +4,7 @@ require "openssl"
 module Api
   module V1
     class CheckrWebhooksControllerTest < ActionDispatch::IntegrationTest
-      test "webhook returns ok when signing secret missing" do
+      test "webhook returns unauthorized when signing secret missing" do
         old_api_key = ENV["CHECKR_SECRET_KEY"]
         old_legacy = ENV["CHECKR_WEBHOOK_SECRET"]
         ENV["CHECKR_SECRET_KEY"] = nil
@@ -13,21 +13,25 @@ module Api
         post "/api/v1/checkr/webhook",
              params: { id: "evt_missing_secret", type: "report.completed", data: {} }.to_json,
              headers: { "CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json" }
-        assert_response :ok
+        assert_response :unauthorized
       ensure
         ENV["CHECKR_SECRET_KEY"] = old_api_key
         ENV["CHECKR_WEBHOOK_SECRET"] = old_legacy
       end
 
       test "webhook alias route is available" do
-        old_api_key = ENV["CHECKR_SECRET_KEY"]
-        ENV["CHECKR_SECRET_KEY"] = nil
-        post "/api/v1/webhooks/checkr",
-             params: { id: "evt_alias", type: "report.completed", data: {} }.to_json,
-             headers: { "CONTENT_TYPE" => "application/json", "ACCEPT" => "application/json" }
-        assert_response :ok
-      ensure
-        ENV["CHECKR_SECRET_KEY"] = old_api_key
+        with_checkr_secret("checkr_secret_alias") do |secret|
+          payload = { id: "evt_alias", type: "invitation.created", data: { object: { id: "inv_alias", object: "invitation", status: "pending" } } }.to_json
+          signature = OpenSSL::HMAC.hexdigest("SHA256", secret, payload)
+          post "/api/v1/webhooks/checkr",
+               params: payload,
+               headers: {
+                 "CONTENT_TYPE" => "application/json",
+                 "ACCEPT" => "application/json",
+                 "X-Checkr-Signature" => signature
+               }
+          assert_response :ok
+        end
       end
 
       test "webhook returns ok when checkr integration is disabled" do

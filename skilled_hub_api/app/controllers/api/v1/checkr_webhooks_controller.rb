@@ -20,7 +20,8 @@ module Api
         if secret.blank?
           Rails.logger.warn("[checkr_webhook] missing signing secret")
           CheckrWebhookMetrics.increment("webhook_processing_failed", tags: { reason: "missing_signing_secret" })
-          return head :ok
+          # Fail closed: do not accept unsigned webhooks when Checkr is enabled.
+          return head :unauthorized
         end
 
         unless valid_signature?(payload, signature, secret)
@@ -155,10 +156,11 @@ module Api
           }
         end
 
-        check = BackgroundCheck.where(provider: "checkr")
-          .where("provider_invitation_id = ? OR provider_report_id = ? OR provider_candidate_id = ?", invitation_id, report_id, candidate_id)
-          .order(created_at: :desc)
-          .first
+        check = find_owned_background_check(
+          invitation_id: invitation_id,
+          report_id: report_id,
+          candidate_id: candidate_id
+        )
 
         if check.blank?
           Rails.logger.warn("[checkr_webhook] unmatched event_id=#{event['id']} type=#{event_type} object_type=#{object['object']} object_id=#{object['id']}")
@@ -173,9 +175,20 @@ module Api
           }
         end
 
+        # Always reconcile report.completed (and report objects) against GET /v1/reports/:id.
         if report_id.present? && (report_event?(event_type) || object["object"].to_s == "report")
-          object, report_hydrated = hydrate_report_object(report_id, object)
+          object, report_hydrated = hydrate_report_object(report_id, object, force: event_type.to_s == "report.completed")
           hydrated ||= report_hydrated
+          unless ownership_consistent?(check, object)
+            return {
+              outcome: "ownership_mismatch",
+              hydrated: hydrated,
+              background_check_id: check.id,
+              processing_error: "ownership_mismatch",
+              provider_status: object["status"],
+              provider_result: object["result"]
+            }
+          end
         end
 
         mapping = CheckrLifecycleMapper.resolve(event_type: event_type, object: object)
@@ -271,9 +284,9 @@ module Api
         [object, false]
       end
 
-      def hydrate_report_object(report_id, object)
+      def hydrate_report_object(report_id, object, force: false)
         return [object, false] unless report_id.present?
-        return [object, false] unless object_needs_report_hydration?(object)
+        return [object, false] unless force || object_needs_report_hydration?(object)
         return [object, false] unless valid_checkr_id?(report_id)
 
         client = CheckrClient.new
@@ -284,6 +297,50 @@ module Api
         Rails.logger.warn("[checkr_webhook] report hydration failed: #{e.message}")
         CheckrWebhookMetrics.increment("webhook_hydration_failed", tags: { object_type: "report" })
         [object, false]
+      end
+
+      # Prefer precise ID matches; require candidate consistency when multiple identifiers exist.
+      def find_owned_background_check(invitation_id:, report_id:, candidate_id:)
+        scope = BackgroundCheck.where(provider: "checkr")
+        check =
+          if invitation_id.present?
+            scope.where(provider_invitation_id: invitation_id).order(created_at: :desc).first
+          elsif report_id.present?
+            scope.where(provider_report_id: report_id).order(created_at: :desc).first
+          end
+        check ||= scope.where(provider_candidate_id: candidate_id).order(created_at: :desc).first if candidate_id.present?
+        return nil if check.blank?
+        return nil unless ownership_consistent?(check, {
+          "candidate_id" => candidate_id,
+          "id" => report_id,
+          "invitation_id" => invitation_id,
+          "report_id" => report_id
+        })
+
+        check
+      end
+
+      def ownership_consistent?(check, object)
+        obj_candidate = object["candidate_id"].to_s.presence
+        obj_invitation = object["invitation_id"].to_s.presence ||
+          (object["object"].to_s == "invitation" ? object["id"].to_s.presence : nil)
+        obj_report = object["report_id"].to_s.presence ||
+          (object["object"].to_s == "report" ? object["id"].to_s.presence : nil)
+
+        if obj_candidate.present? && check.provider_candidate_id.present? &&
+            obj_candidate != check.provider_candidate_id
+          return false
+        end
+        if obj_invitation.present? && check.provider_invitation_id.present? &&
+            obj_invitation != check.provider_invitation_id
+          return false
+        end
+        if obj_report.present? && check.provider_report_id.present? &&
+            obj_report != check.provider_report_id
+          return false
+        end
+
+        true
       end
 
       def hydrate_invitation_object(object)

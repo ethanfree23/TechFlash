@@ -94,20 +94,79 @@ module Api
           }, status: :unprocessable_entity
         end
 
-        existing = BackgroundCheck.where(user_id: @current_user.id)
-          .where(status: BackgroundCheck.statuses.values_at("invited", "pending", "processing"))
-          .order(created_at: :desc)
-          .first
-        if existing.present?
+        # Existing clear/report already ordered — never create another billable Checkr report.
+        existing_clear = BackgroundCheck.where(user_id: @current_user.id).order(created_at: :desc).detect(&:eligible_for_background_gate?)
+        if existing_clear.present?
           return render json: {
-            error: "Background check already in progress.",
-            background_check: serialize_background_check_for_technician(existing),
-            invitation_url: existing.invitation_url,
+            error: "A clear background check is already on file.",
+            code: "already_verified",
+            background_check: serialize_background_check_for_technician(existing_clear),
+            payment_required: false
+          }, status: :unprocessable_entity
+        end
+        if BackgroundCheck.where(user_id: @current_user.id).where.not(provider_report_id: [nil, ""]).where(status: %i[pending processing consider suspended clear]).exists?
+          return render json: {
+            error: "A Checkr report already exists for this technician. A new invitation was not created.",
+            code: "report_already_exists",
             payment_required: false
           }, status: :unprocessable_entity
         end
 
+        existing = BackgroundCheck.where(user_id: @current_user.id)
+          .where(status: BackgroundCheck.statuses.values_at("invited", "pending", "processing", "suspended"))
+          .order(created_at: :desc)
+          .first
+        if existing.present?
+          # Repeated clicks reuse the in-flight invitation (no second billable order).
+          return render json: {
+            background_check: serialize_background_check_for_technician(existing),
+            invitation_url: existing.invitation_url,
+            payment_required: false,
+            reused_existing_invitation: true,
+            message: "Background check already in progress. Continue with the existing Checkr invitation."
+          }, status: :ok
+        end
+
+        # Expired invitations: reconcile authoritative Checkr state before issuing a new one.
+        expired = BackgroundCheck.where(user_id: @current_user.id, normalized_status: %w[invitation_expired invitation_deleted])
+          .order(created_at: :desc)
+          .first
+        if expired&.provider_invitation_id.present? && !demo_bypass
+          begin
+            remote = client.get_invitation(invitation_id: expired.provider_invitation_id)
+            remote_status = remote["status"].to_s.downcase
+            if remote_status.in?(%w[pending])
+              expired.update!(
+                status: :invited,
+                normalized_status: "invitation_sent",
+                invitation_url: remote["invitation_url"].presence || expired.invitation_url,
+                provider_status: remote_status
+              )
+              return render json: {
+                background_check: serialize_background_check_for_technician(expired.reload),
+                invitation_url: expired.invitation_url,
+                payment_required: false,
+                reused_existing_invitation: true
+              }, status: :ok
+            end
+            if remote["report_id"].present?
+              return render json: {
+                error: "Checkr already created a report for the prior invitation. A new order was not created.",
+                code: "report_already_exists",
+                payment_required: false
+              }, status: :unprocessable_entity
+            end
+            # expired/canceled at Checkr → fall through to create a new invitation
+          rescue CheckrClient::Error => e
+            return render json: {
+              error: "Could not verify the prior invitation with Checkr before resending (#{e.message}).",
+              code: "invitation_reconcile_failed"
+            }, status: :unprocessable_entity
+          end
+        end
+
         # Historical Stripe-paid checks awaiting invitation must not spawn a second order.
+        # Pending (unpaid) historical checkout rows do NOT block platform-paid screening.
         if BackgroundCheckFulfillmentService.awaiting_invitation.where(user_id: @current_user.id).exists?
           return render json: {
             error: "A previously paid background check invitation is still being prepared. Do not start another check.",
@@ -167,6 +226,18 @@ module Api
         end
 
         if background_check.blank?
+          raced = BackgroundCheck.where(user_id: @current_user.id)
+            .where(status: BackgroundCheck.statuses.values_at("invited", "pending", "processing", "suspended", "not_started"))
+            .order(created_at: :desc)
+            .first
+          if raced.present?
+            return render json: {
+              background_check: serialize_background_check_for_technician(raced),
+              invitation_url: raced.invitation_url,
+              payment_required: false,
+              reused_existing_invitation: true
+            }, status: :ok
+          end
           return render json: { error: "Background check already in progress.", payment_required: false }, status: :unprocessable_entity
         end
 

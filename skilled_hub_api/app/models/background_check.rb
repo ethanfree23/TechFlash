@@ -66,11 +66,17 @@ class BackgroundCheck < ApplicationRecord
     where(status: :failed).where("admin_notes LIKE ?", "INVITATION_OUTCOME_UNKNOWN:%")
   }
 
+  # Automatic verified-tech eligibility requires an authoritative clear report:
+  # provider status complete AND result clear. Consider/suspended/dispute never auto-qualify.
   def eligible_for_background_gate?
+    return true if manually_approved?
     return false if provider_includes_canceled?
     return false if provider_assess_status.to_s.downcase.in?(%w[review escalated consider])
+    return false unless clear?
+    return false unless provider_status.to_s.downcase == "complete"
+    return false unless result.to_s.downcase == "clear"
 
-    clear? || manually_approved?
+    true
   end
 
   def normalized_status_value

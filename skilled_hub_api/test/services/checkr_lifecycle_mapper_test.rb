@@ -25,6 +25,7 @@ class CheckrLifecycleMapperTest < ActiveSupport::TestCase
       invitation.completed
       invitation.expired
       invitation.deleted
+      invitation.canceled
       report.suspended
       report.resumed
       report.disputed
@@ -37,5 +38,13 @@ class CheckrLifecycleMapperTest < ActiveSupport::TestCase
     required.each do |event_type|
       assert rows.any? { |row| row[:event_type] == event_type }, "missing mapping for #{event_type}"
     end
+  end
+
+  test "complete without clear result is not automatic clear" do
+    mapping = CheckrLifecycleMapper.resolve(
+      event_type: "report.completed",
+      object: { "status" => "complete", "result" => nil }
+    )
+    refute_equal "clear", mapping[:normalized_status]
   end
 end
