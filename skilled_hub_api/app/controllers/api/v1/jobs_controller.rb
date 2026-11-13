@@ -817,20 +817,10 @@ module Api
         if job.job_applications.where(status: :accepted).exists?
           return 'A technician has claimed this job. Deny the technician or end the assignment first.'
         end
-        if job.job_payment_transactions.status_succeeded.exists?
-          return 'This job has payment activity. Unpublish it to refund the company before removing it.'
-        end
-        if job_holds_funds?(job)
-          return 'This job is funded. Unpublish it to refund the company before removing it.'
-        end
-
-        nil
-      end
-
-      def job_holds_funds?(job)
-        JobLedger.for(job).net_funded_cents.positive?
-      rescue JobLedger::MissingCommissionSnapshotError
-        false
+        # Financial significance (model-level + controller): ANY payment activity,
+        # payment row, financial revision, or risk event blocks hard delete /
+        # company-profile cascade so dependent: :destroy cannot erase ledger evidence.
+        job.financial_undeletable_reason
       end
 
       def render_paginated_jobs(jobs)

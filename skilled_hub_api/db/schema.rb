@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_11_010000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_12_190000) do
   create_table "ach_feature_audits", force: :cascade do |t|
     t.string "scope", null: false
     t.integer "company_profile_id"
@@ -406,7 +406,7 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_11_010000) do
     t.string "staffing_intent"
     t.json "hiring_context", default: {}, null: false
     t.json "acquisition_attribution", default: {}, null: false
-    t.boolean "ach_payments_enabled", default: false, null: false
+    t.boolean "ach_payments_enabled", default: true, null: false
     t.index ["ach_payments_enabled"], name: "index_company_profiles_on_ach_payments_enabled"
     t.index ["membership_level"], name: "index_company_profiles_on_membership_level"
     t.index ["staffing_intent"], name: "index_company_profiles_on_staffing_intent"

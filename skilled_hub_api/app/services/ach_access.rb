@@ -7,6 +7,11 @@
 #   AND global PlatformSetting enabled
 #   AND company.ach_payments_enabled
 #
+# GA semantics (company column default true):
+#   - New / existing non-blocked companies: company flag true by default.
+#   - Explicit admin block: set_company!(false) writes AchFeatureAudit; stays blocked.
+#   - Availability ≠ authorization: allowed? never charges, creates a mandate, or
+#     bypasses bank verification / user consent.
 # Fail CLOSED: missing company, absent global setting, or any lookup error => disabled.
 # Never gates webhooks, refunds, disputes, returns, reconcile, admin views,
 # already-processing ACH PaymentIntents, card payments, or technician payouts.
