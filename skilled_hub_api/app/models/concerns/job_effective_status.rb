@@ -20,10 +20,46 @@ module JobEffectiveStatus
       where(status: :open).where("scheduled_end_at IS NOT NULL AND scheduled_end_at < ?", Time.current)
     }
     scope :effectively_active, lambda {
-      # Approximate funding_allows_work? in SQL: schedule started AND
-      # (unpriced OR funding_status=funded). Cash stamp is only set after
-      # verified collections; ACH processing stays adjustment_required.
-      funded = Job.funding_statuses[:funded]
+      # Schedule started AND cash-verified for priced jobs.
+      # Never trust funding_status alone (stale :funded with shortfall must stay claimed).
+      # Net succeeded collections - refunds must cover company_required for agreed labor.
+      # ACH processing / disputed collections are excluded via status/dispute filters.
+      collection_types = JobPaymentTransaction::COLLECTION_TYPES.map { |t| JobPaymentTransaction.transaction_types[t] }
+      refund_types = JobPaymentTransaction::REFUND_TYPES.map { |t| JobPaymentTransaction.transaction_types[t] }
+      succeeded = JobPaymentTransaction.statuses[:succeeded]
+      coll_list = collection_types.join(", ")
+      ref_list = refund_types.join(", ")
+
+      labor_sql = <<~SQL.squish
+        COALESCE(
+          NULLIF(jobs.agreed_labor_cents, 0),
+          (COALESCE(jobs.hourly_rate_cents, 0) * COALESCE(jobs.hours_per_day, 0) * COALESCE(jobs.days, 0)),
+          COALESCE(jobs.price_cents, 0),
+          0
+        )
+      SQL
+      net_sql = <<~SQL.squish
+        (
+          SELECT COALESCE(SUM(
+            CASE
+              WHEN jpt.status = #{succeeded} AND jpt.transaction_type IN (#{coll_list}) THEN jpt.amount_cents
+              WHEN jpt.status = #{succeeded} AND jpt.transaction_type IN (#{ref_list}) THEN -jpt.amount_cents
+              ELSE 0
+            END
+          ), 0)
+          FROM job_payment_transactions jpt
+          WHERE jpt.job_id = jobs.id
+            AND (
+              jpt.dispute_status IS NULL
+              OR jpt.dispute_status = ''
+              OR jpt.dispute_status IN ('won', 'warning_closed')
+            )
+        )
+      SQL
+      required_sql = <<~SQL.squish
+        (#{labor_sql}) + CAST(ROUND((#{labor_sql}) * COALESCE(jobs.company_commission_percent_snapshot, 0) / 100.0) AS INTEGER)
+      SQL
+
       where(status: JobEffectiveStatus::CLAIMED_STATUSES)
         .where("scheduled_start_at IS NOT NULL AND scheduled_start_at <= ?", Time.current)
         .where(
@@ -33,9 +69,11 @@ module JobEffectiveStatus
               AND COALESCE(jobs.price_cents, 0) <= 0
               AND COALESCE(jobs.hourly_rate_cents, 0) <= 0
             )
-            OR jobs.funding_status = ?
+            OR (
+              (#{net_sql}) > 0
+              AND (#{net_sql}) >= (#{required_sql})
+            )
           SQL
-          funded
         )
     }
     scope :effectively_claimed, lambda {

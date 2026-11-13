@@ -132,85 +132,138 @@ class JobFundingAdjustmentService
   # Bypasses historically_funding_exempt? short-circuit (that path is for counteroffers).
   # Keeps posted_under_funding_waiver marker; stamps :funded only on succeeded cash.
   # ACH processing leaves funding_status=adjustment_required (not funded).
+  #
+  # Concurrency: locks the job row, re-reads the ledger shortfall inside the lock, and
+  # refuses a second debit when any post_publish_top_up is already in-flight — even if
+  # concurrent callers pass different revision/amount/idempotency identities.
+  # Launch dependency (Task B): C-1 ambiguous PI create → outcome_unknown (no re-debit);
+  # C-2 processing webhook recovers failed/unknown rows missing PI id.
   def self.collect_remaining!(job, confirmed_amount_cents:, confirmed_payment_method_id:, source: "post_publish_fund")
     unless job.priced?
       return { success: false, error: "Unpriced jobs do not require funding.", job: job }
     end
 
-    begin
-      ledger = JobLedger.for(job)
-    rescue JobLedger::MissingCommissionSnapshotError => e
-      return { success: false, error: e.message, job: job }
-    end
+    due = nil
+    locked_job = nil
+    early = nil
 
-    due = ledger.amount_due_cents.to_i
-    if due <= 0 && ledger.fully_funded && ledger.net_funded_cents.positive?
-      job.update!(funding_status: :funded) unless job.funding_funded?
-      return { success: true, job: job, already_funded: true }
-    end
-    if due <= 0
-      return { success: false, error: "No outstanding funding amount to collect.", job: job }
-    end
+    Job.transaction do
+      locked_job = Job.lock.find(job.id)
 
-    confirmed = confirmed_amount_cents.to_i
-    unless confirmed == due
-      return {
-        success: false,
-        error: "Confirmed amount must equal the outstanding requirement (#{due} cents).",
-        amount_due_cents: due,
-        job: job
-      }
-    end
+      begin
+        ledger = JobLedger.for(locked_job)
+      rescue JobLedger::MissingCommissionSnapshotError => e
+        early = { success: false, error: e.message, job: locked_job }
+        next
+      end
 
-    default_pm = JobFundingService.default_payment_method_id_for_job(job)
-    if default_pm.blank?
-      return { success: false, error: "Add a payment method before funding this job.", job: job }
-    end
-    if confirmed_payment_method_id.to_s != default_pm.to_s
-      return {
-        success: false,
-        error: "Confirmed payment method must match the company default payment method.",
-        payment_method_id: default_pm,
-        job: job
-      }
-    end
+      due = ledger.amount_due_cents.to_i
+      if due <= 0 && ledger.fully_funded && ledger.net_funded_cents.positive?
+        locked_job.update!(funding_status: :funded) unless locked_job.funding_funded?
+        early = { success: true, job: locked_job, already_funded: true }
+        next
+      end
+      if due <= 0
+        early = { success: false, error: "No outstanding funding amount to collect.", job: locked_job }
+        next
+      end
 
-    # Idempotent: in-flight post_publish_top_up for this revision/amount returns existing state.
+      confirmed = confirmed_amount_cents.to_i
+      unless confirmed == due
+        early = {
+          success: false,
+          error: "Confirmed amount must equal the outstanding requirement (#{due} cents).",
+          amount_due_cents: due,
+          job: locked_job
+        }
+        next
+      end
+
+      default_pm = JobFundingService.default_payment_method_id_for_job(locked_job)
+      if default_pm.blank?
+        early = { success: false, error: "Add a payment method before funding this job.", job: locked_job }
+        next
+      end
+      if confirmed_payment_method_id.to_s != default_pm.to_s
+        early = {
+          success: false,
+          error: "Confirmed payment method must match the company default payment method.",
+          payment_method_id: default_pm,
+          job: locked_job
+        }
+        next
+      end
+
+      # Any in-flight post_publish_top_up blocks a new debit (revision/amount-agnostic).
+      inflight = locked_job.job_payment_transactions
+        .where(transaction_type: :post_publish_top_up)
+        .merge(JobPaymentTransaction.in_flight)
+        .order(:id)
+        .last
+      if inflight
+        if inflight.status_requires_action?
+          early = {
+            success: false,
+            requires_action: true,
+            client_secret: inflight.metadata_json.to_h["client_secret"],
+            job: locked_job,
+            transaction: inflight,
+            amount_due_cents: due,
+            error: "Additional authentication is required to complete this payment."
+          }
+        else
+          locked_job.update!(funding_status: :adjustment_required) unless locked_job.funding_adjustment_required?
+          early = {
+            success: false,
+            processing: true,
+            job: locked_job,
+            transaction: inflight,
+            amount_due_cents: due,
+            error: "ACH payment is processing. This job is not funded until the bank debit succeeds."
+          }
+        end
+        next
+      end
+    end
+    return early if early
+
+    # collect! has its own job lock + typed idempotency key using the shortfall
+    # recomputed under the lock above (due / locked_job.financial_revision).
     result = JobFundingService.collect!(
-      job: job,
+      job: locked_job,
       amount_cents: due,
       transaction_type: :post_publish_top_up,
-      revision: job.financial_revision
+      revision: locked_job.financial_revision
     )
 
     if result[:success]
-      job.update!(funding_status: :funded)
-      JobFundingService.record_revision!(job, source: source, transaction: result[:transaction])
-      { success: true, job: job, transaction: result[:transaction] }
+      locked_job.update!(funding_status: :funded)
+      JobFundingService.record_revision!(locked_job, source: source, transaction: result[:transaction])
+      { success: true, job: locked_job, transaction: result[:transaction] }
     elsif result[:requires_action]
-      job.update!(funding_status: :adjustment_required)
+      locked_job.update!(funding_status: :adjustment_required)
       {
         success: false,
         requires_action: true,
         client_secret: result[:client_secret],
-        job: job,
+        job: locked_job,
         transaction: result[:transaction],
         amount_due_cents: due,
         error: "Additional authentication is required to complete this payment."
       }
     elsif result[:processing]
-      job.update!(funding_status: :adjustment_required)
+      locked_job.update!(funding_status: :adjustment_required)
       {
         success: false,
         processing: true,
-        job: job,
+        job: locked_job,
         transaction: result[:transaction],
         amount_due_cents: due,
         error: "ACH payment is processing. This job is not funded until the bank debit succeeds."
       }
     else
-      job.update!(funding_status: :adjustment_required) if job.funding_unfunded? || job.funding_failed?
-      { success: false, error: result[:error] || "Could not collect funding.", job: job, code: result[:code] }
+      locked_job.update!(funding_status: :adjustment_required) if locked_job.funding_unfunded? || locked_job.funding_failed?
+      { success: false, error: result[:error] || "Could not collect funding.", job: locked_job, code: result[:code] }
     end
   end
 

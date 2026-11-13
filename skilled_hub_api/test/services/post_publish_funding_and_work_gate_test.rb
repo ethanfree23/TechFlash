@@ -231,11 +231,11 @@ class PostPublishFundingAndWorkGateTest < ActiveSupport::TestCase
     assert job.reload.funding_allows_work?
   end
 
-  test "time entry create/approve blocked until funded; historical rows preserved" do
+  test "time entry create blocked while unfunded; approve of historical entry allowed" do
     job = build_waived_published_job
     claim!(job)
+    assert_match(/fund/i, job.work_funding_blocked_message)
 
-    # Historical / direct model create still persists (no retroactive wipe).
     historical = job.time_entries.create!(
       technician_profile: @tech_profile,
       submitted_by_user: @tech_user,
@@ -247,28 +247,61 @@ class PostPublishFundingAndWorkGateTest < ActiveSupport::TestCase
       status: :submitted
     )
     assert historical.persisted?
-    assert_equal "submitted", historical.status
 
-    controller = Api::V1::TimeEntriesController.new
-    controller.define_singleton_method(:authenticate_user) { true }
-    controller.instance_variable_set(:@current_user, @tech_user)
-    controller.instance_variable_set(:@job, job)
+    # Approve while unfunded is allowed (records the entry; no transfer).
+    historical.update!(status: :approved, approved_at: Time.current, approved_by_user: @company_user)
+    assert_equal "approved", historical.reload.status
+    refute job.reload.funding_allows_work?
+  end
 
-    blocked = controller.send(:closed_to_new_time_entries_reason)
-    assert_nil blocked
-    assert_match(/fund/i, job.work_funding_blocked_message)
+  test "authorized terminate allowed while unfunded; already-ended stays idempotent" do
+    job = build_waived_published_job
+    claim!(job)
+    refute job.funding_allows_work?
 
+    first = Jobs::TerminateAssignmentService.call(
+      job: job,
+      actor_user: @company_user,
+      reason: "project_canceled"
+    )
+    assert first.success?, first.error.to_s
+    assert job.reload.terminated_early? || job.finished?
+
+    second = Jobs::TerminateAssignmentService.call(
+      job: job.reload,
+      actor_user: @company_user,
+      reason: "project_canceled"
+    )
+    assert second.success?
+    assert second.idempotent
+  end
+
+  test "collect_remaining! does not double-debit when in-flight exists across revision identities" do
+    job = build_waived_published_job
     due = JobLedger.for(job).amount_due_cents
-    succeed_stripe! do
-      JobFundingAdjustmentService.collect_remaining!(
+
+    processing_ach! do
+      first = JobFundingAdjustmentService.collect_remaining!(
         job,
         confirmed_amount_cents: due,
         confirmed_payment_method_id: "pm_sim_default"
       )
+      assert first[:processing]
     end
-    assert job.reload.funding_allows_work?
-    assert historical.reload.persisted?
-    assert_equal "submitted", historical.status
+    assert_equal 1, job.job_payment_transactions.post_publish_top_up.count
+
+    creates = 0
+    JobStripeOps.stub(:create_payment_intent!, ->(**_) { creates += 1; raise "no second debit" }) do
+      job.update!(financial_revision: job.financial_revision.to_i + 1)
+      again = JobFundingAdjustmentService.collect_remaining!(
+        job.reload,
+        confirmed_amount_cents: due,
+        confirmed_payment_method_id: "pm_sim_default"
+      )
+      assert again[:processing]
+      assert_equal 0, creates
+    end
+    assert_equal 1, job.job_payment_transactions.post_publish_top_up.count
   end
 
   test "funded card job allows work without post-publish top-up" do
