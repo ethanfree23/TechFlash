@@ -19,13 +19,21 @@ module JobEffectiveStatus
     scope :expired_listings, lambda {
       where(status: :open).where("scheduled_end_at IS NOT NULL AND scheduled_end_at < ?", Time.current)
     }
+    scope :effectively_active, lambda {
+      # Schedule-started claimed jobs, then filter with Job#funding_allows_work?
+      # so this scope cannot admit a row the instance predicate rejects.
+      # Uses JobLedger (guaranteed pay / fee snapshots / refunds), processing
+      # collections, open disputes/returns, and missing commission snapshots —
+      # never a SQL approximation or funding_status label alone.
+      candidates = where(status: JobEffectiveStatus::CLAIMED_STATUSES)
+        .where("scheduled_start_at IS NOT NULL AND scheduled_start_at <= ?", Time.current)
+        .includes(:job_payment_transactions)
+      allowed_ids = candidates.filter_map { |job| job.id if job.funding_allows_work? }
+      where(id: allowed_ids)
+    }
     scope :effectively_claimed, lambda {
       where(status: JobEffectiveStatus::CLAIMED_STATUSES)
-        .where("scheduled_start_at IS NULL OR scheduled_start_at > ?", Time.current)
-    }
-    scope :effectively_active, lambda {
-      where(status: JobEffectiveStatus::CLAIMED_STATUSES)
-        .where("scheduled_start_at IS NOT NULL AND scheduled_start_at <= ?", Time.current)
+        .where.not(id: Job.effectively_active.select(:id))
     }
     scope :in_progress, -> { where(status: %i[reserved filled]) }
 
@@ -85,7 +93,10 @@ module JobEffectiveStatus
     return "ended_early" if terminated_early?
     return "completed" if finished? || completed?
     if reserved? || filled? || accepted?
-      return "active" if scheduled_start_at.present? && scheduled_start_at <= Time.current
+      # Assignment activation requires verified cash for priced jobs (ACH processing ≠ funded).
+      if scheduled_start_at.present? && scheduled_start_at <= Time.current && funding_allows_work?
+        return "active"
+      end
 
       return "claimed"
     end

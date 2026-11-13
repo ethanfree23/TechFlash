@@ -451,16 +451,19 @@ class FundingWaivedStatusTest < ActiveSupport::TestCase
     assert job.reload.filled? || job.job_applications.accepted.exists?
   end
 
-  test "work-start time entry does not require funding_funded" do
+  test "work-start requires cash funding; historical time entries still persist on waived jobs" do
     job = build_priced_job
     JobFundingService.fund_for_publish!(job)
     job.reload
     assert job.funding_unfunded?
     assert job.posted_under_funding_waiver?
+    refute job.funding_allows_work?
     JobFundingService.snapshot_technician!(job, @tech_profile)
     JobApplication.create!(job: job, technician_profile: @tech_profile, status: :accepted)
     job.update!(status: :filled, scheduled_start_at: 1.day.ago, scheduled_end_at: 5.days.from_now)
+    assert_equal "claimed", job.effective_status
 
+    # Direct model creates preserve historical/earned rows; API controllers gate new work.
     entry = job.time_entries.create!(
       technician_profile: @tech_profile,
       submitted_by_user: @tech_user,
@@ -474,6 +477,7 @@ class FundingWaivedStatusTest < ActiveSupport::TestCase
     assert entry.persisted?
     assert job.reload.funding_unfunded?
     refute job.funding_funded?
+    refute job.funding_allows_work?
   end
 
   test "funding_allows_claim survives company flag revocation when marker set" do

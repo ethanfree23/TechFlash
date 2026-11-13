@@ -48,6 +48,8 @@ Rails.application.routes.draw do
           patch :terminate
           get :termination_preview
           post :confirm_funding
+          get :fund_preview
+          post :fund
           post :unpublish
           get :schedule_availability
         end
