@@ -762,6 +762,16 @@ module Api
             job: JobSerializer.new(job.reload).as_json
           }, status: :accepted
         end
+        if result[:outcome_unknown]
+          return render json: {
+            error: result[:error],
+            payment_outcome_unknown: true,
+            code: result[:code] || "payment_outcome_unknown",
+            amount_due_cents: result[:amount_due_cents],
+            message: result[:error] || "Your payment result could not be confirmed. Do not retry; it will be reconciled automatically.",
+            job: JobSerializer.new(job.reload).as_json
+          }, status: :accepted
+        end
 
         render json: { error: result[:error] || "Could not collect funding.", code: result[:code] }, status: :unprocessable_entity
       rescue ActiveRecord::RecordNotFound

@@ -93,6 +93,17 @@ class PostPublishFundingAndWorkGateTest < ActiveSupport::TestCase
     JobStripeOps.stub(:create_payment_intent!, failed) { yield }
   end
 
+  def unknown_ach!
+    unknown = JobStripeOps::Result.new(
+      status: "outcome_unknown",
+      error: "Timed out reading data from server",
+      error_class: "Stripe::APIConnectionError",
+      payment_method_id: "pm_bank_1",
+      payment_method_type: "us_bank_account"
+    )
+    JobStripeOps.stub(:create_payment_intent!, unknown) { yield }
+  end
+
   def claim!(job)
     JobFundingService.snapshot_technician!(job, @tech_profile)
     JobApplication.create!(job: job, technician_profile: @tech_profile, status: :accepted)
@@ -349,5 +360,70 @@ class PostPublishFundingAndWorkGateTest < ActiveSupport::TestCase
     end
     job.reload
     refute job.funding_allows_work? if job.priced?
+  end
+
+  test "collect_remaining! propagates outcome_unknown via hardened collect! and blocks re-debit" do
+    job = build_waived_published_job
+    due = JobLedger.for(job).amount_due_cents
+
+    unknown_ach! do
+      result = JobFundingAdjustmentService.collect_remaining!(
+        job,
+        confirmed_amount_cents: due,
+        confirmed_payment_method_id: "pm_sim_default"
+      )
+      assert result[:outcome_unknown], result.inspect
+      refute result[:success]
+      assert_equal "payment_outcome_unknown", result[:code]
+    end
+
+    job.reload
+    assert job.funding_adjustment_required?
+    refute job.funding_allows_work?
+    txn = job.job_payment_transactions.post_publish_top_up.order(:id).last
+    assert txn.status_outcome_unknown?
+
+    creates = 0
+    JobStripeOps.stub(:create_payment_intent!, ->(**_) { creates += 1; raise "must not re-debit" }) do
+      again = JobFundingAdjustmentService.collect_remaining!(
+        job.reload,
+        confirmed_amount_cents: due,
+        confirmed_payment_method_id: "pm_sim_default"
+      )
+      assert again[:outcome_unknown], again.inspect
+      assert_equal 0, creates
+    end
+    assert_equal 1, job.job_payment_transactions.post_publish_top_up.count
+  end
+
+  test "collect_remaining! ACH respects AchAccess denial (incl. pilot)" do
+    job = build_waived_published_job
+    due = JobLedger.for(job).amount_due_cents
+
+    # Force the live ACH gate in collect! (simulate mode skips PM lookup / AchAccess).
+    JobStripeOps.stub(:simulate_stripe?, false) do
+      JobFundingService.stub(:default_payment_method_id_for_job, "pm_bank_1") do
+        StripeCustomerService.stub(:validate_or_clear_customer_id!, "cus_post_fund") do
+          JobFundingService.stub(:default_payment_method_id, "pm_bank_1") do
+            JobFundingService.stub(:payment_method_type_for, "us_bank_account") do
+              AchAccess.stub(:allowed?, false) do
+                result = JobFundingAdjustmentService.collect_remaining!(
+                  job,
+                  confirmed_amount_cents: due,
+                  confirmed_payment_method_id: "pm_bank_1"
+                )
+                refute result[:success], result.inspect
+                refute result[:outcome_unknown]
+                refute result[:processing]
+                assert_equal "ach_disabled", result[:code]
+                assert_match(/unavailable|disabled|ACH|bank|pilot/i, result[:error].to_s)
+              end
+            end
+          end
+        end
+      end
+    end
+    assert_equal 0, job.job_payment_transactions.post_publish_top_up.where(status: [:processing, :succeeded, :outcome_unknown]).count
+    refute job.reload.funding_allows_work?
   end
 end

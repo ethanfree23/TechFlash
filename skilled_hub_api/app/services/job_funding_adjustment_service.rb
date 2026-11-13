@@ -136,8 +136,9 @@ class JobFundingAdjustmentService
   # Concurrency: locks the job row, re-reads the ledger shortfall inside the lock, and
   # refuses a second debit when any post_publish_top_up is already in-flight — even if
   # concurrent callers pass different revision/amount/idempotency identities.
-  # Launch dependency (Task B): C-1 ambiguous PI create → outcome_unknown (no re-debit);
-  # C-2 processing webhook recovers failed/unknown rows missing PI id.
+  # Goes through JobFundingService.collect! (AchAccess + CollectionOutcomeReconciler +
+  # outcome_unknown / no re-debit). C-1/C-2 landed via #40; PostPublishFundingAccess still
+  # defaults OFF until the owner enables post-publish funding.
   def self.collect_remaining!(job, confirmed_amount_cents:, confirmed_payment_method_id:, source: "post_publish_fund")
     unless job.priced?
       return { success: false, error: "Unpriced jobs do not require funding.", job: job }
@@ -211,6 +212,18 @@ class JobFundingAdjustmentService
             amount_due_cents: due,
             error: "Additional authentication is required to complete this payment."
           }
+        elsif inflight.status_outcome_unknown?
+          # Hardened collect! already stamped outcome_unknown; never open a new debit.
+          locked_job.update!(funding_status: :adjustment_required) unless locked_job.funding_adjustment_required?
+          early = {
+            success: false,
+            outcome_unknown: true,
+            job: locked_job,
+            transaction: inflight,
+            amount_due_cents: due,
+            code: "payment_outcome_unknown",
+            error: "The payment result is unconfirmed. Do not retry; it will be reconciled automatically."
+          }
         else
           locked_job.update!(funding_status: :adjustment_required) unless locked_job.funding_adjustment_required?
           early = {
@@ -260,6 +273,18 @@ class JobFundingAdjustmentService
         transaction: result[:transaction],
         amount_due_cents: due,
         error: "ACH payment is processing. This job is not funded until the bank debit succeeds."
+      }
+    elsif result[:outcome_unknown]
+      # Propagate #40 hardened collect! outcome_unknown — no re-debit signal to the client.
+      locked_job.update!(funding_status: :adjustment_required)
+      {
+        success: false,
+        outcome_unknown: true,
+        job: locked_job,
+        transaction: result[:transaction],
+        amount_due_cents: due,
+        code: result[:code] || "payment_outcome_unknown",
+        error: result[:error] || "The payment result is unconfirmed. Do not retry; it will be reconciled automatically."
       }
     else
       locked_job.update!(funding_status: :adjustment_required) if locked_job.funding_unfunded? || locked_job.funding_failed?

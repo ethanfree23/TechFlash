@@ -1,8 +1,8 @@
 # frozen_string_literal: true
 
 # Temporary server-side gate for post-publish fund_preview / fund endpoints.
-# Defaults OFF so PR #37 can deploy before Task B C-1/C-2 hardening without
-# exposing a new card/ACH payment path that has known unknown-outcome weakness.
+# Defaults OFF. C-1/C-2 hardening landed via #40; keep this gate OFF until the
+# owner explicitly enables post-publish funding after merge/deploy review.
 #
 # Enable either:
 #   ENV POST_PUBLISH_FUNDING_ENABLED=true
