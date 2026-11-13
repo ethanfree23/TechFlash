@@ -249,6 +249,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const [backgroundDisclosureAcceptedAt, setBackgroundDisclosureAcceptedAt] = useState('');
   const [backgroundAuthorizationAccepted, setBackgroundAuthorizationAccepted] = useState(false);
   const [backgroundAuthorizationAcceptedAt, setBackgroundAuthorizationAcceptedAt] = useState('');
+  const [savingBackgroundAcknowledgement, setSavingBackgroundAcknowledgement] = useState(false);
+  const [backgroundAcknowledgementError, setBackgroundAcknowledgementError] = useState('');
+  const [backgroundAcknowledgementCopy, setBackgroundAcknowledgementCopy] = useState({
+    platform_notice: 'I understand TechFlash uses Checkr for background verification, and that Checkr will collect required legal authorizations, disclosures, and identity information in its secure Apply Flow.',
+    screening_process: 'I confirm my TechFlash profile information is accurate and I am ready to complete Checkr\'s hosted background-check application when I start the process.',
+  });
   const [backgroundCheckOptions, setBackgroundCheckOptions] = useState(null);
   const [loadingBackgroundCheckOptions, setLoadingBackgroundCheckOptions] = useState(false);
   const [backgroundCheckOptionsError, setBackgroundCheckOptionsError] = useState('');
@@ -642,13 +648,30 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   }, [isTechnician]);
 
+  const hydrateBackgroundAcknowledgements = useCallback((acks) => {
+    if (!Array.isArray(acks)) return;
+    const byType = Object.fromEntries(acks.map((row) => [row.acknowledgement_type, row]));
+    const notice = byType.platform_notice;
+    const process = byType.screening_process;
+    setBackgroundAcknowledgementCopy((prev) => ({
+      platform_notice: notice?.copy || prev.platform_notice,
+      screening_process: process?.copy || prev.screening_process,
+    }));
+    setBackgroundDisclosureAccepted(notice?.accepted === true);
+    setBackgroundDisclosureAcceptedAt(notice?.accepted_at || '');
+    setBackgroundAuthorizationAccepted(process?.accepted === true);
+    setBackgroundAuthorizationAcceptedAt(process?.accepted_at || '');
+  }, []);
+
   useEffect(() => {
     if (!isTechnician) return;
     let cancelled = false;
     setLoadingVerificationCenter(true);
     verificationAPI.getCenter()
       .then((data) => {
-        if (!cancelled) setVerificationCenter(data);
+        if (cancelled) return;
+        setVerificationCenter(data);
+        hydrateBackgroundAcknowledgements(data?.background_check_acknowledgements);
       })
       .catch(() => {
         if (!cancelled) setVerificationCenter(null);
@@ -660,7 +683,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     return () => {
       cancelled = true;
     };
-  }, [isTechnician, loadBackgroundCheckOptions]);
+  }, [isTechnician, loadBackgroundCheckOptions, hydrateBackgroundAcknowledgements]);
 
   useEffect(() => {
     if (!isTechnician) return;
@@ -1567,16 +1590,54 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
-  const handleDisclosureAcceptedChange = (e) => {
-    const checked = e.target.checked;
-    setBackgroundDisclosureAccepted(checked);
-    setBackgroundDisclosureAcceptedAt(checked ? new Date().toISOString() : '');
+  const persistBackgroundAcknowledgement = async (acknowledgementType, checked) => {
+    setSavingBackgroundAcknowledgement(true);
+    setBackgroundAcknowledgementError('');
+    try {
+      const res = await verificationAPI.saveBackgroundCheckAcknowledgement({
+        acknowledgement_type: acknowledgementType,
+        accepted: checked,
+      });
+      hydrateBackgroundAcknowledgements(res?.background_check_acknowledgements);
+      return true;
+    } catch (err) {
+      setBackgroundAcknowledgementError(err?.message || 'Could not save acknowledgement. Try again.');
+      setAlertModal({
+        isOpen: true,
+        title: 'Acknowledgement not saved',
+        message: err?.message || 'Could not save your acknowledgement. Check your connection and try again.',
+        variant: 'error',
+      });
+      return false;
+    } finally {
+      setSavingBackgroundAcknowledgement(false);
+    }
   };
 
-  const handleAuthorizationAcceptedChange = (e) => {
+  const handleDisclosureAcceptedChange = async (e) => {
     const checked = e.target.checked;
+    const previousAccepted = backgroundDisclosureAccepted;
+    const previousAt = backgroundDisclosureAcceptedAt;
+    setBackgroundDisclosureAccepted(checked);
+    setBackgroundDisclosureAcceptedAt(checked ? new Date().toISOString() : '');
+    const ok = await persistBackgroundAcknowledgement('platform_notice', checked);
+    if (!ok) {
+      setBackgroundDisclosureAccepted(previousAccepted);
+      setBackgroundDisclosureAcceptedAt(previousAt);
+    }
+  };
+
+  const handleAuthorizationAcceptedChange = async (e) => {
+    const checked = e.target.checked;
+    const previousAccepted = backgroundAuthorizationAccepted;
+    const previousAt = backgroundAuthorizationAcceptedAt;
     setBackgroundAuthorizationAccepted(checked);
     setBackgroundAuthorizationAcceptedAt(checked ? new Date().toISOString() : '');
+    const ok = await persistBackgroundAcknowledgement('screening_process', checked);
+    if (!ok) {
+      setBackgroundAuthorizationAccepted(previousAccepted);
+      setBackgroundAuthorizationAcceptedAt(previousAt);
+    }
   };
 
   const handleDisableLocalCheckrDemoBypass = () => {
@@ -1654,34 +1715,23 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         return;
       }
 
-      const payload = {
-        disclosure_accepted: backgroundDisclosureAccepted,
-        authorization_accepted: backgroundAuthorizationAccepted,
-        ...(backgroundDisclosureAcceptedAt ? { disclosure_accepted_at: backgroundDisclosureAcceptedAt } : {}),
-        ...(backgroundAuthorizationAcceptedAt ? { authorization_accepted_at: backgroundAuthorizationAcceptedAt } : {}),
-      };
-      console.info('[Verification] start request payload', payload);
-      const res = await verificationAPI.startBackgroundCheckWithSelection(payload);
+      const res = await verificationAPI.startBackgroundCheckWithSelection({});
       console.info('[Verification] start response', res);
       if (res?.invitation_url) {
         window.location.href = res.invitation_url;
         return;
       }
       if (res?.payment_required) {
-        const checkout = await verificationAPI.createBackgroundCheckCheckout();
-        if (checkout?.checkout_url) {
-          window.location.href = checkout.checkout_url;
-          return;
-        }
         setAlertModal({
           isOpen: true,
-          title: 'Payment required',
-          message: res?.message || 'Complete payment to continue your background check.',
+          title: 'Payment not required',
+          message: 'Technician payment for background checks is disabled. Contact support if you see this message.',
           variant: 'error',
         });
       }
       const latest = await verificationAPI.getCenter();
       setVerificationCenter(latest);
+      hydrateBackgroundAcknowledgements(latest?.background_check_acknowledgements);
       await loadBackgroundCheckOptions();
     } catch (err) {
       console.error('[Verification] start failed', {
@@ -2006,51 +2056,64 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         )}
 
         <div className="rounded-lg border border-gray-200 p-3">
-          <p className="text-sm font-medium text-gray-900">Disclosure and authorization</p>
+          <p className="text-sm font-medium text-gray-900">BACKGROUND VERIFICATION</p>
           <p className="mt-1 text-xs text-gray-600">
-            TechFlash uses Checkr to process background reports. Review these notices and authorize the check before starting.
+            TechFlash covers the Checkr report cost. Checkr&apos;s secure Apply Flow collects required legal disclosures,
+            authorizations, and identity details — these TechFlash acknowledgements are not substitutes for Checkr&apos;s forms.
           </p>
-          <div className="mt-2 space-y-2 text-xs text-gray-800">
+          <div className="mt-3 grid gap-1 text-xs text-gray-700 sm:grid-cols-2">
+            <p><span className="font-medium text-gray-900">First name:</span> {form.first_name || user?.first_name || '—'}</p>
+            <p><span className="font-medium text-gray-900">Last name:</span> {form.last_name || user?.last_name || '—'}</p>
+            <p><span className="font-medium text-gray-900">Email:</span> {accountEmail || user?.email || '—'}</p>
+            <p><span className="font-medium text-gray-900">Phone:</span> {form.phone || user?.phone || '—'}</p>
+          </div>
+          <div className="mt-3 space-y-2 text-xs text-gray-800">
             <label className="flex items-start gap-2">
               <input
                 type="checkbox"
                 checked={backgroundDisclosureAccepted}
                 onChange={handleDisclosureAcceptedChange}
+                disabled={savingBackgroundAcknowledgement || startingBackgroundCheck}
                 className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              <span>
-                I acknowledge I received the disclosure that a consumer report may be obtained for background screening.
-              </span>
+              <span>{backgroundAcknowledgementCopy.platform_notice}</span>
             </label>
             <label className="flex items-start gap-2">
               <input
                 type="checkbox"
                 checked={backgroundAuthorizationAccepted}
                 onChange={handleAuthorizationAcceptedChange}
+                disabled={savingBackgroundAcknowledgement || startingBackgroundCheck}
                 className="mt-0.5 h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
               />
-              <span>
-                I authorize TechFlash and Checkr to obtain and process my background report for verification and job eligibility.
-              </span>
+              <span>{backgroundAcknowledgementCopy.screening_process}</span>
             </label>
           </div>
+          {backgroundAcknowledgementError ? (
+            <p className="mt-2 text-[11px] text-red-600">{backgroundAcknowledgementError}</p>
+          ) : null}
           {(backgroundDisclosureAcceptedAt || backgroundAuthorizationAcceptedAt) && (
             <p className="mt-2 text-[11px] text-gray-500">
-              Consent captured:
-              {backgroundDisclosureAcceptedAt ? ` disclosure ${new Date(backgroundDisclosureAcceptedAt).toLocaleString()}` : ''}
-              {backgroundAuthorizationAcceptedAt ? `, authorization ${new Date(backgroundAuthorizationAcceptedAt).toLocaleString()}` : ''}
+              Saved acknowledgements:
+              {backgroundDisclosureAcceptedAt ? ` platform notice ${new Date(backgroundDisclosureAcceptedAt).toLocaleString()}` : ''}
+              {backgroundAuthorizationAcceptedAt ? `, screening process ${new Date(backgroundAuthorizationAcceptedAt).toLocaleString()}` : ''}
             </p>
           )}
+          {verificationCenter?.background_check?.technician_status_label ? (
+            <p className="mt-2 text-xs font-medium text-gray-800">
+              Status: {verificationCenter.background_check.technician_status_label}
+            </p>
+          ) : null}
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             onClick={handleStartBackgroundCheck}
-            disabled={startingBackgroundCheck || loadingBackgroundCheckOptions || !backgroundCheckStartEnabled || !backgroundConsentReady}
+            disabled={startingBackgroundCheck || loadingBackgroundCheckOptions || savingBackgroundAcknowledgement || !backgroundCheckStartEnabled || !backgroundConsentReady}
             className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50"
           >
-            {startingBackgroundCheck ? 'Starting...' : 'Start background check'}
+            {startingBackgroundCheck ? 'Starting...' : 'Start Background Check'}
           </button>
           {isDemoMode() && isTechnician && (
             <button

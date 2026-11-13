@@ -25,8 +25,18 @@ module Api
               verified_technicians: verified_technicians,
               verification_completion_rate: completion_rate
             },
-            pending_background_checks: serialize_checks(BackgroundCheck.where(status: %i[pending processing consider invited]).order(created_at: :desc).limit(100)),
-            expiring_background_checks: serialize_checks(BackgroundCheck.where("expires_at IS NOT NULL AND expires_at <= ?", 30.days.from_now).order(:expires_at).limit(100)),
+            pending_background_checks: serialize_checks(
+              BackgroundCheck.where(status: %i[pending processing consider invited suspended failed])
+                .includes(user: :technician_profile)
+                .order(created_at: :desc)
+                .limit(100)
+            ),
+            expiring_background_checks: serialize_checks(
+              BackgroundCheck.where("expires_at IS NOT NULL AND expires_at <= ?", 30.days.from_now)
+                .includes(user: :technician_profile)
+                .order(:expires_at)
+                .limit(100)
+            ),
             checkr_webhook_anomalies: serialize_webhook_anomalies(CheckrWebhookEvent.where.not(processing_error: [nil, ""]).order(updated_at: :desc).limit(100)),
             pending_references: serialize_references(VerificationReference.pending_review.limit(100)),
             pending_documents: serialize_documents(
@@ -192,31 +202,52 @@ module Api
 
         def serialize_checks(scope)
           scope.map do |check|
+            user = check.user
             {
               id: check.id,
               user_id: check.user_id,
+              technician_email: user&.email,
+              technician_name: [user&.first_name, user&.last_name].compact.join(" ").presence,
               job_id: check.job_id,
               job_application_id: check.job_application_id,
               company_profile_id: check.company_profile_id,
               status: check.status,
               normalized_status: check.normalized_status_value,
+              technician_status_label: check.technician_visible_status_label,
+              admin_status_label: check.admin_visible_status_label,
+              result: check.result,
               provider_status: check.provider_status,
               provider_assess_status: check.provider_assess_status,
               provider_adjudication: check.provider_adjudication,
               provider_includes_canceled: check.provider_includes_canceled,
               provider_updated_at: check.provider_updated_at,
+              provider_candidate_id: check.provider_candidate_id,
+              provider_invitation_id: check.provider_invitation_id,
+              provider_report_id: check.provider_report_id,
               package_name: check.package_name,
               node_custom_id: check.node_custom_id,
               work_location_country: check.work_location_country,
               work_location_state: check.work_location_state,
               work_location_city: check.work_location_city,
               invitation_url: check.invitation_url,
-              report_url: check.report_url,
+              # Admin-only Checkr dashboard link; never expose criminal detail payloads.
               dashboard_url: check.dashboard_url,
               report_eta_at: check.report_eta_at,
               last_webhook_event_id: check.last_webhook_event_id,
+              payment_status: check.payment_status,
+              paid_by: check.paid_by,
+              admin_override_status: check.admin_override_status,
+              admin_notes: check.admin_notes,
+              invitation_outcome_unknown: check.admin_notes.to_s.start_with?("INVITATION_OUTCOME_UNKNOWN:"),
+              started_at: check.started_at,
+              completed_at: check.completed_at,
               created_at: check.created_at,
-              updated_at: check.updated_at
+              updated_at: check.updated_at,
+              # Safe investigation/resend is via override endpoint or technician start after expiry.
+              safe_actions: {
+                manual_override: true,
+                resend_if_expired: check.normalized_status_value.in?(%w[invitation_expired invitation_deleted canceled report_canceled])
+              }
             }
           end
         end
