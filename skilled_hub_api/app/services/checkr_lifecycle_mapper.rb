@@ -58,15 +58,24 @@ class CheckrLifecycleMapper
   end
 
   # Automatic clear requires BOTH status=complete AND result=clear.
-  # status=complete alone is never treated as verified.
+  # Missing/uncertain status (blank, disputed, suspended, consider, etc.) never auto-clears.
   def self.completed_mapping(result:, includes_canceled:, assessment:, status: nil)
     status = status.to_s.downcase.presence
 
-    if status.present? && status != "complete"
+    if status.blank?
       return {
-        normalized_status: "report_pending",
-        terminal: false,
-        technician_label: "Background Check Processing",
+        normalized_status: "report_complete",
+        terminal: true,
+        technician_label: "Needs Review",
+        admin_label: "Report completed without provider status"
+      }
+    end
+
+    if status != "complete"
+      return {
+        normalized_status: uncertain_completed_status(status),
+        terminal: !status.in?(%w[pending processing in_progress suspended paused]),
+        technician_label: "Needs Review",
         admin_label: "Report not complete (#{status})"
       }
     end
@@ -89,7 +98,7 @@ class CheckrLifecycleMapper
       }
     end
 
-    if result == "clear" && (status.blank? || status == "complete")
+    if result == "clear" && status == "complete"
       return { normalized_status: "clear", terminal: true, technician_label: "Completed — Clear", admin_label: "Clear" }
     end
 
@@ -101,6 +110,17 @@ class CheckrLifecycleMapper
     }
   end
   private_class_method :completed_mapping
+
+  def self.uncertain_completed_status(status)
+    case status
+    when "suspended", "paused" then "report_suspended"
+    when "disputed" then "report_disputed"
+    when "canceled", "cancelled" then "report_canceled"
+    when "pending", "processing", "in_progress" then "report_pending"
+    else "report_complete"
+    end
+  end
+  private_class_method :uncertain_completed_status
 
   def self.fallback_from_provider_status(provider_status, result, includes_canceled)
     if provider_status.in?(%w[pending processing in_progress])

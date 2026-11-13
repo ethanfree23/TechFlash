@@ -53,6 +53,11 @@ class CheckrConfiguration
       return @env["CHECKR_STAGING_API_KEY"].presence || @env["CHECKR_API_KEY"].presence
     end
 
+    if production_environment?
+      # Fail closed: never silently fall back to staging credentials in production.
+      return @env["CHECKR_API_KEY"].presence || safe_credentials_dig(:checkr, :api_key)
+    end
+
     if staging_environment?
       @env["CHECKR_STAGING_API_KEY"].presence ||
         @env["CHECKR_API_KEY"].presence ||
@@ -60,13 +65,14 @@ class CheckrConfiguration
         safe_credentials_dig(:checkr, :api_key)
     else
       @env["CHECKR_API_KEY"].presence ||
-        @env["CHECKR_STAGING_API_KEY"].presence ||
-        safe_credentials_dig(:checkr, :api_key) ||
-        safe_credentials_dig(:checkr, :staging_api_key)
+        safe_credentials_dig(:checkr, :api_key)
     end
   end
 
   def webhook_secret
+    # Production must sign with the API key (CHECKR_SECRET_KEY), not a legacy webhook secret.
+    return nil if production_environment?
+
     @env["CHECKR_WEBHOOK_SECRET"].presence ||
       (@rails_env == "staging" ? nil : safe_credentials_dig(:checkr, :webhook_secret))
   end

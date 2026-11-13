@@ -52,6 +52,34 @@ module Api
         CheckrWebhookMetrics.increment("webhook_received", tags: { event_type: event_type, object_type: object_type })
         outcome = process_event(event, rec: rec)
 
+        if outcome[:retryable]
+          # Do not set processed_at — Checkr (or rake) must be able to redeliver/reconcile.
+          rec.update!(
+            processed_at: nil,
+            hydrated: outcome[:hydrated] == true,
+            background_check_id: outcome[:background_check_id],
+            processing_error: outcome[:processing_error].presence || "retryable_reconciliation_failure",
+            duplicate: false
+          )
+          log_event(
+            event_id: event_id,
+            event_type: event_type,
+            object_type: object_type,
+            object_id: object_id,
+            background_check_id: outcome[:background_check_id],
+            provider_status: outcome[:provider_status],
+            provider_result: outcome[:provider_result],
+            assessment: outcome[:assessment],
+            includes_canceled: outcome[:includes_canceled],
+            hydrated: outcome[:hydrated],
+            duplicate: false,
+            outcome: outcome[:outcome],
+            duration_ms: elapsed_ms(started_at)
+          )
+          CheckrWebhookMetrics.increment("webhook_processing_failed", tags: { reason: "retryable_reconciliation", event_type: event_type })
+          return head :service_unavailable
+        end
+
         rec.update!(
           processed_at: Time.current,
           hydrated: outcome[:hydrated] == true,
@@ -83,10 +111,10 @@ module Api
         head :bad_request
       rescue StandardError => e
         if rec.present?
-          rec.update_columns(processing_error: "#{e.class}: #{e.message}", updated_at: Time.current)
+          rec.update_columns(processing_error: "#{e.class}: #{e.message}", processed_at: nil, updated_at: Time.current)
         elsif event_id.present?
           existing = CheckrWebhookEvent.find_by(checkr_event_id: event_id)
-          existing&.update_columns(processing_error: "#{e.class}: #{e.message}", updated_at: Time.current)
+          existing&.update_columns(processing_error: "#{e.class}: #{e.message}", processed_at: nil, updated_at: Time.current)
         end
         CheckrWebhookMetrics.increment("webhook_processing_failed", tags: { error: e.class.name })
         Rails.logger.error("[checkr_webhook] processing failure: #{e.class} #{e.message}")
@@ -98,6 +126,9 @@ module Api
       def signing_secret(checkr_configuration)
         api_key = checkr_configuration.api_key.to_s.presence
         return api_key if api_key.present?
+
+        # Production never falls back to a legacy webhook secret.
+        return nil if checkr_configuration.production_environment?
 
         legacy_secret = checkr_configuration.webhook_secret.to_s.presence
         Rails.logger.warn("[checkr_webhook] legacy webhook secret fallback in use") if legacy_secret.present?
@@ -156,6 +187,24 @@ module Api
           }
         end
 
+        # Unknown / unsupported event types: record only — never change technician eligibility.
+        unless supported_event_type?(event_type)
+          check = find_owned_background_check(
+            invitation_id: invitation_id,
+            report_id: report_id,
+            candidate_id: candidate_id
+          )
+          Rails.logger.info("[checkr_webhook] ignored unsupported event_type=#{event_type} event_id=#{event['id']}")
+          return {
+            outcome: "recorded_unsupported_event",
+            hydrated: hydrated,
+            background_check_id: check&.id,
+            processing_error: nil,
+            provider_status: object["status"],
+            provider_result: object["result"]
+          }
+        end
+
         check = find_owned_background_check(
           invitation_id: invitation_id,
           report_id: report_id,
@@ -175,9 +224,52 @@ module Api
           }
         end
 
-        # Always reconcile report.completed (and report objects) against GET /v1/reports/:id.
-        if report_id.present? && (report_event?(event_type) || object["object"].to_s == "report")
-          object, report_hydrated = hydrate_report_object(report_id, object, force: event_type.to_s == "report.completed")
+        # report.completed: require successful authoritative GET /v1/reports/:id before any
+        # result that could grant/restore automatic background verification.
+        if event_type.to_s == "report.completed"
+          unless report_id.present? && valid_checkr_id?(report_id)
+            return retryable_reconciliation_failure(
+              outcome: "authoritative_report_fetch_failed",
+              reason: "missing_or_invalid_report_id",
+              hydrated: hydrated,
+              background_check_id: check.id,
+              object: object
+            )
+          end
+
+          object, report_hydrated = hydrate_report_object(report_id, object, force: true)
+          hydrated ||= report_hydrated
+          unless report_hydrated
+            return retryable_reconciliation_failure(
+              outcome: "authoritative_report_fetch_failed",
+              reason: "checkr_report_get_failed",
+              hydrated: hydrated,
+              background_check_id: check.id,
+              object: object
+            )
+          end
+
+          unless authoritative_report_identity_valid?(object, expected_report_id: report_id)
+            return retryable_reconciliation_failure(
+              outcome: "authoritative_report_invalid",
+              reason: "invalid_or_inconsistent_report_payload",
+              hydrated: hydrated,
+              background_check_id: check.id,
+              object: object
+            )
+          end
+
+          unless ownership_consistent?(check, object)
+            return retryable_reconciliation_failure(
+              outcome: "ownership_mismatch",
+              reason: "ownership_mismatch",
+              hydrated: hydrated,
+              background_check_id: check.id,
+              object: object
+            )
+          end
+        elsif report_id.present? && (report_event?(event_type) || object["object"].to_s == "report")
+          object, report_hydrated = hydrate_report_object(report_id, object, force: false)
           hydrated ||= report_hydrated
           unless ownership_consistent?(check, object)
             return {
@@ -292,11 +384,44 @@ module Api
         client = CheckrClient.new
         return [object, false] unless client.configured?
 
-        [client.get_report(report_id: report_id), true]
+        report = client.get_report(report_id: report_id)
+        return [object, false] unless authoritative_report_identity_valid?(report, expected_report_id: report_id)
+
+        [report, true]
       rescue CheckrClient::Error => e
         Rails.logger.warn("[checkr_webhook] report hydration failed: #{e.message}")
         CheckrWebhookMetrics.increment("webhook_hydration_failed", tags: { object_type: "report" })
         [object, false]
+      end
+
+      def authoritative_report_identity_valid?(report, expected_report_id:)
+        return false unless report.is_a?(Hash)
+        return false if report["id"].to_s.blank?
+        return false unless valid_checkr_id?(report["id"])
+        return false if expected_report_id.present? && report["id"].to_s != expected_report_id.to_s
+
+        true
+      end
+
+      def retryable_reconciliation_failure(outcome:, reason:, hydrated:, background_check_id:, object:)
+        Rails.logger.warn("[checkr_webhook] retryable reconciliation failure outcome=#{outcome} reason=#{reason} background_check_id=#{background_check_id}")
+        {
+          outcome: outcome,
+          retryable: true,
+          hydrated: hydrated,
+          background_check_id: background_check_id,
+          processing_error: reason,
+          provider_status: object.is_a?(Hash) ? object["status"] : nil,
+          provider_result: object.is_a?(Hash) ? object["result"] : nil
+        }
+      end
+
+      def supported_event_type?(event_type)
+        type = event_type.to_s
+        return true if type == "report.completed"
+        return true if CheckrLifecycleMapper.mapping_rows.any? { |row| row[:event_type] == type }
+
+        false
       end
 
       # Prefer precise ID matches; require candidate consistency when multiple identifiers exist.

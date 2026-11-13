@@ -47,4 +47,21 @@ class CheckrLifecycleMapperTest < ActiveSupport::TestCase
     )
     refute_equal "clear", mapping[:normalized_status]
   end
+
+  test "missing provider status is never automatic clear" do
+    mapping = CheckrLifecycleMapper.resolve(
+      event_type: "report.completed",
+      object: { "result" => "clear" }
+    )
+    refute_equal "clear", mapping[:normalized_status]
+  end
+
+  test "consider result is never automatic clear" do
+    mapping = CheckrLifecycleMapper.resolve(
+      event_type: "report.completed",
+      object: { "status" => "complete", "result" => "consider" }
+    )
+    assert_equal "consider", mapping[:normalized_status]
+    refute_equal "clear", mapping[:normalized_status]
+  end
 end
