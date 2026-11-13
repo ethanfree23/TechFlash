@@ -91,9 +91,80 @@ class InternalFinancialSmokeTestService
               "Run reconcile first; a new key is never issued."
       end
 
+      verify_operator_identity!(test, operator)
       pm = verify_payment_method_ownership!(test)
+      mandate = verify_mandate_authorization!(test, pm)
+      params = build_intent_params!(test)
 
-      params = {
+      unless live_execute == true
+        test.append_history!("dry_run", operator_user_id: operator.id, would_use_idempotency_key: test.idempotency_key,
+                                        mandate_id: mandate_id_of(mandate))
+        return Outcome.new(status: "dry_run", smoke_test: test, dry_run: true,
+                           message: "DRY RUN: all preconditions passed. Set LIVE_EXECUTE=1 to debit #{test.amount_cents} #{test.currency.upcase} " \
+                                    "from #{pm_label(pm)} under idempotency key #{test.idempotency_key}.")
+      end
+
+      # Atomic one-shot claim, committed BEFORE Stripe is contacted and without holding any DB
+      # lock across the network call. Exactly one concurrent executor can win the conditional
+      # UPDATE; everyone else is refused here and never reaches Stripe::PaymentIntent.create.
+      claim_attempt!(test, operator: operator, mandate: mandate)
+
+      result = create_payment_intent(params, idempotency_key: test.idempotency_key)
+      apply_create_result!(test, result)
+    end
+
+    # Conditional UPDATE (compare-and-set on status / last_attempted_at). Returns only when this
+    # caller owns the attempt. Runs in its own transaction so the "attempted / outcome_unknown"
+    # state is durable before the external request; a crash afterwards leaves a row that
+    # reconcile! can recover and that execute! refuses to re-debit.
+    def claim_attempt!(test, operator:, mandate: nil)
+      if ActiveRecord::Base.connection.transaction_open? && !Rails.env.test?
+        raise PreconditionError, "execute! must not run inside a database transaction (the claim must commit before Stripe is called)"
+      end
+
+      now = Time.current
+      scope = InternalFinancialSmokeTest.where(id: test.id, last_attempted_at: test.last_attempted_at)
+      scope = if test.attempted?
+        # same-key replay: only an unknown row with no PaymentIntent that reconcile! cleared
+        scope.where(status: "outcome_unknown", stripe_payment_intent_id: nil)
+      else
+        scope.where(status: "authorized", first_attempted_at: nil)
+      end
+
+      claimed = InternalFinancialSmokeTest.transaction(requires_new: true) do
+        scope.update_all(
+          first_attempted_at: test.first_attempted_at || now,
+          last_attempted_at: now,
+          status: "outcome_unknown",
+          reconciliation_status: "pending_reconciliation",
+          livemode: Stripe.api_key.to_s.start_with?("sk_live_"),
+          updated_at: now
+        )
+      end
+
+      unless claimed == 1
+        raise PreconditionError,
+              "smoke test #{test.public_id} was claimed by another execution (concurrent or repeated request); " \
+              "refusing to contact Stripe. Run status/reconcile."
+      end
+
+      test.reload
+      test.append_history!("execute_claimed", operator_user_id: operator.id, idempotency_key: test.idempotency_key,
+                                              attempt_at: now.iso8601, mandate_id: mandate_id_of(mandate))
+      test
+    end
+
+    def build_intent_params!(test)
+      raise PreconditionError, "amount must be 1..#{InternalFinancialSmokeTest::MAX_AMOUNT_CENTS} cents" unless
+        test.amount_cents.is_a?(Integer) && test.amount_cents.between?(1, InternalFinancialSmokeTest::MAX_AMOUNT_CENTS)
+      raise PreconditionError, "currency must be usd" unless test.currency.to_s == "usd"
+
+      metadata = test.stripe_metadata
+      unless metadata[InternalFinancialSmokeTest::METADATA_MARKER].to_s == "true" && metadata["internal_smoke_test_id"] == test.public_id
+        raise PreconditionError, "smoke-test metadata marker missing"
+      end
+
+      {
         amount: test.amount_cents,
         currency: test.currency,
         customer: test.stripe_customer_id,
@@ -102,29 +173,67 @@ class InternalFinancialSmokeTestService
         confirm: true,
         off_session: true,
         description: "TechFlash INTERNAL financial smoke test #{test.public_id} (not a job payment)",
-        metadata: test.stripe_metadata
+        metadata: metadata
       }
+    end
 
-      unless live_execute == true
-        test.append_history!("dry_run", operator_user_id: operator.id, would_use_idempotency_key: test.idempotency_key)
-        return Outcome.new(status: "dry_run", smoke_test: test, dry_run: true,
-                           message: "DRY RUN: all preconditions passed. Set LIVE_EXECUTE=1 to debit #{test.amount_cents} #{test.currency.upcase} " \
-                                    "from #{pm_label(pm)} under idempotency key #{test.idempotency_key}.")
+    # The executing administrator must be the same admin who recorded the authorization.
+    def verify_operator_identity!(test, operator)
+      raise PreconditionError, "operator must be an existing admin user" unless operator&.admin?
+      unless test.operator_user_id == operator.id && test.operator_email.to_s.casecmp(operator.email.to_s).zero?
+        raise PreconditionError,
+              "operator #{operator.email} is not the administrator who authorized #{test.public_id} (#{test.operator_email})"
       end
 
-      # Stamp before the call so a crash/timeout can never lose the fact that Stripe may have
-      # been reached. From here on this row counts as attempted.
-      test.update!(
-        first_attempted_at: test.first_attempted_at || Time.current,
-        last_attempted_at: Time.current,
-        status: (test.status == "authorized" ? "outcome_unknown" : test.status),
-        reconciliation_status: "pending_reconciliation",
-        livemode: Stripe.api_key.to_s.start_with?("sk_live_")
-      )
-      test.append_history!("execute_started", operator_user_id: operator.id, idempotency_key: test.idempotency_key)
+      true
+    end
 
-      result = create_payment_intent(params, idempotency_key: test.idempotency_key)
-      apply_create_result!(test, result)
+    # The saved bank PaymentMethod must carry an ACTIVE Stripe mandate accepted by the company
+    # (collected during SetupIntent confirmation). Read-only Stripe calls; nothing is created.
+    def verify_mandate_authorization!(test, pm)
+      list = Stripe::SetupIntent.list(customer: test.stripe_customer_id, payment_method: pm.id, limit: 100)
+      candidates = Array(list.respond_to?(:data) ? list.data : list).select do |si|
+        si.status.to_s == "succeeded" && stripe_id_of(si.mandate).present?
+      end
+      raise PreconditionError, "no succeeded SetupIntent with a mandate exists for #{pm.id}" if candidates.empty?
+
+      mandate = nil
+      candidates.each do |si|
+        candidate = Stripe::Mandate.retrieve(stripe_id_of(si.mandate))
+        next unless candidate.status.to_s == "active"
+        next unless stripe_id_of(candidate.payment_method) == pm.id
+
+        details_type = candidate.respond_to?(:payment_method_details) ? stripe_dig(candidate.payment_method_details, :type) : nil
+        next unless details_type.nil? || details_type.to_s == "us_bank_account"
+
+        mandate = candidate
+        break
+      end
+      raise PreconditionError, "no ACTIVE us_bank_account mandate for #{pm.id} on customer #{test.stripe_customer_id}" unless mandate
+
+      local = StripeSetupRecord.where(stripe_payment_method_id: pm.id, status: "succeeded").exists?
+      test.append_history!("mandate_verified", mandate_id: mandate.id, local_setup_record: local) unless
+        Array(test.history_json).any? { |h| h["kind"] == "mandate_verified" && h["mandate_id"] == mandate.id }
+      mandate
+    rescue Stripe::StripeError => e
+      raise PreconditionError, "could not verify mandate: #{e.class}: #{e.message}"
+    end
+
+    def stripe_id_of(value)
+      return nil if value.nil?
+
+      value.respond_to?(:id) ? value.id.to_s : value.to_s
+    end
+
+    def stripe_dig(obj, key)
+      return nil if obj.nil?
+      return obj[key] || obj[key.to_s] if obj.is_a?(Hash)
+
+      obj.respond_to?(key) ? obj.public_send(key) : nil
+    end
+
+    def mandate_id_of(mandate)
+      mandate.respond_to?(:id) ? mandate.id : nil
     end
 
     # ---- Reconciliation ---------------------------------------------------------------------

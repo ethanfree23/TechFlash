@@ -55,7 +55,7 @@ module Api
           payment_method: "pm_bank",
           metadata: {}
         )
-        event = OpenStruct.new(id: "evt_ach_processing_1", type: "payment_intent.processing", data: OpenStruct.new(object: intent))
+        event = OpenStruct.new(id: "evt_ach_processing_1", type: "payment_intent.processing", livemode: false, data: OpenStruct.new(object: intent))
         payload = { id: "evt_ach_processing_1", type: "payment_intent.processing" }.to_json
 
         JobStripeOps.stub(:payment_method_display, {
@@ -88,7 +88,7 @@ module Api
           payment_method: "pm_bank",
           metadata: { "transaction_id" => @txn.id.to_s }
         )
-        event = OpenStruct.new(id: "evt_ach_succeeded_1", type: "payment_intent.succeeded", data: OpenStruct.new(object: intent))
+        event = OpenStruct.new(id: "evt_ach_succeeded_1", type: "payment_intent.succeeded", livemode: false, data: OpenStruct.new(object: intent))
         payload = { id: "evt_ach_succeeded_1", type: "payment_intent.succeeded" }.to_json
 
         JobStripeOps.stub(:payment_method_display, {
@@ -126,7 +126,7 @@ module Api
           reason: "insufficient_funds",
           amount: 88_000
         )
-        event = OpenStruct.new(id: "evt_dispute_1", type: "charge.dispute.created", data: OpenStruct.new(object: dispute))
+        event = OpenStruct.new(id: "evt_dispute_1", type: "charge.dispute.created", livemode: false, data: OpenStruct.new(object: dispute))
         payload = { id: "evt_dispute_1", type: "charge.dispute.created" }.to_json
 
         with_stubbed_stripe_webhook(event) do

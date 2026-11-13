@@ -40,7 +40,7 @@ module Api
         }.merge(overrides))
       end
 
-      def deliver(type, object, event_id: nil, times: 1, livemode: nil)
+      def deliver(type, object, event_id: nil, times: 1, livemode: false, expect_status: :ok)
         @seq += 1
         event_id ||= "evt_rec_#{@seq}"
         event = OpenStruct.new(id: event_id, type: type, created: Time.now.to_i, livemode: livemode, data: OpenStruct.new(object: object))
@@ -50,7 +50,7 @@ module Api
               times.times do
                 post WEBHOOK_PATH, params: { id: event_id, type: type }.to_json,
                                    headers: { "Content-Type" => "application/json", "HTTP_STRIPE_SIGNATURE" => "t" }
-                assert_response :ok
+                assert_response expect_status
               end
             end
           end
@@ -213,17 +213,47 @@ module Api
         assert PaymentRiskEvent.open_for_job?(@job)
       end
 
-      test "livemode mismatch is ignored in production and staging but accepted when unspecified" do
+      test "livemode must be the exact boolean for the environment; nil, missing, strings and mismatches are rejected before any mutation" do
+        succeeded = intent(status: "succeeded")
+
+        # production expects true
         Rails.env.stub(:production?, true) do
-          deliver("payment_intent.succeeded", intent(status: "succeeded"), livemode: false)
+          deliver("payment_intent.succeeded", succeeded, livemode: false, expect_status: :bad_request)
+          deliver("payment_intent.succeeded", succeeded, livemode: nil, expect_status: :bad_request)
+          deliver("payment_intent.succeeded", succeeded, livemode: "true", expect_status: :bad_request)
           assert @txn.reload.status_outcome_unknown?
         end
-        Rails.env.stub(:staging?, true) do
-          deliver("payment_intent.succeeded", intent(status: "succeeded"), livemode: true)
-          assert @txn.reload.status_outcome_unknown?
+
+        # staging / test expect false
+        deliver("payment_intent.succeeded", succeeded, livemode: true, expect_status: :bad_request)
+        deliver("payment_intent.succeeded", succeeded, livemode: nil, expect_status: :bad_request)
+        deliver("payment_intent.succeeded", succeeded, livemode: "false", expect_status: :bad_request)
+        deliver("payment_intent.succeeded", succeeded, livemode: 0, expect_status: :bad_request)
+        assert @txn.reload.status_outcome_unknown?
+
+        # rejected events are never recorded as processed
+        assert_equal 0, StripeWebhookEvent.where.not(processed_at: nil).count
+
+        # an event without a livemode attribute at all is rejected too
+        bare = OpenStruct.new(id: "evt_bare_1", type: "payment_intent.succeeded", created: Time.now.to_i, data: OpenStruct.new(object: succeeded))
+        with_stubbed_stripe_webhook(bare) do
+          post WEBHOOK_PATH, params: { id: "evt_bare_1", type: "payment_intent.succeeded" }.to_json,
+                             headers: { "Content-Type" => "application/json", "HTTP_STRIPE_SIGNATURE" => "t" }
+          assert_response :bad_request
         end
-        deliver("payment_intent.succeeded", intent(status: "succeeded"), livemode: false)
+        assert @txn.reload.status_outcome_unknown?
+
+        # exact boolean passes and mutates
+        deliver("payment_intent.succeeded", succeeded, livemode: false)
         assert @txn.reload.status_succeeded?
+        assert_equal 1, StripeWebhookEvent.where.not(processed_at: nil).count
+      end
+
+      test "production accepts livemode=true exactly" do
+        Rails.env.stub(:production?, true) do
+          deliver("payment_intent.processing", intent(status: "processing"), livemode: true)
+        end
+        assert @txn.reload.status_processing?
       end
 
       test "internal smoke-test PaymentIntents never reach job funding handlers" do

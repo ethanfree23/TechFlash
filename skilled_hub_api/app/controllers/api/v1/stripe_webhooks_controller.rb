@@ -41,6 +41,16 @@ module Api
         event = verified_event(payload, sig_header, secrets)
         return head :bad_request if event.nil?
 
+        # Signature proves origin; livemode proves the Stripe mode. Both must hold before any
+        # financial state is touched. Rejected events are never marked processed.
+        unless livemode_valid?(event)
+          Rails.logger.error(
+            "[stripe webhook] rejected livemode event=#{event.id} type=#{event.type} " \
+            "livemode=#{event_livemode(event).inspect} expected=#{expected_livemode.inspect}"
+          )
+          return head :bad_request
+        end
+
         existing = StripeWebhookEvent.find_by(stripe_event_id: event.id)
         return head :ok if existing&.processed_at.present?
 
@@ -111,11 +121,6 @@ module Api
         connected_account_id = event["account"].to_s.presence
         if connected_account_id && !CONNECTED_ACCOUNT_EVENT_TYPES.include?(event.type)
           Rails.logger.info("[stripe webhook] ignoring connected-account event type=#{event.type} id=#{event.id}")
-          return
-        end
-
-        unless livemode_matches_environment?(event)
-          Rails.logger.warn("[stripe webhook] ignoring event with unexpected livemode type=#{event.type} id=#{event.id}")
           return
         end
 
@@ -391,18 +396,25 @@ module Api
 
       # Production events must be livemode; staging events must not be. Events whose livemode
       # flag is absent (older fixtures) are accepted. Mismatches are ignored, never applied.
-      def livemode_matches_environment?(event)
-        livemode = event["livemode"]
-        return true if livemode.nil?
+      # production receives live-mode events only; every other environment (staging, development,
+      # test) uses Stripe test keys and therefore must only ever see livemode=false.
+      def expected_livemode
+        Rails.env.production?
+      end
 
-        expected = if Rails.env.production?
-          true
-        elsif Rails.env.staging?
-          false
-        end
-        return true if expected.nil?
+      def event_livemode(event)
+        event["livemode"]
+      rescue StandardError
+        nil
+      end
 
-        livemode == expected
+      # Strict: only the exact boolean matching the environment passes. nil, missing, strings
+      # ("true"/"false"), integers, and the opposite boolean are all rejected.
+      def livemode_valid?(event)
+        value = event_livemode(event)
+        return false unless value == true || value == false
+
+        value == expected_livemode
       end
 
       def reconcile_payment_intent_succeeded(pi)

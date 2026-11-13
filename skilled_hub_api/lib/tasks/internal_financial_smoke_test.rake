@@ -10,6 +10,9 @@
 #   payments:smoke_test:reconcile  SMOKE_TEST_ID=ifst_…
 #
 # Requires INTERNAL_SMOKE_TEST_COMPANY_PROFILE_ID to equal COMPANY_PROFILE_ID in the environment.
+# OPERATOR_EMAIL on execute must be the same administrator who ran authorize.
+# Execution is a one-shot atomic claim: a second/concurrent execute is refused before Stripe.
+# Under ACH pilot mode the company must also be in the pilot allow-list (AchAccess).
 namespace :payments do
   namespace :smoke_test do
     def smoke_test_env!(key)

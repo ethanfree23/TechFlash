@@ -63,9 +63,23 @@ class InternalFinancialSmokeTestServiceTest < ActiveSupport::TestCase
     OpenStruct.new(id: id, type: type, customer: customer, us_bank_account: OpenStruct.new(bank_name: "Chase", last4: "6789"))
   end
 
-  def with_stripe_objects(pm: bank_pm, customer: customer_obj, &block)
+  def mandate_obj(id: "mandate_smoke_1", status: "active", payment_method: "pm_smoke_bank", type: "us_bank_account")
+    OpenStruct.new(id: id, status: status, payment_method: payment_method,
+                   payment_method_details: OpenStruct.new(type: type), type: "multi_use",
+                   customer_acceptance: OpenStruct.new(type: "online"))
+  end
+
+  def setup_intent_list(pm_id: "pm_smoke_bank", mandate_id: "mandate_smoke_1", status: "succeeded")
+    OpenStruct.new(data: [OpenStruct.new(id: "seti_smoke_1", status: status, payment_method: pm_id, mandate: mandate_id)])
+  end
+
+  def with_stripe_objects(pm: bank_pm, customer: customer_obj, setup_intents: setup_intent_list, mandate: mandate_obj, &block)
     Stripe::Customer.stub(:retrieve, ->(*_a) { customer }) do
-      Stripe::PaymentMethod.stub(:retrieve, ->(*_a) { pm }, &block)
+      Stripe::PaymentMethod.stub(:retrieve, ->(*_a) { pm }) do
+        Stripe::SetupIntent.stub(:list, ->(*a) { setup_intents.is_a?(Proc) ? setup_intents.call(*a) : setup_intents }) do
+          Stripe::Mandate.stub(:retrieve, ->(*_a) { mandate }, &block)
+        end
+      end
     end
   end
 
@@ -190,6 +204,67 @@ class InternalFinancialSmokeTestServiceTest < ActiveSupport::TestCase
         InternalFinancialSmokeTestService.execute!(test, operator: @company_user, live_execute: true)
       end
     end
+  end
+
+  test "a different admin than the authorizing administrator cannot execute" do
+    other_admin = User.create!(email: "smoke-admin2-#{SecureRandom.hex(3)}@example.com", password: "password123",
+                               password_confirmation: "password123", role: :admin)
+    test = authorize
+    with_stripe_objects do
+      Stripe::PaymentIntent.stub(:create, ->(*_a) { flunk "must not reach Stripe" }) do
+        err = assert_raises(InternalFinancialSmokeTestService::PreconditionError) do
+          InternalFinancialSmokeTestService.execute!(test, operator: other_admin, live_execute: true)
+        end
+        assert_match(/not the administrator who authorized/, err.message)
+      end
+    end
+    assert_equal "authorized", test.reload.status
+  end
+
+  test "missing, inactive, or foreign mandate blocks execution before any Stripe write" do
+    test = authorize
+    Stripe::PaymentIntent.stub(:create, ->(*_a) { flunk "must not reach Stripe" }) do
+      with_stripe_objects(setup_intents: OpenStruct.new(data: [])) do
+        assert_raises(InternalFinancialSmokeTestService::PreconditionError) { InternalFinancialSmokeTestService.execute!(test, operator: @admin, live_execute: true) }
+      end
+      with_stripe_objects(setup_intents: setup_intent_list(status: "requires_action")) do
+        assert_raises(InternalFinancialSmokeTestService::PreconditionError) { InternalFinancialSmokeTestService.execute!(test, operator: @admin, live_execute: true) }
+      end
+      with_stripe_objects(mandate: mandate_obj(status: "inactive")) do
+        assert_raises(InternalFinancialSmokeTestService::PreconditionError) { InternalFinancialSmokeTestService.execute!(test, operator: @admin, live_execute: true) }
+      end
+      with_stripe_objects(mandate: mandate_obj(payment_method: "pm_someone_else")) do
+        assert_raises(InternalFinancialSmokeTestService::PreconditionError) { InternalFinancialSmokeTestService.execute!(test, operator: @admin, live_execute: true) }
+      end
+      with_stripe_objects(mandate: mandate_obj(type: "card")) do
+        assert_raises(InternalFinancialSmokeTestService::PreconditionError) { InternalFinancialSmokeTestService.execute!(test, operator: @admin, live_execute: true) }
+      end
+      with_stripe_objects(setup_intents: ->(*_a) { raise Stripe::APIConnectionError, "down" }) do
+        assert_raises(InternalFinancialSmokeTestService::PreconditionError) { InternalFinancialSmokeTestService.execute!(test, operator: @admin, live_execute: true) }
+      end
+    end
+    assert_equal "authorized", test.reload.status
+    assert_nil test.first_attempted_at
+  end
+
+  test "execution records the verified mandate in history and the claim precedes the Stripe call" do
+    test = authorize
+    status_at_create = nil
+    with_stripe_objects do
+      Stripe::PaymentIntent.stub(:create, lambda { |*_a|
+        status_at_create = InternalFinancialSmokeTest.find(test.id).slice(:status, :first_attempted_at, :reconciliation_status)
+        created_intent(status: "processing")
+      }) do
+        InternalFinancialSmokeTestService.execute!(test, operator: @admin, live_execute: true)
+      end
+    end
+    assert_equal "outcome_unknown", status_at_create["status"], "row must already be attempted/unknown when Stripe is called"
+    assert status_at_create["first_attempted_at"].present?
+    assert_equal "pending_reconciliation", status_at_create["reconciliation_status"]
+    kinds = Array(test.reload.history_json).map { |h| h["kind"] }
+    assert_includes kinds, "mandate_verified"
+    assert_includes kinds, "execute_claimed"
+    assert_equal "mandate_smoke_1", Array(test.history_json).find { |h| h["kind"] == "execute_claimed" }["mandate_id"]
   end
 
   test "StripeModeGuard failure blocks execution" do
@@ -417,5 +492,91 @@ class InternalFinancialSmokeTestServiceTest < ActiveSupport::TestCase
     assert_equal 1, summary[:unresolved].size
     assert_equal test.public_id, summary[:unresolved].first[:public_id]
     assert_no_job_money_side_effects
+  end
+end
+
+# Two concurrent LIVE executions of the same authorization: exactly one may reach Stripe.
+class InternalFinancialSmokeTestConcurrencyTest < ActiveSupport::TestCase
+  self.use_transactional_tests = false
+
+  setup do
+    skip "requires a multi-connection database" unless ActiveRecord::Base.connection.adapter_name =~ /postgres/i
+    PlatformSetting.where(key: [AchAccess::GLOBAL_SETTING_KEY, AchAccess::PILOT_SETTING_KEY]).delete_all
+    PlatformSetting.create!(key: AchAccess::GLOBAL_SETTING_KEY, value_json: { "enabled" => true })
+    ENV.delete("ACH_GLOBAL_DISABLED")
+    @admin = User.create!(email: "smoke-cc-admin-#{SecureRandom.hex(3)}@example.com", password: "password123",
+                          password_confirmation: "password123", role: :admin)
+    @company_user = User.create!(email: "smoke-cc-co-#{SecureRandom.hex(3)}@example.com", password: "password123",
+                                 password_confirmation: "password123", role: :company)
+    @company_user.update_column(:stripe_customer_id, "cus_smoke_cc")
+    @company = CompanyProfile.create!(user: @company_user, membership_level: "basic", ach_payments_enabled: true, phone: "713-555-9000")
+    @company_user.update_column(:company_profile_id, @company.id)
+    ENV[InternalFinancialSmokeTestService::COMPANY_ENV_KEY] = @company.id.to_s
+    @old_key = Stripe.api_key
+    Stripe.api_key = "sk_test_smoke"
+  end
+
+  teardown do
+    ENV.delete(InternalFinancialSmokeTestService::COMPANY_ENV_KEY)
+    Stripe.api_key = @old_key
+    InternalFinancialSmokeTest.where(company_profile_id: @company&.id).delete_all
+    PlatformSetting.where(key: [AchAccess::GLOBAL_SETTING_KEY, AchAccess::PILOT_SETTING_KEY]).delete_all
+    @company&.destroy
+    @company_user&.destroy
+    @admin&.destroy
+  end
+
+  test "concurrent execute! calls produce exactly one Stripe::PaymentIntent.create" do
+    test = InternalFinancialSmokeTestService.authorize!(
+      company_profile_id: @company.id, operator: @admin, authorization_reference: "CC-#{SecureRandom.hex(4)}",
+      authorized_at: Time.current, reason: "concurrency", amount_cents: 500, payment_method_id: "pm_smoke_cc"
+    )
+    creates = Concurrent::AtomicFixnum.new(0)
+    barrier = Concurrent::CyclicBarrier.new(2)
+    pm = OpenStruct.new(id: "pm_smoke_cc", type: "us_bank_account", customer: "cus_smoke_cc",
+                        us_bank_account: OpenStruct.new(bank_name: "Chase", last4: "0001"))
+    mandate = OpenStruct.new(id: "mandate_cc", status: "active", payment_method: "pm_smoke_cc",
+                             payment_method_details: OpenStruct.new(type: "us_bank_account"))
+    setup_intents = OpenStruct.new(data: [OpenStruct.new(status: "succeeded", payment_method: "pm_smoke_cc", mandate: "mandate_cc")])
+    outcomes = Concurrent::Array.new
+
+    creator = lambda do |*_a|
+      creates.increment
+      sleep 0.3
+      OpenStruct.new(id: "pi_cc_1", status: "processing", amount: 500, currency: "usd", customer: "cus_smoke_cc", latest_charge: nil,
+                     metadata: { InternalFinancialSmokeTest::METADATA_MARKER => "true" })
+    end
+
+    Stripe::Customer.stub(:retrieve, ->(*_a) { OpenStruct.new(id: "cus_smoke_cc", deleted: false) }) do
+      Stripe::PaymentMethod.stub(:retrieve, ->(*_a) { pm }) do
+        Stripe::SetupIntent.stub(:list, ->(*_a) { setup_intents }) do
+          Stripe::Mandate.stub(:retrieve, ->(*_a) { mandate }) do
+            Stripe::PaymentIntent.stub(:create, creator) do
+              threads = 2.times.map do
+                Thread.new do
+                  ActiveRecord::Base.connection_pool.with_connection do
+                    barrier.wait(5)
+                    begin
+                      outcomes << InternalFinancialSmokeTestService.execute!(test, operator: @admin, live_execute: true).status
+                    rescue InternalFinancialSmokeTestService::PreconditionError => e
+                      outcomes << "refused: #{e.message}"
+                    end
+                  end
+                end
+              end
+              threads.each(&:join)
+            end
+          end
+        end
+      end
+    end
+
+    assert_equal 1, creates.value, "exactly one executor may reach Stripe (outcomes=#{outcomes.inspect})"
+    assert_equal 1, outcomes.count { |o| o == "processing" }
+    assert_equal 1, outcomes.count { |o| o.to_s.start_with?("refused:") }
+    test.reload
+    assert_equal "processing", test.status
+    assert_equal "pi_cc_1", test.stripe_payment_intent_id
+    assert_equal 1, Array(test.history_json).count { |h| h["kind"] == "execute_claimed" }
   end
 end

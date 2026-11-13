@@ -14,8 +14,30 @@ module Api
             effective_global_ach_payments_enabled: AchAccess.global_enabled?,
             ach_global_disabled_env: AchAccess.env_kill_switch?,
             enabled_companies_count: CompanyProfile.where(ach_payments_enabled: true).count,
+            pilot: AchAccess.pilot_status,
             recent_audits: recent_audits(limit: 25)
           }, status: :ok
+        end
+
+        # PATCH /api/v1/admin/ach_settings/pilot
+        # Body: { enabled: true/false, company_profile_ids: [19] }
+        # Pilot ON restricts NEW ACH initiation to the listed companies only (fail closed when empty).
+        def update_pilot
+          unless params.key?(:enabled)
+            return render json: { error: "enabled is required" }, status: :unprocessable_entity
+          end
+
+          ids = params.key?(:company_profile_ids) ? Array(params[:company_profile_ids]) : nil
+          status = AchAccess.set_pilot!(enabled: params[:enabled], company_profile_ids: ids,
+                                        actor: current_user, source: "admin")
+          render json: {
+            ok: true,
+            pilot: status,
+            effective_global_ach_payments_enabled: AchAccess.global_enabled?,
+            recent_audits: recent_audits(limit: 10)
+          }, status: :ok
+        rescue ArgumentError => e
+          render json: { error: e.message }, status: :unprocessable_entity
         end
 
         # PATCH /api/v1/admin/ach_settings/global
@@ -105,6 +127,7 @@ module Api
               global_ach_payments_enabled: AchAccess.global_enabled_without_env_kill,
               effective_global_ach_payments_enabled: AchAccess.global_enabled?,
               ach_global_disabled_env: AchAccess.env_kill_switch?,
+              pilot: AchAccess.pilot_status,
               enabled_companies_count: CompanyProfile.where(ach_payments_enabled: true).count
             }
           }, status: :ok

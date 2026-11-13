@@ -232,6 +232,7 @@ Rails.application.routes.draw do
         post "payment_risk_events/:id/resolve", to: "job_payments#resolve_risk_event"
         get "ach_settings", to: "ach_settings#show"
         patch "ach_settings/global", to: "ach_settings#update_global"
+        patch "ach_settings/pilot", to: "ach_settings#update_pilot"
         patch "ach_settings/companies/:company_profile_id", to: "ach_settings#update_company"
         get "ach_settings/audits", to: "ach_settings#audits"
         get "ach_settings/monitoring", to: "ach_settings#monitoring"
