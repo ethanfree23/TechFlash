@@ -37,7 +37,6 @@ function AdminUserDetailToolbar({
   setPeriod,
   onAddCompanyLogin,
 }) {
-  const { expandAll, collapseAll } = useCollapsibleSections();
   return (
     <div className="flex flex-wrap gap-2 items-center justify-end">
       {isCompany && u?.company_context?.company_profile_id && onAddCompanyLogin && (
@@ -69,20 +68,6 @@ function AdminUserDetailToolbar({
           )}
         </button>
       )}
-      <button
-        type="button"
-        onClick={expandAll}
-        className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-      >
-        Expand all sections
-      </button>
-      <button
-        type="button"
-        onClick={collapseAll}
-        className="px-3 py-1.5 rounded-lg text-sm font-medium border border-gray-300 bg-white text-gray-700 hover:bg-gray-50"
-      >
-        Collapse all sections
-      </button>
       <span className="text-xs font-medium text-gray-500 uppercase mr-1">Metrics window</span>
       {PERIODS.map((p) => (
         <button
