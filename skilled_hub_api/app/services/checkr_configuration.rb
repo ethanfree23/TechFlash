@@ -75,10 +75,19 @@ class CheckrConfiguration
     @env["CHECKR_WEBHOOK_URL"].to_s.strip.presence
   end
 
+  # Production account package (owner decision): checkrdirect_essential_criminal.
+  # Never invent a slug — validate against GET /v1/packages at start time and fail closed.
   def default_package
     @env["CHECKR_DEFAULT_PACKAGE_SLUG"].to_s.strip.presence ||
-      @env["CHECKR_DEFAULT_PACKAGE"].to_s.strip.presence ||
-      "essential"
+      @env["CHECKR_DEFAULT_PACKAGE"].to_s.strip.presence
+  end
+
+  def staging_api_base_url
+    "https://api.checkr-staging.com"
+  end
+
+  def production_api_base_url
+    DEFAULT_API_BASE_URL
   end
 
   def default_node_custom_id

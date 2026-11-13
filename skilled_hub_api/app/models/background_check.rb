@@ -57,11 +57,14 @@ class BackgroundCheck < ApplicationRecord
   }, default: :none, prefix: true
 
   validates :provider, presence: true
-  validates :paid_by, inclusion: { in: %w[technician premium admin company membership] }
+  validates :paid_by, inclusion: { in: %w[technician premium admin company membership platform] }
   validates :normalized_status, inclusion: { in: NORMALIZED_STATUSES }, allow_blank: true
 
   scope :active_or_processing, -> { where(status: %i[invited pending processing]) }
   scope :eligible_clear, -> { where(status: %i[clear manually_approved]) }
+  scope :invitation_outcome_unknown, -> {
+    where(status: :failed).where("admin_notes LIKE ?", "INVITATION_OUTCOME_UNKNOWN:%")
+  }
 
   def eligible_for_background_gate?
     return false if provider_includes_canceled?
@@ -101,19 +104,25 @@ class BackgroundCheck < ApplicationRecord
   end
 
   def technician_visible_status_label
+    return "Error" if failed? && admin_notes.to_s.start_with?("INVITATION_OUTCOME_UNKNOWN:")
+    return "Error" if failed?
+
     case normalized_status_value
-    when "clear" then "Verified"
+    when "not_started" then "Not Started"
+    when "clear" then "Completed — Clear"
     when "complete_with_canceled_screenings" then "Completed with canceled screenings"
-    when "consider", "review_required", "report_disputed" then "Review required"
-    when "report_pre_adverse_action" then "Pre-adverse action in progress"
-    when "report_post_adverse_action" then "Post-adverse action sent"
-    when "report_canceled", "canceled", "invitation_expired", "invitation_deleted" then "Canceled"
-    when "report_suspended" then "Action required"
-    when "report_resumed" then "Resumed"
-    when "invitation_sent" then "Invitation sent"
-    when "invitation_completed" then "Invitation completed"
+    when "consider", "review_required", "report_disputed" then "Needs Review"
+    when "report_pre_adverse_action" then "Needs Review"
+    when "report_post_adverse_action" then "Needs Review"
+    when "report_canceled", "canceled", "invitation_deleted" then "Canceled"
+    when "invitation_expired" then "Expired"
+    when "report_suspended" then "Additional Information Required"
+    when "report_resumed" then "Background Check Processing"
+    when "invitation_sent" then "Invitation Sent"
+    when "invitation_completed" then "Waiting for Technician"
+    when "report_pending" then "Background Check Processing"
     else
-      "In progress"
+      "Background Check Processing"
     end
   end
 

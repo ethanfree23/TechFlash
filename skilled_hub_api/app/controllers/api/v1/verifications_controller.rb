@@ -10,10 +10,12 @@ module Api
         badges = VerificationBadge.active_now.where(user_id: @current_user.id).order(:badge_type)
         references = VerificationReference.where(technician_user_id: @current_user.id).order(created_at: :desc)
         approved_references_count = references.where(status: :approved).count
+        acknowledgements = BackgroundCheckAcknowledgement.payload_for(@current_user)
 
         render json: {
           verification_profile: profile,
-          background_check: latest_background,
+          background_check: serialize_background_check_for_technician(latest_background),
+          background_check_acknowledgements: acknowledgements,
           badges: badges.map { |badge| serialize_badge(badge) },
           sections: sections_payload(profile: profile, background_check: latest_background, badges: badges, approved_references_count: approved_references_count),
           references_summary: {
@@ -24,6 +26,34 @@ module Api
         }, status: :ok
       end
 
+      # Persist one TechFlash acknowledgement immediately (not Checkr FCRA consent).
+      def background_check_acknowledgements
+        type = params[:acknowledgement_type].to_s
+        accepted = ActiveModel::Type::Boolean.new.cast(params[:accepted])
+        row = BackgroundCheckAcknowledgementService.upsert!(
+          user: @current_user,
+          acknowledgement_type: type,
+          accepted: accepted,
+          actor_user: @current_user,
+          ip_address: request.remote_ip,
+          user_agent: request.user_agent
+        )
+        render json: {
+          acknowledgement: {
+            acknowledgement_type: row.acknowledgement_type,
+            document_version: row.document_version,
+            accepted: row.accepted,
+            accepted_at: row.accepted_at,
+            copy: BackgroundCheckAcknowledgement.copy_for(row.acknowledgement_type)
+          },
+          background_check_acknowledgements: BackgroundCheckAcknowledgement.payload_for(@current_user)
+        }, status: :ok
+      rescue BackgroundCheckAcknowledgementService::Error => e
+        render json: { error: e.message }, status: :unprocessable_entity
+      rescue ActiveRecord::RecordInvalid => e
+        render json: { error: e.record.errors.full_messages.to_sentence }, status: :unprocessable_entity
+      end
+
       def start_background_check
         profile = VerificationProfile.for_user!(@current_user)
         checkr_configuration = CheckrConfiguration.new
@@ -31,64 +61,114 @@ module Api
         client = CheckrClient.new
         selected_package = checkr_configuration.default_package.to_s.presence
         selected_node_custom_id = client.default_node_custom_id.to_s.presence
+
         if selected_package.blank?
-          return render json: { error: "Background check package is not configured." }, status: :unprocessable_entity
+          return render json: {
+            error: "Background check package is not configured. Set CHECKR_DEFAULT_PACKAGE to a package available on this Checkr account.",
+            code: "checkr_package_unconfigured"
+          }, status: :unprocessable_entity
         end
         unless demo_bypass || checkr_configuration.requests_allowed?
           return render json: {
             error: checkr_configuration.requests_block_reason || "Checkr integration is disabled."
           }, status: :unprocessable_entity
         end
-        consent_attributes = build_background_check_consent_attributes
-        unless consent_attributes
-          return render json: { error: "You must review and accept the disclosure and authorization before starting a background check." }, status: :unprocessable_entity
+
+        unless BackgroundCheckAcknowledgement.required_accepted?(@current_user)
+          return render json: {
+            error: "Accept the required TechFlash acknowledgements before starting a background check.",
+            code: "acknowledgements_required",
+            background_check_acknowledgements: BackgroundCheckAcknowledgement.payload_for(@current_user)
+          }, status: :unprocessable_entity
         end
-        context = resolve_background_check_context
+
+        context = resolve_background_check_context(fail_closed: true)
+        if context[:work_location_error].present?
+          return render json: { error: context[:work_location_error], code: "work_location_required" }, status: :unprocessable_entity
+        end
+
+        if BackgroundCheck.invitation_outcome_unknown.where(user_id: @current_user.id).exists?
+          return render json: {
+            error: "A previous invitation attempt needs reconciliation before another Checkr order can be created. Contact support.",
+            code: "invitation_outcome_unknown"
+          }, status: :unprocessable_entity
+        end
 
         existing = BackgroundCheck.where(user_id: @current_user.id)
-          .where("status IN (?) OR payment_status = ?", BackgroundCheck.statuses.values_at("invited", "pending", "processing"), BackgroundCheck.payment_statuses["pending"])
+          .where(status: BackgroundCheck.statuses.values_at("invited", "pending", "processing"))
           .order(created_at: :desc)
           .first
-        return render json: { error: "Background check already in progress." }, status: :unprocessable_entity if existing.present?
-
-        # A paid check whose Checkr invitation has not been created yet (provider outage) must not be
-        # bypassed by starting a new one: that would charge the technician a second time.
-        if BackgroundCheckFulfillmentService.awaiting_invitation.where(user_id: @current_user.id).exists?
-          return render json: { error: "Your background check payment was received and the invitation is being prepared." }, status: :unprocessable_entity
+        if existing.present?
+          return render json: {
+            error: "Background check already in progress.",
+            background_check: serialize_background_check_for_technician(existing),
+            invitation_url: existing.invitation_url,
+            payment_required: false
+          }, status: :unprocessable_entity
         end
 
-        membership_level = @current_user.technician_profile&.membership_level.to_s
-        tier = MembershipTierConfig.find_by(audience: "technician", slug: membership_level)
-        fee_waived = tier&.waives_background_check_fee?
-        payment_status = (fee_waived || demo_bypass) ? :waived : :pending
-        paid_by =
-          if fee_waived
-            "membership"
-          elsif demo_bypass
-            "admin"
-          else
-            "technician"
+        # Historical Stripe-paid checks awaiting invitation must not spawn a second order.
+        if BackgroundCheckFulfillmentService.awaiting_invitation.where(user_id: @current_user.id).exists?
+          return render json: {
+            error: "A previously paid background check invitation is still being prepared. Do not start another check.",
+            code: "awaiting_invitation_fulfillment"
+          }, status: :unprocessable_entity
+        end
+
+        unless demo_bypass
+          package_error = validate_configured_package!(client, selected_package)
+          return render json: { error: package_error, code: "checkr_package_invalid" }, status: :unprocessable_entity if package_error
+          begin
+            selected_node_custom_id = resolve_node_for_invitation!(client, selected_node_custom_id)
+          rescue CheckrClient::Error => e
+            return render json: { error: e.message, code: "checkr_node_required" }, status: :unprocessable_entity
+          end
+        end
+
+        ack_notice = BackgroundCheckAcknowledgement.find_by(user_id: @current_user.id, acknowledgement_type: BackgroundCheckAcknowledgement::PLATFORM_NOTICE)
+        ack_process = BackgroundCheckAcknowledgement.find_by(user_id: @current_user.id, acknowledgement_type: BackgroundCheckAcknowledgement::SCREENING_PROCESS)
+        unless ack_notice&.accepted? && ack_process&.accepted?
+          return render json: {
+            error: "Accept the required TechFlash acknowledgements before starting a background check.",
+            code: "acknowledgements_required"
+          }, status: :unprocessable_entity
+        end
+
+        # Serialize starts per user to prevent duplicate billed Checkr invitations.
+        background_check = nil
+        User.transaction do
+          User.lock.find(@current_user.id)
+          if BackgroundCheck.where(user_id: @current_user.id)
+              .where(status: BackgroundCheck.statuses.values_at("invited", "pending", "processing"))
+              .exists?
+            raise ActiveRecord::Rollback
           end
 
-        background_check = BackgroundCheck.create!(
-          user_id: @current_user.id,
-          provider: "checkr",
-          package_name: selected_package,
-          node_custom_id: selected_node_custom_id,
-          work_location_country: context[:work_location][:country],
-          work_location_state: context[:work_location][:state],
-          work_location_city: context[:work_location][:city],
-          job_id: context[:job]&.id,
-          job_application_id: context[:job_application]&.id,
-          company_profile_id: context[:job]&.company_profile_id,
-          status: :not_started,
-          normalized_status: "not_started",
-          payment_status: payment_status,
-          paid_by: paid_by,
-          disclosure_accepted_at: consent_attributes[:disclosure_accepted_at],
-          authorization_accepted_at: consent_attributes[:authorization_accepted_at],
-          consent_ip: consent_attributes[:consent_ip]
-        )
+          background_check = BackgroundCheck.create!(
+            user_id: @current_user.id,
+            provider: "checkr",
+            package_name: selected_package,
+            node_custom_id: selected_node_custom_id,
+            work_location_country: context[:work_location][:country],
+            work_location_state: context[:work_location][:state],
+            work_location_city: context[:work_location][:city],
+            job_id: context[:job]&.id,
+            job_application_id: context[:job_application]&.id,
+            company_profile_id: context[:job]&.company_profile_id,
+            status: :not_started,
+            normalized_status: "not_started",
+            # TechFlash absorbs Checkr report cost — technicians are never charged.
+            payment_status: :waived,
+            paid_by: "platform",
+            disclosure_accepted_at: ack_notice.accepted_at,
+            authorization_accepted_at: ack_process.accepted_at,
+            consent_ip: request.remote_ip.to_s.presence
+          )
+        end
+
+        if background_check.blank?
+          return render json: { error: "Background check already in progress.", payment_required: false }, status: :unprocessable_entity
+        end
 
         if demo_bypass
           invitation_url = demo_checkr_invitation_url
@@ -101,20 +181,11 @@ module Api
           )
           profile.update!(background_status: :pending)
           return render json: {
-            background_check: background_check.reload,
+            background_check: serialize_background_check_for_technician(background_check.reload),
             payment_required: false,
             invitation_url: invitation_url,
             background_check_options: build_background_check_options,
             demo_bypass: true
-          }, status: :ok
-        end
-
-        unless fee_waived
-          VerificationEventNotifier.background_payment_required(@current_user, background_check)
-          return render json: {
-            background_check: background_check,
-            payment_required: true,
-            message: "Payment is required before starting a background check."
           }, status: :ok
         end
 
@@ -140,13 +211,13 @@ module Api
           end
 
           render json: {
-            background_check: background_check.reload,
+            background_check: serialize_background_check_for_technician(background_check.reload),
             payment_required: false,
-            invitation_url: background_check.reload.invitation_url || invitation["invitation_url"],
+            invitation_url: background_check.invitation_url || invitation["invitation_url"],
             background_check_options: background_check_options
           }, status: :ok
-        rescue BackgroundCheckStartService::Error => e
-          background_check.update!(status: :failed, admin_notes: e.message)
+        rescue BackgroundCheckStartService::Error, CheckrClient::Error => e
+          background_check.update!(status: :failed, admin_notes: e.message) if background_check.admin_notes.blank?
           render json: { error: e.message }, status: :unprocessable_entity
         end
       end
@@ -171,20 +242,14 @@ module Api
         }, status: :ok
       end
 
+      # Disabled: technicians no longer pay for background checks. Historical Stripe
+      # rows remain; this endpoint must not create new Checkout sessions.
       def create_background_check_checkout
-        background_check = BackgroundCheck.where(user_id: @current_user.id, payment_status: :pending).order(created_at: :desc).first
-        return render json: { error: "No pending background check payment found." }, status: :unprocessable_entity if background_check.blank?
-        if background_check.stripe_checkout_session_id.present?
-          session = Stripe::Checkout::Session.retrieve(background_check.stripe_checkout_session_id)
-          return render json: { checkout_url: session.url, background_check_id: background_check.id }, status: :ok
-        end
-
-        session = BackgroundCheckStartService.create_checkout_session!(background_check)
-        render json: { checkout_url: session.url, background_check_id: background_check.id }, status: :ok
-      rescue BackgroundCheckStartService::Error => e
-        render json: { error: e.message }, status: :unprocessable_entity
-      rescue Stripe::StripeError => e
-        render json: { error: e.message }, status: :unprocessable_entity
+        render json: {
+          error: "Technician background-check payment is disabled. TechFlash covers Checkr report costs.",
+          code: "technician_background_check_payment_disabled",
+          payment_required: false
+        }, status: :gone
       end
 
       def reset_demo_background_check
@@ -223,7 +288,7 @@ module Api
 
       def build_background_check_options
         if checkr_demo_bypass_enabled?
-          configured_package_name = CheckrClient.new.default_package.to_s.presence || "essential"
+          configured_package_name = CheckrConfiguration.new.default_package.to_s.presence || "checkrdirect_essential_criminal"
           return {
             nodes_exist: false,
             selected_node_custom_id: nil,
@@ -242,8 +307,9 @@ module Api
             package_selection_reason: "demo_bypass",
             configured_package_name: configured_package_name,
             configured_node_custom_id: nil,
-            ready_for_start: true,
-            demo_bypass: true
+            ready_for_start: configured_package_name.present?,
+            demo_bypass: true,
+            technician_payment_required: false
           }
         end
 
@@ -374,7 +440,7 @@ module Api
         value.to_s.strip.downcase
       end
 
-      def resolve_background_check_context
+      def resolve_background_check_context(fail_closed: false)
         job = nil
         job_application = nil
         if params[:job_application_id].present?
@@ -385,34 +451,63 @@ module Api
           job_application = JobApplication.find_by(job_id: job&.id, technician_profile_id: @current_user.technician_profile&.id)
         end
 
-        work_location = {
-          country: job&.country.presence || @current_user.technician_profile&.country.presence || "US",
-          state: job&.state.presence || @current_user.technician_profile&.state.presence || "TX",
-          city: job&.city.presence || @current_user.technician_profile&.city.presence || "Houston"
-        }
+        profile = @current_user.technician_profile
+        country = job&.country.presence || profile&.country.presence
+        state = job&.state.presence || profile&.state.presence
+        city = job&.city.presence || profile&.city.presence
 
-        { job: job, job_application: job_application, work_location: work_location }
-      end
+        if fail_closed
+          if country.blank? || state.blank?
+            return {
+              job: job,
+              job_application: job_application,
+              work_location: nil,
+              work_location_error: "Add country and state to your technician profile before starting a background check."
+            }
+          end
+        else
+          country ||= "US"
+          state ||= "TX"
+          city ||= "Houston"
+        end
 
-      def build_background_check_consent_attributes
-        disclosure_accepted = ActiveModel::Type::Boolean.new.cast(params[:disclosure_accepted])
-        authorization_accepted = ActiveModel::Type::Boolean.new.cast(params[:authorization_accepted])
-        return nil unless disclosure_accepted && authorization_accepted
-
-        now = Time.current
         {
-          disclosure_accepted_at: parse_consent_timestamp(params[:disclosure_accepted_at]) || now,
-          authorization_accepted_at: parse_consent_timestamp(params[:authorization_accepted_at]) || now,
-          consent_ip: request.remote_ip.to_s.presence
+          job: job,
+          job_application: job_application,
+          work_location: { country: country, state: state, city: city }.compact,
+          work_location_error: nil
         }
       end
 
-      def parse_consent_timestamp(raw_value)
-        return nil if raw_value.blank?
+      def validate_configured_package!(client, selected_package)
+        packages = client.list_packages
+        return nil if package_available?(packages, selected_package)
 
-        Time.zone.parse(raw_value.to_s)
-      rescue ArgumentError, TypeError
-        nil
+        "Configured Checkr package '#{selected_package}' is not available on this account. " \
+          "Update CHECKR_DEFAULT_PACKAGE to a valid package slug (owner decision: checkrdirect_essential_criminal)."
+      rescue CheckrClient::Error => e
+        "Unable to validate Checkr package: #{e.message}"
+      end
+
+      # Node is required only when the Checkr account has hierarchy nodes.
+      # segmentation_enabled with zero nodes → omit node (official Checkr guidance).
+      def resolve_node_for_invitation!(client, configured_node_custom_id)
+        nodes = client.list_nodes
+        return nil if nodes.blank?
+        return configured_node_custom_id if configured_node_custom_id.present? && resolve_configured_node(nodes, configured_node_custom_id)
+
+        raise CheckrClient::Error,
+              "This Checkr account has hierarchy nodes but CHECKR_DEFAULT_NODE_CUSTOM_ID is missing or invalid."
+      end
+
+      def serialize_background_check_for_technician(check)
+        return nil if check.blank?
+
+        check.as_json.merge(
+          "technician_status_label" => check.technician_visible_status_label,
+          "report_url" => nil,
+          "dashboard_url" => nil
+        )
       end
 
       def checkr_demo_bypass_enabled?

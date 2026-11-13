@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_12_230100) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_13_162000) do
   create_table "ach_feature_audits", force: :cascade do |t|
     t.string "scope", null: false
     t.integer "company_profile_id"
@@ -348,6 +348,22 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_230100) do
     t.index ["stripe_checkout_session_id"], name: "index_background_checks_on_stripe_checkout_session_id"
     t.index ["stripe_payment_intent_id"], name: "index_background_checks_on_stripe_payment_intent_id"
     t.index ["user_id"], name: "index_background_checks_on_user_id"
+  end
+
+  create_table "background_check_acknowledgements", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.string "acknowledgement_type", null: false
+    t.string "document_version", null: false
+    t.boolean "accepted", default: false, null: false
+    t.datetime "accepted_at"
+    t.integer "actor_user_id", null: false
+    t.string "ip_address"
+    t.string "user_agent"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["actor_user_id"], name: "index_background_check_acknowledgements_on_actor_user_id"
+    t.index ["user_id", "acknowledgement_type"], name: "idx_bg_ack_on_user_and_type", unique: true
+    t.index ["user_id"], name: "index_background_check_acknowledgements_on_user_id"
   end
 
   create_table "checkr_webhook_events", force: :cascade do |t|
@@ -1533,6 +1549,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_230100) do
   add_foreign_key "assessment_questions", "assessment_categories"
   add_foreign_key "assessment_questions", "assessment_versions"
   add_foreign_key "assessment_versions", "assessments"
+  add_foreign_key "background_check_acknowledgements", "users"
+  add_foreign_key "background_check_acknowledgements", "users", column: "actor_user_id"
   add_foreign_key "background_checks", "company_profiles"
   add_foreign_key "background_checks", "job_applications"
   add_foreign_key "background_checks", "jobs"

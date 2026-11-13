@@ -518,6 +518,11 @@ export const verificationAPI = {
       method: 'POST',
       body: JSON.stringify(payload || {}),
     }),
+  saveBackgroundCheckAcknowledgement: (payload) =>
+    apiRequest('/verification/background_check_acknowledgements', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    }),
   resetDemoBackgroundCheck: () =>
     apiRequest('/verification/reset_demo_background_check', {
       method: 'POST',

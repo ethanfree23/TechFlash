@@ -24,28 +24,66 @@ module Api
         assert_response :forbidden
       end
 
-      test "non premium technician start background check requires payment" do
-        user, profile = create_technician_with_membership("basic", "verification-basic@example.com")
+      test "basic technician start background check does not require payment and launches invitation" do
+        user, = create_technician_with_membership("basic", "verification-basic@example.com")
+        accept_acknowledgements!(user)
 
-        post "/api/v1/verification/start_background_check",
-             params: background_check_consent_params,
-             headers: auth_header_for(user),
-             as: :json
+        with_env("CHECKR_DEFAULT_PACKAGE" => "essential") do
+          with_stubbed_checkr_options do
+            with_stubbed_background_launch("http://example.com/invite-basic") do
+              post "/api/v1/verification/start_background_check",
+                   headers: auth_header_for(user),
+                   as: :json
+            end
+          end
+        end
 
         assert_response :ok
         body = JSON.parse(response.body)
-        assert_equal true, body["payment_required"]
+        assert_equal false, body["payment_required"]
+        assert_equal "http://example.com/invite-basic", body["invitation_url"]
         check = BackgroundCheck.order(:id).last
         assert_equal user.id, check.user_id
-        assert_equal "pending", check.payment_status
-        assert_equal "technician", check.paid_by
+        assert_equal "waived", check.payment_status
+        assert_equal "platform", check.paid_by
         assert check.disclosure_accepted_at.present?
         assert check.authorization_accepted_at.present?
-        assert AppNotification.where(user_id: user.id, category: "verification").exists?
+      end
+
+      test "acknowledgements persist via dedicated endpoint and hydrate on show" do
+        user, = create_technician_with_membership("basic", "verification-ack-persist@example.com")
+
+        post "/api/v1/verification/background_check_acknowledgements",
+             params: { acknowledgement_type: "platform_notice", accepted: true },
+             headers: auth_header_for(user),
+             as: :json
+        assert_response :ok
+        body = JSON.parse(response.body)
+        assert_equal true, body.dig("acknowledgement", "accepted")
+        assert body.dig("acknowledgement", "document_version").present?
+
+        get "/api/v1/verification", headers: auth_header_for(user), as: :json
+        assert_response :ok
+        acks = JSON.parse(response.body).fetch("background_check_acknowledgements")
+        notice = acks.find { |row| row["acknowledgement_type"] == "platform_notice" }
+        assert_equal true, notice["accepted"]
+        assert notice["accepted_at"].present?
+      end
+
+      test "start background check blocked without acknowledgements" do
+        user, = create_technician_with_membership("basic", "verification-ack-block@example.com")
+        with_env("CHECKR_DEFAULT_PACKAGE" => "essential") do
+          post "/api/v1/verification/start_background_check",
+               headers: auth_header_for(user),
+               as: :json
+        end
+        assert_response :unprocessable_entity
+        assert_equal "acknowledgements_required", JSON.parse(response.body)["code"]
       end
 
       test "start background check refuses to create a second check while a paid one awaits its invitation" do
         user, = create_technician_with_membership("basic", "verification-paid-awaiting@example.com")
+        accept_acknowledgements!(user)
         BackgroundCheck.create!(
           user: user,
           provider: "checkr",
@@ -59,24 +97,29 @@ module Api
         )
 
         assert_no_difference -> { BackgroundCheck.where(user_id: user.id).count } do
-          post "/api/v1/verification/start_background_check",
-               params: background_check_consent_params,
-               headers: auth_header_for(user),
-               as: :json
+          with_env("CHECKR_DEFAULT_PACKAGE" => "essential") do
+            post "/api/v1/verification/start_background_check",
+                 headers: auth_header_for(user),
+                 as: :json
+          end
         end
 
         assert_response :unprocessable_entity
-        assert_match(/payment was received/i, JSON.parse(response.body)["error"])
+        assert_equal "awaiting_invitation_fulfillment", JSON.parse(response.body)["code"]
       end
 
       test "premium technician start background check launches invitation" do
-        user, profile = create_technician_with_membership("premium", "verification-premium@example.com")
+        user, = create_technician_with_membership("premium", "verification-premium@example.com")
+        accept_acknowledgements!(user)
 
-        with_stubbed_background_launch("http://example.com/invite") do
-          post "/api/v1/verification/start_background_check",
-               params: background_check_consent_params,
-               headers: auth_header_for(user),
-               as: :json
+        with_env("CHECKR_DEFAULT_PACKAGE" => "essential") do
+          with_stubbed_checkr_options do
+            with_stubbed_background_launch("http://example.com/invite") do
+              post "/api/v1/verification/start_background_check",
+                   headers: auth_header_for(user),
+                   as: :json
+            end
+          end
         end
 
         assert_response :ok
@@ -87,11 +130,16 @@ module Api
 
       test "start background check ignores requested package and node and uses configured defaults" do
         user, = create_technician_with_membership("premium", "verification-selected-package@example.com")
-        with_stubbed_background_launch("http://example.com/invite-2") do
-          post "/api/v1/verification/start_background_check",
-               params: background_check_consent_params.merge(package_name: "premium_criminal", node_custom_id: "houston_node"),
-               headers: auth_header_for(user),
-               as: :json
+        accept_acknowledgements!(user)
+        with_env("CHECKR_DEFAULT_PACKAGE" => "essential") do
+          with_stubbed_checkr_options do
+            with_stubbed_background_launch("http://example.com/invite-2") do
+              post "/api/v1/verification/start_background_check",
+                   params: { package_name: "premium_criminal", node_custom_id: "houston_node" },
+                   headers: auth_header_for(user),
+                   as: :json
+            end
+          end
         end
 
         assert_response :ok
@@ -102,21 +150,36 @@ module Api
 
       test "start background check rejects duplicate in-progress check" do
         user, = create_technician_with_membership("basic", "verification-duplicate@example.com")
+        accept_acknowledgements!(user)
         BackgroundCheck.create!(
           user: user,
           provider: "checkr",
           package_name: "essential_plus",
           status: :invited,
-          payment_status: :not_required,
-          paid_by: "technician"
+          payment_status: :waived,
+          paid_by: "platform"
         )
 
-        post "/api/v1/verification/start_background_check",
-             params: background_check_consent_params,
-             headers: auth_header_for(user),
-             as: :json
+        with_env("CHECKR_DEFAULT_PACKAGE" => "essential") do
+          post "/api/v1/verification/start_background_check",
+               headers: auth_header_for(user),
+               as: :json
+        end
 
         assert_response :unprocessable_entity
+      end
+
+      test "start background check fails closed when work location missing" do
+        user, profile = create_technician_with_membership("basic", "verification-no-location@example.com")
+        profile.update_columns(city: nil, state: nil, country: nil)
+        accept_acknowledgements!(user)
+        with_env("CHECKR_DEFAULT_PACKAGE" => "essential") do
+          post "/api/v1/verification/start_background_check",
+               headers: auth_header_for(user),
+               as: :json
+        end
+        assert_response :unprocessable_entity
+        assert_equal "work_location_required", JSON.parse(response.body)["code"]
       end
 
       test "demo undo clears in-progress background check so technician can retry" do
@@ -155,30 +218,33 @@ module Api
         assert_response :forbidden
       end
 
-      test "start background check requires disclosure and authorization consent" do
+      test "start background check requires TechFlash acknowledgements" do
         user, = create_technician_with_membership("basic", "verification-consent-required@example.com")
 
-        post "/api/v1/verification/start_background_check",
-             params: { disclosure_accepted: true, authorization_accepted: false },
-             headers: auth_header_for(user),
-             as: :json
+        with_env("CHECKR_DEFAULT_PACKAGE" => "essential") do
+          post "/api/v1/verification/start_background_check",
+               headers: auth_header_for(user),
+               as: :json
+        end
 
         assert_response :unprocessable_entity
         body = JSON.parse(response.body)
-        assert_includes body["error"], "accept the disclosure and authorization"
+        assert_equal "acknowledgements_required", body["code"]
       end
 
       test "background check options endpoint returns data" do
         user, = create_technician_with_membership("basic", "verification-options@example.com")
-        with_stubbed_checkr_options do
-          get "/api/v1/verification/background_check_options",
-              headers: auth_header_for(user),
-              as: :json
+        with_env("CHECKR_DEFAULT_PACKAGE" => "essential") do
+          with_stubbed_checkr_options do
+            get "/api/v1/verification/background_check_options",
+                headers: auth_header_for(user),
+                as: :json
+          end
         end
 
         assert_response :ok
         body = JSON.parse(response.body)
-        assert_equal true, body["nodes_exist"]
+        assert_equal false, body["nodes_exist"]
         assert_equal "essential", body["configured_package_name"]
         assert_equal true, body["ready_for_start"]
         assert_equal "essential", body["packages"][0]["slug"]
@@ -229,34 +295,41 @@ module Api
 
       test "premium start returns error when checkr api key is missing" do
         user, = create_technician_with_membership("premium", "verification-no-checkr-key@example.com")
+        accept_acknowledgements!(user)
         old_staging = ENV["CHECKR_STAGING_API_KEY"]
         old_api = ENV["CHECKR_API_KEY"]
+        old_secret = ENV["CHECKR_SECRET_KEY"]
         ENV["CHECKR_STAGING_API_KEY"] = nil
         ENV["CHECKR_API_KEY"] = nil
+        ENV["CHECKR_SECRET_KEY"] = nil
 
-        post "/api/v1/verification/start_background_check",
-             params: background_check_consent_params,
-             headers: auth_header_for(user),
-             as: :json
+        with_env("CHECKR_DEFAULT_PACKAGE" => "essential") do
+          post "/api/v1/verification/start_background_check",
+               headers: auth_header_for(user),
+               as: :json
+        end
 
         assert_response :unprocessable_entity
       ensure
         ENV["CHECKR_STAGING_API_KEY"] = old_staging
         ENV["CHECKR_API_KEY"] = old_api
+        ENV["CHECKR_SECRET_KEY"] = old_secret
       end
 
       test "start background check uses demo bypass when enabled" do
         user, = create_technician_with_membership("basic", "verification-demo-bypass@example.com")
+        accept_acknowledgements!(user)
         old_staging = ENV["CHECKR_STAGING_API_KEY"]
         old_api = ENV["CHECKR_API_KEY"]
         ENV["CHECKR_STAGING_API_KEY"] = nil
         ENV["CHECKR_API_KEY"] = nil
 
-        with_checkr_demo_bypass do
-          post "/api/v1/verification/start_background_check",
-               params: background_check_consent_params,
-               headers: auth_header_for(user),
-               as: :json
+        with_env("CHECKR_DEFAULT_PACKAGE" => "essential") do
+          with_checkr_demo_bypass do
+            post "/api/v1/verification/start_background_check",
+                 headers: auth_header_for(user),
+                 as: :json
+          end
         end
 
         assert_response :ok
@@ -267,7 +340,7 @@ module Api
 
         check = BackgroundCheck.order(:id).last
         assert_equal "waived", check.payment_status
-        assert_equal "admin", check.paid_by
+        assert_equal "platform", check.paid_by
         assert_equal "invitation_sent", check.normalized_status
       ensure
         ENV["CHECKR_STAGING_API_KEY"] = old_staging
@@ -276,6 +349,7 @@ module Api
 
       test "start background check returns error when checkr is disabled and demo bypass is off" do
         user, = create_technician_with_membership("premium", "verification-disabled-start@example.com")
+        accept_acknowledgements!(user)
         old_enabled = ENV["CHECKR_ENABLED"]
         old_background_checks_enabled = ENV["CHECKR_BACKGROUND_CHECKS_ENABLED"]
         old_demo_bypass = ENV["CHECKR_DEMO_BYPASS"]
@@ -283,10 +357,11 @@ module Api
         ENV["CHECKR_BACKGROUND_CHECKS_ENABLED"] = "false"
         ENV["CHECKR_DEMO_BYPASS"] = "false"
 
-        post "/api/v1/verification/start_background_check",
-             params: background_check_consent_params,
-             headers: auth_header_for(user),
-             as: :json
+        with_env("CHECKR_DEFAULT_PACKAGE" => "essential") do
+          post "/api/v1/verification/start_background_check",
+               headers: auth_header_for(user),
+               as: :json
+        end
 
         assert_response :unprocessable_entity
         body = JSON.parse(response.body)
@@ -297,9 +372,9 @@ module Api
         ENV["CHECKR_DEMO_BYPASS"] = old_demo_bypass
       end
 
-      test "create background checkout returns checkout url for pending payment" do
-        user, profile = create_technician_with_membership("basic", "verification-checkout@example.com")
-        check = BackgroundCheck.create!(
+      test "create background checkout is disabled for technicians" do
+        user, = create_technician_with_membership("basic", "verification-checkout@example.com")
+        BackgroundCheck.create!(
           user: user,
           provider: "checkr",
           package_name: "essential_plus",
@@ -308,27 +383,14 @@ module Api
           status: :not_started
         )
 
-        with_stubbed_checkout_session("https://checkout.stripe.test/session_1") do
-          post "/api/v1/verification/create_background_check_checkout",
-               headers: auth_header_for(user),
-               as: :json
-        end
-
-        assert_response :ok
-        body = JSON.parse(response.body)
-        assert_equal "https://checkout.stripe.test/session_1", body["checkout_url"]
-        check.reload
-        assert_equal "cs_test_123", check.stripe_checkout_session_id
-      end
-
-      test "create background checkout fails when no pending payment exists" do
-        user, profile = create_technician_with_membership("basic", "verification-no-pending-checkout@example.com")
-
         post "/api/v1/verification/create_background_check_checkout",
              headers: auth_header_for(user),
              as: :json
 
-        assert_response :unprocessable_entity
+        assert_response :gone
+        body = JSON.parse(response.body)
+        assert_equal "technician_background_check_payment_disabled", body["code"]
+        assert_equal false, body["payment_required"]
       end
 
       test "technician verification response does not expose checkr report or dashboard links" do
@@ -364,15 +426,52 @@ module Api
           email: email,
           password: "password123",
           password_confirmation: "password123",
-          role: :technician
+          role: :technician,
+          first_name: "Tech",
+          last_name: "User"
         )
         profile = TechnicianProfile.create!(
           user: user,
           trade_type: "General",
           availability: "Full-time",
-          membership_level: level
+          membership_level: level,
+          city: "Houston",
+          state: "TX",
+          country: "US",
+          zip_code: "77002"
         )
         [user, profile]
+      end
+
+      def accept_acknowledgements!(user)
+        BackgroundCheckAcknowledgement::TYPES.each do |type|
+          BackgroundCheckAcknowledgementService.upsert!(
+            user: user,
+            acknowledgement_type: type,
+            accepted: true,
+            actor_user: user
+          )
+        end
+      end
+
+      def with_env(overrides)
+        previous = overrides.keys.to_h { |key| [key, ENV[key]] }
+        overrides.each do |key, value|
+          if value.nil?
+            ENV.delete(key)
+          else
+            ENV[key] = value
+          end
+        end
+        yield
+      ensure
+        previous.each do |key, value|
+          if value.nil?
+            ENV.delete(key)
+          else
+            ENV[key] = value
+          end
+        end
       end
 
       def with_stubbed_background_launch(invitation_url)
@@ -420,9 +519,8 @@ module Api
             { "id" => "pkg_2", "slug" => "essential_plus", "name" => "Essential Plus" }
           ]
         end
-        fake_client.define_singleton_method(:list_nodes) do
-          [{ "id" => "node_1", "custom_id" => "houston_node", "name" => "Houston Node", "package_slugs" => ["essential", "essential_plus"] }]
-        end
+        # Zero nodes: segmentation may be enabled but invitations omit `node`.
+        fake_client.define_singleton_method(:list_nodes) { [] }
         CheckrClient.singleton_class.send(:define_method, :new) { fake_client }
         yield
       ensure
