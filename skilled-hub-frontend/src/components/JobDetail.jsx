@@ -244,6 +244,11 @@ const JobDetail = () => {
         setFundPreview(null);
         return;
       }
+      // Server feature flag defaults OFF until Task B C-1/C-2; do not call fund APIs when disabled.
+      if (job.payment_summary?.post_publish_funding_enabled === false) {
+        setFundPreview(null);
+        return;
+      }
       const manage =
         user?.role === 'admin' ||
         auth.isAdmin() ||
@@ -1283,7 +1288,7 @@ const JobDetail = () => {
             <p className="text-amber-800">Amount still due: ${((job.payment_summary.amount_due_cents) / 100).toFixed(2)}</p>
           )}
           {job.payment_summary.transferred_cents > 0 && <p>Released to technician.</p>}
-          {canManageJob && fundPreview?.amount_due_cents > 0 && (
+          {canManageJob && job.payment_summary?.post_publish_funding_enabled !== false && fundPreview?.amount_due_cents > 0 && (
             <div className="mt-3 rounded border border-amber-200 bg-white px-3 py-2 space-y-2">
               <p className="font-medium text-amber-950">Fund remaining balance</p>
               <p>

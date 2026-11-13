@@ -674,10 +674,18 @@ module Api
 
       # Preview outstanding cash due + default payment method before company confirms.
       # Never charges. Availability of ACH here does not create a mandate.
+      # Gated by PostPublishFundingAccess (defaults OFF until Task B C-1/C-2 lands).
       def fund_preview
         job = Job.find(params[:id])
         unless can_manage_job?(job)
           return render json: { error: "Access denied" }, status: :forbidden
+        end
+        unless PostPublishFundingAccess.enabled?
+          return render json: {
+            error: PostPublishFundingAccess::USER_SAFE_MESSAGE,
+            code: "post_publish_funding_disabled",
+            post_publish_funding_enabled: false
+          }, status: :forbidden
         end
         unless job.priced?
           return render json: { error: "Unpriced jobs do not require funding.", amount_due_cents: 0 }, status: :unprocessable_entity
@@ -702,7 +710,8 @@ module Api
           payment_method_id: pm_id,
           payment_method_type: pm_type || (JobStripeOps.simulate_stripe? ? "card" : nil),
           ach_processing: job.job_payment_transactions.status_processing.any?(&:ach?),
-          work_allowed: job.funding_allows_work?
+          work_allowed: job.funding_allows_work?,
+          post_publish_funding_enabled: true
         }, status: :ok
       rescue ActiveRecord::RecordNotFound
         render json: { error: "Job not found" }, status: :not_found
@@ -710,10 +719,18 @@ module Api
 
       # Company-initiated collect of remaining required funding after waived publish.
       # Requires explicit confirmation of amount + payment method. Never auto-debits.
+      # Gated by PostPublishFundingAccess (defaults OFF until Task B C-1/C-2 lands).
       def fund
         job = Job.find(params[:id])
         unless can_manage_job?(job)
           return render json: { error: "Access denied" }, status: :forbidden
+        end
+        unless PostPublishFundingAccess.enabled?
+          return render json: {
+            error: PostPublishFundingAccess::USER_SAFE_MESSAGE,
+            code: "post_publish_funding_disabled",
+            post_publish_funding_enabled: false
+          }, status: :forbidden
         end
 
         result = JobFundingAdjustmentService.collect_remaining!(

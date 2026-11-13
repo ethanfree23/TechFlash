@@ -155,18 +155,21 @@ class JobSerializer < ActiveModel::Serializer
       processing_amount_cents: processing_txns.sum(&:amount_cents),
       latest_payment_method_type: latest_collection&.payment_method_type,
       latest_payment_method_display: latest_collection&.payment_method_display,
-      latest_payment_status: latest_collection&.status
+      latest_payment_status: latest_collection&.status,
+      post_publish_funding_enabled: PostPublishFundingAccess.enabled?
     }
   rescue JobLedger::MissingCommissionSnapshotError
     {
       state: object.try(:funding_status),
       settlement_status: object.try(:settlement_status),
-      snapshot_missing: true
+      snapshot_missing: true,
+      post_publish_funding_enabled: PostPublishFundingAccess.enabled?
     }
   rescue StandardError
     {
       state: object.try(:funding_status),
-      snapshot_missing: true
+      snapshot_missing: true,
+      post_publish_funding_enabled: PostPublishFundingAccess.enabled?
     }
   end
 
