@@ -169,6 +169,38 @@ module Api
           render json: { error: "Not found" }, status: :not_found
         end
 
+        # POST /api/v1/admin/job_payments/:id/reconcile_collection
+        # Looks up Stripe for a company collection whose outcome is unknown (or pending with a
+        # stamped attempt, or failed without a PaymentIntent id). Read-only against Stripe; never
+        # creates a PaymentIntent. Optional mark_failed=true + reason: only honoured after a
+        # complete not-found search outside the same-key safe window (audited).
+        def reconcile_collection
+          txn = JobPaymentTransaction.find(params[:id])
+          mark_failed = ActiveModel::Type::Boolean.new.cast(params[:mark_failed])
+          decision = CollectionOutcomeReconciler.reconcile!(
+            txn,
+            admin_mark_failed: mark_failed,
+            actor: current_user,
+            reason: params[:reason]
+          )
+          payload = {
+            ok: decision.resolved? || decision.retry_same_key_allowed? || decision.not_applicable?,
+            outcome: decision.outcome,
+            message: decision.message,
+            error: decision.error,
+            mismatches: decision.mismatches,
+            lookup_status: decision.lookup_status,
+            reconciliation_state: CollectionOutcomeReconciler.reconciliation_state(txn.reload),
+            job_payment: serialize(txn, detailed: true)
+          }.compact
+          status = payload[:ok] ? :ok : :unprocessable_entity
+          render json: payload, status: status
+        rescue ArgumentError => e
+          render json: { ok: false, error: e.message }, status: :unprocessable_entity
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Not found" }, status: :not_found
+        end
+
         private
 
         def attention_counts

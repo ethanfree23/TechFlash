@@ -100,6 +100,7 @@ module Api
               .where(status: :pending_funding)
               .where("updated_at < ?", cutoff)
               .count,
+            unknown_payments: unknown_payments_summary,
             global: {
               global_ach_payments_enabled: AchAccess.global_enabled_without_env_kill,
               effective_global_ach_payments_enabled: AchAccess.global_enabled?,
@@ -110,6 +111,61 @@ module Api
         end
 
         private
+
+        # Company collections whose Stripe outcome is not known: outcome_unknown rows, pending
+        # rows whose attempt was stamped but never finalized, and failed rows with no
+        # PaymentIntent id (a failure recorded without Stripe evidence).
+        def unknown_payments_summary
+          collections = JobPaymentTransaction.company_collections.includes(job: :company_profile)
+          unknown = collections.status_outcome_unknown.order(:id).to_a
+          stuck_pending = collections.status_pending.where.not(collection_first_attempted_at: nil)
+            .where("collection_first_attempted_at < ?", 10.minutes.ago).order(:id).to_a
+          failed_without_pi = collections.status_failed.where(stripe_payment_intent_id: [nil, ""]).order(:id).to_a
+
+          unresolved = unknown + stuck_pending
+          ages = unresolved.map { |t| t.collection_first_attempted_at || t.created_at }.compact
+          oldest_age = ages.min ? (Time.current - ages.min).to_i : nil
+
+          # Duplicate attempts: more than one non-terminal collection for the same job/type/revision.
+          duplicates = collections
+            .where(status: %i[pending processing requires_action outcome_unknown])
+            .group(:job_id, :transaction_type, :revision)
+            .having("COUNT(*) > 1")
+            .count
+
+          {
+            collections_outcome_unknown: unknown.size,
+            collections_pending_with_attempt: stuck_pending.size,
+            collections_failed_without_payment_intent: failed_without_pi.size,
+            oldest_unresolved_age_seconds: oldest_age,
+            reconciliation: {
+              pending: unresolved.count { |t| CollectionOutcomeReconciler.reconciliation_state(t) == "pending_reconciliation" },
+              requires_admin: unresolved.count { |t| CollectionOutcomeReconciler.reconciliation_state(t) == "requires_admin" }
+            },
+            duplicate_in_flight_attempts: duplicates.size,
+            unresolved: unresolved.map { |t| unknown_payment_row(t) },
+            failed_without_payment_intent: failed_without_pi.first(50).map { |t| unknown_payment_row(t) },
+            smoke_tests: InternalFinancialSmokeTestService.monitoring_summary
+          }
+        end
+
+        def unknown_payment_row(txn)
+          first = txn.collection_first_attempted_at || txn.created_at
+          {
+            transaction_id: txn.id,
+            job_id: txn.job_id,
+            company_profile_id: txn.job&.company_profile_id,
+            transaction_type: txn.transaction_type,
+            status: txn.status,
+            amount_cents: txn.amount_cents,
+            payment_method_type: txn.payment_method_type,
+            stripe_payment_intent_id: txn.stripe_payment_intent_id,
+            first_attempted_at: txn.collection_first_attempted_at,
+            age_seconds: (first ? (Time.current - first).to_i : nil),
+            reconciliation: CollectionOutcomeReconciler.reconciliation_state(txn),
+            investigation_required: txn.investigation_required
+          }
+        end
 
         def recent_audits(company_profile_id: nil, limit: 25)
           scope = AchFeatureAudit.order(created_at: :desc)

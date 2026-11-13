@@ -226,6 +226,14 @@ module Api
               message: result[:message] || "Bank debit initiated. This job will publish when the ACH payment succeeds."
             }, status: :accepted
           end
+          if result[:outcome_unknown]
+            return render json: {
+              job: JobSerializer.new(job.reload, scope: @current_user).as_json,
+              payment_outcome_unknown: true,
+              code: result[:code] || "payment_outcome_unknown",
+              message: result[:error] || "Your payment result could not be confirmed. Do not re-post this job; it will be reconciled automatically."
+            }, status: :accepted
+          end
           unless result[:success]
             return render json: { error: result[:error] || "Payment failed. This job was not published.", job: JobSerializer.new(job.reload, scope: @current_user).as_json }, status: :unprocessable_entity
           end
@@ -786,6 +794,15 @@ module Api
               payment_processing: true,
               payment_method_type: result[:payment_method_type] || "us_bank_account",
               message: result[:message] || "Bank debit initiated. This job will publish when the ACH payment succeeds."
+            }, status: :accepted
+            return :halted
+          end
+          if result[:outcome_unknown]
+            render json: {
+              job: JobSerializer.new(job.reload, scope: @current_user).as_json,
+              payment_outcome_unknown: true,
+              code: result[:code] || "payment_outcome_unknown",
+              message: result[:error] || "Your payment result could not be confirmed. Do not re-post this job; it will be reconciled automatically."
             }, status: :accepted
             return :halted
           end

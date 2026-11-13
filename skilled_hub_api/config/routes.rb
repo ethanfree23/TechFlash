@@ -226,6 +226,7 @@ Rails.application.routes.draw do
           member do
             post :resolve_risk
             post :reconcile_transfer
+            post :reconcile_collection
           end
         end
         post "payment_risk_events/:id/resolve", to: "job_payments#resolve_risk_event"

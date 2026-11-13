@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_12_190000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_12_230100) do
   create_table "ach_feature_audits", force: :cascade do |t|
     t.string "scope", null: false
     t.integer "company_profile_id"
@@ -586,6 +586,46 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_190000) do
     t.index ["user_id"], name: "index_ghl_webhook_events_on_user_id"
   end
 
+  create_table "internal_financial_smoke_tests", force: :cascade do |t|
+    t.string "public_id", null: false
+    t.integer "company_profile_id", null: false
+    t.integer "operator_user_id", null: false
+    t.string "operator_email"
+    t.string "authorization_reference", null: false
+    t.datetime "authorized_at", null: false
+    t.text "authorization_reason", null: false
+    t.integer "amount_cents", null: false
+    t.string "currency", default: "usd", null: false
+    t.string "stripe_customer_id", null: false
+    t.string "stripe_payment_method_id", null: false
+    t.string "idempotency_key", null: false
+    t.string "stripe_payment_intent_id"
+    t.string "stripe_charge_id"
+    t.string "status", default: "authorized", null: false
+    t.string "reconciliation_status", default: "none", null: false
+    t.string "dispute_status"
+    t.string "stripe_dispute_id"
+    t.boolean "livemode"
+    t.text "error_message"
+    t.string "error_class"
+    t.json "webhook_event_ids", default: [], null: false
+    t.json "history_json", default: [], null: false
+    t.datetime "first_attempted_at"
+    t.datetime "last_attempted_at"
+    t.datetime "processing_at"
+    t.datetime "succeeded_at"
+    t.datetime "failed_at"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["authorization_reference"], name: "idx_ifst_on_authorization_reference", unique: true
+    t.index ["company_profile_id"], name: "idx_ifst_on_company_profile_id"
+    t.index ["idempotency_key"], name: "idx_ifst_on_idempotency_key", unique: true
+    t.index ["public_id"], name: "idx_ifst_on_public_id", unique: true
+    t.index ["status"], name: "idx_ifst_on_status"
+    t.index ["stripe_charge_id"], name: "idx_ifst_on_stripe_charge_id"
+    t.index ["stripe_payment_intent_id"], name: "idx_ifst_on_stripe_payment_intent_id"
+  end
+
   create_table "job_alert_preferences", force: :cascade do |t|
     t.integer "user_id", null: false
     t.string "trade_label"
@@ -714,6 +754,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_12_190000) do
     t.string "source_charge_id"
     t.string "bank_payout_status"
     t.datetime "transfer_first_attempted_at"
+    t.datetime "collection_first_attempted_at"
+    t.index ["collection_first_attempted_at"], name: "idx_jpt_on_collection_first_attempted_at"
     t.index ["dispute_status"], name: "index_job_payment_transactions_on_dispute_status"
     t.index ["idempotency_key"], name: "index_job_payment_transactions_on_idempotency_key", unique: true
     t.index ["job_id", "transaction_type"], name: "index_job_payment_transactions_on_job_id_and_transaction_type"
