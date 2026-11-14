@@ -203,11 +203,13 @@ module Api
           # Preserve the provider phase: the legacy status enum doubles as the eligibility
           # flag, so writing it must not erase what Checkr actually reported.
           check.normalized_status = check.normalized_status_value if check.normalized_status.blank?
+          # The provider's completion timestamp is part of the Checkr record; only fill it when
+          # there is none. The override's own timestamp lives in the audit log.
           check.update!(
             status: override,
             admin_override_status: override,
             admin_notes: notes,
-            completed_at: Time.current
+            completed_at: check.completed_at || Time.current
           )
           if override == "manually_approved"
             check.update!(expires_at: 1.year.from_now) if check.expires_at.blank?
