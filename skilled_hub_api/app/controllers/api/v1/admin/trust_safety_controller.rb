@@ -5,6 +5,134 @@ module Api
         before_action :authenticate_user
         before_action :require_admin
 
+        ITEM_TYPES = {
+          "background_check" => BackgroundCheck,
+          "document" => Document,
+          "reference" => VerificationReference
+        }.freeze
+
+        # ------------------------------------------------------------------------------
+        # Read endpoints for the redesigned Trust & Safety workspace
+        # ------------------------------------------------------------------------------
+
+        def summary
+          render json: TrustSafety::Summary.call, status: :ok
+        end
+
+        def queue
+          render json: TrustSafety::ReviewQueue.call(queue_params), status: :ok
+        end
+
+        def technicians
+          render json: TrustSafety::TechnicianDirectory.call(technicians_params), status: :ok
+        end
+
+        def technician
+          user = User.find(params[:user_id])
+          profile = TrustSafety::TrustProfile.call(user)
+          return render json: { error: "User is not a technician" }, status: :unprocessable_entity if profile.nil?
+
+          render json: { trust_profile: profile }, status: :ok
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Technician not found" }, status: :not_found
+        end
+
+        def item
+          record = find_item!(params[:item_type], params[:id])
+          render json: { item: serialize_item(record, detail: true), audit: item_audit(record) }, status: :ok
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Item not found" }, status: :not_found
+        end
+
+        # Short-lived signed URL for a technician document. Admin-only; the signed blob id
+        # expires after TrustSafety::DocumentFileAccess::TTL so links cannot be shared.
+        def document_file
+          doc = Document.find(params[:id])
+          unless reviewable_document?(doc)
+            return render json: { error: "Document is not part of technician verification" }, status: :forbidden
+          end
+
+          render json: { file: TrustSafety::DocumentFileAccess.for(doc) }, status: :ok
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Document not found" }, status: :not_found
+        end
+
+        def audit
+          render json: TrustSafety::AuditFeed.call(audit_params), status: :ok
+        end
+
+        # ------------------------------------------------------------------------------
+        # Reviewer notes / information requests / contact attempts
+        # ------------------------------------------------------------------------------
+
+        def create_note
+          record = find_item!(params[:item_type], params[:id])
+          body = params[:note].to_s.strip
+          return render json: { error: "note is required" }, status: :unprocessable_entity if body.blank?
+
+          owner = owner_user_for(record)
+          return render json: { error: "Item has no technician owner" }, status: :unprocessable_entity unless owner
+
+          log = VerificationAuditLog.record!(user: owner, actor_user: @current_user, entity: record, action: "reviewer_note", details: { note: body })
+          render json: { message: "Note saved.", event: TrustSafety::AuditFeed.serialize(log), item: serialize_item(record, detail: true) }, status: :created
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Item not found" }, status: :not_found
+        end
+
+        def request_document_info
+          doc = Document.find(params[:id])
+          return render json: { error: "Document is not part of technician verification" }, status: :forbidden unless reviewable_document?(doc)
+
+          message = params[:reason].to_s.strip
+          return render json: { error: "reason is required" }, status: :unprocessable_entity if message.blank?
+          return render json: { error: "Only pending documents can have information requested", code: "already_reviewed" }, status: :conflict unless doc.pending_review?
+
+          owner = resolve_document_owner_user(doc)
+          return render json: { error: "Document has no technician owner" }, status: :unprocessable_entity unless owner
+
+          doc.touch
+          VerificationAuditLog.record!(user: owner, actor_user: @current_user, entity: doc, action: "document_info_requested", details: { doc_type: doc.doc_type, message: message })
+          VerificationEventNotifier.more_information_requested(owner, doc, message: message)
+          render json: { message: "Information request sent to the technician.", item: serialize_item(doc, detail: true) }, status: :ok
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Document not found" }, status: :not_found
+        end
+
+        def request_reference_info
+          ref = VerificationReference.find(params[:id])
+          message = params[:reason].to_s.strip
+          return render json: { error: "reason is required" }, status: :unprocessable_entity if message.blank?
+          return render json: { error: "Reference has already been decided", code: "already_reviewed" }, status: :conflict unless ref.requested? || ref.responded?
+
+          ref.touch
+          VerificationAuditLog.record!(user: ref.technician_user, actor_user: @current_user, entity: ref, action: "reference_info_requested", details: { reference_name: ref.full_name, message: message })
+          VerificationEventNotifier.more_information_requested(ref.technician_user, ref, message: message)
+          render json: { message: "Information request sent to the technician.", item: serialize_item(ref, detail: true) }, status: :ok
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Reference not found" }, status: :not_found
+        end
+
+        def record_reference_contact_attempt
+          ref = VerificationReference.find(params[:id])
+          outcome = params[:outcome].to_s
+          unless TrustSafety::ReferencePolicy::CONTACT_OUTCOMES.include?(outcome)
+            return render json: { error: "outcome must be one of #{TrustSafety::ReferencePolicy::CONTACT_OUTCOMES.join(', ')}" }, status: :unprocessable_entity
+          end
+
+          ref.touch
+          VerificationAuditLog.record!(
+            user: ref.technician_user, actor_user: @current_user, entity: ref, action: "reference_contact_attempt",
+            details: { outcome: outcome, method: params[:method].to_s.presence, note: params[:note].to_s.strip.presence, reference_name: ref.full_name }
+          )
+          render json: { message: "Contact attempt recorded.", item: serialize_item(ref, detail: true) }, status: :ok
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Reference not found" }, status: :not_found
+        end
+
+        # ------------------------------------------------------------------------------
+        # Legacy dashboard (kept for backwards compatibility)
+        # ------------------------------------------------------------------------------
+
         def dashboard
           pending_background = BackgroundCheck.where(status: %i[pending processing consider invited]).count
           pending_references = VerificationReference.pending_review.count
@@ -46,14 +174,35 @@ module Api
           }, status: :ok
         end
 
+        # Manual override of the *internal* decision on a Checkr report. The Checkr report
+        # itself is never modified. Requires: a reviewable report (policy), a written
+        # reason, explicit confirmation, and an unchanged record (optimistic concurrency).
         def override_background_check
           check = BackgroundCheck.find(params[:id])
           override = params[:override_status].to_s
-          notes = params[:admin_notes].to_s
+          notes = (params[:reason].presence || params[:admin_notes]).to_s.strip
           unless %w[manually_approved manually_rejected].include?(override)
             return render json: { error: "override_status must be manually_approved or manually_rejected" }, status: :unprocessable_entity
           end
+          return render json: { error: "A written reason is required for a manual override.", code: "reason_required" }, status: :unprocessable_entity if notes.blank?
+          return render json: { error: "Confirmation is required for a manual override.", code: "confirmation_required" }, status: :unprocessable_entity unless confirmed?
+          if (conflict = stale_write_conflict(check))
+            return render json: conflict, status: :conflict
+          end
+          unless TrustSafety::BackgroundCheckPolicy.override_allowed?(check, override)
+            return render json: {
+              error: TrustSafety::BackgroundCheckPolicy.override_block_reason(check) || "This override is not allowed for the report's current state.",
+              code: "override_not_allowed",
+              provider_status: TrustSafety::BackgroundCheckPolicy.presentation(check),
+              allowed_overrides: TrustSafety::BackgroundCheckPolicy.allowed_overrides(check)
+            }, status: :unprocessable_entity
+          end
 
+          previous_override = check.admin_override_status
+          previous_status = check.status
+          # Preserve the provider phase: the legacy status enum doubles as the eligibility
+          # flag, so writing it must not erase what Checkr actually reported.
+          check.normalized_status = check.normalized_status_value if check.normalized_status.blank?
           check.update!(
             status: override,
             admin_override_status: override,
@@ -74,11 +223,24 @@ module Api
             actor_user: @current_user,
             entity: check,
             action: "background_check_override",
-            details: { override_status: override, admin_notes: notes }
+            details: {
+              override_status: override,
+              admin_notes: notes,
+              reason: notes,
+              previous_override_status: previous_override,
+              previous_status: previous_status,
+              provider_normalized_status: check.normalized_status_value,
+              provider_result: check.result,
+              provider_report_id: check.provider_report_id
+            }
           )
           VerificationEventNotifier.background_check_result(check.user, check)
 
-          render json: { message: "Background check override saved.", background_check: check }, status: :ok
+          render json: {
+            message: "Background check override saved.",
+            background_check: check,
+            item: serialize_item(check.reload, detail: true)
+          }, status: :ok
         rescue ActiveRecord::RecordNotFound
           render json: { error: "Background check not found" }, status: :not_found
         end
@@ -86,26 +248,49 @@ module Api
         def review_reference
           ref = VerificationReference.find(params[:id])
           review_status = params[:status].to_s
+          notes = (params[:reason].presence || params[:review_notes]).to_s.strip
           unless %w[approved rejected].include?(review_status)
             return render json: { error: "status must be approved or rejected" }, status: :unprocessable_entity
           end
+          if (conflict = stale_write_conflict(ref))
+            return render json: conflict, status: :conflict
+          end
 
+          already_decided = ref.approved? || ref.rejected?
+          override = override_requested?
+          if already_decided && !override
+            return render json: {
+              error: "This reference was already #{ref.status}. Re-open with an override and a reason to change the decision.",
+              code: "already_reviewed",
+              item: serialize_item(ref, detail: true)
+            }, status: :conflict
+          end
+          return render json: { error: "A reason is required to reject a reference.", code: "reason_required" }, status: :unprocessable_entity if review_status == "rejected" && notes.blank?
+          if review_status == "approved" && ref.requested? && !override
+            return render json: {
+              error: "This reference has not responded yet. Approving requires an override and a note describing how it was verified.",
+              code: "override_required"
+            }, status: :unprocessable_entity
+          end
+          return render json: { error: "A reason is required for an override.", code: "reason_required" }, status: :unprocessable_entity if override && notes.blank?
+
+          previous_status = ref.status
           ref.update!(
             status: review_status,
             reviewed_by_user: @current_user,
             reviewed_at: Time.current,
-            review_notes: params[:review_notes].to_s.presence
+            review_notes: notes.presence
           )
           sync_reference_verification!(ref.technician_user)
           VerificationAuditLog.record!(
             user: ref.technician_user,
             actor_user: @current_user,
             entity: ref,
-            action: "reference_#{review_status}",
-            details: { review_notes: ref.review_notes }
+            action: already_decided ? "reference_rereviewed" : "reference_#{review_status}",
+            details: { review_notes: ref.review_notes, reason: notes.presence, new_status: review_status, previous_status: previous_status, override: override }
           )
           VerificationEventNotifier.reference_reviewed(ref.technician_user, ref)
-          render json: { message: "Reference #{review_status}.", reference: ref }, status: :ok
+          render json: { message: "Reference #{review_status}.", reference: ref, item: serialize_item(ref.reload, detail: true) }, status: :ok
         rescue ActiveRecord::RecordNotFound
           render json: { error: "Reference not found" }, status: :not_found
         end
@@ -113,15 +298,32 @@ module Api
         def review_document
           doc = Document.find(params[:id])
           review_status = params[:status].to_s
+          reason = (params[:reason].presence || params[:rejection_reason]).to_s.strip
           unless %w[approved rejected].include?(review_status)
             return render json: { error: "status must be approved or rejected" }, status: :unprocessable_entity
           end
+          if (conflict = stale_write_conflict(doc))
+            return render json: conflict, status: :conflict
+          end
 
+          already_decided = doc.approved? || doc.rejected?
+          override = override_requested?
+          if already_decided && !override
+            return render json: {
+              error: "This document was already #{doc.status}. Re-open with an override and a reason to change the decision.",
+              code: "already_reviewed",
+              item: serialize_item(doc, detail: true)
+            }, status: :conflict
+          end
+          return render json: { error: "A reason is required to reject a document.", code: "reason_required" }, status: :unprocessable_entity if review_status == "rejected" && reason.blank?
+          return render json: { error: "A reason is required for an override.", code: "reason_required" }, status: :unprocessable_entity if override && reason.blank?
+
+          previous_status = doc.status
           doc.update!(
             status: review_status,
             reviewed_by_user: @current_user,
             reviewed_at: Time.current,
-            rejection_reason: (review_status == "rejected" ? params[:rejection_reason].to_s.presence : nil)
+            rejection_reason: (review_status == "rejected" ? reason.presence : nil)
           )
           owner_user = resolve_document_owner_user(doc)
           if owner_user.present?
@@ -130,17 +332,99 @@ module Api
               user: owner_user,
               actor_user: @current_user,
               entity: doc,
-              action: "document_#{review_status}",
-              details: { doc_type: doc.doc_type, rejection_reason: doc.rejection_reason }
+              action: already_decided ? "document_rereviewed" : "document_#{review_status}",
+              details: { doc_type: doc.doc_type, rejection_reason: doc.rejection_reason, reason: reason.presence, new_status: review_status, previous_status: previous_status, override: override }
             )
             VerificationEventNotifier.document_reviewed(owner_user, doc)
           end
-          render json: { message: "Document #{review_status}.", document: doc }, status: :ok
+          render json: { message: "Document #{review_status}.", document: serialize_documents([doc]).first, item: serialize_item(doc.reload, detail: true) }, status: :ok
         rescue ActiveRecord::RecordNotFound
           render json: { error: "Document not found" }, status: :not_found
         end
 
         private
+
+        def queue_params
+          params.permit(:q, :review_type, :status, :trade, :state, :technician_user_id, :sort, :page, :per_page).to_h.symbolize_keys
+        end
+
+        def technicians_params
+          params.permit(:q, :verification, :trade, :state, :sort, :page, :per_page).to_h.symbolize_keys
+        end
+
+        def audit_params
+          params.permit(:technician_user_id, :item_type, :item_id, :event_action, :q, :page, :per_page).to_h.symbolize_keys
+        end
+
+        def confirmed?
+          ActiveModel::Type::Boolean.new.cast(params[:confirm]) == true
+        end
+
+        def override_requested?
+          ActiveModel::Type::Boolean.new.cast(params[:override]) == true
+        end
+
+        # Optimistic concurrency: clients send the `updated_at` they rendered; if another
+        # reviewer changed the record since, refuse the write and return the latest state.
+        def stale_write_conflict(record)
+          expected = params[:expected_updated_at].to_s
+          return nil if expected.blank?
+
+          begin
+            expected_time = Time.iso8601(expected)
+          rescue ArgumentError
+            return { error: "expected_updated_at must be an ISO8601 timestamp", code: "invalid_expected_updated_at" }
+          end
+          return nil if (record.updated_at.to_f - expected_time.to_f).abs < 1
+
+          {
+            error: "This item was updated by another reviewer. Review the latest decision before acting.",
+            code: "stale_write",
+            item: serialize_item(record, detail: true)
+          }
+        end
+
+        def find_item!(item_type, id)
+          model = ITEM_TYPES[item_type.to_s]
+          raise ActiveRecord::RecordNotFound unless model
+
+          record = model.find(id)
+          raise ActiveRecord::RecordNotFound if record.is_a?(Document) && !reviewable_document?(record)
+
+          record
+        end
+
+        def reviewable_document?(doc)
+          doc.uploadable_type == "TechnicianProfile" && TrustSafety::DocumentPolicy::REVIEWABLE_TYPES.include?(doc.doc_type.to_s)
+        end
+
+        def owner_user_for(record)
+          case record
+          when BackgroundCheck then record.user
+          when VerificationReference then record.technician_user
+          when Document then resolve_document_owner_user(record)
+          end
+        end
+
+        def serialize_item(record, detail: false)
+          owner = owner_user_for(record)
+          identity = TrustSafety::TechnicianIdentity.for(owner)
+          case record
+          when BackgroundCheck
+            TrustSafety::ItemSerializer.background_check(record, identity: identity, detail: detail)
+          when Document
+            file_access = detail ? TrustSafety::DocumentFileAccess.for(record) : nil
+            TrustSafety::ItemSerializer.document(record, identity: identity, detail: detail, file_access: file_access)
+          when VerificationReference
+            TrustSafety::ItemSerializer.reference(record, identity: identity, detail: detail)
+          end
+        end
+
+        def item_audit(record)
+          VerificationAuditLog.includes(:actor_user).where(entity_type: record.class.name, entity_id: record.id)
+                              .order(created_at: :desc, id: :desc).limit(100)
+                              .map { |row| TrustSafety::AuditFeed.serialize(row) }
+        end
 
         def verification_completion_rate
           total = TechnicianProfile.count

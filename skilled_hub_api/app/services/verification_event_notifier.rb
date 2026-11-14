@@ -116,6 +116,23 @@ class VerificationEventNotifier
       )
     end
 
+    # Admin asked the technician for more information about a document or reference.
+    def more_information_requested(user, entity, message:)
+      subject =
+        case entity
+        when Document then "your #{entity.doc_type.to_s.tr('_', ' ')} document"
+        when VerificationReference then "your reference from #{entity.full_name}"
+        else "your verification"
+        end
+      create_app_notification(
+        user: user,
+        category: "verification",
+        title: "More information needed",
+        body: "Trust & Safety needs more information about #{subject}: #{message}",
+        metadata: { entity_type: entity.class.name, entity_id: entity.id, message: message }
+      )
+    end
+
     private
 
     def create_app_notification(user:, category:, title:, body:, metadata: {})

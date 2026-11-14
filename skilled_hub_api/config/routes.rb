@@ -173,6 +173,17 @@ Rails.application.routes.draw do
         patch "trust_safety/background_checks/:id/override", to: "trust_safety#override_background_check"
         patch "trust_safety/references/:id/review", to: "trust_safety#review_reference"
         patch "trust_safety/documents/:id/review", to: "trust_safety#review_document"
+        get "trust_safety/summary", to: "trust_safety#summary"
+        get "trust_safety/queue", to: "trust_safety#queue"
+        get "trust_safety/technicians", to: "trust_safety#technicians"
+        get "trust_safety/technicians/:user_id", to: "trust_safety#technician"
+        get "trust_safety/items/:item_type/:id", to: "trust_safety#item", constraints: { item_type: /background_check|document|reference/ }
+        post "trust_safety/items/:item_type/:id/notes", to: "trust_safety#create_note", constraints: { item_type: /background_check|document|reference/ }
+        get "trust_safety/documents/:id/file", to: "trust_safety#document_file"
+        patch "trust_safety/documents/:id/request_info", to: "trust_safety#request_document_info"
+        patch "trust_safety/references/:id/request_info", to: "trust_safety#request_reference_info"
+        patch "trust_safety/references/:id/contact_attempt", to: "trust_safety#record_reference_contact_attempt"
+        get "trust_safety/audit", to: "trust_safety#audit"
         patch "review_flags/:id", to: "reviews#update_flag"
         resources :membership_tier_configs, only: %i[index create update destroy] do
           member do
