@@ -57,44 +57,10 @@ class BackgroundCheckStartService
     end
   end
 
+  # Legacy path retained for historical Stripe-paid checks only. New technician
+  # initiations must not call this — TechFlash absorbs Checkr report costs.
   def create_checkout_session!
-    raise Error, "Payments not configured" if Stripe.api_key.blank?
-    amount_cents = background_check_fee_cents
-    raise Error, "Background check fee is invalid" if amount_cents <= 0
-
-    customer_id = StripeCustomerService.ensure_customer_id!(@user)
-    session = Stripe::Checkout::Session.create(
-      mode: "payment",
-      customer: customer_id,
-      success_url: "#{frontend_base_url}#{checkout_success_path}",
-      cancel_url: "#{frontend_base_url}#{checkout_cancel_path}",
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: "usd",
-            unit_amount: amount_cents,
-            product_data: {
-              name: "TechFlash Background Check",
-              description: "One-time verification processing fee"
-            }
-          }
-        }
-      ],
-      metadata: {
-        background_check_id: @background_check.id.to_s,
-        user_id: @user.id.to_s
-      }
-    )
-    @background_check.update!(
-      payment_amount_cents: amount_cents,
-      stripe_checkout_session_id: session.id,
-      payment_status: :pending,
-      status: :not_started
-    )
-    session
-  rescue Stripe::StripeError => e
-    raise Error, e.message
+    raise Error, "Technician background-check checkout is disabled. TechFlash pays Checkr directly."
   end
 
   private
@@ -126,11 +92,13 @@ class BackgroundCheckStartService
   end
 
   def work_location_payload
-    {
-      country: @background_check.work_location_country.presence || "US",
-      state: @background_check.work_location_state.presence || "TX",
-      city: @background_check.work_location_city.presence || "Houston"
-    }
+    profile = @user.technician_profile
+    country = @background_check.work_location_country.to_s.strip.presence || profile&.country.to_s.strip.presence
+    state = @background_check.work_location_state.to_s.strip.presence || profile&.state.to_s.strip.presence
+    city = @background_check.work_location_city.to_s.strip.presence || profile&.city.to_s.strip.presence
+    raise Error, "Work location country and state are required on the technician profile before starting a background check." if country.blank? || state.blank?
+
+    { country: country, state: state, city: city }.compact
   end
 
   def candidate_zipcode
@@ -143,9 +111,13 @@ class BackgroundCheckStartService
       user: @user,
       work_location: work_location_payload,
       custom_id: custom_id,
-      zipcode: candidate_zipcode
+      zipcode: candidate_zipcode,
+      phone: @user.phone.to_s.presence
     )
     candidate["id"]
+  rescue CheckrClient::Error => e
+    mark_invitation_outcome_unknown!(e) if ambiguous_checkr_error?(e)
+    raise
   end
 
   def create_invitation_for_checkr(client, candidate_id:)
@@ -154,7 +126,23 @@ class BackgroundCheckStartService
       package_name: @background_check.package_name,
       redirect_url: ENV["CHECKR_REDIRECT_URL"].presence || "#{frontend_base_url}#{settings_base_path}",
       work_location: work_location_payload,
-      node_custom_id: @background_check.node_custom_id
+      node_custom_id: @background_check.node_custom_id.presence
+    )
+  rescue CheckrClient::Error => e
+    mark_invitation_outcome_unknown!(e) if ambiguous_checkr_error?(e)
+    raise
+  end
+
+  def ambiguous_checkr_error?(error)
+    message = error.message.to_s
+    message.match?(/timeout|timed out|connection|5\d\d|EOF|reset/i)
+  end
+
+  def mark_invitation_outcome_unknown!(error)
+    @background_check.update!(
+      status: :failed,
+      normalized_status: "not_started",
+      admin_notes: "INVITATION_OUTCOME_UNKNOWN: #{error.message.to_s.truncate(400)}"
     )
   end
 

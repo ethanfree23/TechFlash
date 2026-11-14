@@ -137,6 +137,7 @@ Rails.application.routes.draw do
         post :start_background_check
         post :create_background_check_checkout
         post :reset_demo_background_check
+        post :background_check_acknowledgements
         get :background_check_options
       end
       resources :verification_references, only: [:index, :create]

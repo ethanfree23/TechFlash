@@ -57,6 +57,28 @@ class CheckrConfigurationTest < ActiveSupport::TestCase
     end
   end
 
+  test "production api key never falls back to staging credentials" do
+    with_env(
+      "CHECKR_ENVIRONMENT" => "production",
+      "CHECKR_SECRET_KEY" => nil,
+      "CHECKR_API_KEY" => nil,
+      "CHECKR_STAGING_API_KEY" => "sk_staging_should_not_leak"
+    ) do
+      config = CheckrConfiguration.new(credentials: {})
+      assert_nil config.api_key
+    end
+  end
+
+  test "production webhook_secret is nil so legacy secret cannot sign webhooks" do
+    with_env(
+      "CHECKR_ENVIRONMENT" => "production",
+      "CHECKR_WEBHOOK_SECRET" => "legacy_webhook_secret"
+    ) do
+      config = CheckrConfiguration.new
+      assert_nil config.webhook_secret
+    end
+  end
+
   private
 
   def with_env(overrides)

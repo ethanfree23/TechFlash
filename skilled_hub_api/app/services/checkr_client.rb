@@ -49,7 +49,7 @@ class CheckrClient
     get_json("/invitations/#{CGI.escape(invitation_id.to_s)}")
   end
 
-  def create_candidate(user:, work_location:, custom_id:, zipcode: nil)
+  def create_candidate(user:, work_location:, custom_id:, zipcode: nil, phone: nil)
     email = user.email.to_s.strip
     raise Error, "Candidate email is missing on the user profile." if email.blank?
 
@@ -61,6 +61,8 @@ class CheckrClient
       work_locations: [checkr_work_location(work_location)]
     }
     payload[:zipcode] = zipcode.to_s.strip if zipcode.present?
+    # Phone is optional for Checkr candidates; Apply Flow can collect remaining PII.
+    payload[:phone] = phone.to_s.gsub(/[^\d+]/, "").presence if phone.present?
     post_json("/candidates", payload)
   end
 

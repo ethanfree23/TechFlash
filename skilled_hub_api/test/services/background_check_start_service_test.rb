@@ -121,7 +121,7 @@ class BackgroundCheckStartServiceTest < ActiveSupport::TestCase
     fake_client = Object.new
     fake_client.define_singleton_method(:configured?) { true }
     fake_client.define_singleton_method(:get_candidate) { |candidate_id:| { "id" => "cand_stale_1", "email" => "bg-service-retry@example.com" } }
-    fake_client.define_singleton_method(:create_candidate) do |user:, work_location:, custom_id:, zipcode:|
+    fake_client.define_singleton_method(:create_candidate) do |user:, work_location:, custom_id:, zipcode: nil, phone: nil|
       custom_ids << custom_id
       { "id" => "cand_fresh_1" }
     end
@@ -181,7 +181,7 @@ class BackgroundCheckStartServiceTest < ActiveSupport::TestCase
     fake_client = Object.new
     fake_client.define_singleton_method(:configured?) { true }
     fake_client.define_singleton_method(:get_candidate) { |candidate_id:| raise CheckrClient::Error, "missing" }
-    fake_client.define_singleton_method(:create_candidate) do |user:, work_location:, custom_id:, zipcode:|
+    fake_client.define_singleton_method(:create_candidate) do |user:, work_location:, custom_id:, zipcode: nil, phone: nil|
       create_candidate_calls += 1
       custom_ids << custom_id
       { "id" => "cand_new_retry_#{create_candidate_calls}" }
@@ -242,7 +242,7 @@ class BackgroundCheckStartServiceTest < ActiveSupport::TestCase
     fake_client = Object.new
     fake_client.define_singleton_method(:configured?) { true }
     fake_client.define_singleton_method(:get_candidate) { |candidate_id:| { "id" => "cand_blank_email", "email" => "" } }
-    fake_client.define_singleton_method(:create_candidate) do |user:, work_location:, custom_id:, zipcode:|
+    fake_client.define_singleton_method(:create_candidate) do |user:, work_location:, custom_id:, zipcode: nil, phone: nil|
       create_candidate_calls += 1
       { "id" => "cand_recreated_1" }
     end
@@ -266,7 +266,7 @@ class BackgroundCheckStartServiceTest < ActiveSupport::TestCase
     Object.new.tap do |client|
       client.define_singleton_method(:configured?) { true }
       client.define_singleton_method(:get_candidate) { |candidate_id:| raise CheckrClient::Error, "missing" if get_candidate.nil?; get_candidate }
-      client.define_singleton_method(:create_candidate) do |user:, work_location:, custom_id:, zipcode:|
+      client.define_singleton_method(:create_candidate) do |user:, work_location:, custom_id:, zipcode: nil, phone: nil|
         raise "expected create_candidate call" if create_candidate.nil?
         raise "missing custom_id" if custom_id.blank?
         raise "missing city" if work_location[:city].blank?
