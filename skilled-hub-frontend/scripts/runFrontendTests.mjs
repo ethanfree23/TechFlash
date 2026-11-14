@@ -36,6 +36,7 @@ const testFiles = [
   'licenseCredentials.test.mjs',
   'scheduleAvailability.test.mjs',
   'dateTimePicker.test.mjs',
+  'trustSafety.test.mjs',
 ];
 
 let successful = 0;
