@@ -56,6 +56,7 @@ export interface JobPayload {
   scheduled_start_at?: string;
   scheduled_end_at?: string;
   budget_cents?: number;
+  pay_basis?: 'actual_hours_worked' | 'guaranteed_job_pay';
 }
 
 export async function getJobs(filters: Record<string, string | number | undefined> = {}) {

@@ -100,16 +100,13 @@ Use Apple App Store Connect screenshot specification references for final upload
   - `1260 x 2736`
 - Landscape uses reversed dimensions.
 
-### iPad required when app supports iPad
-- 13" display accepted portrait sizes:
-  - `2064 x 2752`
-  - `2048 x 2732`
-- Landscape uses reversed dimensions.
+### iPad
+- App is **iPhone-only** (`ios.supportsTablet: false`, `UIRequiresFullScreen: true`).
+- iPad screenshot class is **not** required for this configuration.
 
 Notes:
-- Upload 1-10 screenshots per required device class.
+- Upload 1-10 screenshots for the required iPhone device class.
 - JPEG/PNG RGB, no alpha channel.
-- App supports iPad (`supportsTablet: true`), so iPad screenshots are required.
 
 ## App Store metadata draft
 

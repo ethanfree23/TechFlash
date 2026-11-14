@@ -40,3 +40,7 @@ TechFlash connects companies with skilled technicians for real-world labor and f
 ## Known Limitations / TODO Before Submission
 - Run a final on-device TestFlight pass with both reviewer accounts (company + technician).
 - Confirm sample data remains visible during Apple's review window.
+- Before recording / submission, run on production: `bundle exec rails app_review:prepare`
+- Full physical-device recording script: `techflash-mobile/docs/app-review-recording-readiness.md`
+- Company job posting for review: leave hourly rate blank (unpriced) — iOS has no Stripe SCA completion path.
+- Remote push delivery is not claimed; notification permission is for OS alerts / local opt-in only until backend token registration ships.

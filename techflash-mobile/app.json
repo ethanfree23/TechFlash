@@ -14,13 +14,14 @@
       "backgroundColor": "#F7F7F7"
     },
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.techflash.app",
       "buildNumber": "1",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "TechFlash uses your location to show nearby jobs and improve matching by distance.",
         "NSUserNotificationUsageDescription": "TechFlash uses notifications for job updates, new messages, and account alerts.",
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "UIRequiresFullScreen": true
       },
       "config": {
         "googleMapsApiKey": ""
@@ -43,7 +44,13 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "TechFlash uses your location to show nearby jobs and improve matching by distance."
+        }
+      ]
     ],
     "extra": {
       "eas": {

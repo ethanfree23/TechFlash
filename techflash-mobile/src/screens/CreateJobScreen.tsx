@@ -256,7 +256,11 @@ export default function CreateJobScreen() {
       <Field label="Country" value={country} onChangeText={setCountry} />
 
       <Text style={styles.section}>Pricing</Text>
-      <Text style={styles.hint}>Priced jobs are charged when you post them. Hours are an estimate unless you choose Guaranteed Job Pay.</Text>
+      <Text style={styles.hint}>
+        Priced jobs require a saved payment method and Stripe funding when you post. For App Review / demos without
+        charging a card, leave Hourly rate blank to publish an unpriced open job. Hours are an estimate unless you
+        choose Guaranteed Job Pay.
+      </Text>
       <Text style={styles.label}>Pay basis</Text>
       <View style={styles.payRow}>
         <Pressable
