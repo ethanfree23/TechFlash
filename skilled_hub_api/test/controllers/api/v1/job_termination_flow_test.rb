@@ -270,22 +270,26 @@ module Api
       end
 
       test "new time entries are rejected after the assignment is ended" do
-        job = claimed_job
-        terminate_via_api!(job)
-        assert_response :ok
+        # Freeze to a weekday so a weekend run cannot surface the weekend-hours policy
+        # instead of the early-end rejection this test asserts.
+        travel_to Time.zone.parse("2026-11-11 10:00:00") do
+          job = claimed_job
+          terminate_via_api!(job)
+          assert_response :ok
 
-        post "/api/v1/jobs/#{job.id}/time_entries",
-             params: {
-               worked_start_at: 2.hours.ago.iso8601,
-               worked_end_at: Time.current.iso8601,
-               worked_on_date: Date.current,
-               worked_hours: 2
-             },
-             headers: auth_header_for(@tech_user),
-             as: :json
+          post "/api/v1/jobs/#{job.id}/time_entries",
+               params: {
+                 worked_start_at: 2.hours.ago.iso8601,
+                 worked_end_at: Time.current.iso8601,
+                 worked_on_date: Date.current,
+                 worked_hours: 2
+               },
+               headers: auth_header_for(@tech_user),
+               as: :json
 
-        assert_response :unprocessable_entity
-        assert_match(/ended early/i, JSON.parse(response.body)["error"])
+          assert_response :unprocessable_entity
+          assert_match(/ended early/i, JSON.parse(response.body)["error"])
+        end
       end
 
       test "other without notes is unprocessable" do
