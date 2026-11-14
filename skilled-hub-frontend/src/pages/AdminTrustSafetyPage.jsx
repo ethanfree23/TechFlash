@@ -1,220 +1,429 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { FaSyncAlt, FaShieldAlt } from 'react-icons/fa';
 import AppHeader from '../components/AppHeader';
 import AppFooter from '../components/layout/AppFooter';
 import { adminTrustSafetyAPI } from '../api/api';
+import { useToast } from '../components/messages/useToast';
+import MessagesToast from '../components/messages/MessagesToast';
+import TrustSafetyMetrics from '../components/admin/trust-safety/TrustSafetyMetrics';
+import TrustSafetyTabs from '../components/admin/trust-safety/TrustSafetyTabs';
+import QueueFilters from '../components/admin/trust-safety/QueueFilters';
+import ReviewQueueTable from '../components/admin/trust-safety/ReviewQueueTable';
+import ReviewDrawer from '../components/admin/trust-safety/ReviewDrawer';
+import BulkActionBar from '../components/admin/trust-safety/BulkActionBar';
+import TechniciansTable, { TechnicianFilters } from '../components/admin/trust-safety/TechniciansTable';
+import ActivityFeed from '../components/admin/trust-safety/ActivityFeed';
+import TrustProfileChecklist from '../components/admin/trust-safety/TrustProfileChecklist';
+import { TechnicianCell, Kbd } from '../components/admin/trust-safety/primitives';
+import {
+  parseWorkspaceSearch,
+  buildWorkspaceSearch,
+  applyMetricFilter,
+  isQueueTab,
+  defaultStatusForTab,
+  reviewTypeForTab,
+  DEFAULT_QUEUE_FILTERS,
+  nextPendingKey,
+  stepKey,
+  isBulkSelectable,
+  formatRelative,
+} from '../utils/trustSafety';
+
+const METRIC_FOR_STATE = (tab, filters, verification) => {
+  if (tab === 'technicians') return verification === 'verified' ? 'verified_technicians' : null;
+  if (!isQueueTab(tab)) return null;
+  const { status, review_type: rt } = filters;
+  if (status === 'needs_review' && rt === 'all') return 'needs_review';
+  if (status === 'pending' && rt === 'background_check') return 'background_checks_pending';
+  if (status === 'needs_review' && rt === 'credential') return 'credentials_awaiting_review';
+  if (status === 'needs_review' && rt === 'reference') return 'references_awaiting_review';
+  if (status === 'flagged') return 'flagged';
+  if (status === 'expired') return 'expiring_credentials';
+  return null;
+};
 
 export default function AdminTrustSafetyPage({ user, onLogout }) {
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [dashboard, setDashboard] = useState(null);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const workspace = useMemo(() => parseWorkspaceSearch(location.search), [location.search]);
+  const { tab, filters, item: openItemKey, technician: technicianId, verification } = workspace;
+  const { toasts, push: pushToast, dismiss: dismissToast } = useToast();
 
-  const loadDashboard = async () => {
-    setLoading(true);
-    setError('');
-    try {
-      const data = await adminTrustSafetyAPI.dashboard();
-      setDashboard(data || {});
-    } catch (e) {
-      setError(e.message || 'Failed to load trust and safety dashboard.');
-    } finally {
-      setLoading(false);
-    }
+  const [summary, setSummary] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(true);
+  const [summaryError, setSummaryError] = useState('');
+
+  const [queue, setQueue] = useState(null);
+  const [queueLoading, setQueueLoading] = useState(false);
+  const [queueError, setQueueError] = useState('');
+  const queueAbort = useRef(null);
+
+  const [directory, setDirectory] = useState(null);
+  const [directoryLoading, setDirectoryLoading] = useState(false);
+  const [directoryError, setDirectoryError] = useState('');
+  const [directoryFilters, setDirectoryFilters] = useState({ q: '', trade: '', state: '', sort: 'name', page: 1, per_page: 25 });
+  const directoryAbort = useRef(null);
+
+  const [checkedKeys, setCheckedKeys] = useState(() => new Set());
+  const [selectedKey, setSelectedKey] = useState(null);
+  const [refreshToken, setRefreshToken] = useState(0);
+  const [lastRefreshed, setLastRefreshed] = useState(null);
+
+  // ---------------------------------------------------------------------------
+  // URL state helpers
+  // ---------------------------------------------------------------------------
+  const setWorkspace = useCallback(
+    (next, { replace = false } = {}) => {
+      const merged = { tab, filters, item: openItemKey, technician: technicianId, verification, ...next };
+      navigate({ pathname: location.pathname, search: buildWorkspaceSearch(merged) }, { replace });
+    },
+    [navigate, location.pathname, tab, filters, openItemKey, technicianId, verification]
+  );
+
+  const changeTab = (nextTab) => {
+    if (nextTab === tab) return;
+    setCheckedKeys(new Set());
+    setWorkspace({
+      tab: nextTab,
+      item: null,
+      filters: { ...DEFAULT_QUEUE_FILTERS, status: defaultStatusForTab(nextTab), review_type: reviewTypeForTab(nextTab, 'all') },
+      verification: 'all',
+    });
   };
 
-  useEffect(() => {
-    loadDashboard();
+  const changeFilters = (patch) => {
+    setCheckedKeys(new Set());
+    setWorkspace({ filters: { ...filters, ...patch } });
+  };
+
+  const resetFilters = () => {
+    setCheckedKeys(new Set());
+    setWorkspace({ filters: { ...DEFAULT_QUEUE_FILTERS, status: defaultStatusForTab(tab), review_type: reviewTypeForTab(tab, 'all') }, technician: null });
+  };
+
+  const openItem = useCallback((key) => setWorkspace({ item: key }), [setWorkspace]);
+  const closeItem = useCallback(() => setWorkspace({ item: null }), [setWorkspace]);
+
+  const openTechnician = (userId) => {
+    setWorkspace({ tab: 'queue', technician: userId, item: null, filters: { ...DEFAULT_QUEUE_FILTERS, status: 'all' } });
+  };
+
+  // ---------------------------------------------------------------------------
+  // Data loading
+  // ---------------------------------------------------------------------------
+  const loadSummary = useCallback(async () => {
+    setSummaryLoading(true);
+    setSummaryError('');
+    try {
+      setSummary(await adminTrustSafetyAPI.summary());
+      setLastRefreshed(new Date().toISOString());
+    } catch (e) {
+      setSummaryError(e?.message || 'Could not load summary.');
+    } finally {
+      setSummaryLoading(false);
+    }
   }, []);
 
-  const reviewBackground = async (checkId, overrideStatus) => {
-    const adminNotes = window.prompt('Optional admin notes:') || '';
+  const loadQueue = useCallback(async () => {
+    if (!isQueueTab(tab)) return;
+    queueAbort.current?.abort();
+    const controller = new AbortController();
+    queueAbort.current = controller;
+    setQueueLoading(true);
+    setQueueError('');
     try {
-      await adminTrustSafetyAPI.overrideBackgroundCheck(checkId, { override_status: overrideStatus, admin_notes: adminNotes });
-      await loadDashboard();
-    } catch {
-      // keep screen stable on transient error
+      const res = await adminTrustSafetyAPI.queue({ ...filters, technician_user_id: technicianId || undefined }, { signal: controller.signal });
+      setQueue(res);
+    } catch (e) {
+      if (e?.name !== 'AbortError') setQueueError(e?.message || 'Could not load the review queue.');
+    } finally {
+      if (!controller.signal.aborted) setQueueLoading(false);
     }
+  }, [tab, filters, technicianId]);
+
+  const loadDirectory = useCallback(async () => {
+    if (tab !== 'technicians') return;
+    directoryAbort.current?.abort();
+    const controller = new AbortController();
+    directoryAbort.current = controller;
+    setDirectoryLoading(true);
+    setDirectoryError('');
+    try {
+      const res = await adminTrustSafetyAPI.technicians({ ...directoryFilters, verification }, { signal: controller.signal });
+      setDirectory(res);
+    } catch (e) {
+      if (e?.name !== 'AbortError') setDirectoryError(e?.message || 'Could not load technicians.');
+    } finally {
+      if (!controller.signal.aborted) setDirectoryLoading(false);
+    }
+  }, [tab, directoryFilters, verification]);
+
+  useEffect(() => {
+    loadSummary();
+  }, [loadSummary, refreshToken]);
+
+  useEffect(() => {
+    loadQueue();
+  }, [loadQueue, refreshToken]);
+
+  useEffect(() => {
+    loadDirectory();
+  }, [loadDirectory, refreshToken]);
+
+  const refreshAll = () => setRefreshToken((n) => n + 1);
+
+  const items = useMemo(() => queue?.items || [], [queue]);
+
+  // Keep row highlight in sync with drawer.
+  useEffect(() => {
+    if (openItemKey) setSelectedKey(openItemKey);
+  }, [openItemKey]);
+
+  // Drop checked keys that left the page.
+  useEffect(() => {
+    setCheckedKeys((prev) => {
+      if (prev.size === 0) return prev;
+      const present = new Set(items.filter(isBulkSelectable).map((it) => it.key));
+      const next = new Set([...prev].filter((k) => present.has(k)));
+      return next.size === prev.size ? prev : next;
+    });
+  }, [items]);
+
+  // ---------------------------------------------------------------------------
+  // Keyboard navigation (list level). Drawer has its own handler.
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (!isQueueTab(tab)) return undefined;
+    const onKey = (e) => {
+      if (openItemKey) return;
+      const tag = e.target?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || e.target?.isContentEditable) return;
+      if (e.key === 'j' || e.key === 'k') {
+        e.preventDefault();
+        const next = stepKey(items, selectedKey, e.key === 'j' ? 1 : -1);
+        if (next) {
+          setSelectedKey(next);
+          document.querySelector(`[data-item-key="${next}"]`)?.scrollIntoView({ block: 'nearest' });
+        }
+      } else if (e.key === 'Enter' && selectedKey) {
+        openItem(selectedKey);
+      } else if (e.key === 'n') {
+        const next = nextPendingKey(items, selectedKey);
+        if (next) openItem(next);
+      } else if (e.key === '/') {
+        e.preventDefault();
+        document.querySelector('input[aria-label="Search technicians"]')?.focus();
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [tab, items, selectedKey, openItemKey, openItem]);
+
+  // ---------------------------------------------------------------------------
+  // Derived
+  // ---------------------------------------------------------------------------
+  const activeMetric = METRIC_FOR_STATE(tab, filters, verification);
+  const tabCounts = useMemo(() => {
+    if (!summary) return {};
+    return {
+      queue: summary.needs_review?.value,
+      background_checks: summary.needs_review?.breakdown?.background_checks,
+      credentials: summary.credentials_awaiting_review?.value,
+      references: summary.references_awaiting_review?.value,
+    };
+  }, [summary]);
+
+  const checkedItems = items.filter((it) => checkedKeys.has(it.key));
+  const openIndex = items.findIndex((it) => it.key === openItemKey);
+  const hasNextPending = Boolean(nextPendingKey(items, openItemKey));
+
+  const handleToast = ({ tone, message }) => pushToast(message, tone === 'error' ? 'error' : tone === 'info' ? 'info' : 'success');
+
+  const handleItemChanged = () => {
+    // Decisions change counts and possibly remove the item from the current view.
+    loadSummary();
+    loadQueue();
   };
 
-  const reviewReference = async (referenceId, status) => {
-    const reviewNotes = window.prompt('Optional review notes:') || '';
-    try {
-      await adminTrustSafetyAPI.reviewReference(referenceId, { status, review_notes: reviewNotes });
-      await loadDashboard();
-    } catch {
-      // keep screen stable on transient error
-    }
-  };
+  const technicianRow = technicianId ? items.find((it) => it.technician?.user_id === technicianId)?.technician : null;
 
-  const reviewDocument = async (documentId, status) => {
-    const reason = status === 'rejected' ? (window.prompt('Rejection reason (shown to technician):') || '') : '';
-    try {
-      await adminTrustSafetyAPI.reviewDocument(documentId, { status, rejection_reason: reason });
-      await loadDashboard();
-    } catch {
-      // keep screen stable on transient error
-    }
-  };
-
-  const cards = dashboard?.cards || {};
-
+  // ---------------------------------------------------------------------------
+  // Render
+  // ---------------------------------------------------------------------------
   return (
     <div className="min-h-screen bg-gray-50">
       <AppHeader user={user} onLogout={onLogout} activePage="trust_safety" emailVariant="crm" />
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 sm:pb-14 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Trust and Safety</h1>
-          <p className="text-sm text-gray-600 mt-1">Verification queues, expiring credentials, and audit activity.</p>
-        </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 pb-24 sm:pb-14 space-y-5">
+        <header className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="hidden sm:flex h-10 w-10 rounded-xl bg-slate-900 text-white items-center justify-center shrink-0">
+              <FaShieldAlt className="h-4 w-4" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Trust &amp; Safety</h1>
+              <p className="text-sm text-slate-600 mt-0.5">Review technician credentials, background checks, references, and verification activity.</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3 text-[11px] text-slate-500">
+            {lastRefreshed && <span>Updated {formatRelative(lastRefreshed)}</span>}
+            <button
+              type="button"
+              onClick={refreshAll}
+              className="inline-flex items-center gap-1.5 h-8 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
+            >
+              <FaSyncAlt className={`h-3 w-3 ${summaryLoading || queueLoading ? 'animate-spin' : ''}`} /> Refresh
+            </button>
+          </div>
+        </header>
 
-        {loading ? (
-          <div className="rounded-lg border border-gray-200 bg-white p-6 text-gray-600">Loading trust and safety dashboard...</div>
-        ) : error ? (
-          <div className="rounded-lg border border-red-200 bg-red-50 p-6 text-red-700">{error}</div>
+        {summaryError ? (
+          <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center justify-between" role="alert">
+            <span>{summaryError}</span>
+            <button type="button" onClick={loadSummary} className="text-xs font-semibold underline">Retry</button>
+          </div>
         ) : (
-          <>
-            <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
-              <Card label="Pending background" value={cards.pending_background_reviews} />
-              <Card label="Pending references" value={cards.pending_references} />
-              <Card label="Pending docs" value={cards.pending_licenses_certs} />
-              <Card label="Expiring soon" value={cards.expiring_soon} />
-              <Card label="Flagged checks" value={cards.failed_flagged_checks} />
-              <Card label="Verified techs" value={cards.verified_technicians} />
-              <Card label="Completion rate" value={cards.verification_completion_rate != null ? `${cards.verification_completion_rate}%` : '—'} />
-            </div>
-
-            <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
-              <section className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-                <Header title="Background Checks" />
-                <div className="max-h-[420px] overflow-auto divide-y divide-gray-100">
-                  {(dashboard?.pending_background_checks || []).length === 0 ? (
-                    <Empty text="No pending background checks." />
-                  ) : (
-                    dashboard.pending_background_checks.map((check) => (
-                      <Row
-                        key={check.id}
-                        title={`Check #${check.id}`}
-                        subtitle={`User #${check.user_id} · ${check.normalized_status || check.status} · ${check.package_name || 'package n/a'} · ${[check.work_location_city, check.work_location_state, check.work_location_country].filter(Boolean).join(', ') || 'location n/a'}`}
-                      >
-                        {(check.dashboard_url || check.report_url) && (
-                          <a
-                            href={check.dashboard_url || check.report_url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="px-2 py-1 text-xs rounded bg-blue-100 text-blue-800 hover:bg-blue-200"
-                          >
-                            Report
-                          </a>
-                        )}
-                        <Action onClick={() => reviewBackground(check.id, 'manually_approved')} tone="green">Approve</Action>
-                        <Action onClick={() => reviewBackground(check.id, 'manually_rejected')} tone="red">Reject</Action>
-                      </Row>
-                    ))
-                  )}
-                </div>
-              </section>
-
-              <section className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-                <Header title="Reference Reviews" />
-                <div className="max-h-[420px] overflow-auto divide-y divide-gray-100">
-                  {(dashboard?.pending_references || []).length === 0 ? (
-                    <Empty text="No pending references." />
-                  ) : (
-                    dashboard.pending_references.map((ref) => (
-                      <Row key={ref.id} title={ref.full_name} subtitle={`${ref.relationship} · ${ref.email}`}>
-                        <Action onClick={() => reviewReference(ref.id, 'approved')} tone="green">Approve</Action>
-                        <Action onClick={() => reviewReference(ref.id, 'rejected')} tone="red">Reject</Action>
-                      </Row>
-                    ))
-                  )}
-                </div>
-              </section>
-
-              <section className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-                <Header title="Document Reviews" />
-                <div className="max-h-[420px] overflow-auto divide-y divide-gray-100">
-                  {(dashboard?.pending_documents || []).length === 0 ? (
-                    <Empty text="No pending documents." />
-                  ) : (
-                    dashboard.pending_documents.map((doc) => (
-                      <Row key={doc.id} title={`${doc.doc_type} #${doc.id}`} subtitle={`${doc.uploadable_type} #${doc.uploadable_id}`}>
-                        <Action onClick={() => reviewDocument(doc.id, 'approved')} tone="green">Approve</Action>
-                        <Action onClick={() => reviewDocument(doc.id, 'rejected')} tone="red">Reject</Action>
-                      </Row>
-                    ))
-                  )}
-                </div>
-              </section>
-            </div>
-
-            <section className="rounded-lg border border-gray-200 bg-white overflow-hidden">
-              <Header title="Verification Audit Timeline" />
-              <div className="max-h-[320px] overflow-auto divide-y divide-gray-100">
-                {(dashboard?.audit_timeline || []).length === 0 ? (
-                  <Empty text="No audit events yet." />
-                ) : (
-                  dashboard.audit_timeline.map((evt) => (
-                    <div key={evt.id} className="px-4 py-3">
-                      <p className="text-sm font-medium text-gray-900">{evt.action.replaceAll('_', ' ')}</p>
-                      <p className="text-xs text-gray-500 mt-1">
-                        User #{evt.user_id} · Actor #{evt.actor_user_id} · {new Date(evt.created_at).toLocaleString()}
-                      </p>
-                    </div>
-                  ))
-                )}
-              </div>
-            </section>
-          </>
+          <TrustSafetyMetrics
+            summary={summary}
+            loading={summaryLoading}
+            activeKey={activeMetric}
+            onSelect={(_key, metricFilter) => {
+              setCheckedKeys(new Set());
+              setWorkspace(applyMetricFilter(workspace, metricFilter));
+            }}
+          />
         )}
+
+        <section className="rounded-xl border border-slate-200 bg-white shadow-sm">
+          <div className="px-3 sm:px-4 pt-3 border-b border-slate-200">
+            <TrustSafetyTabs activeTab={tab} counts={tabCounts} onChange={changeTab} />
+          </div>
+
+          {isQueueTab(tab) && (
+            <>
+              <div className="px-3 sm:px-4 py-3 border-b border-slate-100 space-y-2">
+                {technicianRow || technicianId ? (
+                  <div className="flex items-center justify-between gap-3 rounded-lg border border-tf-blue/20 bg-tf-blue/5 px-3 py-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-[11px] font-semibold uppercase tracking-wide text-tf-blue shrink-0">Technician</span>
+                      {technicianRow ? <TechnicianCell technician={technicianRow} compact showIds /> : <span className="text-xs text-slate-600">User #{technicianId}</span>}
+                    </div>
+                    <button type="button" onClick={() => setWorkspace({ technician: null })} className="text-xs font-medium text-slate-600 hover:text-slate-900 shrink-0">
+                      Clear technician filter
+                    </button>
+                  </div>
+                ) : null}
+                <QueueFilters filters={filters} lockReviewType={tab !== 'queue'} onChange={changeFilters} onReset={resetFilters} />
+              </div>
+              <ReviewQueueTable
+                items={items}
+                pagination={queue?.pagination}
+                loading={queueLoading}
+                error={queueError}
+                selectedKey={selectedKey}
+                checkedKeys={checkedKeys}
+                onToggleChecked={(key, checked) =>
+                  setCheckedKeys((prev) => {
+                    const next = new Set(prev);
+                    if (checked) next.add(key);
+                    else next.delete(key);
+                    return next;
+                  })
+                }
+                onToggleAll={(keys, checked) => setCheckedKeys(checked ? new Set(keys) : new Set())}
+                onOpen={openItem}
+                onPageChange={(page) => changeFilters({ page })}
+                onPerPageChange={(per_page) => changeFilters({ per_page, page: 1 })}
+                onRetry={loadQueue}
+                emptyTitle={filters.status === 'needs_review' ? 'Queue is clear' : 'No items match'}
+                emptyDescription={
+                  filters.status === 'needs_review'
+                    ? 'Nothing is waiting for a reviewer decision with these filters.'
+                    : 'Try a different status, review type, or search term.'
+                }
+              />
+              {queue?.truncated && (
+                <p className="px-4 py-2 text-[11px] text-amber-800 bg-amber-50 border-t border-amber-100">
+                  Showing the most relevant results; narrow the filters to see everything in this view.
+                </p>
+              )}
+              <div className="hidden md:flex items-center gap-3 px-4 py-2 text-[11px] text-slate-400 border-t border-slate-100">
+                <span>
+                  <Kbd>J</Kbd>/<Kbd>K</Kbd> move
+                </span>
+                <span>
+                  <Kbd>Enter</Kbd> open
+                </span>
+                <span>
+                  <Kbd>N</Kbd> next pending
+                </span>
+                <span>
+                  <Kbd>/</Kbd> search
+                </span>
+              </div>
+            </>
+          )}
+
+          {tab === 'technicians' && (
+            <>
+              <div className="px-3 sm:px-4 py-3 border-b border-slate-100">
+                <TechnicianFilters
+                  filters={{ ...directoryFilters, verification }}
+                  onChange={(patch) => {
+                    if (Object.prototype.hasOwnProperty.call(patch, 'verification')) {
+                      setWorkspace({ verification: patch.verification });
+                    }
+                    const { verification: _v, ...rest } = patch;
+                    if (Object.keys(rest).length) setDirectoryFilters((f) => ({ ...f, ...rest }));
+                  }}
+                />
+              </div>
+              <TechniciansTable
+                rows={directory?.technicians}
+                pagination={directory?.pagination}
+                loading={directoryLoading}
+                error={directoryError}
+                onOpenTechnician={openTechnician}
+                onOpenItem={openItem}
+                onPageChange={(page) => setDirectoryFilters((f) => ({ ...f, page }))}
+                onPerPageChange={(per_page) => setDirectoryFilters((f) => ({ ...f, per_page, page: 1 }))}
+                onRetry={loadDirectory}
+              />
+            </>
+          )}
+
+          {tab === 'activity' && <ActivityFeed refreshToken={refreshToken} onOpenItem={openItem} />}
+        </section>
+
+        {isQueueTab(tab) && technicianId && (
+          <section className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Account trust profile</h2>
+            <TrustProfileChecklist userId={technicianId} />
+          </section>
+        )}
+
+        {checkedItems.length > 0 && <BulkActionBar items={checkedItems} onClear={() => setCheckedKeys(new Set())} onDone={handleItemChanged} onToast={handleToast} />}
       </div>
+
+      {openItemKey && (
+        <ReviewDrawer
+          key={openItemKey}
+          itemKey={openItemKey}
+          onClose={closeItem}
+          onPrev={openIndex > 0 ? () => openItem(items[openIndex - 1].key) : null}
+          onNext={openIndex > -1 && openIndex < items.length - 1 ? () => openItem(items[openIndex + 1].key) : null}
+          onNextPending={() => {
+            const next = nextPendingKey(items, openItemKey);
+            if (next) openItem(next);
+          }}
+          hasNextPending={hasNextPending}
+          onItemChanged={handleItemChanged}
+          onToast={handleToast}
+        />
+      )}
+
+      <MessagesToast toasts={toasts} onDismiss={dismissToast} />
       <AppFooter />
     </div>
-  );
-}
-
-function Card({ label, value }) {
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white p-3">
-      <p className="text-xs text-gray-500">{label}</p>
-      <p className="text-lg font-semibold text-gray-900">{value ?? '—'}</p>
-    </div>
-  );
-}
-
-function Header({ title }) {
-  return (
-    <div className="px-4 py-3 border-b border-gray-200">
-      <h2 className="font-semibold text-gray-900">{title}</h2>
-    </div>
-  );
-}
-
-function Empty({ text }) {
-  return <p className="px-4 py-4 text-sm text-gray-500">{text}</p>;
-}
-
-function Row({ title, subtitle, children }) {
-  return (
-    <div className="px-4 py-3">
-      <p className="text-sm font-medium text-gray-900">{title}</p>
-      <p className="text-xs text-gray-500 mt-1">{subtitle}</p>
-      <div className="mt-2 flex gap-2">{children}</div>
-    </div>
-  );
-}
-
-function Action({ onClick, tone = 'gray', children }) {
-  const styles = tone === 'green'
-    ? 'bg-green-600 text-white hover:bg-green-700'
-    : tone === 'red'
-      ? 'bg-red-600 text-white hover:bg-red-700'
-      : 'bg-gray-200 text-gray-800 hover:bg-gray-300';
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`px-2 py-1 text-xs rounded ${styles}`}
-    >
-      {children}
-    </button>
   );
 }
