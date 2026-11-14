@@ -127,11 +127,9 @@ export default function ReviewDrawer({ itemKey, onClose, onPrev, onNext, onNextP
       if (isConflictError(e)) {
         setPendingAction(null);
         setConflictNotice(describeApiError(e));
-        if (e?.details?.item) {
-          setItem(e.details.item);
-        } else {
-          await load();
-        }
+        // Show the server's latest copy immediately, then reload so the audit trail catches up too.
+        if (e?.details?.item) setItem(e.details.item);
+        await load();
         onItemChanged?.(e?.details?.item || item);
       } else {
         setServerError(describeApiError(e));
