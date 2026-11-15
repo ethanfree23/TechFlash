@@ -11,23 +11,31 @@ export const isExcelFile = (file) => {
 const loadXlsx = () => import('xlsx');
 
 /**
- * Reads the first sheet of an Excel/CSV file into a 2D array of cell values.
- * Dates come back as JS Date objects (Excel) or strings (CSV); blank trailing cells are kept as ''.
+ * Reads every sheet of an Excel/CSV file into `{ name, rows }` entries where `rows` is a 2D array
+ * of cell values. Dates come back as JS Date objects (Excel) or strings (CSV); blank cells and
+ * blank rows are kept (as '' / []) so row indexes line up with the spreadsheet's row numbers.
+ * Empty sheets are dropped. A CSV yields a single sheet.
  */
-export const readSpreadsheetFile = async (file) => {
+export const readWorkbookSheets = async (file) => {
   if (!file) return [];
   if (!isExcelFile(file)) {
     const text = await file.text();
-    return parseCsv(text);
+    return [{ name: file.name || 'CSV', rows: parseCsv(text) }];
   }
 
   const XLSX = await loadXlsx();
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: 'array', cellDates: true });
-  const sheetName = workbook.SheetNames[0];
-  if (!sheetName) return [];
-  const sheet = workbook.Sheets[sheetName];
-  return XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', blankrows: false, raw: true });
+  return workbook.SheetNames.map((name) => ({
+    name,
+    rows: XLSX.utils.sheet_to_json(workbook.Sheets[name], { header: 1, defval: '', blankrows: true, raw: true }),
+  })).filter((sheet) => sheet.rows.some((cells) => cells.some((c) => c !== '' && c != null)));
+};
+
+/** Reads the first non-empty sheet of an Excel/CSV file into a 2D array of cell values. */
+export const readSpreadsheetFile = async (file) => {
+  const sheets = await readWorkbookSheets(file);
+  return sheets[0]?.rows || [];
 };
 
 export const downloadXlsx = async (rows2d, filename, sheetName = 'Sheet1') => {

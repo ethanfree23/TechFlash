@@ -16,11 +16,13 @@ export const NOTES_LOADER_COLUMNS = [
   { key: 'note_date', label: 'Date', aliases: ['date', 'note_date', 'when', 'activity_date', 'call_date', 'contact_date'] },
   { key: 'remind_at', label: 'Follow-up', aliases: ['remind_at', 'remind', 'reminder', 'follow_up', 'followup', 'follow_up_date', 'next_step', 'next_follow_up', 'callback', 'call_back', 'next_touch'] },
   { key: 'status', label: 'Status', aliases: ['status', 'stage', 'pipeline', 'pipeline_stage', 'new_status'] },
-  { key: 'title', label: 'Title', aliases: ['title', 'subject', 'headline', 'note_title'] },
-  { key: 'contact_name', label: 'Contact name', aliases: ['contact_name', 'contact', 'new_contact', 'person', 'new_contact_name', 'who', 'contact_person'] },
+  // A plain "Title" header in a notes sheet almost always sits next to the contact columns and
+  // means job title, so it belongs to contact_title; note headlines need an explicit name.
+  { key: 'title', label: 'Note title', aliases: ['note_title', 'subject', 'headline'] },
+  { key: 'contact_name', label: 'Contact name', aliases: ['contact_name', 'contact', 'new_contact', 'person', 'new_contact_name', 'who', 'contact_person', 'name'] },
   { key: 'contact_email', label: 'Contact email', aliases: ['contact_email', 'email', 'new_contact_email', 'e_mail'] },
   { key: 'contact_phone', label: 'Contact phone', aliases: ['contact_phone', 'phone', 'new_contact_phone', 'cell', 'mobile', 'phone_number'] },
-  { key: 'contact_title', label: 'Contact title', aliases: ['contact_title', 'job_title', 'role', 'position', 'contact_role'] },
+  { key: 'contact_title', label: 'Contact title', aliases: ['contact_title', 'title', 'job_title', 'role', 'position', 'contact_role'] },
   { key: 'contacts', label: 'More contacts', aliases: ['contacts', 'new_contacts', 'additional_contacts', 'people', 'other_contacts', 'more_contacts'] },
 ];
 
@@ -28,6 +30,7 @@ export const NOTES_LOADER_FIELD_KEYS = NOTES_LOADER_COLUMNS.map((c) => c.key);
 
 /** Column order used for the downloadable template and for headerless sheets. */
 export const NOTES_LOADER_TEMPLATE_HEADERS = [
+  'company',
   'website',
   'note',
   'contact_method',
@@ -44,6 +47,7 @@ export const NOTES_LOADER_TEMPLATE_HEADERS = [
 
 export const NOTES_LOADER_TEMPLATE_EXAMPLE_ROWS = [
   {
+    company: 'Acme Plumbing',
     website: 'https://www.acmeplumbing.com',
     note: 'Called the office, spoke with Pat. They use 2 subs for overflow and want pricing before the busy season.',
     contact_method: 'call',
@@ -58,6 +62,7 @@ export const NOTES_LOADER_TEMPLATE_EXAMPLE_ROWS = [
     contacts: '',
   },
   {
+    company: 'Beta HVAC',
     website: 'betahvac.com',
     note: 'Left a voicemail. Website lists a new service manager.',
     contact_method: 'call',
@@ -71,22 +76,43 @@ export const NOTES_LOADER_TEMPLATE_EXAMPLE_ROWS = [
     contact_title: '',
     contacts: 'Lee Park, Service Manager - lee@betahvac.com (555) 200-3001; Dana Fox dana@betahvac.com',
   },
+  {
+    company: 'Gamma Electric',
+    website: '',
+    note: 'Stopped in on the way back. Owner (Sam) is interested; wants a call next week. No website that I know of.',
+    contact_method: 'in_person',
+    made_contact: 'yes',
+    note_date: '2026-10-13',
+    remind_at: '2026-10-21',
+    status: 'lead',
+    contact_name: 'Sam Ortiz',
+    contact_email: '',
+    contact_phone: '(555) 200-3002',
+    contact_title: 'Owner',
+    contacts: '',
+  },
 ];
 
 export const NOTES_LOADER_CHATGPT_PROMPT = `Compile my sales notes into a spreadsheet I can upload to my CRM.
-Use exactly these column headers in row 1:
-website, note, contact_method, made_contact, note_date, remind_at, status, contact_name, contact_email, contact_phone, contact_title, contacts
 
-Rules:
-- website: the company's website URL (this is how the CRM finds the company). One row per note.
-- note: what happened, in my words, cleaned up.
+Format (important):
+- One workbook with ONE sheet. The header row must be row 1 — no title row, no blank rows above it, no merged cells.
+- Use exactly these column headers, in this order:
+${NOTES_LOADER_TEMPLATE_HEADERS.join(', ')}
+- One row per company visit / call / note. Leave a cell blank if you don't know the value — never write N/A, unknown, or TBD.
+- Write all dates as text in YYYY-MM-DD format.
+
+Columns:
+- company: the company name as I said it (always fill this in).
+- website: the company's website URL if I gave one or you know it for sure; otherwise blank. The CRM matches on the URL first, then on the company name.
+- note: what happened, in my words, cleaned up. Keep everything I said about that company in one note.
 - contact_method: one of call, text, email, in_person, note.
 - made_contact: yes or no (did I actually reach someone?).
-- note_date: date of the conversation (YYYY-MM-DD). remind_at: when to follow up (YYYY-MM-DD), or blank.
+- note_date: date of the conversation. remind_at: when to follow up, or blank.
 - status: only if the company's stage changed. One of: ${CRM_STATUSES.join(', ')}. Otherwise blank.
 - contact_name / contact_email / contact_phone / contact_title: a NEW person I met at that company, if any.
 - contacts: any additional new people, separated by semicolons, like "Name, Title - email phone".
-Return it as an .xlsx file.`;
+Return it as an .xlsx file I can download.`;
 
 const CONTACT_METHOD_ALIASES = {
   call: 'call', called: 'call', phone: 'call', 'phone call': 'call', voicemail: 'call', vm: 'call',
@@ -94,12 +120,23 @@ const CONTACT_METHOD_ALIASES = {
   email: 'email', emailed: 'email', 'e-mail': 'email', mail: 'email',
   in_person: 'in_person', 'in person': 'in_person', 'in-person': 'in_person', visit: 'in_person',
   visited: 'in_person', 'walk in': 'in_person', 'walk-in': 'in_person', meeting: 'in_person',
-  'site visit': 'in_person', 'stopped by': 'in_person',
+  'site visit': 'in_person', 'stopped by': 'in_person', 'stopped in': 'in_person', 'drop in': 'in_person',
+  'drop-in': 'in_person', 'dropped in': 'in_person', 'dropped by': 'in_person', 'door knock': 'in_person',
+  'face to face': 'in_person', 'on site': 'in_person', 'on-site': 'in_person', 'in store': 'in_person',
   note: 'note', notes: 'note', general: 'note', other: 'note', research: 'note',
 };
 
 const EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i;
 const PHONE_RE = /(?:\+?1[\s.-]*)?\(?\d{3}\)?[\s.-]*\d{3}[\s.-]*\d{4}(?:\s*(?:x|ext\.?|extension)\s*\d+)?/i;
+const HOSTNAME_RE = /^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+$/;
+const PLACEHOLDER_VALUES = new Set(['n/a', 'na', 'none', 'null', 'nil', 'unknown', 'tbd', '-', '--', '?', 'x']);
+/** Excel serial dates (days since 1899-12-30); this range covers 1954..2064. */
+const EXCEL_SERIAL_MIN = 20000;
+const EXCEL_SERIAL_MAX = 60000;
+/** How many leading rows to scan for the header (ChatGPT likes to add a title row or two). */
+const HEADER_SCAN_ROWS = 15;
+
+export const isPlaceholder = (value) => PLACEHOLDER_VALUES.has(String(value ?? '').trim().toLowerCase());
 
 export const normalizeHeader = (value) =>
   String(value || '')
@@ -108,13 +145,19 @@ export const normalizeHeader = (value) =>
     .replace(/[^a-z0-9]+/g, '_')
     .replace(/^_+|_+$/g, '');
 
+/**
+ * Normalizes a URL/domain/email into a bare host ("acmeplumbing.com").
+ * Returns '' for blanks, placeholders, and anything that is not a hostname
+ * (e.g. a company name typed into the URL column). Mirrors the server.
+ */
 export const websiteKey = (value) => {
   let key = String(value || '').trim().toLowerCase();
-  if (!key) return '';
+  if (!key || isPlaceholder(key)) return '';
   key = key.replace(/^https?:\/\//, '').replace(/^\/\//, '').replace(/^www\./, '');
   key = key.split(/[/?#]/)[0] || '';
   if (key.includes('@')) key = key.split('@').pop();
-  return key.replace(/:\d+$/, '').replace(/\.$/, '');
+  key = key.replace(/:\d+$/, '').replace(/\.$/, '');
+  return HOSTNAME_RE.test(key) ? key : '';
 };
 
 export const humanizeDomain = (value) => {
@@ -159,6 +202,64 @@ export const cellToString = (value) => {
   }
   if (typeof value === 'number') return Number.isFinite(value) ? String(value) : '';
   return String(value).trim();
+};
+
+const isoDate = (y, m, d) => `${y}-${pad2(m)}-${pad2(d)}`;
+
+const validYmd = (y, m, d) => {
+  if (!(y >= 1900 && y <= 2200) || !(m >= 1 && m <= 12) || !(d >= 1 && d <= 31)) return false;
+  const probe = new Date(Date.UTC(y, m - 1, d));
+  return probe.getUTCFullYear() === y && probe.getUTCMonth() === m - 1 && probe.getUTCDate() === d;
+};
+
+/**
+ * Turns whatever a date cell contains (JS Date, Excel serial number, US "10/5/2026",
+ * ISO "2026-10-05", or something else) into an ISO date/time string the server reads
+ * unambiguously. Anything unrecognized is passed through as text so the server can warn.
+ */
+export const normalizeDateCell = (value) => {
+  if (value == null || value === '') return '';
+  if (value instanceof Date) return cellToString(value);
+  if (isPlaceholder(value)) return '';
+
+  const text = String(value).trim();
+  const numeric = typeof value === 'number' ? value : (/^\d+(\.\d+)?$/.test(text) ? Number(text) : null);
+  if (numeric != null) {
+    if (numeric < EXCEL_SERIAL_MIN || numeric > EXCEL_SERIAL_MAX) return text;
+    const base = Date.UTC(1899, 11, 30);
+    const whole = Math.floor(numeric);
+    const d = new Date(base + whole * 86400000);
+    const date = isoDate(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
+    const seconds = Math.round((numeric - whole) * 86400);
+    if (!seconds) return date;
+    return `${date} ${pad2(Math.floor(seconds / 3600))}:${pad2(Math.floor((seconds % 3600) / 60))}`;
+  }
+
+  const us = text.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2}|\d{4})(?:\s+(.*))?$/);
+  if (us) {
+    const m = Number(us[1]);
+    const d = Number(us[2]);
+    const y = us[3].length === 2 ? 2000 + Number(us[3]) : Number(us[3]);
+    if (validYmd(y, m, d)) {
+      const date = isoDate(y, m, d);
+      const time = (us[4] || '').trim();
+      return time ? `${date} ${time}` : date;
+    }
+    return text;
+  }
+
+  const iso = text.match(/^(\d{4})-(\d{1,2})-(\d{1,2})(?:[T\s](.*))?$/);
+  if (iso) {
+    const y = Number(iso[1]);
+    const m = Number(iso[2]);
+    const d = Number(iso[3]);
+    if (validYmd(y, m, d)) {
+      const date = isoDate(y, m, d);
+      const time = (iso[4] || '').trim();
+      return time ? `${date} ${time}` : date;
+    }
+  }
+  return text;
 };
 
 export const parseFreeFormContacts = (text) => {
@@ -215,7 +316,7 @@ export const mapHeaderRow = (headerCells) => {
   headerCells.forEach((cell, idx) => {
     const header = normalizeHeader(cell);
     if (!header) return;
-    const column = NOTES_LOADER_COLUMNS.find((c) => !used.has(c.key) && (c.key === header || c.aliases.includes(header)));
+    const column = NOTES_LOADER_COLUMNS.find((c) => !used.has(c.key) && c.aliases.includes(header));
     if (column) {
       mapping[idx] = column.key;
       used.add(column.key);
@@ -226,18 +327,71 @@ export const mapHeaderRow = (headerCells) => {
   return { mapping, unmapped, mappedKeys: Array.from(used) };
 };
 
-const isHeaderRow = (mappedKeys) => mappedKeys.includes('website') || mappedKeys.includes('note');
+const isHeaderRow = (mappedKeys) =>
+  mappedKeys.includes('note') || mappedKeys.includes('website') || mappedKeys.includes('company_name');
 
-export const normalizeNotesLoaderRow = (raw, rowNum) => {
+/**
+ * Score a candidate header row: how many loader columns it names (0 when it can't be a header).
+ * At least two named columns are required so a data cell that happens to say "note" or
+ * "company" is not mistaken for a header.
+ */
+const headerScore = (mappedKeys) => (isHeaderRow(mappedKeys) && mappedKeys.length >= 2 ? mappedKeys.length : 0);
+
+/**
+ * Finds the header row within the first few non-blank rows. ChatGPT-made sheets often
+ * put a title or a blank line above the real header, so row 0 is not assumed.
+ * @returns {{ index: number, attempt: ReturnType<typeof mapHeaderRow> } | null}
+ */
+export const findHeaderRow = (sheet) => {
+  let best = null;
+  sheet.slice(0, HEADER_SCAN_ROWS).forEach(({ cells, index }) => {
+    const attempt = mapHeaderRow(cells);
+    const score = headerScore(attempt.mappedKeys);
+    if (score > 0 && (!best || score > best.score)) best = { index, attempt, score };
+  });
+  return best;
+};
+
+/** Non-blank rows paired with their original 0-based position so row numbers match the sheet. */
+const nonBlankRows = (rows2d) =>
+  (rows2d || [])
+    .map((cells, index) => ({ cells, index }))
+    .filter(({ cells }) => Array.isArray(cells) && cells.some((c) => cellToString(c) !== ''));
+
+const DATE_KEYS = ['note_date', 'remind_at'];
+
+/**
+ * @param {object} raw cell values keyed by loader field
+ * @param {number} rowNum 1-based sheet row for display
+ * @param {{ inferColumns?: boolean }} [options] `inferColumns` moves a company name out of the URL
+ *   column (and a bare domain out of the company column). On for sheet rows, off while the user
+ *   edits a cell so text doesn't hop between inputs mid-keystroke.
+ */
+export const normalizeNotesLoaderRow = (raw, rowNum, { inferColumns = true } = {}) => {
   const row = { _rowNum: rowNum, _errors: [], _warnings: [] };
   NOTES_LOADER_FIELD_KEYS.forEach((key) => {
-    row[key] = cellToString(raw[key]);
+    row[key] = DATE_KEYS.includes(key) ? normalizeDateCell(raw[key]) : cellToString(raw[key]);
   });
 
-  if (row.website && !row.website.includes('.') && !row.company_name) {
-    // A bare word in the URL column is more likely a company name than a domain.
-    row.company_name = row.website;
-    row.website = '';
+  if (isPlaceholder(row.company_name)) row.company_name = '';
+  if (isPlaceholder(row.website)) row.website = '';
+  if (inferColumns) {
+    if (row.website && !websiteKey(row.website)) {
+      // "Acme Plumbing" typed into the URL column is a company name, not a domain.
+      if (!row.company_name) {
+        row.company_name = row.website;
+      } else if (row.company_name.trim().toLowerCase() !== row.website.trim().toLowerCase()) {
+        row._warnings.push(`"${row.website}" is not a web address and was ignored`);
+      }
+      row.website = '';
+    }
+    if (!row.website && row.company_name && !/\s/.test(row.company_name) && websiteKey(row.company_name)) {
+      // A bare domain in the company column (headerless sheets, or columns swapped) is the URL.
+      row.website = row.company_name;
+      row.company_name = '';
+    }
+  } else if (row.website && !websiteKey(row.website)) {
+    row._errors.push('Website is not a valid web address');
   }
   const rawMethod = row.contact_method;
   row.contact_method = normalizeContactMethod(rawMethod);
@@ -258,40 +412,66 @@ export const normalizeNotesLoaderRow = (raw, rowNum) => {
 
   const hasContacts = contactsFromRow(row).length > 0;
   const hasStatus = Boolean(row.status) && CRM_STATUSES.includes(row.status);
-  if (!row.website && !row.company_name) row._errors.push('Missing company URL');
+  if (!row.website && !row.company_name) row._errors.push('Missing company (name or URL)');
   if (!row.note && !hasContacts && !hasStatus) row._errors.push('Nothing to add (no note, contact, or status)');
   return row;
 };
 
+const EMPTY_DRAFT = Object.freeze({ rows: [], headerDetected: false, headerRowIndex: -1, unmappedHeaders: [], mappedKeys: [] });
+
 /**
- * @param {Array<Array<any>>} rows2d raw sheet rows (first row is usually the header)
- * @returns {{ rows: object[], headerDetected: boolean, unmappedHeaders: string[], mappedKeys: string[] }}
+ * @param {Array<Array<any>>} rows2d raw sheet rows; the header is found within the first rows,
+ *   so a title row or blank lines above it are fine. Headerless sheets fall back to template order.
+ * @returns {{ rows: object[], headerDetected: boolean, headerRowIndex: number, unmappedHeaders: string[], mappedKeys: string[] }}
  */
 export const buildNotesLoaderDraftRows = (rows2d) => {
-  const sheet = (rows2d || []).filter((cells) => Array.isArray(cells) && cells.some((c) => cellToString(c) !== ''));
-  if (!sheet.length) return { rows: [], headerDetected: false, unmappedHeaders: [], mappedKeys: [] };
+  const sheet = nonBlankRows(rows2d);
+  if (!sheet.length) return { ...EMPTY_DRAFT };
 
-  const headerAttempt = mapHeaderRow(sheet[0]);
-  const headerDetected = isHeaderRow(headerAttempt.mappedKeys);
-  const mapping = headerDetected
-    ? headerAttempt.mapping
-    : Object.fromEntries(NOTES_LOADER_TEMPLATE_HEADERS.map((key, idx) => [idx, key]));
-  const dataRows = headerDetected ? sheet.slice(1) : sheet;
+  const header = findHeaderRow(sheet);
+  const headerDetected = Boolean(header);
+  const templateAttempt = mapHeaderRow(NOTES_LOADER_TEMPLATE_HEADERS);
+  const mapping = headerDetected ? header.attempt.mapping : templateAttempt.mapping;
+  const dataRows = headerDetected ? sheet.filter(({ index }) => index > header.index) : sheet;
 
-  const rows = dataRows.map((cells, idx) => {
+  const rows = dataRows.map(({ cells, index }) => {
     const raw = {};
     Object.entries(mapping).forEach(([colIdx, key]) => {
       raw[key] = cells[Number(colIdx)];
     });
-    return normalizeNotesLoaderRow(raw, idx + 1 + (headerDetected ? 1 : 0));
+    return normalizeNotesLoaderRow(raw, index + 1);
   });
 
   return {
     rows,
     headerDetected,
-    unmappedHeaders: headerDetected ? headerAttempt.unmapped : [],
-    mappedKeys: headerDetected ? headerAttempt.mappedKeys : NOTES_LOADER_TEMPLATE_HEADERS.slice(0, (sheet[0] || []).length),
+    headerRowIndex: headerDetected ? header.index : -1,
+    unmappedHeaders: headerDetected ? header.attempt.unmapped : [],
+    mappedKeys: headerDetected
+      ? header.attempt.mappedKeys
+      : templateAttempt.mappedKeys.slice(0, (sheet[0]?.cells || []).length),
   };
+};
+
+/**
+ * Picks the most plausible notes sheet out of a workbook: the one whose header names the most
+ * loader columns (ties go to the sheet with more rows), falling back to the first non-empty sheet.
+ * @param {Array<{ name: string, rows: Array<Array<any>> }>} sheets
+ * @returns {ReturnType<typeof buildNotesLoaderDraftRows> & { sheetName: string, sheetCount: number }}
+ */
+export const buildNotesLoaderDraftFromSheets = (sheets) => {
+  const candidates = (sheets || []).map((s) => ({ name: s.name, draft: buildNotesLoaderDraftRows(s.rows) }));
+  if (!candidates.length) return { ...EMPTY_DRAFT, sheetName: '', sheetCount: 0 };
+
+  const rank = (c) => [c.draft.headerDetected ? c.draft.mappedKeys.length : 0, c.draft.rows.length];
+  const best = candidates.reduce((acc, c) => {
+    if (!acc) return c;
+    const [aScore, aRows] = rank(acc);
+    const [cScore, cRows] = rank(c);
+    return cScore > aScore || (cScore === aScore && cRows > aRows) ? c : acc;
+  }, null);
+
+  return { ...best.draft, sheetName: best.name, sheetCount: candidates.length };
 };
 
 /** Client-side preview of which CRM company each row will hit; mirrors the server's matching. */

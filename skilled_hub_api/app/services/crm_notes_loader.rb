@@ -15,21 +15,40 @@ class CrmNotesLoader
     "email" => "email", "emailed" => "email", "e-mail" => "email", "mail" => "email",
     "in_person" => "in_person", "in person" => "in_person", "in-person" => "in_person", "visit" => "in_person",
     "visited" => "in_person", "walk in" => "in_person", "walk-in" => "in_person", "meeting" => "in_person",
-    "site visit" => "in_person", "stopped by" => "in_person",
+    "site visit" => "in_person", "stopped by" => "in_person", "stopped in" => "in_person", "drop in" => "in_person",
+    "drop-in" => "in_person", "dropped in" => "in_person", "dropped by" => "in_person", "door knock" => "in_person",
+    "face to face" => "in_person", "on site" => "in_person", "on-site" => "in_person", "in store" => "in_person",
     "note" => "note", "notes" => "note", "general" => "note", "other" => "note", "research" => "note"
   }.freeze
 
   EMAIL_RE = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i
   PHONE_RE = /(?:\+?1[\s.-]*)?\(?\d{3}\)?[\s.-]*\d{3}[\s.-]*\d{4}(?:\s*(?:x|ext\.?|extension)\s*\d+)?/i
+  HOSTNAME_RE = /\A[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)+\z/
+  PLACEHOLDER_VALUES = %w[n/a na none null nil unknown tbd - -- ? x].freeze
+  # Excel stores dates as days since 1899-12-30; this range covers 1954..2064.
+  EXCEL_SERIAL_RANGE = (20_000..60_000)
+  US_DATE_FORMATS = ["%m/%d/%Y", "%m/%d/%y", "%m-%d-%Y", "%m-%d-%y", "%m/%d/%Y %H:%M", "%m/%d/%Y %I:%M %p"].freeze
 
+  def self.placeholder?(value)
+    PLACEHOLDER_VALUES.include?(value.to_s.strip.downcase)
+  end
+
+  # Normalizes a URL/domain/email into a bare host ("acmeplumbing.com").
+  # Returns "" for blanks, placeholders, and anything that is not a hostname
+  # (e.g. a company name typed into the URL column).
   def self.website_key(value)
     key = value.to_s.strip.downcase
-    return "" if key.blank?
+    return "" if key.blank? || placeholder?(key)
 
     key = key.sub(%r{\Ahttps?://}, "").sub(%r{\A//}, "").sub(/\Awww\./, "")
     key = key.split(%r{[/?#]}, 2).first.to_s
     key = key.split("@").last.to_s if key.include?("@")
-    key.sub(/:\d+\z/, "").sub(/\.\z/, "")
+    key = key.sub(/:\d+\z/, "").sub(/\.\z/, "")
+    HOSTNAME_RE.match?(key) ? key : ""
+  end
+
+  def self.looks_like_website?(value)
+    website_key(value).present?
   end
 
   def self.humanize_domain(value)
@@ -86,6 +105,13 @@ class CrmNotesLoader
     result = blank_result(row_number, row)
     website_key = self.class.website_key(row["website"])
     company_name = row["company_name"].to_s.strip
+    company_name = "" if self.class.placeholder?(company_name)
+
+    # "Acme Plumbing" typed into the URL column is a company name, not a domain.
+    raw_website = row["website"].to_s.strip
+    if website_key.blank? && company_name.blank? && raw_website.present? && !self.class.placeholder?(raw_website)
+      company_name = raw_website
+    end
 
     if website_key.blank? && company_name.blank?
       result[:errors] << "Row needs a company URL (or company name)"
@@ -156,6 +182,13 @@ class CrmNotesLoader
     # The savepoint rolled the DB back; drop any in-memory edits so a later row for the same lead starts clean.
     lead.reload if lead&.persisted?
     result[:errors].concat(e.record.errors.full_messages)
+    result[:outcome] = "error"
+    result
+  rescue StandardError => e
+    # One malformed row must never take down the whole upload.
+    Rails.logger.error("[CrmNotesLoader] row #{row_number} failed: #{e.class}: #{e.message}")
+    lead.reload if lead&.persisted?
+    result[:errors] << "Could not apply this row (#{e.class.name.demodulize})"
     result[:outcome] = "error"
     result
   end
@@ -257,15 +290,38 @@ class CrmNotesLoader
   end
 
   def parse_time(value, label, result)
-    return nil if value.blank?
+    return nil if value.blank? || self.class.placeholder?(value)
     return value if value.is_a?(Time) || value.is_a?(DateTime)
     return value.in_time_zone if value.is_a?(Date)
 
-    parsed = Time.zone.parse(value.to_s)
+    parsed = parse_time_value(value)
     result[:warnings] << "Could not read #{label} \"#{value}\"" if parsed.nil?
     parsed
-  rescue ArgumentError
-    result[:warnings] << "Could not read #{label} \"#{value}\""
+  end
+
+  # Sheets arrive with dates as ISO strings, US m/d/Y strings, or raw Excel serials.
+  # US order is tried before the generic parser because Ruby reads "10/5/2026" as 10 May.
+  def parse_time_value(value)
+    text = value.to_s.strip
+    numeric = value.is_a?(Numeric) ? value : (text.match?(/\A\d+(\.\d+)?\z/) ? text.to_f : nil)
+    if numeric
+      return nil unless EXCEL_SERIAL_RANGE.cover?(numeric)
+
+      return (Date.new(1899, 12, 30) + numeric.floor).in_time_zone + ((numeric % 1) * 86_400).round
+    end
+
+    US_DATE_FORMATS.each do |fmt|
+      return Time.zone.strptime(text, fmt)
+    rescue ArgumentError
+      next
+    end
+
+    # Time.zone.parse("next tuesday") quietly returns today; only accept text that names a real date.
+    parts = Date._parse(text)
+    return nil unless parts[:mday] || parts[:yday] || (parts[:year] && parts[:mon])
+
+    Time.zone.parse(text)
+  rescue ArgumentError, RangeError
     nil
   end
 

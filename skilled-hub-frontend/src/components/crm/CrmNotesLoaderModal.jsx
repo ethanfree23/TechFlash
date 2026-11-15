@@ -5,7 +5,7 @@ import { CRM_NOTE_CONTACT_METHODS, CRM_STATUSES } from '../../utils/crmConstants
 import {
   NOTES_LOADER_CHATGPT_PROMPT,
   NOTES_LOADER_TEMPLATE_HEADERS,
-  buildNotesLoaderDraftRows,
+  buildNotesLoaderDraftFromSheets,
   buildNotesLoaderTemplateRows,
   contactsFromRow,
   matchRowsToLeads,
@@ -14,7 +14,7 @@ import {
   toNotesLoaderSubmitRow,
 } from '../../utils/crmNotesLoader';
 import { parseCsv } from '../../utils/crmImport';
-import { downloadXlsx, readSpreadsheetFile } from '../../utils/spreadsheetFile';
+import { downloadXlsx, readWorkbookSheets } from '../../utils/spreadsheetFile';
 
 const METHOD_LABELS = { call: 'Call', text: 'Text', email: 'Email', in_person: 'In person', note: 'Note' };
 
@@ -50,11 +50,11 @@ export default function CrmNotesLoaderModal({ isOpen, leads, onClose, onApplied,
   const [rows, setRows] = useState([]);
   const [sheetInfo, setSheetInfo] = useState(null);
   const [pasteText, setPasteText] = useState('');
-  const [createMissing, setCreateMissing] = useState(true);
   const [filter, setFilter] = useState('all');
   const [busy, setBusy] = useState(false);
   const [parseError, setParseError] = useState('');
   const [result, setResult] = useState(null);
+  const [skippedCount, setSkippedCount] = useState(0);
   const [promptOpen, setPromptOpen] = useState(false);
   const [promptCopied, setPromptCopied] = useState(false);
 
@@ -66,6 +66,7 @@ export default function CrmNotesLoaderModal({ isOpen, leads, onClose, onApplied,
     setFilter('all');
     setParseError('');
     setResult(null);
+    setSkippedCount(0);
     setPromptOpen(false);
     setPromptCopied(false);
   }, [isOpen]);
@@ -86,14 +87,17 @@ export default function CrmNotesLoaderModal({ isOpen, leads, onClose, onApplied,
 
   if (!isOpen) return null;
 
-  const loadSheet = (rows2d, sourceLabel) => {
-    const built = buildNotesLoaderDraftRows(rows2d);
+  const loadSheets = (sheets, sourceLabel) => {
+    const built = buildNotesLoaderDraftFromSheets(sheets);
     if (!built.rows.length) {
-      setParseError(`Could not find any rows in ${sourceLabel}. Make sure the sheet has a header row with at least a "website" and a "note" column.`);
+      setParseError(
+        `Could not find any rows in ${sourceLabel}. Make sure the sheet has a header row with a "company" (or "website") column and a "note" column.`,
+      );
       return;
     }
     setParseError('');
     setResult(null);
+    setSkippedCount(0);
     setRows(built.rows);
     setSheetInfo({ ...built, sourceLabel });
   };
@@ -104,8 +108,8 @@ export default function CrmNotesLoaderModal({ isOpen, leads, onClose, onApplied,
     if (!file) return;
     setBusy(true);
     try {
-      const rows2d = await readSpreadsheetFile(file);
-      loadSheet(rows2d, file.name);
+      const sheets = await readWorkbookSheets(file);
+      loadSheets(sheets, file.name);
     } catch (err) {
       setParseError(err?.message || 'Could not read that file.');
     } finally {
@@ -115,17 +119,12 @@ export default function CrmNotesLoaderModal({ isOpen, leads, onClose, onApplied,
 
   const onParsePaste = () => {
     const rows2d = parsePastedSheet(pasteText);
-    loadSheet(rows2d, 'the pasted text');
+    loadSheets([{ name: 'Pasted', rows: rows2d }], 'the pasted text');
   };
 
   const updateRow = (idx, key, value) => {
     setRows((prev) =>
-      prev.map((row, i) => {
-        if (i !== idx) return row;
-        // The company cell edits the URL; normalization moves a bare name back into company_name.
-        const patch = key === 'company' ? { website: value, company_name: '' } : { [key]: value };
-        return normalizeNotesLoaderRow({ ...row, ...patch }, row._rowNum);
-      }),
+      prev.map((row, i) => (i === idx ? normalizeNotesLoaderRow({ ...row, [key]: value }, row._rowNum, { inferColumns: false }) : row)),
     );
   };
 
@@ -149,26 +148,34 @@ export default function CrmNotesLoaderModal({ isOpen, leads, onClose, onApplied,
     }
   };
 
+  // Rows with problems are held back (not blocking the rest) so a single bad line never
+  // stops the day's notes from landing. They stay in the table to fix and reload.
   const applyRows = async () => {
-    const blockers = matchedRows.filter(rowNeedsAttention);
-    if (blockers.length) {
+    const readyIdx = [];
+    const heldIdx = [];
+    matchedRows.forEach((row, idx) => (rowNeedsAttention(row) ? heldIdx : readyIdx).push(idx));
+    if (!readyIdx.length) {
       setFilter('attention');
-      setParseError(`${blockers.length} row(s) need attention before loading. Fix or remove them first.`);
-      return;
-    }
-    if (!createMissing && summary.missing > 0) {
-      setFilter('new');
-      setParseError(`${summary.missing} row(s) point at companies that are not in the CRM. Turn on "Create missing companies" or fix their URLs.`);
+      setParseError('Every row needs attention before it can be loaded. Fix or remove the rows below.');
       return;
     }
     setParseError('');
     setBusy(true);
     try {
-      const payload = matchedRows.map(toNotesLoaderSubmitRow);
-      const res = await crmAPI.importNotes(payload, { createMissing });
-      setResult(res);
-      const failedRows = new Set((res.results || []).filter((r) => r.outcome === 'error').map((r) => Number(r.row)));
-      setRows((prev) => prev.filter((_, idx) => failedRows.has(idx + 1)));
+      const payload = readyIdx.map((idx) => toNotesLoaderSubmitRow(matchedRows[idx]));
+      const res = await crmAPI.importNotes(payload, { createMissing: true });
+      // The server numbers results by payload position; map them back to the sheet's row numbers.
+      const results = (res.results || []).map((r) => {
+        const original = matchedRows[readyIdx[Number(r.row) - 1]];
+        return { ...r, row: original?._rowNum ?? r.row, website: original?.website ?? r.website };
+      });
+      const failedIdx = new Set(
+        (res.results || []).filter((r) => r.outcome === 'error').map((r) => readyIdx[Number(r.row) - 1]),
+      );
+      setResult({ ...res, results });
+      setSkippedCount(heldIdx.length);
+      setRows((prev) => prev.filter((_, idx) => failedIdx.has(idx) || heldIdx.includes(idx)));
+      setFilter('all');
       onApplied?.(res);
     } catch (err) {
       setParseError(err?.message || 'Could not load notes into the CRM.');
@@ -178,6 +185,8 @@ export default function CrmNotesLoaderModal({ isOpen, leads, onClose, onApplied,
   };
 
   const hasRows = matchedRows.length > 0;
+  const attentionCount = matchedRows.filter(rowNeedsAttention).length;
+  const readyCount = matchedRows.length - attentionCount;
 
   return (
     <div
@@ -193,7 +202,8 @@ export default function CrmNotesLoaderModal({ isOpen, leads, onClose, onApplied,
               Load sales notes from a spreadsheet
             </h2>
             <p className="text-xs text-gray-500 mt-0.5">
-              One row per note: the company URL finds the CRM record, the note lands on its timeline, and any new people are added as contacts.
+              One row per note. The company URL (or name) finds the CRM record — or creates it if it isn't there yet — the note lands on its
+              timeline, and any new people are added as contacts.
             </p>
           </div>
           <button
@@ -240,8 +250,9 @@ export default function CrmNotesLoaderModal({ isOpen, leads, onClose, onApplied,
               </pre>
             ) : null}
             <p className="text-xs text-gray-500">
-              Columns: <code className="text-[11px]">{NOTES_LOADER_TEMPLATE_HEADERS.join(', ')}</code>. Only <code className="text-[11px]">website</code> and{' '}
-              <code className="text-[11px]">note</code> are required; headers are matched loosely (URL, Notes, Type, Follow up, Email, Phone, etc.).
+              Columns: <code className="text-[11px]">{NOTES_LOADER_TEMPLATE_HEADERS.join(', ')}</code>. Only <code className="text-[11px]">company</code>{' '}
+              (or <code className="text-[11px]">website</code>) and <code className="text-[11px]">note</code> are required; headers are matched loosely
+              (URL, Notes, Type, Follow up, Email, Phone, etc.) and a title row above the header is fine.
             </p>
           </div>
 
@@ -255,7 +266,7 @@ export default function CrmNotesLoaderModal({ isOpen, leads, onClose, onApplied,
                 className="mt-2 block w-full text-sm"
                 onChange={onFileChange}
               />
-              <span className="mt-2 block text-[11px] text-gray-500">The first sheet in the workbook is used.</span>
+              <span className="mt-2 block text-[11px] text-gray-500">If the workbook has several sheets, the one that looks like the notes template is used.</span>
             </label>
             <div className="rounded-lg border border-gray-200 p-3">
               <label className="block">
@@ -298,6 +309,16 @@ export default function CrmNotesLoaderModal({ isOpen, leads, onClose, onApplied,
               No header row found in {sheetInfo.sourceLabel}; columns were assumed in template order ({NOTES_LOADER_TEMPLATE_HEADERS.slice(0, 4).join(', ')}, …).
             </div>
           ) : null}
+          {sheetInfo?.sheetCount > 1 ? (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+              {sheetInfo.sourceLabel} has {sheetInfo.sheetCount} sheets; using "{sheetInfo.sheetName}".
+            </div>
+          ) : null}
+          {sheetInfo?.headerRowIndex > 0 ? (
+            <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+              Header found on line {sheetInfo.headerRowIndex + 1}; the lines above it were skipped.
+            </div>
+          ) : null}
           {sheetInfo?.unmappedHeaders?.length ? (
             <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600">
               Ignored columns: {sheetInfo.unmappedHeaders.join(', ')}
@@ -332,25 +353,26 @@ export default function CrmNotesLoaderModal({ isOpen, leads, onClose, onApplied,
                     <option value="attention">Needs attention</option>
                     <option value="new">New companies</option>
                   </select>
-                  <label className="inline-flex items-center gap-1.5 text-xs text-gray-700">
-                    <input
-                      type="checkbox"
-                      checked={createMissing}
-                      onChange={(e) => setCreateMissing(e.target.checked)}
-                      className="rounded border-gray-300"
-                    />
-                    Create missing companies
-                  </label>
                   <button
                     type="button"
                     onClick={applyRows}
-                    disabled={busy}
+                    disabled={busy || !readyCount}
                     className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
                   >
-                    {busy ? 'Loading…' : `Load ${summary.total} row${summary.total === 1 ? '' : 's'} into CRM`}
+                    {busy ? 'Loading…' : `Load ${readyCount} row${readyCount === 1 ? '' : 's'} into CRM`}
                   </button>
                 </div>
               </div>
+              {attentionCount ? (
+                <p className="text-xs text-amber-800">
+                  {attentionCount} row{attentionCount === 1 ? '' : 's'} need attention and will be held back; the other {readyCount} load normally.
+                </p>
+              ) : null}
+              {summary.missing ? (
+                <p className="text-xs text-gray-600">
+                  Companies marked <span className="font-medium text-amber-700">New company</span> are not in the CRM yet and will be created with the note.
+                </p>
+              ) : null}
 
               <div className="max-h-[40vh] overflow-auto border border-gray-200 rounded-lg">
                 <table className="min-w-full text-xs">
@@ -377,12 +399,20 @@ export default function CrmNotesLoaderModal({ isOpen, leads, onClose, onApplied,
                           <td className="px-2 py-1.5">
                             <input
                               className="w-full border rounded px-1.5 py-0.5"
-                              value={row.website || row.company_name}
-                              placeholder="company URL"
-                              onChange={(e) => updateRow(idx, 'company', e.target.value)}
+                              value={row.company_name}
+                              placeholder="company name"
+                              aria-label={`Row ${row._rowNum} company name`}
+                              onChange={(e) => updateRow(idx, 'company_name', e.target.value)}
+                            />
+                            <input
+                              className="mt-1 w-full border rounded px-1.5 py-0.5 text-gray-600"
+                              value={row.website}
+                              placeholder="website (optional)"
+                              aria-label={`Row ${row._rowNum} website`}
+                              onChange={(e) => updateRow(idx, 'website', e.target.value)}
                             />
                             <div className="mt-1 flex items-center gap-1.5">
-                              <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}>
+                              <span className={`inline-flex items-center whitespace-nowrap rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${badge.className}`}>
                                 {badge.label}
                               </span>
                               <span className="truncate text-gray-600" title={row._match?.leadName}>
@@ -524,8 +554,16 @@ export default function CrmNotesLoaderModal({ isOpen, leads, onClose, onApplied,
                   );
                 })}
               </ul>
-              {result.failed_count ? (
-                <p className="text-xs text-gray-500">Failed rows stay in the table above so you can fix and reload them.</p>
+              {result.failed_count || skippedCount ? (
+                <p className="text-xs text-gray-500">
+                  {[
+                    result.failed_count ? `${result.failed_count} failed row${result.failed_count === 1 ? '' : 's'}` : null,
+                    skippedCount ? `${skippedCount} held-back row${skippedCount === 1 ? '' : 's'}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(' and ')}{' '}
+                  stay in the table above so you can fix and reload them.
+                </p>
               ) : null}
             </div>
           ) : null}
