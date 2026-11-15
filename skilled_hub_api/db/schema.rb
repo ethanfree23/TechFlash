@@ -930,11 +930,14 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_13_162000) do
     t.integer "schedule_flexibility", default: 0, null: false
     t.datetime "terminated_at"
     t.boolean "posted_under_funding_waiver", default: false, null: false
+    t.integer "primary_contact_user_id"
+    t.json "additional_contact_user_ids", default: [], null: false
     t.index ["company_membership_tier_config_id"], name: "index_jobs_on_company_membership_tier_config_id"
     t.index ["company_profile_id"], name: "index_jobs_on_company_profile_id"
     t.index ["funding_status"], name: "index_jobs_on_funding_status"
     t.index ["pay_basis"], name: "index_jobs_on_pay_basis"
     t.index ["potential_full_time"], name: "index_jobs_on_potential_full_time"
+    t.index ["primary_contact_user_id"], name: "index_jobs_on_primary_contact_user_id"
     t.index ["rolling_start_rule_type"], name: "index_jobs_on_rolling_start_rule_type"
     t.index ["schedule_flexibility"], name: "index_jobs_on_schedule_flexibility"
     t.index ["share_token"], name: "index_jobs_on_share_token", unique: true

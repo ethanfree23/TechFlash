@@ -23,6 +23,7 @@ import { parseCoordinatePair } from '../utils/coordinates';
 import { listConversations, type Conversation } from '../api/conversationsApi';
 import * as Location from 'expo-location';
 import { formatJobAddress } from '../utils/address';
+import { geocodeAddress } from '../utils/geocode';
 
 type StackNav = NativeStackNavigationProp<AppStackParamList>;
 
@@ -90,7 +91,11 @@ export default function DashboardScreen() {
         const markers: MapMarker[] = [];
         let gpsCenter: { latitude: number; longitude: number } | null = null;
         try {
-          const perm = await Location.requestForegroundPermissionsAsync();
+          // Only prompt when undecided so Dashboard does not re-trigger iOS dialogs.
+          let perm = await Location.getForegroundPermissionsAsync();
+          if (perm.status === 'undetermined') {
+            perm = await Location.requestForegroundPermissionsAsync();
+          }
           if (perm.status === 'granted') {
             const pos = await Location.getCurrentPositionAsync({});
             gpsCenter = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };

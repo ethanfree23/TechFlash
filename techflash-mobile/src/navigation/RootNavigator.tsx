@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -9,6 +9,7 @@ import { colors } from '../theme';
 import WelcomeScreen from '../screens/WelcomeScreen';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
+import PermissionsOnboardingScreen from '../screens/PermissionsOnboardingScreen';
 import DashboardScreen from '../screens/DashboardScreen';
 import JobsScreen from '../screens/JobsScreen';
 import MessagesScreen from '../screens/MessagesScreen';
@@ -30,6 +31,7 @@ import SkillsAssessmentsScreen from '../screens/SkillsAssessmentsScreen';
 import AssessmentAttemptScreen from '../screens/AssessmentAttemptScreen';
 import AssessmentResultScreen from '../screens/AssessmentResultScreen';
 import AssessmentHistoryScreen from '../screens/AssessmentHistoryScreen';
+import { hasCompletedPermissionsOnboarding } from '../onboarding/permissionsOnboarding';
 
 export type AuthStackParamList = {
   Welcome: undefined;
@@ -281,8 +283,38 @@ function AuthStackNavigator() {
 
 export default function RootNavigator() {
   const { user, ready } = useAuth();
+  const [permissionsReady, setPermissionsReady] = useState(false);
+  const [needsPermissions, setNeedsPermissions] = useState(false);
 
-  if (!ready) {
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) {
+      setPermissionsReady(true);
+      setNeedsPermissions(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    setPermissionsReady(false);
+    hasCompletedPermissionsOnboarding()
+      .then((done) => {
+        if (!cancelled) {
+          setNeedsPermissions(!done);
+          setPermissionsReady(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setNeedsPermissions(false);
+          setPermissionsReady(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id]);
+
+  if (!ready || (user && !permissionsReady)) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}>
         <ActivityIndicator size="large" color={colors.primaryOrange} />
@@ -292,7 +324,13 @@ export default function RootNavigator() {
 
   return (
     <NavigationContainer theme={navTheme}>
-      {user ? <AppStackNavigator /> : <AuthStackNavigator />}
+      {!user ? (
+        <AuthStackNavigator />
+      ) : needsPermissions ? (
+        <PermissionsOnboardingScreen onFinished={() => setNeedsPermissions(false)} />
+      ) : (
+        <AppStackNavigator />
+      )}
     </NavigationContainer>
   );
 }

@@ -52,6 +52,10 @@ const DateTimePickerPreviewPage = import.meta.env.DEV
   ? React.lazy(() => import('./pages/DateTimePickerPreviewPage'))
   : null;
 
+const MobileNavPreviewPage = import.meta.env.DEV
+  ? React.lazy(() => import('./pages/MobileNavPreviewPage'))
+  : null;
+
 // Protected Route component
 const ProtectedRoute = ({ children, isAuthenticated }) => {
   return isAuthenticated ? children : <Navigate to="/login" replace />;
@@ -218,6 +222,17 @@ function App() {
               element={(
                 <React.Suspense fallback={<div className="p-8 text-sm text-slate-500">Loading…</div>}>
                   <DateTimePickerPreviewPage />
+                </React.Suspense>
+              )}
+            />
+          ) : null}
+
+          {import.meta.env.DEV && MobileNavPreviewPage ? (
+            <Route
+              path="/dev/mobile-nav"
+              element={(
+                <React.Suspense fallback={<div className="p-8 text-sm text-slate-500">Loading…</div>}>
+                  <MobileNavPreviewPage />
                 </React.Suspense>
               )}
             />

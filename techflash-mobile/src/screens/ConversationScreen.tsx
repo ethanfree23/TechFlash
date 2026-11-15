@@ -8,6 +8,7 @@ import {
   TextInput,
   Pressable,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { RouteProp, useFocusEffect, useRoute } from '@react-navigation/native';
 import { colors } from '../theme';
@@ -20,6 +21,11 @@ import type { AppStackParamList } from '../navigation/RootNavigator';
 
 type ConvRoute = RouteProp<AppStackParamList, 'Conversation'>;
 
+function isBlockedMessagingError(message: string): boolean {
+  const m = message.toLowerCase();
+  return m.includes('blocked') || m.includes('messaging is unavailable');
+}
+
 export default function ConversationScreen() {
   const route = useRoute<ConvRoute>();
   const { conversationId } = route.params;
@@ -27,6 +33,8 @@ export default function ConversationScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [blockedMessaging, setBlockedMessaging] = useState(false);
   const [conversation, setConversation] = useState<Record<string, unknown>>({});
   const [messages, setMessages] = useState<MessageRow[]>([]);
   const [draft, setDraft] = useState('');
@@ -42,8 +50,11 @@ export default function ConversationScreen() {
       ]);
       setConversation(conv as Record<string, unknown>);
       setMessages(msgs);
+      setBlockedMessaging(false);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load conversation');
+      const msg = e instanceof Error ? e.message : 'Could not load conversation';
+      setError(msg);
+      if (isBlockedMessagingError(msg)) setBlockedMessaging(true);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -56,7 +67,7 @@ export default function ConversationScreen() {
     conversation.conversation_type === 'feedback' || conversation.inbox_category === 'feedback';
 
   const onSend = async () => {
-    if (!draft.trim() || isFeedbackThread) return;
+    if (!draft.trim() || isFeedbackThread || blockedMessaging) return;
     setSaving(true);
     setError('');
     try {
@@ -64,7 +75,9 @@ export default function ConversationScreen() {
       setDraft('');
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not send message');
+      const msg = e instanceof Error ? e.message : 'Could not send message';
+      setError(msg);
+      if (isBlockedMessagingError(msg)) setBlockedMessaging(true);
     } finally {
       setSaving(false);
     }
@@ -75,42 +88,72 @@ export default function ConversationScreen() {
       ? Number((conversation.company_profile as Record<string, unknown> | undefined)?.user_id || 0)
       : Number((conversation.technician_profile as Record<string, unknown> | undefined)?.user_id || 0);
 
-  const onReport = async () => {
+  const onReport = () => {
     if (!reportBody.trim()) {
       setError('Enter report details first.');
       return;
     }
-    setSaving(true);
-    setError('');
-    try {
-      await createFeedback(
-        'problem',
-        `Conversation report #${conversationId}\n${reportBody.trim()}`,
-        `/conversations/${conversationId}`
-      );
-      setReportBody('');
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not submit report');
-    } finally {
-      setSaving(false);
-    }
+    Alert.alert(
+      'Submit report?',
+      'This creates a moderation record for TechFlash staff. It does not automatically ban the other user.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Submit report',
+          onPress: async () => {
+            setSaving(true);
+            setError('');
+            setNotice('');
+            try {
+              await createFeedback(
+                'problem',
+                `Conversation report #${conversationId}\n${reportBody.trim()}`,
+                `/conversations/${conversationId}`
+              );
+              setReportBody('');
+              setNotice('Report submitted. Our team will review it.');
+            } catch (e) {
+              setError(e instanceof Error ? e.message : 'Could not submit report');
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
-  const onBlock = async () => {
+  const onBlock = () => {
     if (!targetUserId) {
       setError('Could not determine user to block.');
       return;
     }
-    setSaving(true);
-    setError('');
-    try {
-      await blockUser(targetUserId);
-      await load();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not block user');
-    } finally {
-      setSaving(false);
-    }
+    Alert.alert(
+      'Block this user?',
+      'They will no longer be able to message you, and you will not be able to message them. You can unblock later in Settings → Account → Blocked users.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Block',
+          style: 'destructive',
+          onPress: async () => {
+            setSaving(true);
+            setError('');
+            setNotice('');
+            try {
+              await blockUser(targetUserId);
+              setBlockedMessaging(true);
+              setNotice('User blocked. Direct messaging with this person is now disabled.');
+              await load();
+            } catch (e) {
+              setError(e instanceof Error ? e.message : 'Could not block user');
+            } finally {
+              setSaving(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (loading) {
@@ -120,8 +163,14 @@ export default function ConversationScreen() {
   return (
     <View style={styles.root}>
       {!!error && <Text style={styles.error}>{error}</Text>}
+      {!!notice && <Text style={styles.notice}>{notice}</Text>}
       {isFeedbackThread ? (
         <Text style={styles.info}>Feedback thread is read-only.</Text>
+      ) : null}
+      {blockedMessaging ? (
+        <Text style={styles.info}>
+          Messaging is unavailable because one participant has blocked the other. Unblock from Settings if needed.
+        </Text>
       ) : null}
       <FlatList
         data={messages}
@@ -152,12 +201,12 @@ export default function ConversationScreen() {
           <Pressable style={styles.reportBtn} onPress={onReport} disabled={saving}>
             <Text style={styles.reportBtnText}>Report this conversation</Text>
           </Pressable>
-          <Pressable style={styles.blockBtn} onPress={onBlock} disabled={saving}>
-            <Text style={styles.blockBtnText}>Block this user</Text>
+          <Pressable style={styles.blockBtn} onPress={onBlock} disabled={saving || blockedMessaging}>
+            <Text style={styles.blockBtnText}>{blockedMessaging ? 'User blocked' : 'Block this user'}</Text>
           </Pressable>
         </View>
       ) : null}
-      {!isFeedbackThread ? (
+      {!isFeedbackThread && !blockedMessaging ? (
         <View style={styles.composer}>
           <TextInput
             value={draft}
@@ -180,6 +229,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg },
   error: { color: colors.danger, marginHorizontal: 14, marginTop: 10 },
+  notice: { color: colors.primaryBlue, marginHorizontal: 14, marginTop: 10, fontWeight: '600' },
   info: { color: colors.muted, marginHorizontal: 14, marginTop: 10 },
   empty: { marginTop: 20, textAlign: 'center', color: colors.muted },
   msgCard: {
