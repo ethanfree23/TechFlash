@@ -102,8 +102,8 @@ export function SettingsAccountPanel({
       {!!notice && !saveErr ? <Text style={styles.notice}>{notice}</Text> : null}
 
       <Text style={[typography.heading, { marginTop: space.lg }]}>Legal and support</Text>
-      <GhostButton label="Open Privacy Policy" onPress={() => Linking.openURL('https://techflash.app/privacy-policy')} />
-      <GhostButton label="Open Terms of Service" onPress={() => Linking.openURL('https://techflash.app/terms-of-service')} />
+      <GhostButton label="Open Privacy Policy" onPress={() => Linking.openURL('https://www.techflash.app/privacy-policy')} />
+      <GhostButton label="Open Terms of Service" onPress={() => Linking.openURL('https://www.techflash.app/terms-of-service')} />
       <GhostButton label="Contact support" onPress={() => Linking.openURL('mailto:support@techflash.app')} />
 
       <Text style={[typography.heading, { marginTop: space.lg }]}>Blocked users</Text>
@@ -478,7 +478,10 @@ export function SettingsNotificationsPanel({
         }
       }
       try {
-        const perm = await Location.requestForegroundPermissionsAsync();
+        let perm = await Location.getForegroundPermissionsAsync();
+        if (perm.status === 'undetermined') {
+          perm = await Location.requestForegroundPermissionsAsync();
+        }
         if (perm.status === 'granted') {
           const pos = await Location.getCurrentPositionAsync({});
           setResolvedCenter(`Device GPS (${pos.coords.latitude.toFixed(4)}, ${pos.coords.longitude.toFixed(4)})`);

@@ -238,7 +238,7 @@ export default function JobDetailScreen() {
         <Text style={styles.sub}>{String(job.description || '')}</Text>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>Class</Text>
-          <Text style={styles.metaValue}>{technicianClassLabel(job.skill_class) || 'N/A'}</Text>
+          <Text style={styles.metaValue}>{technicianClassLabel(job.skill_class as string | null | undefined) || 'N/A'}</Text>
         </View>
         <View style={styles.metaRow}>
           <Text style={styles.metaLabel}>Experience</Text>
@@ -261,17 +261,26 @@ export default function JobDetailScreen() {
         <Pressable style={styles.btnGhost} onPress={onStartConversation} disabled={saving}>
           <Text style={styles.btnGhostText}>Open conversation</Text>
         </Pressable>
-        <TextInput
-          value={reportBody}
-          onChangeText={setReportBody}
-          placeholder="Report unsafe or abusive job content"
-          placeholderTextColor={colors.muted}
-          style={styles.input}
-          multiline
-        />
-        <Pressable style={styles.btnGhost} onPress={onReportJob} disabled={saving}>
-          <Text style={styles.btnGhostText}>Report this job</Text>
-        </Pressable>
+        {isCompanyOrAdmin || inProgress ? (
+          <>
+            <TextInput
+              value={reportBody}
+              onChangeText={setReportBody}
+              placeholder="Report unsafe or abusive job content"
+              placeholderTextColor={colors.muted}
+              style={styles.input}
+              multiline
+            />
+            <Pressable style={styles.btnGhost} onPress={onReportJob} disabled={saving}>
+              <Text style={styles.btnGhostText}>Report this job</Text>
+            </Pressable>
+          </>
+        ) : isTech ? (
+          <Text style={styles.sub}>
+            Job reporting is available after you claim/accept this assignment. Use conversation report/block for
+            messaging safety issues.
+          </Text>
+        ) : null}
       </Card>
 
       {isTech ? (

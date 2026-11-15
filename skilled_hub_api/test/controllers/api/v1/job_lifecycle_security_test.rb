@@ -85,6 +85,23 @@ module Api
         job.reload
       end
 
+      # Jobs default to Mon–Fri only. Pin API time-entry posts to a weekday so weekend
+      # calendar CI (Sat/Sun) does not return 422 "Weekend hours are not allowed".
+      def weekday_freeze
+        travel_to Time.zone.parse("2026-04-27 12:00:00") do # Monday
+          yield
+        end
+      end
+
+      def weekday_time_entry_params(overrides = {})
+        {
+          worked_start_at: Time.zone.parse("2026-04-27 08:00:00").iso8601,
+          worked_end_at: Time.zone.parse("2026-04-27 16:00:00").iso8601,
+          worked_on_date: Date.new(2026, 4, 27),
+          worked_hours: 8
+        }.merge(overrides)
+      end
+
       test "status cannot be mass-assigned to finished or filled" do
         job = funded_open_job
 
@@ -217,57 +234,49 @@ module Api
       end
 
       test "outsiders cannot log time on a claimed job" do
-        job = claimed_job
-        post "/api/v1/jobs/#{job.id}/time_entries",
-             params: {
-               worked_start_at: 3.hours.ago.iso8601,
-               worked_end_at: 1.hour.ago.iso8601,
-               worked_on_date: Date.current,
-               worked_hours: 2
-             },
-             headers: auth_header_for(@outsider),
-             as: :json
+        weekday_freeze do
+          job = claimed_job
+          post "/api/v1/jobs/#{job.id}/time_entries",
+               params: weekday_time_entry_params(worked_hours: 2),
+               headers: auth_header_for(@outsider),
+               as: :json
 
-        assert_response :forbidden
+          assert_response :forbidden
+        end
       end
 
       test "technicians cannot set override flags or another technician id" do
-        job = claimed_job
-        other_tech = @outsider.technician_profile
+        weekday_freeze do
+          job = claimed_job
+          other_tech = @outsider.technician_profile
 
-        post "/api/v1/jobs/#{job.id}/time_entries",
-             params: {
-               technician_profile_id: other_tech.id,
-               override_applied: true,
-               override_reason: "bypass",
-               worked_start_at: Time.current.change(hour: 8).iso8601,
-               worked_end_at: Time.current.change(hour: 16).iso8601,
-               worked_on_date: Date.current,
-               worked_hours: 8
-             },
-             headers: auth_header_for(@tech_user),
-             as: :json
+          post "/api/v1/jobs/#{job.id}/time_entries",
+               params: weekday_time_entry_params(
+                 technician_profile_id: other_tech.id,
+                 override_applied: true,
+                 override_reason: "bypass"
+               ),
+               headers: auth_header_for(@tech_user),
+               as: :json
 
-        assert_response :created
-        entry = job.time_entries.order(:id).last
-        assert_equal @tech_profile.id, entry.technician_profile_id
-        refute entry.override_applied?
+          assert_response :created
+          entry = job.time_entries.order(:id).last
+          assert_equal @tech_profile.id, entry.technician_profile_id
+          refute entry.override_applied?
+        end
       end
 
       test "time cannot be logged on an unclaimed job" do
-        job = funded_open_job
-        post "/api/v1/jobs/#{job.id}/time_entries",
-             params: {
-               worked_start_at: 3.hours.ago.iso8601,
-               worked_end_at: 1.hour.ago.iso8601,
-               worked_on_date: Date.current,
-               worked_hours: 2
-             },
-             headers: auth_header_for(@company_user),
-             as: :json
+        weekday_freeze do
+          job = funded_open_job
+          post "/api/v1/jobs/#{job.id}/time_entries",
+               params: weekday_time_entry_params(worked_hours: 2),
+               headers: auth_header_for(@company_user),
+               as: :json
 
-        assert_response :unprocessable_entity
-        assert_match(/claimed/i, JSON.parse(response.body)["error"])
+          assert_response :unprocessable_entity
+          assert_match(/claimed/i, JSON.parse(response.body)["error"])
+        end
       end
 
       test "GET job reads do not auto-complete overdue assignments" do

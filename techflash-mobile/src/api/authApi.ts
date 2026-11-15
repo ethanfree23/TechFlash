@@ -34,6 +34,14 @@ export interface RegisterPayload {
   membership_tier: string;
   honeypot?: string;
   electrical_license_number?: string;
+  /** Required for technician signup (API validates against TradeCatalog). */
+  trade_type?: string;
+  /** Required for technician signup: Apprentice | Journeyman | Master. */
+  skill_class?: string;
+  /** Required for company signup. */
+  company_name?: string;
+  /** Required for company signup (trade/industry label). */
+  industry?: string;
 }
 
 export async function register(payload: RegisterPayload): Promise<LoginResponse> {
