@@ -1,3 +1,13 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/*
+  Mobile browsers and Capacitor WebViews treat overscroll at the top of the
+  page as pull-to-refresh and fully reload the SPA. Disable that gesture so
+  scrolling stays in-app without wiping client state.
+*/
+html,
+body {
+  overscroll-behavior-y: none;
+}
