@@ -344,7 +344,12 @@ export default function AdminTrustSafetyPage({ user, onLogout }) {
               />
               {queue?.truncated && (
                 <p className="px-4 py-2 text-[11px] text-amber-800 bg-amber-50 border-t border-amber-100">
-                  Showing the most relevant results; narrow the filters to see everything in this view.
+                  Queue candidate window capped
+                  {queue.per_source_cap ? ` at ${queue.per_source_cap.toLocaleString()} rows per source` : ''}
+                  {Array.isArray(queue.truncated_sources) && queue.truncated_sources.length
+                    ? ` (${queue.truncated_sources.join(', ')})`
+                    : ''}
+                  . Summary metrics remain complete — narrow filters to review every matching item.
                 </p>
               )}
               <div className="hidden md:flex items-center gap-3 px-4 py-2 text-[11px] text-slate-400 border-t border-slate-100">

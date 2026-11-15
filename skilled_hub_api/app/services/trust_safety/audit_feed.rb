@@ -13,6 +13,7 @@ module TrustSafety
       "document_rejected" => "Document rejected",
       "document_rereviewed" => "Document decision overridden",
       "document_info_requested" => "More information requested (document)",
+      "document_accessed" => "Document accessed",
       "reference_approved" => "Reference marked verified",
       "reference_rejected" => "Reference rejected",
       "reference_rereviewed" => "Reference decision overridden",

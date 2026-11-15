@@ -39,7 +39,12 @@ module Api
 
         def item
           record = find_item!(params[:item_type], params[:id])
-          render json: { item: serialize_item(record, detail: true), audit: item_audit(record) }, status: :ok
+          payload = serialize_item(record, detail: true)
+          if record.is_a?(Document)
+            file = (payload[:file] || payload["file"] || TrustSafety::DocumentFileAccess.for(record))
+            audit_document_access!(record, file.to_h.symbolize_keys, source: "item_detail")
+          end
+          render json: { item: payload, audit: item_audit(record) }, status: :ok
         rescue ActiveRecord::RecordNotFound
           render json: { error: "Item not found" }, status: :not_found
         end
@@ -52,7 +57,9 @@ module Api
             return render json: { error: "Document is not part of technician verification" }, status: :forbidden
           end
 
-          render json: { file: TrustSafety::DocumentFileAccess.for(doc) }, status: :ok
+          file = TrustSafety::DocumentFileAccess.for(doc)
+          audit_document_access!(doc, file, source: "document_file")
+          render json: { file: file }, status: :ok
         rescue ActiveRecord::RecordNotFound
           render json: { error: "Document not found" }, status: :not_found
         end
@@ -186,9 +193,6 @@ module Api
           end
           return render json: { error: "A written reason is required for a manual override.", code: "reason_required" }, status: :unprocessable_entity if notes.blank?
           return render json: { error: "Confirmation is required for a manual override.", code: "confirmation_required" }, status: :unprocessable_entity unless confirmed?
-          if (conflict = stale_write_conflict(check))
-            return render json: conflict, status: :conflict
-          end
           unless TrustSafety::BackgroundCheckPolicy.override_allowed?(check, override)
             return render json: {
               error: TrustSafety::BackgroundCheckPolicy.override_block_reason(check) || "This override is not allowed for the report's current state.",
@@ -197,11 +201,15 @@ module Api
               allowed_overrides: TrustSafety::BackgroundCheckPolicy.allowed_overrides(check)
             }, status: :unprocessable_entity
           end
+          if (conflict = stale_write_conflict(check, required: true))
+            return render json: conflict, status: conflict[:code] == "stale_write" ? :conflict : :unprocessable_entity
+          end
 
           previous_override = check.admin_override_status
           previous_status = check.status
           # Preserve the provider phase: the legacy status enum doubles as the eligibility
-          # flag, so writing it must not erase what Checkr actually reported.
+          # flag, so writing it must not erase what Checkr actually reported. Only the
+          # listed attributes are written — Checkr result / report ids are never touched.
           check.normalized_status = check.normalized_status_value if check.normalized_status.blank?
           # The provider's completion timestamp is part of the Checkr record; only fill it when
           # there is none. The override's own timestamp lives in the audit log.
@@ -254,9 +262,6 @@ module Api
           unless %w[approved rejected].include?(review_status)
             return render json: { error: "status must be approved or rejected" }, status: :unprocessable_entity
           end
-          if (conflict = stale_write_conflict(ref))
-            return render json: conflict, status: :conflict
-          end
 
           already_decided = ref.approved? || ref.rejected?
           override = override_requested?
@@ -275,6 +280,9 @@ module Api
             }, status: :unprocessable_entity
           end
           return render json: { error: "A reason is required for an override.", code: "reason_required" }, status: :unprocessable_entity if override && notes.blank?
+          if (conflict = stale_write_conflict(ref, required: true))
+            return render json: conflict, status: conflict[:code] == "stale_write" ? :conflict : :unprocessable_entity
+          end
 
           previous_status = ref.status
           ref.update!(
@@ -299,13 +307,13 @@ module Api
 
         def review_document
           doc = Document.find(params[:id])
+          unless reviewable_document?(doc)
+            return render json: { error: "Document is not part of technician verification" }, status: :forbidden
+          end
           review_status = params[:status].to_s
           reason = (params[:reason].presence || params[:rejection_reason]).to_s.strip
           unless %w[approved rejected].include?(review_status)
             return render json: { error: "status must be approved or rejected" }, status: :unprocessable_entity
-          end
-          if (conflict = stale_write_conflict(doc))
-            return render json: conflict, status: :conflict
           end
 
           already_decided = doc.approved? || doc.rejected?
@@ -319,6 +327,9 @@ module Api
           end
           return render json: { error: "A reason is required to reject a document.", code: "reason_required" }, status: :unprocessable_entity if review_status == "rejected" && reason.blank?
           return render json: { error: "A reason is required for an override.", code: "reason_required" }, status: :unprocessable_entity if override && reason.blank?
+          if (conflict = stale_write_conflict(doc, required: true))
+            return render json: conflict, status: conflict[:code] == "stale_write" ? :conflict : :unprocessable_entity
+          end
 
           previous_status = doc.status
           doc.update!(
@@ -366,11 +377,19 @@ module Api
           ActiveModel::Type::Boolean.new.cast(params[:override]) == true
         end
 
-        # Optimistic concurrency: clients send the `updated_at` they rendered; if another
+        # Optimistic concurrency: clients must send the `updated_at` they rendered; if another
         # reviewer changed the record since, refuse the write and return the latest state.
-        def stale_write_conflict(record)
+        # Decision-changing endpoints pass required: true so last-write-wins cannot bypass the UI.
+        def stale_write_conflict(record, required: false)
           expected = params[:expected_updated_at].to_s
-          return nil if expected.blank?
+          if expected.blank?
+            return nil unless required
+
+            return {
+              error: "expected_updated_at is required so concurrent reviews cannot overwrite each other.",
+              code: "expected_updated_at_required"
+            }
+          end
 
           begin
             expected_time = Time.iso8601(expected)
@@ -384,6 +403,31 @@ module Api
             code: "stale_write",
             item: serialize_item(record, detail: true)
           }
+        end
+
+        # Lightweight access audit: who viewed which technician document, without storing URLs
+        # or file contents. One event per file mint / detail open is enough for accountability.
+        def audit_document_access!(doc, file, source:)
+          owner = resolve_document_owner_user(doc)
+          return unless owner
+
+          VerificationAuditLog.record!(
+            user: owner,
+            actor_user: @current_user,
+            entity: doc,
+            action: "document_accessed",
+            details: {
+              source: source,
+              doc_type: doc.doc_type,
+              available: file[:available],
+              filename: file[:filename],
+              content_type: file[:content_type],
+              byte_size: file[:byte_size],
+              expires_in_seconds: file[:expires_in_seconds]
+            }.compact
+          )
+        rescue StandardError => e
+          Rails.logger.warn("[TrustSafety] document access audit failed document_id=#{doc.id}: #{e.class}: #{e.message}")
         end
 
         def find_item!(item_type, id)

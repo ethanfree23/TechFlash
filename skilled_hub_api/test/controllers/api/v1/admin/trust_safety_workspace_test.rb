@@ -14,6 +14,11 @@ module Api
           @other_tech = create_technician(email: "sam.ortiz@example.com", first: "Sam", last: "Ortiz", trade: "Electrical", city: "Denver", state: "CO")
         end
 
+        def expected_at(record)
+          record.reload.updated_at.iso8601(6)
+        end
+
+
         # --- Auth -------------------------------------------------------------------------
 
         test "workspace endpoints require admin auth" do
@@ -169,7 +174,7 @@ module Api
           assert body.dig("item", "file", "expires_at").present?
           assert_equal "image", body.dig("item", "file", "kind")
           assert_equal "TX-12345", body.dig("item", "details", "document_number")
-          assert_equal [], body["audit"]
+          assert_equal ["document_accessed"], body["audit"].map { |row| row["action"] }
 
           get "/api/v1/admin/trust_safety/documents/#{doc.id}/file", headers: auth_header_for(@admin)
           assert_response :ok
@@ -208,7 +213,7 @@ module Api
 
           assert_difference -> { VerificationAuditLog.where(action: "document_approved").count }, 1 do
             assert_difference -> { AppNotification.where(user_id: @tech.id).count }, 1 do
-              patch "/api/v1/admin/trust_safety/documents/#{doc.id}/review", params: { status: "approved" }, headers: auth_header_for(@admin), as: :json
+              patch "/api/v1/admin/trust_safety/documents/#{doc.id}/review", params: { status: "approved", expected_updated_at: expected_at(doc) }, headers: auth_header_for(@admin), as: :json
             end
           end
           assert_response :ok
@@ -221,18 +226,18 @@ module Api
 
         test "already reviewed document returns 409 unless an override with reason is supplied" do
           doc = pending_document(@tech)
-          patch "/api/v1/admin/trust_safety/documents/#{doc.id}/review", params: { status: "approved" }, headers: auth_header_for(@admin), as: :json
+          patch "/api/v1/admin/trust_safety/documents/#{doc.id}/review", params: { status: "approved", expected_updated_at: expected_at(doc) }, headers: auth_header_for(@admin), as: :json
           assert_response :ok
 
-          patch "/api/v1/admin/trust_safety/documents/#{doc.id}/review", params: { status: "rejected", reason: "Expired" }, headers: auth_header_for(@admin), as: :json
+          patch "/api/v1/admin/trust_safety/documents/#{doc.id}/review", params: { status: "rejected", reason: "Expired", expected_updated_at: expected_at(doc) }, headers: auth_header_for(@admin), as: :json
           assert_response :conflict
           assert_equal "already_reviewed", JSON.parse(response.body)["code"]
           assert doc.reload.approved?
 
-          patch "/api/v1/admin/trust_safety/documents/#{doc.id}/review", params: { status: "rejected", override: true }, headers: auth_header_for(@admin), as: :json
+          patch "/api/v1/admin/trust_safety/documents/#{doc.id}/review", params: { status: "rejected", override: true, expected_updated_at: expected_at(doc) }, headers: auth_header_for(@admin), as: :json
           assert_response :unprocessable_entity
 
-          patch "/api/v1/admin/trust_safety/documents/#{doc.id}/review", params: { status: "rejected", override: true, reason: "License number does not match issuer records" }, headers: auth_header_for(@admin), as: :json
+          patch "/api/v1/admin/trust_safety/documents/#{doc.id}/review", params: { status: "rejected", override: true, reason: "License number does not match issuer records", expected_updated_at: expected_at(doc) }, headers: auth_header_for(@admin), as: :json
           assert_response :ok
           assert doc.reload.rejected?
           log = VerificationAuditLog.where(entity_type: "Document", entity_id: doc.id, action: "document_rereviewed").last
@@ -377,12 +382,12 @@ module Api
           Net::HTTP.stub(:start, boom) do
             CheckrClient.stub(:new, boom) do
               patch "/api/v1/admin/trust_safety/background_checks/#{check.id}/override",
-                    params: { override_status: "manually_rejected", reason: "Ineligible per policy after review", confirm: true },
+                    params: { override_status: "manually_rejected", reason: "Ineligible per policy after review", confirm: true, expected_updated_at: expected_at(check) },
                     headers: auth_header_for(@admin), as: :json
               assert_response :ok
-              patch "/api/v1/admin/trust_safety/documents/#{doc.id}/review", params: { status: "approved" }, headers: auth_header_for(@admin), as: :json
+              patch "/api/v1/admin/trust_safety/documents/#{doc.id}/review", params: { status: "approved", expected_updated_at: expected_at(doc) }, headers: auth_header_for(@admin), as: :json
               assert_response :ok
-              patch "/api/v1/admin/trust_safety/references/#{ref.id}/review", params: { status: "approved" }, headers: auth_header_for(@admin), as: :json
+              patch "/api/v1/admin/trust_safety/references/#{ref.id}/review", params: { status: "approved", expected_updated_at: expected_at(ref) }, headers: auth_header_for(@admin), as: :json
               assert_response :ok
             end
           end
@@ -402,23 +407,23 @@ module Api
           assert_equal "override_required", JSON.parse(response.body)["code"]
           assert requested.reload.requested?
 
-          patch "/api/v1/admin/trust_safety/references/#{requested.id}/review", params: { status: "approved", override: true, reason: "Verified by phone with Dana on 11/14; confirmed employment 2019-2023." }, headers: auth_header_for(@admin), as: :json
+          patch "/api/v1/admin/trust_safety/references/#{requested.id}/review", params: { status: "approved", override: true, reason: "Verified by phone with Dana on 11/14; confirmed employment 2019-2023.", expected_updated_at: expected_at(requested) }, headers: auth_header_for(@admin), as: :json
           assert_response :ok
           assert requested.reload.approved?
 
           ref = responded_reference(@tech)
-          patch "/api/v1/admin/trust_safety/references/#{ref.id}/review", params: { status: "rejected" }, headers: auth_header_for(@admin), as: :json
+          patch "/api/v1/admin/trust_safety/references/#{ref.id}/review", params: { status: "rejected", expected_updated_at: expected_at(ref) }, headers: auth_header_for(@admin), as: :json
           assert_response :unprocessable_entity
           assert_equal "reason_required", JSON.parse(response.body)["code"]
 
           assert_difference -> { VerificationAuditLog.where(action: "reference_approved").count }, 1 do
-            patch "/api/v1/admin/trust_safety/references/#{ref.id}/review", params: { status: "approved" }, headers: auth_header_for(@admin), as: :json
+            patch "/api/v1/admin/trust_safety/references/#{ref.id}/review", params: { status: "approved", expected_updated_at: expected_at(ref) }, headers: auth_header_for(@admin), as: :json
           end
           assert_response :ok
           assert_equal "Verified", JSON.parse(response.body).dig("item", "status", "label")
           assert_equal "verified", VerificationProfile.find_by(user_id: @tech.id).references_status
 
-          patch "/api/v1/admin/trust_safety/references/#{ref.id}/review", params: { status: "rejected", reason: "dup" }, headers: auth_header_for(@admin), as: :json
+          patch "/api/v1/admin/trust_safety/references/#{ref.id}/review", params: { status: "rejected", reason: "dup", expected_updated_at: expected_at(ref) }, headers: auth_header_for(@admin), as: :json
           assert_response :conflict
           assert_equal "already_reviewed", JSON.parse(response.body)["code"]
         end
@@ -456,12 +461,14 @@ module Api
           assert doc.reload.pending_review?
 
           get "/api/v1/admin/trust_safety/items/document/#{doc.id}", headers: auth_header_for(@admin)
-          assert_equal 1, JSON.parse(response.body)["audit"].size
+          actions = JSON.parse(response.body)["audit"].map { |row| row["action"] }
+          assert_includes actions, "reviewer_note"
+          assert_includes actions, "document_accessed"
 
           get "/api/v1/admin/trust_safety/audit", params: { technician_user_id: @tech.id }, headers: auth_header_for(@admin)
           assert_response :ok
           events = JSON.parse(response.body)["events"]
-          assert_equal 1, events.size
+          assert events.any? { |evt| evt["action"] == "reviewer_note" }
           assert_equal "Maria Lopez", events.first.dig("technician", "display_name")
           assert_equal "document:#{doc.id}", events.first["item_key"]
 
@@ -472,6 +479,53 @@ module Api
         test "unknown item type is not found" do
           get "/api/v1/admin/trust_safety/items/widget/1", headers: auth_header_for(@admin)
           assert_response :not_found
+        end
+
+        test "company documents cannot be reviewed through the technician review surface" do
+          company_user = User.create!(email: "co-review@example.com", password: "password123", password_confirmation: "password123", role: :company)
+          company_profile = CompanyProfile.create!(user: company_user, membership_level: "basic")
+          doc = Document.create!(uploadable: company_profile, doc_type: "license", status: :pending_review)
+          patch "/api/v1/admin/trust_safety/documents/#{doc.id}/review",
+                params: { status: "approved", expected_updated_at: expected_at(doc) },
+                headers: auth_header_for(@admin), as: :json
+          assert_response :forbidden
+          assert doc.reload.pending_review?
+        end
+
+        test "decision writes require expected_updated_at" do
+          doc = pending_document(@tech)
+          patch "/api/v1/admin/trust_safety/documents/#{doc.id}/review", params: { status: "approved" }, headers: auth_header_for(@admin), as: :json
+          assert_response :unprocessable_entity
+          assert_equal "expected_updated_at_required", JSON.parse(response.body)["code"]
+          assert doc.reload.pending_review?
+
+          check = consider_check(@other_tech)
+          patch "/api/v1/admin/trust_safety/background_checks/#{check.id}/override",
+                params: { override_status: "manually_approved", reason: "ok", confirm: true },
+                headers: auth_header_for(@admin), as: :json
+          assert_response :unprocessable_entity
+          assert_equal "expected_updated_at_required", JSON.parse(response.body)["code"]
+        end
+
+        test "document file and item detail access are audited without storing URLs" do
+          doc = pending_document(@tech)
+          doc.file.attach(io: StringIO.new("%PDF-1.4 test"), filename: "license.pdf", content_type: "application/pdf")
+
+          assert_difference -> { VerificationAuditLog.where(action: "document_accessed").count }, 1 do
+            get "/api/v1/admin/trust_safety/documents/#{doc.id}/file", headers: auth_header_for(@admin)
+          end
+          assert_response :ok
+          log = VerificationAuditLog.where(action: "document_accessed").last
+          assert_equal "document_file", log.details["source"]
+          assert_equal "license.pdf", log.details["filename"]
+          refute log.details.key?("url")
+          refute log.details.values.any? { |v| v.to_s.include?("/rails/active_storage") }
+
+          assert_difference -> { VerificationAuditLog.where(action: "document_accessed").count }, 1 do
+            get "/api/v1/admin/trust_safety/items/document/#{doc.id}", headers: auth_header_for(@admin)
+          end
+          assert_response :ok
+          assert_equal "item_detail", VerificationAuditLog.where(action: "document_accessed").last.details["source"]
         end
 
         private

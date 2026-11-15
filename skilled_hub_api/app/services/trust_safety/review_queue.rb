@@ -25,10 +25,13 @@ module TrustSafety
     end
 
     def call
-      items = []
-      items.concat(background_check_items) if include_type?("background_check")
-      items.concat(document_items) if include_type?("credential")
-      items.concat(reference_items) if include_type?("reference")
+      sources = []
+      sources << background_check_items if include_type?("background_check")
+      sources << document_items if include_type?("credential")
+      sources << reference_items if include_type?("reference")
+
+      truncated_sources = sources.select { |source| source[:capped] }.map { |source| source[:name] }
+      items = sources.flat_map { |source| source[:items] }
 
       sorted = sort_items(items)
       total = sorted.size
@@ -51,7 +54,12 @@ module TrustSafety
           technician_user_id: technician_user_id,
           sort: sort
         },
-        truncated: items.size >= PER_SOURCE_CAP
+        # True when any source hit PER_SOURCE_CAP before merge. Metrics use SQL counts
+        # (Summary) and remain accurate; this flag only means the merged list may omit
+        # older rows beyond the per-source candidate window.
+        truncated: truncated_sources.any?,
+        truncated_sources: truncated_sources,
+        per_source_cap: PER_SOURCE_CAP
       }
     end
 
@@ -150,14 +158,18 @@ module TrustSafety
         .where(users: { role: User.roles[:technician] })
       scope = apply_technician_filters(scope)
       scope = apply_background_status_filter(scope)
-      checks = scope.order(updated_at: :desc).limit(PER_SOURCE_CAP).to_a
+      # Prefer oldest pending work so a large backlog cannot hide unreviewed reports.
+      order = status.in?(%w[needs_review pending flagged]) ? { created_at: :asc, id: :asc } : { updated_at: :desc, id: :desc }
+      checks = scope.order(order).limit(PER_SOURCE_CAP).to_a
+      capped = checks.size >= PER_SOURCE_CAP
       identities = load_users(checks.map(&:user_id))
-      checks.filter_map do |check|
+      items = checks.filter_map do |check|
         item = ItemSerializer.background_check(check, identity: identities[check.user_id])
         next unless matches_in_memory_status?(item, source: :background_check, record: check)
 
         item
       end
+      { name: "background_check", items: items, capped: capped }
     end
 
     def apply_background_status_filter(scope)
@@ -196,16 +208,18 @@ module TrustSafety
         .includes(:reviewed_by_user, file_attachment: :blob)
       scope = apply_technician_filters(scope)
       scope = apply_document_status_filter(scope)
-      docs = scope.order(created_at: :asc).limit(PER_SOURCE_CAP).to_a
+      docs = scope.order(created_at: :asc, id: :asc).limit(PER_SOURCE_CAP).to_a
+      capped = docs.size >= PER_SOURCE_CAP
       profile_user_ids = TechnicianProfile.where(id: docs.map(&:uploadable_id).uniq).pluck(:id, :user_id).to_h
       identities = load_users(profile_user_ids.values)
-      docs.filter_map do |doc|
+      items = docs.filter_map do |doc|
         identity = identities[profile_user_ids[doc.uploadable_id]]
         item = ItemSerializer.document(doc, identity: identity)
         next unless matches_in_memory_status?(item, source: :document, record: doc)
 
         item
       end
+      { name: "credential", items: items, capped: capped }
     end
 
     def apply_document_status_filter(scope)
@@ -228,9 +242,11 @@ module TrustSafety
         .includes(:reviewed_by_user)
       scope = apply_technician_filters(scope)
       scope = apply_reference_status_filter(scope)
-      refs = scope.order(created_at: :asc).limit(PER_SOURCE_CAP).to_a
+      refs = scope.order(created_at: :asc, id: :asc).limit(PER_SOURCE_CAP).to_a
+      capped = refs.size >= PER_SOURCE_CAP
       identities = load_users(refs.map(&:technician_user_id))
-      refs.map { |ref| ItemSerializer.reference(ref, identity: identities[ref.technician_user_id]) }
+      items = refs.map { |ref| ItemSerializer.reference(ref, identity: identities[ref.technician_user_id]) }
+      { name: "reference", items: items, capped: capped }
     end
 
     def apply_reference_status_filter(scope)
