@@ -1204,8 +1204,30 @@ export const adminReviewsAPI = {
   moderationQueue: () => apiRequest('/ratings/moderation_queue'),
 };
 
+const trustSafetyQuery = (params = {}) => {
+  const search = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value == null || value === '') return;
+    search.set(key, String(value));
+  });
+  const str = search.toString();
+  return str ? `?${str}` : '';
+};
+
 export const adminTrustSafetyAPI = {
   dashboard: () => apiRequest('/admin/trust_safety/dashboard'),
+  summary: () => apiRequest('/admin/trust_safety/summary'),
+  queue: (params, options = {}) => apiRequest(`/admin/trust_safety/queue${trustSafetyQuery(params)}`, options),
+  technicians: (params, options = {}) => apiRequest(`/admin/trust_safety/technicians${trustSafetyQuery(params)}`, options),
+  technician: (userId) => apiRequest(`/admin/trust_safety/technicians/${userId}`),
+  item: (itemType, id) => apiRequest(`/admin/trust_safety/items/${itemType}/${id}`),
+  documentFile: (id) => apiRequest(`/admin/trust_safety/documents/${id}/file`),
+  audit: (params, options = {}) => apiRequest(`/admin/trust_safety/audit${trustSafetyQuery(params)}`, options),
+  createNote: (itemType, id, note) =>
+    apiRequest(`/admin/trust_safety/items/${itemType}/${id}/notes`, {
+      method: 'POST',
+      body: JSON.stringify({ note }),
+    }),
   overrideBackgroundCheck: (id, payload) =>
     apiRequest(`/admin/trust_safety/background_checks/${id}/override`, {
       method: 'PATCH',
@@ -1216,8 +1238,23 @@ export const adminTrustSafetyAPI = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
+  requestReferenceInfo: (id, payload) =>
+    apiRequest(`/admin/trust_safety/references/${id}/request_info`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  recordReferenceContactAttempt: (id, payload) =>
+    apiRequest(`/admin/trust_safety/references/${id}/contact_attempt`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
   reviewDocument: (id, payload) =>
     apiRequest(`/admin/trust_safety/documents/${id}/review`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  requestDocumentInfo: (id, payload) =>
+    apiRequest(`/admin/trust_safety/documents/${id}/request_info`, {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),

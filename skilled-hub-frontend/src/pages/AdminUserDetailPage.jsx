@@ -19,6 +19,7 @@ import { formatPhoneInput } from '../utils/phone';
 import { TRADE_OPTIONS, COMPANY_INDUSTRY_OPTIONS } from '../constants/trades';
 import { CANONICAL_INDUSTRIES } from '../components/admin/adminUserIndustries';
 import { withDemoPath } from '../utils/demoMode';
+import TrustProfileChecklist from '../components/admin/trust-safety/TrustProfileChecklist';
 
 const PERIODS = [
   { id: '24h', label: '24h' },
@@ -196,9 +197,10 @@ export default function AdminUserDetailPage({ user, onLogout }) {
       { id: 'profile', label: 'Profile' },
       { id: 'activity', label: 'Activity' },
       { id: 'work', label: 'Work and billing' },
+      ...(isTech ? [{ id: 'trust_safety', label: 'Trust & Safety' }] : []),
       { id: 'access', label: 'Access and danger' },
     ],
-    []
+    [isTech]
   );
 
   useEffect(() => {
@@ -1768,6 +1770,17 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                     </button>
                   </div>
                 </form>
+              </AdminCollapsibleCard>
+            )}
+
+            {detailTab === 'trust_safety' && isTech && u?.id && (
+              <AdminCollapsibleCard
+                title="Trust & Safety"
+                description="Verification checklist for this technician. Each row reflects the current records and business rules; open an item to review it in the Trust & Safety workspace."
+                defaultOpen
+                persistKey={`admin-user-trust-safety:${userId}`}
+              >
+                <TrustProfileChecklist userId={u.id} isTechnician={isTech} />
               </AdminCollapsibleCard>
             )}
 

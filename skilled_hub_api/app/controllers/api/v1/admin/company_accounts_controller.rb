@@ -301,7 +301,7 @@ module Api
 
             starts_with = normalized.start_with?(q_normalized) ? 1.0 : 0.0
             includes = normalized.include?(q_normalized) ? 1.0 : 0.0
-            employee_hit = company_login_users_for(cp).any? do |u|
+            employee_hit = cp.login_users.any? do |u|
               full = [u.first_name, u.last_name].map { |x| x.to_s.strip }.reject(&:blank?).join(" ").downcase
               u.email.to_s.downcase.include?(q_lower) ||
                 u.first_name.to_s.downcase.include?(q_lower) ||

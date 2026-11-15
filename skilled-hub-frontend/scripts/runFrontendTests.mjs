@@ -37,6 +37,7 @@ const testFiles = [
   'scheduleAvailability.test.mjs',
   'dateTimePicker.test.mjs',
   'appNavItems.test.mjs',
+  'trustSafety.test.mjs',
 ];
 
 let successful = 0;
