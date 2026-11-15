@@ -373,7 +373,9 @@ module Api
         assert_response :ok
         job.reload
         assert job.filled?
-        assert job.funding_funded?
+        assert job.funding_unfunded?
+        assert job.posted_under_funding_waiver?
+        refute job.funding_funded?
         assert_equal 10, job.days
         assert_equal 5_000, job.hourly_rate_cents
         assert_equal 0, job.job_payment_transactions.where(transaction_type: %w[counteroffer_top_up counteroffer_refund]).count

@@ -14,10 +14,12 @@ class JobPaymentTransaction < ApplicationRecord
     refund: 6,
     transfer_reversal: 7,
     admin_adjustment: 8,
-    cancellation_refund: 9
+    cancellation_refund: 9,
+    # Company-initiated cash collect after waived publish (not auto-debit).
+    post_publish_top_up: 10
   }
 
-  COLLECTION_TYPES = %w[initial_job_charge counteroffer_top_up final_hours_top_up].freeze
+  COLLECTION_TYPES = %w[initial_job_charge counteroffer_top_up final_hours_top_up post_publish_top_up].freeze
   REFUND_TYPES = %w[counteroffer_refund final_hours_refund refund cancellation_refund].freeze
   # Same leftover-funding refund, whether it was booked as a normal settlement
   # refund or a company-initiated assignment termination. Reporting type must not
@@ -36,7 +38,10 @@ class JobPaymentTransaction < ApplicationRecord
     requires_action: 1,
     succeeded: 2,
     failed: 3,
-    canceled: 4
+    canceled: 4,
+    processing: 5,
+    # Ambiguous Stripe outcome (timeout/connection/5xx) — funds stay reserved until reconcile.
+    outcome_unknown: 6
   }, prefix: true
 
   validates :amount_cents, numericality: { greater_than: 0 }
@@ -44,10 +49,47 @@ class JobPaymentTransaction < ApplicationRecord
   validates :currency, presence: true
 
   scope :succeeded, -> { where(status: statuses[:succeeded]) }
+  scope :processing, -> { where(status: statuses[:processing]) }
+  scope :outcome_unknown, -> { where(status: statuses[:outcome_unknown]) }
+  scope :in_flight, -> {
+    where(status: statuses.values_at("pending", "requires_action", "processing", "outcome_unknown"))
+  }
   scope :company_collections, -> {
     where(transaction_type: transaction_types.values_at(*COLLECTION_TYPES))
   }
   scope :company_refunds, -> {
     where(transaction_type: transaction_types.values_at(*REFUND_TYPES))
   }
+  scope :ach, -> { where(payment_method_type: "us_bank_account") }
+  scope :funds_reserving, -> {
+    where(status: statuses.values_at("pending", "processing", "requires_action", "succeeded", "outcome_unknown"))
+  }
+  scope :needs_attention, -> {
+    where(
+      "status IN (:bad) OR (dispute_status IS NOT NULL AND dispute_status != '') OR investigation_required = TRUE",
+      bad: [
+        statuses[:failed],
+        statuses[:processing],
+        statuses[:outcome_unknown]
+      ]
+    )
+  }
+
+  def ach?
+    payment_method_type.to_s == "us_bank_account"
+  end
+
+  def disputed?
+    dispute_status.present? && !%w[won warning_closed].include?(dispute_status.to_s)
+  end
+
+  def payment_method_display
+    if ach?
+      [payment_method_bank_name.presence || "Bank account", payment_method_last4.present? ? "•••• #{payment_method_last4}" : nil].compact.join(" ")
+    elsif payment_method_type.to_s == "card"
+      [payment_method_brand.to_s.capitalize.presence || "Card", payment_method_last4.present? ? "•••• #{payment_method_last4}" : nil].compact.join(" ")
+    else
+      payment_method_type.presence || "unknown"
+    end
+  end
 end

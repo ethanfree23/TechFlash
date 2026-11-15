@@ -6,6 +6,7 @@ class CompanyProfileDetailSerializer < ActiveModel::Serializer
              :state, :electrical_license_number,
              :membership_level, :membership_fee_override_cents, :commission_override_percent, :membership_fee_waived,
              :job_funding_waived,
+             :ach_payments_enabled, :effective_ach_payments_enabled,
              :membership_status, :membership_current_period_end_at, :effective_membership_fee_cents, :effective_commission_percent,
              :review_summary
 
@@ -34,5 +35,9 @@ class CompanyProfileDetailSerializer < ActiveModel::Serializer
 
   def effective_commission_percent
     MembershipPolicy.company_commission_percent(object)
+  end
+
+  def effective_ach_payments_enabled
+    AchAccess.allowed?(object)
   end
 end

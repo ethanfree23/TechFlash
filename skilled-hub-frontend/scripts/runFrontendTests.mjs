@@ -20,6 +20,8 @@ const testFiles = [
   'coordinates.test.mjs',
   'jobAccessSettings.test.mjs',
   'demoRouting.test.mjs',
+  'stripeConfig.test.mjs',
+  'stripeConfig.build.test.mjs',
   'payBasis.test.mjs',
   'jobStatus.test.mjs',
   'endAssignmentModal.test.mjs',
@@ -34,6 +36,7 @@ const testFiles = [
   'licenseCredentials.test.mjs',
   'scheduleAvailability.test.mjs',
   'dateTimePicker.test.mjs',
+  'appNavItems.test.mjs',
 ];
 
 let successful = 0;

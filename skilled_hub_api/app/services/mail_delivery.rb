@@ -36,6 +36,10 @@ module MailDelivery
       Rails.logger.info("[mail] demo: simulated delivery (not sent)")
       return { success: true, value: nil, simulated: true, code: "simulated_delivery" }
     end
+    if defined?(StagingSandbox) && StagingSandbox.simulate_mail?
+      StagingSandbox.log_blocked("mail")
+      return { success: true, value: nil, simulated: true, code: "staging_sandbox_delivery" }
+    end
 
     st = audit_status
     mailtrap_http = st[:delivery_mode] == 'mailtrap_http'

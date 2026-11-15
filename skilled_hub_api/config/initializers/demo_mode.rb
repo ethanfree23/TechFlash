@@ -8,12 +8,15 @@ module DemoMode
 
   def enabled?
     return false if Rails.env.production?
+    # Staging uses real Stripe TEST APIs — never simulate Stripe via DemoMode.
+    return false if Rails.env.staging?
 
     Rails.env.demo? || ENV["DEMO_MODE"].to_s.strip.casecmp("true").zero?
   end
 
   def reset_allowed?
     return false if Rails.env.production?
+    return false if Rails.env.staging?
 
     allow = ENV["ALLOW_DEMO_RESET"].to_s.strip.casecmp("true").zero?
     return false unless allow
@@ -22,11 +25,15 @@ module DemoMode
   end
 
   def assert_not_production!
-    return unless Rails.env.production?
+    if Rails.env.production?
+      raise SafetyError,
+            "REFUSED: Demo seed/reset cannot run in production (RAILS_ENV=production). " \
+            "Use the isolated demo Railway service with RAILS_ENV=demo."
+    end
+    return unless Rails.env.staging?
 
     raise SafetyError,
-          "REFUSED: Demo seed/reset cannot run in production (RAILS_ENV=production). " \
-          "Use the isolated demo Railway service with RAILS_ENV=demo."
+          "REFUSED: Demo seed/reset cannot run in staging (RAILS_ENV=staging)."
   end
 
   def assert_reset_allowed!

@@ -12,6 +12,10 @@ class SmsDeliveryService
       Rails.logger.info("[sms] demo: simulated SMS to=#{to.inspect} (not sent)")
       return { status: :skipped, error: nil, simulated: true }
     end
+    if defined?(StagingSandbox) && StagingSandbox.simulate_sms?
+      StagingSandbox.log_blocked("sms", "to=#{to.inspect}")
+      return { status: :skipped, error: nil, simulated: true }
+    end
 
     sid = ENV["TWILIO_ACCOUNT_SID"].to_s.strip.presence
     token = ENV["TWILIO_AUTH_TOKEN"].to_s.strip.presence

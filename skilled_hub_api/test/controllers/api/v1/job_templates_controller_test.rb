@@ -577,7 +577,8 @@ module Api
         assert_equal "Edited after apply", created["title"]
         assert_equal 3_300, created["hourly_rate_cents"]
         assert_equal false, created["potential_full_time"]
-        assert_equal "funded", created["funding_status"]
+        assert_equal "unfunded", created["funding_status"]
+        assert_equal true, created["posted_under_funding_waiver"]
         assert created["id"].present?
         refute_equal job.id, created["id"]
         refute_equal job.share_token, created["share_token"]

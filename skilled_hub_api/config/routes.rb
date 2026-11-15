@@ -48,6 +48,8 @@ Rails.application.routes.draw do
           patch :terminate
           get :termination_preview
           post :confirm_funding
+          get :fund_preview
+          post :fund
           post :unpublish
           get :schedule_availability
         end
@@ -73,7 +75,10 @@ Rails.application.routes.draw do
         end
       end
       post 'stripe/webhook', to: 'stripe_webhooks#create'
+      get 'settings/payment_methods', to: 'settings#payment_methods'
       post 'settings/create_setup_intent', to: 'settings#create_setup_intent'
+      post 'settings/set_default_payment_method', to: 'settings#set_default_payment_method'
+      delete 'settings/payment_methods/:id', to: 'settings#destroy_payment_method'
       post 'settings/create_connect_account_link', to: 'settings#create_connect_account_link'
       resource :membership, only: %i[show update], controller: :memberships
       resources :job_applications do
@@ -132,6 +137,7 @@ Rails.application.routes.draw do
         post :start_background_check
         post :create_background_check_checkout
         post :reset_demo_background_check
+        post :background_check_acknowledgements
         get :background_check_options
       end
       resources :verification_references, only: [:index, :create]
@@ -219,6 +225,20 @@ Rails.application.routes.draw do
         get "licensing_settings", to: "licensing_settings#show"
         patch "licensing_settings", to: "licensing_settings#update"
         get "mailtrap_audit", to: "mailtrap_audits#show"
+        resources :job_payments, only: %i[index show] do
+          member do
+            post :resolve_risk
+            post :reconcile_transfer
+            post :reconcile_collection
+          end
+        end
+        post "payment_risk_events/:id/resolve", to: "job_payments#resolve_risk_event"
+        get "ach_settings", to: "ach_settings#show"
+        patch "ach_settings/global", to: "ach_settings#update_global"
+        patch "ach_settings/pilot", to: "ach_settings#update_pilot"
+        patch "ach_settings/companies/:company_profile_id", to: "ach_settings#update_company"
+        get "ach_settings/audits", to: "ach_settings#audits"
+        get "ach_settings/monitoring", to: "ach_settings#monitoring"
         get "storage_diagnostic/check", to: "storage_diagnostics#check"
         get "storage_diagnostic", to: "storage_diagnostics#show"
         get "email_qa/templates", to: "email_qa#templates"

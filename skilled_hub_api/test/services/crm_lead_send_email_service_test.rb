@@ -197,6 +197,11 @@ class CrmLeadSendEmailServiceTest < ActiveSupport::TestCase
   test "send creates crm note on success" do
     ActionMailer::Base.delivery_method = :test
     ActionMailer::Base.deliveries.clear
+    # MailDelivery refuses to send unless SMTP env is present; delivery_method is :test so nothing leaves the process.
+    original_env = ENV.slice("SMTP_ADDRESS", "SMTP_PASSWORD", "MAILTRAP_USE_HTTP")
+    ENV["SMTP_ADDRESS"] = "smtp.test.invalid"
+    ENV["SMTP_PASSWORD"] = "test-placeholder"
+    ENV["MAILTRAP_USE_HTTP"] = nil
 
     result = CrmLeadSendEmailService.call(
       lead: @lead,
@@ -217,5 +222,7 @@ class CrmLeadSendEmailServiceTest < ActiveSupport::TestCase
     assert_equal "email", note.contact_method
     assert_match(/sent/i, note.title)
     assert_includes note.body, "mike@rodiguez-electric.example.com"
+  ensure
+    %w[SMTP_ADDRESS SMTP_PASSWORD MAILTRAP_USE_HTTP].each { |k| ENV[k] = original_env[k] } if original_env
   end
 end

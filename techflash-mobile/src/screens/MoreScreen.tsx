@@ -38,10 +38,10 @@ export default function MoreScreen() {
           <Text style={styles.linkBtnText}>Skills Assessments</Text>
         </Pressable>
       ) : null}
-      <Pressable style={({ pressed }) => [styles.linkBtn, pressed && { opacity: 0.9 }]} onPress={() => Linking.openURL('https://techflash.app/privacy-policy')}>
+      <Pressable style={({ pressed }) => [styles.linkBtn, pressed && { opacity: 0.9 }]} onPress={() => Linking.openURL('https://www.techflash.app/privacy-policy')}>
         <Text style={styles.linkBtnText}>Privacy Policy</Text>
       </Pressable>
-      <Pressable style={({ pressed }) => [styles.linkBtn, pressed && { opacity: 0.9 }]} onPress={() => Linking.openURL('https://techflash.app/terms-of-service')}>
+      <Pressable style={({ pressed }) => [styles.linkBtn, pressed && { opacity: 0.9 }]} onPress={() => Linking.openURL('https://www.techflash.app/terms-of-service')}>
         <Text style={styles.linkBtnText}>Terms of Service</Text>
       </Pressable>
       <Pressable style={({ pressed }) => [styles.linkBtn, pressed && { opacity: 0.9 }]} onPress={() => Linking.openURL('mailto:support@techflash.app')}>

@@ -154,6 +154,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
     membership_level: 'basic',
     membership_fee_waived: false,
     job_funding_waived: false,
+    ach_payments_enabled: false,
     membership_fee_override_cents: '',
     commission_override_percent: '',
   });
@@ -250,6 +251,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
       membership_level: profile.membership_level || 'basic',
       membership_fee_waived: !!profile.membership_fee_waived,
       job_funding_waived: !!profile.job_funding_waived,
+      ach_payments_enabled: !!profile.ach_payments_enabled,
       membership_fee_override_cents:
         profile.membership_fee_override_cents == null ? '' : String(profile.membership_fee_override_cents),
       commission_override_percent:
@@ -261,6 +263,7 @@ export default function AdminUserDetailPage({ user, onLogout }) {
     profile?.membership_level,
     profile?.membership_fee_waived,
     profile?.job_funding_waived,
+    profile?.ach_payments_enabled,
     profile?.membership_fee_override_cents,
     profile?.commission_override_percent,
   ]);
@@ -516,7 +519,10 @@ export default function AdminUserDetailPage({ user, onLogout }) {
         membership_fee_override_cents: feeOverride == null ? null : Math.round(feeOverride),
         commission_override_percent: commissionOverride,
       };
-      if (isCompany) payload.job_funding_waived = !!membershipDraft.job_funding_waived;
+      if (isCompany) {
+        payload.job_funding_waived = !!membershipDraft.job_funding_waived;
+        payload.ach_payments_enabled = !!membershipDraft.ach_payments_enabled;
+      }
       await adminUsersAPI.updateMembershipPricing(u.id, payload);
       await load();
       setAlertModal({
@@ -1575,6 +1581,21 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                       <span className="font-semibold text-gray-900">Waive job funding</span>
                       <br />
                       Admin-only. Lets this company post and fill priced jobs without a Stripe PaymentIntent. Do not use for a real first live payment.
+                    </span>
+                  </label>
+
+                  <label className="flex items-start gap-3 p-3 border border-blue-200 rounded-lg bg-blue-50">
+                    <input
+                      type="checkbox"
+                      className="mt-1 h-4 w-4"
+                      checked={!!membershipDraft.ach_payments_enabled}
+                      disabled={membershipSaveBusy}
+                      onChange={(e) => setMembershipDraft((d) => ({ ...d, ach_payments_enabled: e.target.checked }))}
+                    />
+                    <span className="text-sm text-gray-700">
+                      <span className="font-semibold text-gray-900">Enable ACH / bank payments</span>
+                      <br />
+                      Company pilot flag. New bank SetupIntents and ACH debits require this AND the global ACH switch. Does not strand in-flight ACH.
                     </span>
                   </label>
 

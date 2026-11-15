@@ -21,6 +21,7 @@ import AdminUsersPage from './pages/AdminUsersPage';
 import AdminUserDetailPage from './pages/AdminUserDetailPage';
 import AdminReviewsPage from './pages/AdminReviewsPage';
 import AdminTrustSafetyPage from './pages/AdminTrustSafetyPage';
+import AdminJobPaymentsPage from './pages/AdminJobPaymentsPage';
 import SkillsAssessmentsPage from './pages/SkillsAssessmentsPage';
 import AssessmentAttemptPage from './pages/AssessmentAttemptPage';
 import AssessmentResultPage from './pages/AssessmentResultPage';
@@ -49,6 +50,10 @@ import MetaPixelRouteTracker from './components/MetaPixelRouteTracker';
 
 const DateTimePickerPreviewPage = import.meta.env.DEV
   ? React.lazy(() => import('./pages/DateTimePickerPreviewPage'))
+  : null;
+
+const MobileNavPreviewPage = import.meta.env.DEV
+  ? React.lazy(() => import('./pages/MobileNavPreviewPage'))
   : null;
 
 // Protected Route component
@@ -221,6 +226,17 @@ function App() {
               )}
             />
           ) : null}
+
+          {import.meta.env.DEV && MobileNavPreviewPage ? (
+            <Route
+              path="/dev/mobile-nav"
+              element={(
+                <React.Suspense fallback={<div className="p-8 text-sm text-slate-500">Loading…</div>}>
+                  <MobileNavPreviewPage />
+                </React.Suspense>
+              )}
+            />
+          ) : null}
           
           {/* Dashboard - both company and technician */}
           <Route
@@ -379,6 +395,18 @@ function App() {
               <ProtectedRoute isAuthenticated={isAuthenticated}>
                 {user?.role === 'admin' ? (
                   <AdminTrustSafetyPage user={user} onLogout={handleLogout} />
+                ) : (
+                  <Navigate to="/dashboard" replace />
+                )}
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin/job-payments"
+            element={
+              <ProtectedRoute isAuthenticated={isAuthenticated}>
+                {user?.role === 'admin' ? (
+                  <AdminJobPaymentsPage user={user} onLogout={handleLogout} />
                 ) : (
                   <Navigate to="/dashboard" replace />
                 )}

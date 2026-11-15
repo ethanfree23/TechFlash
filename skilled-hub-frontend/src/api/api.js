@@ -518,6 +518,11 @@ export const verificationAPI = {
       method: 'POST',
       body: JSON.stringify(payload || {}),
     }),
+  saveBackgroundCheckAcknowledgement: (payload) =>
+    apiRequest('/verification/background_check_acknowledgements', {
+      method: 'POST',
+      body: JSON.stringify(payload || {}),
+    }),
   resetDemoBackgroundCheck: () =>
     apiRequest('/verification/reset_demo_background_check', {
       method: 'POST',
@@ -553,6 +558,53 @@ export const adminLicensingSettingsAPI = {
 
 export const adminMailtrapAuditAPI = {
   get: () => apiRequest('/admin/mailtrap_audit'),
+};
+
+export const adminJobPaymentsAPI = {
+  list: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v != null && String(v).trim() !== '') qs.set(k, String(v));
+    });
+    const query = qs.toString();
+    return apiRequest(`/admin/job_payments${query ? `?${query}` : ''}`);
+  },
+  get: (id) => apiRequest(`/admin/job_payments/${id}`),
+  reconcileTransfer: (id, payload = {}) =>
+    apiRequest(`/admin/job_payments/${id}/reconcile_transfer`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+};
+
+export const adminAchSettingsAPI = {
+  get: () => apiRequest('/admin/ach_settings'),
+  monitoring: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v != null && String(v).trim() !== '') qs.set(k, String(v));
+    });
+    const query = qs.toString();
+    return apiRequest(`/admin/ach_settings/monitoring${query ? `?${query}` : ''}`);
+  },
+  audits: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v != null && String(v).trim() !== '') qs.set(k, String(v));
+    });
+    const query = qs.toString();
+    return apiRequest(`/admin/ach_settings/audits${query ? `?${query}` : ''}`);
+  },
+  setGlobal: (enabled) =>
+    apiRequest('/admin/ach_settings/global', {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled: !!enabled }),
+    }),
+  setCompany: (companyProfileId, enabled) =>
+    apiRequest(`/admin/ach_settings/companies/${companyProfileId}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled: !!enabled }),
+    }),
 };
 
 export const adminEmailQaAPI = {
@@ -678,6 +730,15 @@ export const jobsAPI = {
   confirmFunding: (id) =>
     apiRequest(`/jobs/${id}/confirm_funding`, {
       method: 'POST',
+    }),
+
+  fundPreview: (id) =>
+    apiRequest(`/jobs/${id}/fund_preview`),
+
+  fundJob: (id, payload) =>
+    apiRequest(`/jobs/${id}/fund`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
     }),
 
   unpublish: (id) =>
@@ -881,8 +942,21 @@ export const favoriteTechniciansAPI = {
 
 // Settings (profile + payment setup)
 export const settingsAPI = {
-  createSetupIntent: () =>
-    apiRequest('/settings/create_setup_intent', { method: 'POST' }),
+  listPaymentMethods: () => apiRequest('/settings/payment_methods'),
+  createSetupIntent: (payload = {}) =>
+    apiRequest('/settings/create_setup_intent', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  setDefaultPaymentMethod: (paymentMethodId) =>
+    apiRequest('/settings/set_default_payment_method', {
+      method: 'POST',
+      body: JSON.stringify({ payment_method_id: paymentMethodId }),
+    }),
+  removePaymentMethod: (paymentMethodId) =>
+    apiRequest(`/settings/payment_methods/${encodeURIComponent(paymentMethodId)}`, {
+      method: 'DELETE',
+    }),
   createConnectAccountLink: (baseUrl) =>
     apiRequest('/settings/create_connect_account_link', {
       method: 'POST',

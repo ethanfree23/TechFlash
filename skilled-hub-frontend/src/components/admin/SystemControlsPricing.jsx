@@ -9,6 +9,7 @@ import AlertModal from '../AlertModal';
 import { auth } from '../../auth';
 import SystemControlsCoupons from './SystemControlsCoupons';
 import SystemControlsSimulatedMarkers from './SystemControlsSimulatedMarkers';
+import SystemControlsAchFlags from './SystemControlsAchFlags';
 import AdminJobAccessSettings from './AdminJobAccessSettings';
 import AdminBackendPlaceholder from '../settings/AdminBackendPlaceholder';
 import SettingsCard from '../settings/SettingsCard';
@@ -1438,13 +1439,7 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
           suggestedModel="Suggested: marketplace_rules(rule_key, value_json, status, updated_at)"
         />
       )}
-      {systemSubTab === 'feature_flags' && (
-        <AdminBackendPlaceholder
-          title="Feature flags"
-          description="Toggle map, referrals, SMS, CRM, subscriptions, and experiments with rollout percentages."
-          suggestedModel="Suggested: feature_flags(flag_key, enabled, rollout_percent, environment)"
-        />
-      )}
+      {systemSubTab === 'feature_flags' && <SystemControlsAchFlags />}
       {systemSubTab === 'referral_settings' && (
         <AdminBackendPlaceholder
           title="Referral program"

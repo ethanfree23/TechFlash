@@ -48,31 +48,52 @@ class CheckrConfiguration
     configured_secret = @env["CHECKR_SECRET_KEY"].to_s.strip
     return configured_secret if configured_secret.present?
 
+    # Rails.env.staging? (TechFlash staging) uses ENV only — no encrypted credentials.
+    if @rails_env == "staging"
+      return @env["CHECKR_STAGING_API_KEY"].presence || @env["CHECKR_API_KEY"].presence
+    end
+
+    if production_environment?
+      # Fail closed: never silently fall back to staging credentials in production.
+      return @env["CHECKR_API_KEY"].presence || safe_credentials_dig(:checkr, :api_key)
+    end
+
     if staging_environment?
       @env["CHECKR_STAGING_API_KEY"].presence ||
         @env["CHECKR_API_KEY"].presence ||
-        @credentials.dig(:checkr, :staging_api_key).presence ||
-        @credentials.dig(:checkr, :api_key).presence
+        safe_credentials_dig(:checkr, :staging_api_key) ||
+        safe_credentials_dig(:checkr, :api_key)
     else
       @env["CHECKR_API_KEY"].presence ||
-        @env["CHECKR_STAGING_API_KEY"].presence ||
-        @credentials.dig(:checkr, :api_key).presence ||
-        @credentials.dig(:checkr, :staging_api_key).presence
+        safe_credentials_dig(:checkr, :api_key)
     end
   end
 
   def webhook_secret
-    @env["CHECKR_WEBHOOK_SECRET"].presence || @credentials.dig(:checkr, :webhook_secret).presence
+    # Production must sign with the API key (CHECKR_SECRET_KEY), not a legacy webhook secret.
+    return nil if production_environment?
+
+    @env["CHECKR_WEBHOOK_SECRET"].presence ||
+      (@rails_env == "staging" ? nil : safe_credentials_dig(:checkr, :webhook_secret))
   end
 
   def webhook_url
     @env["CHECKR_WEBHOOK_URL"].to_s.strip.presence
   end
 
+  # Production account package (owner decision): checkrdirect_essential_criminal.
+  # Never invent a slug — validate against GET /v1/packages at start time and fail closed.
   def default_package
     @env["CHECKR_DEFAULT_PACKAGE_SLUG"].to_s.strip.presence ||
-      @env["CHECKR_DEFAULT_PACKAGE"].to_s.strip.presence ||
-      "essential"
+      @env["CHECKR_DEFAULT_PACKAGE"].to_s.strip.presence
+  end
+
+  def staging_api_base_url
+    "https://api.checkr-staging.com"
+  end
+
+  def production_api_base_url
+    DEFAULT_API_BASE_URL
   end
 
   def default_node_custom_id
@@ -102,5 +123,13 @@ class CheckrConfiguration
     return default if raw.nil?
 
     ActiveModel::Type::Boolean.new.cast(raw)
+  end
+
+  def safe_credentials_dig(*path)
+    return nil if @credentials.nil?
+
+    @credentials.dig(*path)
+  rescue ActiveSupport::EncryptedFile::MissingKeyError, ArgumentError
+    nil
   end
 end

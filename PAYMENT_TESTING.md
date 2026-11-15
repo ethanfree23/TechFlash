@@ -2,7 +2,9 @@
 
 Test **pay-to-post**, counteroffer deltas, actual-hours vs guaranteed settlement, membership Checkout, and Connect payouts. Use Stripe **test** keys only — no live money.
 
-**Flow**: Company posts a priced job → saved card is charged → job is listed → technician claims (no second charge) → hours/settlement → payout when reviews or 72h pass **and** Connect is payout-ready.
+**Flow**: Company posts a priced job → default payment method is charged → job is listed → technician claims (no second charge) → hours/settlement → payout when reviews or 72h pass **and** Connect is payout-ready.
+
+**ACH variant**: If the default method is a bank account, the PaymentIntent enters `processing`, the job stays unpublished (`pending_funding`), and it publishes only after `payment_intent.succeeded`. Technician payouts never release while ACH collections are processing or disputed.
 
 ## Fee structure
 

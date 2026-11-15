@@ -71,12 +71,27 @@ class JobEffectiveStatusTest < ActiveSupport::TestCase
 
   test "claimed job with past dates stays claimed or active" do
     upcoming = create_job(status: :filled, scheduled_start_at: 2.days.from_now, scheduled_end_at: 5.days.from_now)
-    started = create_job(status: :filled, scheduled_start_at: 2.days.ago, scheduled_end_at: 2.days.from_now)
+    # Priced + unfunded: schedule may have started, but work gate keeps status claimed.
+    started_unfunded = create_job(status: :filled, scheduled_start_at: 2.days.ago, scheduled_end_at: 2.days.from_now)
+    # Unpriced jobs need no cash — become active when schedule starts.
+    started = create_job(
+      status: :filled,
+      scheduled_start_at: 2.days.ago,
+      scheduled_end_at: 2.days.from_now,
+      hourly_rate_cents: 0,
+      hours_per_day: 0,
+      days: 0,
+      price_cents: 0,
+      agreed_labor_cents: 0
+    )
 
     assert_equal "claimed", upcoming.effective_status
+    assert_equal "claimed", started_unfunded.effective_status
     assert_equal "active", started.effective_status
     assert_includes Job.in_progress.ids, upcoming.id
     assert_includes Job.in_progress.ids, started.id
+    assert_includes Job.effectively_claimed.ids, started_unfunded.id
+    assert_includes Job.effectively_active.ids, started.id
     refute_includes Job.expired_listings.ids, upcoming.id
     refute_includes Job.expired_listings.ids, started.id
   end

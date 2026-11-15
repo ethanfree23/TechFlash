@@ -442,6 +442,11 @@ module Api
 
         test "admin can send crm email and log activity" do
           ActionMailer::Base.deliveries.clear
+          # MailDelivery refuses to send unless SMTP env is present; delivery_method is :test so nothing leaves the process.
+          original_env = ENV.slice("SMTP_ADDRESS", "SMTP_PASSWORD", "MAILTRAP_USE_HTTP")
+          ENV["SMTP_ADDRESS"] = "smtp.test.invalid"
+          ENV["SMTP_PASSWORD"] = "test-placeholder"
+          ENV["MAILTRAP_USE_HTTP"] = nil
           admin = User.create!(
             email: "admin+crm_send@example.com",
             password: "password123",
@@ -471,6 +476,8 @@ module Api
           assert body["crm_notes"].is_a?(Array)
           assert body["crm_notes"].any? { |n| n["contact_method"] == "email" }
           assert_equal 1, ActionMailer::Base.deliveries.size
+        ensure
+          %w[SMTP_ADDRESS SMTP_PASSWORD MAILTRAP_USE_HTTP].each { |k| ENV[k] = original_env[k] } if original_env
         end
 
         test "non-admin cannot send crm email" do

@@ -38,8 +38,15 @@ export function resolveApiBaseUrl() {
     return LOCAL_API;
   }
 
+  // Prefer VITE_API_BASE_URL (staging Railway /api/v1 for PR preview / staging deploys).
   const override = import.meta.env?.VITE_API_BASE_URL?.trim();
   if (override) return override.replace(/\/$/, '');
+
+  // Optional dedicated staging var when not on production hosts.
+  if (!isProductionHost()) {
+    const staging = import.meta.env?.VITE_STAGING_API_BASE_URL?.trim();
+    if (staging) return staging.replace(/\/$/, '');
+  }
 
   if (isProductionHost()) return PRODUCTION_API;
   return LOCAL_API;

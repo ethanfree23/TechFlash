@@ -4,7 +4,7 @@ class JobSerializer < ActiveModel::Serializer
              :scheduled_start_at, :scheduled_end_at, :finished_at, :price_cents, :hourly_rate_cents, :hours_per_day, :days,
              :job_amount_cents, :company_charge_cents, :tech_payout_cents,
              :pay_basis, :agreed_hourly_rate_cents, :estimated_hours, :agreed_labor_cents,
-             :funding_status, :settlement_status, :financial_revision,
+             :funding_status, :posted_under_funding_waiver, :settlement_status, :financial_revision,
              :address, :city, :state, :zip_code, :country, :latitude, :longitude,
              :skill_class, :trade_type, :minimum_years_experience, :notes, :go_live_at, :start_mode,
              :require_background_check, :require_identity_verification, :minimum_verified_references,
@@ -145,6 +145,8 @@ class JobSerializer < ActiveModel::Serializer
 
   def payment_summary
     ledger = object.financial_ledger
+    processing_txns = object.job_payment_transactions.status_processing.to_a
+    latest_collection = object.job_payment_transactions.company_collections.order(:id).last
     {
       state: object.funding_status,
       settlement_status: object.settlement_status,
@@ -161,18 +163,26 @@ class JobSerializer < ActiveModel::Serializer
       tech_payout_cents: object.tech_payout_cents,
       company_charge_cents: object.company_charge_cents,
       company_commission_percent: ledger.company_commission_percent,
-      technician_commission_percent: ledger.technician_commission_percent
+      technician_commission_percent: ledger.technician_commission_percent,
+      ach_processing: processing_txns.any?(&:ach?),
+      processing_amount_cents: processing_txns.sum(&:amount_cents),
+      latest_payment_method_type: latest_collection&.payment_method_type,
+      latest_payment_method_display: latest_collection&.payment_method_display,
+      latest_payment_status: latest_collection&.status,
+      post_publish_funding_enabled: PostPublishFundingAccess.enabled?
     }
   rescue JobLedger::MissingCommissionSnapshotError
     {
       state: object.try(:funding_status),
       settlement_status: object.try(:settlement_status),
-      snapshot_missing: true
+      snapshot_missing: true,
+      post_publish_funding_enabled: PostPublishFundingAccess.enabled?
     }
   rescue StandardError
     {
       state: object.try(:funding_status),
-      snapshot_missing: true
+      snapshot_missing: true,
+      post_publish_funding_enabled: PostPublishFundingAccess.enabled?
     }
   end
 

@@ -307,8 +307,11 @@ class JobFinancialFlowTest < ActiveSupport::TestCase
     result = JobFundingService.fund_for_publish!(job)
     assert result[:success]
     assert result[:waived]
-    assert_equal 0, job.reload.job_payment_transactions.company_collections.status_succeeded.count
-    assert job.funding_funded?
+    job.reload
+    assert_equal 0, job.job_payment_transactions.company_collections.status_succeeded.count
+    assert job.funding_unfunded?
+    assert job.posted_under_funding_waiver?
+    refute job.funding_funded?
   end
 
   test "missing company snapshot cannot invent a 0 percent charge" do

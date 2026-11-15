@@ -76,10 +76,28 @@ class JobFundingService
       return { success: false, error: "Company commission snapshot is missing; refusing to charge." }
     end
 
-    if !job.priced? || job.job_funding_waived?
+    # NEW posting only: live company.job_funding_waived decides whether this publish
+    # may skip the PaymentIntent. Already-posted jobs use historically_funding_exempt?.
+    if job.job_funding_waived?
+      # Admin posting exemption: publishable/open, financially unfunded. Never :funded.
+      job.update!(
+        status: :open,
+        funding_status: :unfunded,
+        posted_under_funding_waiver: true,
+        go_live_at: Time.current
+      )
+      record_revision!(job, source: "posting")
+      return { success: true, job: job, waived: true }
+    end
+
+    if !job.priced?
+      # Zero-funding exception: unpriced jobs have company_required_cents == 0, so
+      # JobLedger.fully_funded is vacuously true with no collections. Only !priced?
+      # may stamp :funded without cash. A priced job with unpaid required funding
+      # must collect (or fail) — it cannot use this path.
       job.update!(status: :open, funding_status: :funded, go_live_at: Time.current)
       record_revision!(job, source: "posting")
-      return { success: true, job: job, waived: job.job_funding_waived? }
+      return { success: true, job: job, waived: false }
     end
 
     charge = collect!(
@@ -98,6 +116,30 @@ class JobFundingService
     elsif charge[:requires_action]
       job.update!(status: :pending_funding, funding_status: :adjustment_required)
       { success: false, requires_action: true, client_secret: charge[:client_secret], job: job, transaction: charge[:transaction] }
+    elsif charge[:processing]
+      # ACH: debit accepted by Stripe but not settled — do not list the job yet.
+      job.update!(status: :pending_funding, funding_status: :adjustment_required)
+      {
+        success: false,
+        processing: true,
+        job: job,
+        transaction: charge[:transaction],
+        payment_method_type: charge[:transaction]&.payment_method_type,
+        message: "Bank debit initiated. This job will be published when the ACH payment succeeds."
+      }
+    elsif charge[:outcome_unknown]
+      # Ambiguous Stripe result: not funded, not failed. Hold the job unpublished; the
+      # reconciler / webhook recovery (or an admin) resolves it. Never re-post.
+      job.update!(status: :pending_funding, funding_status: :adjustment_required)
+      {
+        success: false,
+        outcome_unknown: true,
+        code: charge[:code] || "payment_outcome_unknown",
+        job: job,
+        transaction: charge[:transaction],
+        reconciliation_state: charge[:reconciliation_state],
+        error: charge[:error]
+      }
     else
       job.update!(status: :pending_funding, funding_status: :funding_failed)
       { success: false, error: charge[:error], job: job }
@@ -105,7 +147,7 @@ class JobFundingService
   end
 
   def self.confirm_requires_action!(job)
-    txn = job.job_payment_transactions.where(status: :requires_action).order(:id).last
+    txn = job.job_payment_transactions.where(status: [:requires_action, :processing]).order(:id).last
     return { error: "No payment requiring confirmation" } if txn.blank?
     return { error: "Stripe not configured" } if Stripe.api_key.blank? && !(defined?(DemoMode) && DemoMode.enabled?)
 
@@ -116,19 +158,57 @@ class JobFundingService
     end
 
     intent = Stripe::PaymentIntent.retrieve(txn.stripe_payment_intent_id)
-    if intent.status == "succeeded"
-      mark_txn_succeeded!(txn, charge_id: intent.latest_charge.to_s.presence)
-      if txn.initial_job_charge?
-        publish!(job)
-        record_revision!(job, source: "posting", transaction: txn)
-        MailDelivery.safe_deliver { UserMailer.payment_confirmation_email(job, txn.amount_cents).deliver_now }
-      elsif txn.counteroffer_top_up? || txn.final_hours_top_up?
-        JobFundingAdjustmentService.after_successful_collection!(job)
-      end
+    case intent.status.to_s
+    when "succeeded"
+      apply_successful_intent!(job: job, txn: txn, intent: intent)
       { success: true, job: job.reload }
+    when "processing"
+      mark_txn_processing!(txn, stripe_id: intent.id, charge_id: intent.latest_charge.to_s.presence)
+      job.update!(status: :pending_funding, funding_status: :adjustment_required) if job.pending_funding? || job.funding_adjustment_required?
+      {
+        success: false,
+        processing: true,
+        message: "Bank debit is still processing. The job will publish automatically when payment succeeds.",
+        job: job.reload
+      }
     else
-      { error: "Payment is not complete (#{intent.status})", requires_action: intent.status == "requires_action", client_secret: intent.client_secret }
+      {
+        error: "Payment is not complete (#{intent.status})",
+        requires_action: intent.status == "requires_action",
+        client_secret: intent.client_secret
+      }
     end
+  end
+
+  def self.apply_successful_intent!(job:, txn:, intent:)
+    mark_txn_succeeded!(txn, stripe_id: intent.id, charge_id: intent.latest_charge.to_s.presence)
+    payment = Payment.find_by(id: txn.payment_id)
+    if payment && (payment.status == "pending" || payment.status == "failed")
+      payment.update!(status: "held", stripe_payment_intent_id: intent.id, held_at: Time.current)
+    end
+    if txn.initial_job_charge?
+      publish!(job)
+      record_revision!(job, source: "posting", transaction: txn)
+      MailDelivery.safe_deliver { UserMailer.payment_confirmation_email(job, txn.amount_cents).deliver_now }
+    elsif txn.counteroffer_top_up? || txn.final_hours_top_up? || txn.post_publish_top_up?
+      JobFundingAdjustmentService.after_successful_collection!(job)
+    end
+  end
+
+  # Default Stripe PM for a job's company. In simulate mode returns a stable
+  # sentinel so confirmation UX can be exercised without live Stripe.
+  def self.default_payment_method_id_for_job(job)
+    if JobStripeOps.simulate_stripe?
+      return "pm_sim_default"
+    end
+
+    user = job.company_profile&.user
+    return nil if user.blank?
+
+    customer_id = StripeCustomerService.validate_or_clear_customer_id!(user)
+    default_payment_method_id(customer_id)
+  rescue StandardError
+    nil
   end
 
   def self.collect!(job:, amount_cents:, transaction_type:, revision:)
@@ -144,6 +224,21 @@ class JobFundingService
     txn = nil
     early = nil
 
+    # An earlier attempt with this key may have reached Stripe without us learning the result
+    # (outcome_unknown, or pending with the attempt already stamped). Reconcile before anything
+    # else: never create a second debit while the first is unknown.
+    same_key_retry_authorized = false
+    pre_existing = JobPaymentTransaction.find_by(idempotency_key: key)
+    if pre_existing && unresolved_attempt?(pre_existing)
+      decision = CollectionOutcomeReconciler.reconcile!(pre_existing)
+      unknown_response = response_for_unresolved_attempt(decision)
+      return unknown_response if unknown_response
+
+      # Complete not-found inside the safe window: the ORIGINAL key is replayed. If two callers
+      # race here, Stripe's idempotency layer returns the same PaymentIntent to both.
+      same_key_retry_authorized = decision.retry_same_key_allowed?
+    end
+
     Job.transaction do
       locked_job = Job.lock.find(job.id)
       payment = ensure_header!(locked_job)
@@ -157,6 +252,16 @@ class JobFundingService
           client_secret: existing.metadata_json.to_h["client_secret"],
           transaction: existing
         }
+      elsif existing&.status_processing?
+        early = {
+          success: false,
+          processing: true,
+          transaction: existing,
+          message: "A bank debit for this amount is already processing."
+        }
+      elsif existing && unresolved_attempt?(existing) && !same_key_retry_authorized
+        # Re-checked under lock: a concurrent caller may have raced us here.
+        early = outcome_unknown_response(existing)
       else
         txn = existing || JobPaymentTransaction.create!(
           payment: payment,
@@ -175,12 +280,29 @@ class JobFundingService
     return early if early
 
     user = job.company_profile.user
-    skip_live_customer = JobStripeOps.demo? || Rails.env.test?
+    skip_live_customer = JobStripeOps.simulate_stripe?
     customer_id = StripeCustomerService.validate_or_clear_customer_id!(user) unless skip_live_customer
     return { error: "Company must add a payment method in Settings before posting a job" } if customer_id.blank? && !skip_live_customer
 
     pm_id = default_payment_method_id(customer_id) unless skip_live_customer
-    return { error: "Company has no payment method on file. Add a card in Settings." } if pm_id.blank? && !skip_live_customer
+    return { error: "Company has no payment method on file. Add a card or bank account in Settings." } if pm_id.blank? && !skip_live_customer
+
+    # Fail-closed ACH gate for any new bank debit (including retries / top-ups / off-session).
+    # Never bypass via a previously saved us_bank_account PaymentMethod.
+    if pm_id.present?
+      pm_type = payment_method_type_for(pm_id)
+      if pm_type == "us_bank_account" && !AchAccess.allowed?(job.company_profile)
+        return {
+          error: AchAccess::USER_SAFE_MESSAGE,
+          code: "ach_disabled",
+          ach_disabled: true
+        }
+      end
+    end
+
+    # Stamp the attempt BEFORE calling Stripe. If the process dies or the call times out, the
+    # row proves Stripe may have been reached and reconciliation (not a fresh create) must follow.
+    stamp_collection_attempt!(txn, payment_method_id: pm_id)
 
     result = JobStripeOps.create_payment_intent!(
       amount_cents: amount,
@@ -188,10 +310,62 @@ class JobFundingService
       payment_method_id: pm_id,
       metadata: stripe_metadata(job, txn),
       transfer_group: job.transfer_group,
-      idempotency_key: key
+      idempotency_key: key,
+      company_profile: job.company_profile
     )
-
     finalize_collection!(job: job, payment: payment, txn: txn, result: result)
+  end
+
+  # pending-with-attempt or outcome_unknown: Stripe may hold a PaymentIntent for this key.
+  def self.unresolved_attempt?(txn)
+    return true if txn.status_outcome_unknown?
+
+    txn.status_pending? && txn.collection_first_attempted_at.present?
+  end
+
+  def self.stamp_collection_attempt!(txn, payment_method_id: nil)
+    attrs = {}
+    attrs[:collection_first_attempted_at] = Time.current if txn.collection_first_attempted_at.blank?
+    attrs[:stripe_payment_method_id] = payment_method_id if payment_method_id.present? && txn.stripe_payment_method_id.blank?
+    txn.update!(attrs) if attrs.any?
+  end
+
+  def self.outcome_unknown_response(txn)
+    state = CollectionOutcomeReconciler.reconciliation_state(txn)
+    {
+      success: false,
+      outcome_unknown: true,
+      code: "payment_outcome_unknown",
+      transaction: txn,
+      reconciliation_state: state,
+      error: "A previous payment attempt for this amount has an unconfirmed result. Do not re-post; " \
+             "it will be reconciled automatically or by an administrator before any new charge."
+    }
+  end
+
+  # Translate a reconciler decision into collect!'s contract. Returns nil only when it is safe
+  # to proceed to the (same-key) Stripe create.
+  def self.response_for_unresolved_attempt(decision)
+    txn = decision.transaction
+    case decision.outcome
+    when "resolved_succeeded"
+      { success: true, transaction: txn }
+    when "resolved_processing"
+      { success: false, processing: true, transaction: txn, message: "A bank debit for this amount is already processing." }
+    when "resolved_requires_action"
+      { success: false, requires_action: true, client_secret: txn.metadata_json.to_h["client_secret"], transaction: txn }
+    when "resolved_failed"
+      # Definitive failure confirmed — a new attempt (same key, Stripe replays or rejects as
+      # already-used; a different amount/revision yields a different key) is the caller's choice.
+      { error: txn.error_message.presence || "Payment failed", transaction: txn, failed: true }
+    when "retry_same_key_allowed"
+      nil
+    when "not_applicable"
+      nil
+    else
+      # lookup_failed / mismatch / requires_admin_review: block.
+      outcome_unknown_response(txn).merge(reconciliation_error: decision.error)
+    end
   end
 
   def self.refund_delta!(job:, amount_cents:, transaction_type:, revision:)
@@ -227,10 +401,19 @@ class JobFundingService
     job.update!(status: :open, funding_status: :funded, go_live_at: job.go_live_at.presence || Time.current)
   end
 
-  def self.mark_txn_succeeded!(txn, stripe_id: nil, charge_id: nil)
+  def self.mark_txn_succeeded!(txn, stripe_id: nil, charge_id: nil, payment_method_attrs: {})
     attrs = { status: :succeeded, succeeded_at: Time.current }
     attrs[:stripe_payment_intent_id] = stripe_id if stripe_id.present?
     attrs[:stripe_charge_id] = charge_id if charge_id.present?
+    attrs.merge!(payment_method_attrs) if payment_method_attrs.present?
+    txn.update!(attrs)
+  end
+
+  def self.mark_txn_processing!(txn, stripe_id: nil, charge_id: nil, payment_method_attrs: {})
+    attrs = { status: :processing, processing_at: txn.processing_at || Time.current }
+    attrs[:stripe_payment_intent_id] = stripe_id if stripe_id.present?
+    attrs[:stripe_charge_id] = charge_id if charge_id.present?
+    attrs.merge!(payment_method_attrs) if payment_method_attrs.present?
     txn.update!(attrs)
   end
 
@@ -250,8 +433,22 @@ class JobFundingService
     customer = Stripe::Customer.retrieve(customer_id, expand: ["invoice_settings.default_payment_method"])
     pm_id = customer.invoice_settings&.default_payment_method
     pm_id = pm_id.id if pm_id.respond_to?(:id)
-    pm_id ||= Stripe::PaymentMethod.list(customer: customer_id, type: "card").data.first&.id
-    pm_id
+    return pm_id if pm_id.present?
+
+    # Prefer card; bank is only a fallback when present (ACH initiation still gated separately).
+    %w[card us_bank_account].each do |type|
+      id = Stripe::PaymentMethod.list(customer: customer_id, type: type, limit: 1).data.first&.id
+      return id if id.present?
+    end
+    nil
+  rescue Stripe::StripeError
+    nil
+  end
+
+  def self.payment_method_type_for(payment_method_id)
+    return nil if payment_method_id.blank?
+
+    Stripe::PaymentMethod.retrieve(payment_method_id).type.to_s
   rescue Stripe::StripeError
     nil
   end
@@ -268,21 +465,89 @@ class JobFundingService
         return { success: true, transaction: locked_txn }
       end
 
+      pm_attrs = result.payment_method_attrs
+
+      # Webhook-before-API-response race: a signed webhook may already have moved this row to
+      # processing. Never downgrade it on an ambiguous or failed API result.
+      if locked_txn.status_processing? && !result.succeeded?
+        unless result.processing?
+          locked_txn.update!(
+            metadata_json: locked_txn.metadata_json.to_h.merge(
+              "api_result_after_webhook" => { "status" => result.status, "error" => result.error, "at" => Time.current.iso8601 }
+            )
+          )
+        end
+        return {
+          success: false,
+          processing: true,
+          transaction: locked_txn.reload,
+          message: "Bank debit initiated. Funds are not settled until the ACH payment succeeds."
+        }
+      end
+
       if result.succeeded?
-        mark_txn_succeeded!(locked_txn, stripe_id: result.stripe_id, charge_id: result.charge_id)
+        mark_txn_succeeded!(
+          locked_txn,
+          stripe_id: result.stripe_id,
+          charge_id: result.charge_id,
+          payment_method_attrs: pm_attrs
+        )
         if locked_payment.stripe_payment_intent_id.blank?
           locked_payment.update!(status: "held", stripe_payment_intent_id: result.stripe_id, held_at: Time.current)
         end
         { success: true, transaction: locked_txn.reload }
+      elsif result.processing?
+        mark_txn_processing!(
+          locked_txn,
+          stripe_id: result.stripe_id,
+          charge_id: result.charge_id,
+          payment_method_attrs: pm_attrs
+        )
+        {
+          success: false,
+          processing: true,
+          transaction: locked_txn.reload,
+          message: "Bank debit initiated. Funds are not settled until the ACH payment succeeds."
+        }
       elsif result.requires_action?
         locked_txn.update!(
-          status: :requires_action,
-          stripe_payment_intent_id: result.stripe_id,
-          metadata_json: locked_txn.metadata_json.to_h.merge("client_secret" => result.client_secret)
+          {
+            status: :requires_action,
+            stripe_payment_intent_id: result.stripe_id,
+            metadata_json: locked_txn.metadata_json.to_h.merge("client_secret" => result.client_secret)
+          }.merge(pm_attrs)
         )
         { success: false, requires_action: true, client_secret: result.client_secret, transaction: locked_txn }
+      elsif result.outcome_unknown?
+        # Stripe may or may not hold a PaymentIntent for this idempotency key. Persist the
+        # ambiguity; the key, attempt timestamp, and payment method are preserved for
+        # reconciliation. Not funded, not failed, never retried with a different key.
+        locked_txn.update!(
+          {
+            status: :outcome_unknown,
+            error_message: result.error,
+            stripe_payment_intent_id: result.stripe_id.presence || locked_txn.stripe_payment_intent_id,
+            investigation_required: true,
+            metadata_json: locked_txn.metadata_json.to_h.merge(
+              "outcome_unknown_at" => Time.current.iso8601,
+              "outcome_unknown_error_class" => result.error_class,
+              "outcome_unknown_http_status" => result.http_status
+            )
+          }.merge(pm_attrs)
+        )
+        CollectionOutcomeReconciler.ensure_risk_event!(
+          locked_txn,
+          note: "PaymentIntent create outcome unknown (#{result.error_class}: #{result.error})"
+        )
+        outcome_unknown_response(locked_txn.reload)
       else
-        locked_txn.update!(status: :failed, error_message: result.error, stripe_payment_intent_id: result.stripe_id)
+        locked_txn.update!(
+          {
+            status: :failed,
+            error_message: result.error,
+            stripe_payment_intent_id: result.stripe_id
+          }.merge(pm_attrs)
+        )
         locked_payment.update!(status: "failed") if locked_payment.status == "pending"
         { error: result.error || "Payment failed", transaction: locked_txn }
       end
@@ -406,7 +671,8 @@ class JobFundingService
         return { success: true, transaction: locked_txn }
       end
 
-      if result.succeeded?
+      case result.status.to_s
+      when "succeeded"
         locked_txn.update!(
           status: :succeeded,
           stripe_refund_id: result.stripe_id,
@@ -414,8 +680,25 @@ class JobFundingService
           succeeded_at: Time.current
         )
         { success: true, transaction: locked_txn.reload }
+      when "pending", "requires_action"
+        # Stripe accepted the refund request; funds not finalized. Keep pending (never failed).
+        locked_txn.update!(
+          status: :pending,
+          stripe_refund_id: result.stripe_id,
+          stripe_payment_intent_id: payment_intent_id,
+          metadata_json: locked_txn.metadata_json.to_h.merge("stripe_refund_status" => result.status.to_s)
+        )
+        {
+          success: false,
+          pending: true,
+          transaction: locked_txn.reload,
+          message: "Refund initiated and pending. It will complete when Stripe finalizes the refund."
+        }
+      when "failed", "canceled"
+        locked_txn.update!(status: :failed, error_message: result.error || "Stripe refund #{result.status}", stripe_refund_id: result.stripe_id)
+        { error: result.error || "Refund failed", transaction: locked_txn }
       else
-        locked_txn.update!(status: :failed, error_message: result.error)
+        locked_txn.update!(status: :failed, error_message: result.error || "Unexpected refund status #{result.status}")
         { error: result.error || "Refund failed", transaction: locked_txn }
       end
     end

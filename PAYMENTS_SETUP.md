@@ -6,7 +6,8 @@ This document describes TechFlash job funding, membership billing, Connect payou
 
 Both companies and technicians have a **Profile & Settings** page (`/settings`):
 
-- **Company**: Add a credit/debit card. **Priced jobs are charged when posted** (pay-to-post), not when a technician claims.
+- **Company**: Add credit/debit cards **or** US business bank accounts (ACH via Stripe Financial Connections). **Priced jobs are charged when posted** (pay-to-post), not when a technician claims.
+- **Company ACH**: Bank debits are asynchronous. Jobs stay `pending_funding` until `payment_intent.succeeded`. See `ACH_PAYMENTS.md`.
 - **Technician**: Connect a bank account with Stripe Connect Express. An account ID is not enough — payouts require charges enabled, payouts enabled, and an active transfers capability (`stripe_payout_ready`).
 - **Billing history** (company): ledger of job charges, top-ups, and refunds from `GET /api/v1/billing_history`.
 
@@ -118,14 +119,25 @@ This is **not** scheduled in-repo (`skilled_hub_api/railway.json` has no cron). 
 In the Stripe Dashboard endpoint for `/api/v1/stripe/webhook`:
 
 - `payment_intent.succeeded`
+- `payment_intent.processing`
 - `payment_intent.payment_failed`
+- `setup_intent.succeeded`
 - `charge.refunded`
+- `charge.dispute.created`
+- `charge.dispute.updated`
+- `charge.dispute.closed`
 - `checkout.session.completed`
 - `customer.subscription.created`
 - `customer.subscription.updated`
 - `customer.subscription.deleted`
 - `invoice.paid`
 - `account.updated`
+
+### ACH / Financial Connections (Dashboard)
+
+1. Enable **ACH Direct Debit** and **Financial Connections** in Stripe Settings → Payment methods.
+2. Confirm the webhook endpoint includes the ACH-related events above.
+3. Use Stripe test Financial Connections institutions in test mode (see Stripe docs: test bank accounts / Financial Connections).
 
 ## Admin tiers
 

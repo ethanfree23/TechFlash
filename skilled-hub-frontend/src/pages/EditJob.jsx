@@ -217,7 +217,10 @@ const EditJob = () => {
   const hpd = parseInt(form.hours_per_day, 10) || 8;
   const d = parseInt(form.days, 10) || 0;
   const jobAmount = hr * hpd * d;
-  const termsLocked = job?.funding_status === 'funded' || job?.funding_status === 'adjustment_required';
+  const termsLocked =
+    job?.funding_status === 'funded' ||
+    job?.posted_under_funding_waiver === true ||
+    job?.funding_status === 'adjustment_required';
   const feeReady = Number.isFinite(platformFeePercent);
   const feeLabel = feeReady ? formatPlatformFeePercent(platformFeePercent) : null;
   const companyCharge = feeReady && jobAmount > 0
@@ -357,6 +360,18 @@ const EditJob = () => {
         payload.days = null;
       }
       const updated = await jobsAPI.update(id, payload);
+      if (updated?.payment_processing) {
+        setAlertModal({
+          isOpen: true,
+          title: 'Bank debit started',
+          message:
+            updated.message ||
+            'Bank debit initiated. This job will publish when the ACH payment succeeds.',
+          variant: 'success',
+          onCloseAction: () => navigate('/dashboard'),
+        });
+        return;
+      }
       if (updated?.payment_adjustment_required && updated.client_secret) {
         await confirmStripeCardPayment(updated.client_secret);
         const jobId = updated.job?.id || updated.id || id;

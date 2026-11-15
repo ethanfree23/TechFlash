@@ -6,6 +6,12 @@ class Job < ApplicationRecord
 
   enum :status, { open: 0, reserved: 1, accepted: 2, completed: 3, filled: 4, finished: 5, pending_funding: 6, draft: 7 }
   enum :pay_basis, { actual_hours_worked: 0, guaranteed_job_pay: 1 }
+  # funding_status=funded means verified collections cover company_required
+  # (JobLedger.fully_funded), OR the vacuous unpriced case where
+  # company_required_cents == 0 (!priced?) and no cash is owed.
+  # Admin posting exemptions must NOT use :funded — stamp :unfunded and set
+  # posted_under_funding_waiver. Priced jobs with unpaid required funding
+  # cannot claim the zero-funding exception.
   enum :funding_status, { unfunded: 0, funded: 1, adjustment_required: 2, funding_failed: 3 }, prefix: :funding
   enum :settlement_status, { unsettled: 0, settling: 1, settled: 2, settlement_blocked: 3 }, prefix: :settlement
   enum :start_mode, { hard_start: 0, rolling_start: 1 }
@@ -64,6 +70,14 @@ class Job < ApplicationRecord
   has_many :time_entries, dependent: :destroy
   has_many :job_term_change_audits, dependent: :destroy
   has_one :job_termination, dependent: :destroy
+  # No dependent: :destroy — financial rows must survive; before_destroy aborts
+  # and the FK also blocks cascade when risk events exist.
+  has_many :payment_risk_events, inverse_of: :job
+
+  # Blocks hard-delete / company-profile cascade when financial evidence exists so
+  # dependent: :destroy on payments/JPTs/revisions cannot erase ledger history.
+  # prepend: true so this runs before association dependent: :destroy callbacks.
+  before_destroy :abort_destroy_if_financially_significant!, prepend: true
 
   # Total job amount (before platform fees): hourly_rate * hours_per_day * days
   # Falls back to price_cents for legacy jobs
@@ -109,12 +123,109 @@ class Job < ApplicationRecord
     job_amount_cents.positive?
   end
 
+  # LIVE company admin flag — governs NEW posting eligibility / card requirements only.
+  # Do not use this for claim, adjustment, or historical exemption of already-posted jobs.
   def job_funding_waived?
     !!company_profile&.job_funding_waived?
   end
 
+  # Persisted per-job marker set at publish when the company held a posting exemption.
+  def posted_under_funding_waiver?
+    has_attribute?(:posted_under_funding_waiver) && !!self[:posted_under_funding_waiver]
+  end
+
+  # Succeeded inbound company collections for this job (cash evidence).
+  def succeeded_company_collected_cents
+    job_payment_transactions.company_collections.status_succeeded.sum(:amount_cents).to_i
+  end
+
+  # Diagnostic only: priced job stamped :funded with zero succeeded collections.
+  # This is NOT admin-authorization evidence. Do not use it to invent a posting
+  # exemption or skip financial adjustments — ambiguous rows need admin review.
+  # Unpriced vacuous :funded (!priced?, required=0) is excluded by priced?.
+  def legacy_funded_without_collections?
+    funding_funded? && priced? && succeeded_company_collected_cents.zero?
+  end
+
+  # Historical posting exemption for an already-posted job.
+  # ONLY the persisted admin marker authorizes exemption. Inconsistent
+  # funded-without-cash stamps must not auto-stamp posted_under_funding_waiver
+  # or waive adjustments.
+  def historically_funding_exempt?
+    posted_under_funding_waiver?
+  end
+
+  # Claim / visibility eligibility for paywalled jobs. Distinct from payout authorization
+  # (PaymentService / JobLedger). Does NOT authorize Stripe transfers.
+  # Never consults live company.job_funding_waived.
+  # funding_funded? preserves claim/visibility for legacy mislabeled rows without
+  # inventing waiver authorization (adjustment still requires the marker).
+  # Waiver still allows claim WITHOUT cash — work-start uses funding_allows_work?.
+  def funding_allows_claim?
+    funding_funded? || posted_under_funding_waiver? || !priced?
+  end
+
+  # Work-start / time-entry-create / schedule-activation gate.
+  # Priced jobs require verified collected funds (JobLedger.fully_funded with cash).
+  # ACH processing, open disputes/returns, and stale funding_status labels are NOT funded.
+  # Unpriced / zero-required jobs need no cash. Does NOT authorize Stripe transfers.
+  def funding_allows_work?
+    return true unless priced?
+
+    if job_payment_transactions.company_collections.status_processing.exists?
+      return false
+    end
+    if job_payment_transactions.company_collections.status_succeeded.any?(&:disputed?)
+      return false
+    end
+
+    ledger = JobLedger.for(self)
+    ledger.fully_funded && ledger.net_funded_cents.positive?
+  rescue JobLedger::MissingCommissionSnapshotError
+    false
+  end
+
+  def work_funding_blocked_message
+    return nil if funding_allows_work?
+
+    "This job cannot start or record work until the company funds the outstanding balance. ACH processing does not count as funded."
+  end
+
+  # Shared hard-delete guard for controller destroy and association cascades.
+  def financial_undeletable_reason
+    if job_payment_transactions.exists?
+      return "This job has payment activity and cannot be deleted. Unpublish/refund first if eligible."
+    end
+    if payments.exists?
+      return "This job has payment records and cannot be deleted."
+    end
+    if job_financial_revisions.exists?
+      return "This job has financial revision history and cannot be deleted."
+    end
+    if payment_risk_events.exists?
+      return "This job has payment risk records and cannot be deleted."
+    end
+    begin
+      if JobLedger.for(self).net_funded_cents.positive?
+        return "This job is funded. Unpublish it to refund the company before removing it."
+      end
+    rescue JobLedger::MissingCommissionSnapshotError
+      # ignore — other checks already cover financial rows
+    end
+    nil
+  end
+
+  def abort_destroy_if_financially_significant!
+    reason = financial_undeletable_reason
+    return if reason.blank?
+
+    errors.add(:base, reason)
+    throw :abort
+  end
+
   def funded_terms_locked?
-    funding_funded? || funding_adjustment_required?
+    # Exempt-posted jobs keep the same pay-term lock they had when mislabeled as funded.
+    funding_funded? || posted_under_funding_waiver? || funding_adjustment_required?
   end
 
   # How many accepted claims this job can hold. Single-technician today; centralised so

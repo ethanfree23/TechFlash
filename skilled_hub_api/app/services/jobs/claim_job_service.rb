@@ -80,7 +80,10 @@ module Jobs
           return { error: funding[:error] || "Could not fund the accepted counteroffer." }
         end
       else
-        unless @job.funding_funded? || !@job.priced? || @job.job_funding_waived?
+        # funding_allows_claim? uses persisted job evidence only (cash :funded,
+        # posted_under_funding_waiver, or unpriced). Live company.job_funding_waived
+        # must NOT broaden claim eligibility for previously unpaid jobs.
+        unless @job.funding_allows_claim?
           return { error: "This job is not funded yet and cannot be claimed." }
         end
       end

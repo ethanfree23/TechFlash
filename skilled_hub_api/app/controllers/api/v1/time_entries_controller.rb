@@ -16,6 +16,9 @@ module Api
         if (reason = closed_to_new_time_entries_reason)
           return render json: { error: reason }, status: :unprocessable_entity
         end
+        if (blocked = @job.work_funding_blocked_message)
+          return render json: { error: blocked }, status: :unprocessable_entity
+        end
 
         entry = @job.time_entries.new(time_entry_params)
         entry.submitted_by_user = @current_user
@@ -52,6 +55,8 @@ module Api
       def approve
         entry = @job.time_entries.find(params[:id])
         return render_forbidden unless can_manage_job?(@job)
+        # Approval is allowed while unfunded: it only records the entry.
+        # Transfers remain blocked by JobLedger / PaymentService until cash is verified.
 
         entry.update!(status: :approved, approved_at: Time.current, approved_by_user: @current_user)
         render json: entry.as_json(include: :time_entry_pay_line), status: :ok

@@ -53,7 +53,7 @@ module Api
              as: :json
         assert_response :created
 
-        get "/api/v1/ratings", params: { job_id: job.id }, headers: auth_header_for(technician_user), as: :json
+        get "/api/v1/ratings", params: { job_id: job.id }, headers: auth_header_for(technician_user)
         assert_response :ok
         payload = JSON.parse(response.body)
         assert_equal 0, payload["ratings"].size
@@ -73,7 +73,7 @@ module Api
              as: :json
         assert_response :created
 
-        get "/api/v1/ratings", params: { job_id: job.id }, headers: auth_header_for(company_user), as: :json
+        get "/api/v1/ratings", params: { job_id: job.id }, headers: auth_header_for(company_user)
         assert_response :ok
         payload = JSON.parse(response.body)
         assert_equal 2, payload["ratings"].size

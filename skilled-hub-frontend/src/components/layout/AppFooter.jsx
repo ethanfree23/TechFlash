@@ -5,7 +5,7 @@ export default function AppFooter() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="shrink-0 border-t border-gray-200 bg-white">
+    <footer className="hidden shrink-0 border-t border-gray-200 bg-white sm:block">
       <div className="mx-auto w-full max-w-7xl px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] text-center text-xs leading-5 text-gray-500 sm:px-6 lg:px-8">
         <p>
           <span>{`© ${year} TechFlash`}</span>

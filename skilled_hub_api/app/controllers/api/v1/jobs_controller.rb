@@ -163,7 +163,7 @@ module Api
         )
         unless save_as_draft
           if requires_saved_card && priced_preview.positive? && !skip_card_validation && !PaymentService.company_has_payment_method?(company_profile.user)
-            return render json: { error: 'Add a valid credit or debit card in Profile & Settings → Payment before posting a job.' }, status: :unprocessable_entity
+            return render json: { error: 'Add a valid credit/debit card or bank account in Profile & Settings → Payment before posting a job.' }, status: :unprocessable_entity
           end
         end
 
@@ -218,13 +218,34 @@ module Api
               client_secret: result[:client_secret]
             }, status: :accepted
           end
+          if result[:processing]
+            return render json: {
+              job: JobSerializer.new(job.reload, scope: @current_user).as_json,
+              payment_processing: true,
+              payment_method_type: result[:payment_method_type] || "us_bank_account",
+              message: result[:message] || "Bank debit initiated. This job will publish when the ACH payment succeeds."
+            }, status: :accepted
+          end
+          if result[:outcome_unknown]
+            return render json: {
+              job: JobSerializer.new(job.reload, scope: @current_user).as_json,
+              payment_outcome_unknown: true,
+              code: result[:code] || "payment_outcome_unknown",
+              message: result[:error] || "Your payment result could not be confirmed. Do not re-post this job; it will be reconciled automatically."
+            }, status: :accepted
+          end
           unless result[:success]
             return render json: { error: result[:error] || "Payment failed. This job was not published.", job: JobSerializer.new(job.reload, scope: @current_user).as_json }, status: :unprocessable_entity
           end
           job.reload
         else
           JobFundingService.snapshot_company!(job)
-          job.update!(funding_status: :funded)
+          if job.job_funding_waived?
+            job.update!(funding_status: :unfunded, posted_under_funding_waiver: true)
+          else
+            # Unpriced path only — vacuous :funded when company_required is 0.
+            job.update!(funding_status: :funded)
+          end
           JobFundingService.record_revision!(job, source: "posting")
         end
 
@@ -260,6 +281,13 @@ module Api
             return render json: {
               error: "Funded job pay terms cannot be edited directly. Use a counteroffer or unpublish the job."
             }, status: :unprocessable_entity
+          end
+        end
+        # Schedule/start changes on claimed priced jobs require verified cash first.
+        if (job.reserved? || job.filled? || job.accepted?) && !job.funding_allows_work?
+          schedule_keys = %w[scheduled_start_at scheduled_end_at]
+          if schedule_keys.any? { |attr| incoming.key?(attr) && incoming[attr].to_s != job.public_send(attr).to_s }
+            return render json: { error: job.work_funding_blocked_message }, status: :unprocessable_entity
           end
         end
         job.assign_attributes(incoming)
@@ -434,6 +462,8 @@ module Api
 
       def terminate
         job = Job.find(params[:id])
+        # Authorized termination is allowed while unfunded (no cash gate).
+        # Already-ended idempotency is handled inside TerminateAssignmentService.
         result = Jobs::TerminateAssignmentService.call(
           job: job,
           actor_user: @current_user,
@@ -482,6 +512,9 @@ module Api
           return render json: { error: 'This assignment was already ended early.' }, status: :unprocessable_entity
         end
         if can_finish
+          if (blocked = job.work_funding_blocked_message)
+            return render json: { error: blocked }, status: :unprocessable_entity
+          end
           job.update!(status: :finished, finished_at: Time.current) unless job.finished? || job.completed?
           JobSettlementService.settle_and_release_if_eligible!(job)
           ReferralRewardMarker.mark_for_finished_job!(job)
@@ -504,6 +537,9 @@ module Api
         end
         unless job.reserved? || job.filled?
           return render json: { error: 'Can only extend jobs that are in progress' }, status: :unprocessable_entity
+        end
+        if (blocked = job.work_funding_blocked_message)
+          return render json: { error: blocked }, status: :unprocessable_entity
         end
         new_end_at = params[:scheduled_end_at]
         if new_end_at.blank?
@@ -636,6 +672,112 @@ module Api
         render json: { error: "Job not found" }, status: :not_found
       end
 
+      # Preview outstanding cash due + default payment method before company confirms.
+      # Never charges. Availability of ACH here does not create a mandate.
+      # Gated by PostPublishFundingAccess (defaults OFF until Task B C-1/C-2 lands).
+      def fund_preview
+        job = Job.find(params[:id])
+        unless can_manage_job?(job)
+          return render json: { error: "Access denied" }, status: :forbidden
+        end
+        unless PostPublishFundingAccess.enabled?
+          return render json: {
+            error: PostPublishFundingAccess::USER_SAFE_MESSAGE,
+            code: "post_publish_funding_disabled",
+            post_publish_funding_enabled: false
+          }, status: :forbidden
+        end
+        unless job.priced?
+          return render json: { error: "Unpriced jobs do not require funding.", amount_due_cents: 0 }, status: :unprocessable_entity
+        end
+
+        begin
+          ledger = JobLedger.for(job)
+        rescue JobLedger::MissingCommissionSnapshotError => e
+          return render json: { error: e.message }, status: :unprocessable_entity
+        end
+
+        pm_id = JobFundingService.default_payment_method_id_for_job(job)
+        pm_type = pm_id.present? && !JobStripeOps.simulate_stripe? ? JobFundingService.payment_method_type_for(pm_id) : nil
+        render json: {
+          job_id: job.id,
+          amount_due_cents: ledger.amount_due_cents,
+          company_required_cents: ledger.company_required_cents,
+          net_funded_cents: ledger.net_funded_cents,
+          fully_funded: ledger.fully_funded,
+          funding_status: job.funding_status,
+          posted_under_funding_waiver: job.posted_under_funding_waiver?,
+          payment_method_id: pm_id,
+          payment_method_type: pm_type || (JobStripeOps.simulate_stripe? ? "card" : nil),
+          ach_processing: job.job_payment_transactions.status_processing.any?(&:ach?),
+          work_allowed: job.funding_allows_work?,
+          post_publish_funding_enabled: true
+        }, status: :ok
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: "Job not found" }, status: :not_found
+      end
+
+      # Company-initiated collect of remaining required funding after waived publish.
+      # Requires explicit confirmation of amount + payment method. Never auto-debits.
+      # Gated by PostPublishFundingAccess (defaults OFF until Task B C-1/C-2 lands).
+      def fund
+        job = Job.find(params[:id])
+        unless can_manage_job?(job)
+          return render json: { error: "Access denied" }, status: :forbidden
+        end
+        unless PostPublishFundingAccess.enabled?
+          return render json: {
+            error: PostPublishFundingAccess::USER_SAFE_MESSAGE,
+            code: "post_publish_funding_disabled",
+            post_publish_funding_enabled: false
+          }, status: :forbidden
+        end
+
+        result = JobFundingAdjustmentService.collect_remaining!(
+          job,
+          confirmed_amount_cents: params[:confirmed_amount_cents],
+          confirmed_payment_method_id: params[:confirmed_payment_method_id],
+          source: "post_publish_fund"
+        )
+
+        if result[:already_funded] || result[:success]
+          return render json: job.reload, serializer: JobSerializer, status: :ok
+        end
+        if result[:requires_action]
+          return render json: {
+            error: result[:error],
+            payment_adjustment_required: true,
+            client_secret: result[:client_secret],
+            amount_due_cents: result[:amount_due_cents],
+            job: JobSerializer.new(job.reload).as_json
+          }, status: :payment_required
+        end
+        if result[:processing]
+          return render json: {
+            error: result[:error],
+            payment_processing: true,
+            payment_method_type: result[:transaction]&.payment_method_type || "us_bank_account",
+            amount_due_cents: result[:amount_due_cents],
+            message: result[:error],
+            job: JobSerializer.new(job.reload).as_json
+          }, status: :accepted
+        end
+        if result[:outcome_unknown]
+          return render json: {
+            error: result[:error],
+            payment_outcome_unknown: true,
+            code: result[:code] || "payment_outcome_unknown",
+            amount_due_cents: result[:amount_due_cents],
+            message: result[:error] || "Your payment result could not be confirmed. Do not retry; it will be reconciled automatically.",
+            job: JobSerializer.new(job.reload).as_json
+          }, status: :accepted
+        end
+
+        render json: { error: result[:error] || "Could not collect funding.", code: result[:code] }, status: :unprocessable_entity
+      rescue ActiveRecord::RecordNotFound
+        render json: { error: "Job not found" }, status: :not_found
+      end
+
       def unpublish
         job = Job.find(params[:id])
         unless can_manage_job?(job)
@@ -752,7 +894,7 @@ module Api
         return nil if skip_card_validation
         return nil if PaymentService.company_has_payment_method?(job.company_profile.user)
 
-        'Add a valid credit or debit card in Profile & Settings → Payment before posting a job.'
+        'Add a valid credit/debit card or bank account in Profile & Settings → Payment before posting a job.'
       end
 
       # Runs funding after a draft is saved as pending_funding/open. Returns :ok, :halted
@@ -769,6 +911,24 @@ module Api
             }, status: :accepted
             return :halted
           end
+          if result[:processing]
+            render json: {
+              job: JobSerializer.new(job.reload, scope: @current_user).as_json,
+              payment_processing: true,
+              payment_method_type: result[:payment_method_type] || "us_bank_account",
+              message: result[:message] || "Bank debit initiated. This job will publish when the ACH payment succeeds."
+            }, status: :accepted
+            return :halted
+          end
+          if result[:outcome_unknown]
+            render json: {
+              job: JobSerializer.new(job.reload, scope: @current_user).as_json,
+              payment_outcome_unknown: true,
+              code: result[:code] || "payment_outcome_unknown",
+              message: result[:error] || "Your payment result could not be confirmed. Do not re-post this job; it will be reconciled automatically."
+            }, status: :accepted
+            return :halted
+          end
           unless result[:success]
             render json: {
               error: result[:error] || "Payment failed. This job was not published.",
@@ -780,7 +940,12 @@ module Api
         end
 
         JobFundingService.snapshot_company!(job)
-        job.update!(funding_status: :funded) unless job.funding_funded?
+        if job.job_funding_waived?
+          job.update!(funding_status: :unfunded, posted_under_funding_waiver: true)
+        else
+          # Unpriced publish path only — cash :funded requires verified collections elsewhere.
+          job.update!(funding_status: :funded) unless job.funding_funded?
+        end
         JobFundingService.record_revision!(job, source: "posting")
         :ok
       end
@@ -792,20 +957,10 @@ module Api
         if job.job_applications.where(status: :accepted).exists?
           return 'A technician has claimed this job. Deny the technician or end the assignment first.'
         end
-        if job.job_payment_transactions.status_succeeded.exists?
-          return 'This job has payment activity. Unpublish it to refund the company before removing it.'
-        end
-        if job_holds_funds?(job)
-          return 'This job is funded. Unpublish it to refund the company before removing it.'
-        end
-
-        nil
-      end
-
-      def job_holds_funds?(job)
-        JobLedger.for(job).net_funded_cents.positive?
-      rescue JobLedger::MissingCommissionSnapshotError
-        false
+        # Financial significance (model-level + controller): ANY payment activity,
+        # payment row, financial revision, or risk event blocks hard delete /
+        # company-profile cascade so dependent: :destroy cannot erase ledger evidence.
+        job.financial_undeletable_reason
       end
 
       def render_paginated_jobs(jobs)
