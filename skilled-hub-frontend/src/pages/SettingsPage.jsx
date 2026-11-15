@@ -30,7 +30,7 @@ import { isTechnicianClass } from '../constants/technicianClass';
 import { payloadFromTradeLines, tradeLineValidationMessage, tradeLinesFromProfile } from '../utils/tradeQualifications';
 import { getNotificationCategories } from '../config/notificationPreferenceCatalog';
 import { isDemoMode, demoSimulatedMessage, withDemoPath } from '../utils/demoMode';
-import { mediaUrlWithCacheBust, resolveMediaUrl } from '../utils/mediaUrl';
+import { mediaUrlWithCacheBust } from '../utils/mediaUrl';
 import AccountRolePanel from '../components/settings/AccountRolePanel';
 import AccountActionsCard from '../components/settings/AccountActionsCard';
 import { parseSettingsUrl, replaceSettingsUrl } from '../utils/settingsUrl';
@@ -387,21 +387,23 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
   const mainTabs = useMemo(() => {
     const base = [
-      { id: 'profile', label: 'Profile' },
+      { id: 'profile', label: 'Profile & Account' },
     ];
     if (isTechnician) {
       base.push({ id: 'verification', label: 'Verification' });
     }
-    base.push(
-      { id: 'notifications', label: 'Notifications' },
-      { id: 'payment', label: 'Billing' },
-    );
-    if (isTechnician || isCompany) {
-      base.push({ id: 'membership', label: 'Membership and access' });
-      base.push({ id: 'legal', label: 'Legal and support' });
-    } else if (isAdmin) {
-      base.push({ id: 'legal', label: 'Legal and support' });
+    base.push({ id: 'notifications', label: 'Notifications' });
+    // Only expose billing/payout UI when role-specific payment features exist.
+    if (isTechnician) {
+      base.push({ id: 'payment', label: 'Payouts' });
+    } else if (isCompany) {
+      base.push({ id: 'payment', label: 'Billing' });
     }
+    if (isTechnician || isCompany) {
+      base.push({ id: 'membership', label: 'Membership' });
+    }
+    // Legal stays available from Settings and from the mobile Account section.
+    base.push({ id: 'legal', label: 'Legal' });
     if (isAdmin) base.push({ id: 'system_controls', label: 'System controls' });
     return base;
   }, [isAdmin, isTechnician, isCompany]);
@@ -920,6 +922,11 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     if (allowed.has(tab)) setSettingsTab(tab);
     if (isAdmin && tab === 'system_controls' && sub) setAdminSystemSubTab(sub);
   }, [fetchProfile, user, onUserUpdate, isAdmin, mainTabs, loadBackgroundCheckOptions]);
+
+  useEffect(() => {
+    const allowed = new Set(mainTabs.map((t) => t.id));
+    if (!allowed.has(settingsTab)) setSettingsTab('profile');
+  }, [mainTabs, settingsTab]);
 
   useEffect(() => {
     replaceSettingsUrl(settingsTab, isAdmin && settingsTab === 'system_controls' ? adminSystemSubTab : null);
@@ -2526,6 +2533,10 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                   id="settings-account"
                   className="mt-8 space-y-4 border-t border-gray-200 pt-6"
                 >
+                <SettingsSection
+                  title="Privacy & Security"
+                  description="Email, password, and account management for this login."
+                />
                 {isAdmin && (
                   <SettingsCard
                     title="Account role"
@@ -2584,7 +2595,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               </div>
             )}
 
-            {settingsTab === 'payment' && (
+            {settingsTab === 'payment' && (isTechnician || isCompany) && (
               <div
                 id="settings-panel-payment"
                 role="tabpanel"
@@ -2629,18 +2640,25 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
           )}
 
           {isCompany && (
-            <CompanyPaymentMethodsPanel
-              stripe={stripe}
-              publishableKey={publishableKey}
-              onStatus={handlePaymentMethodsStatus}
-            />
+            <>
+              <SettingsSection
+                title="Membership & Billing"
+                description="Payment methods and charges for company jobs and membership."
+              />
+              <CompanyPaymentMethodsPanel
+                stripe={stripe}
+                publishableKey={publishableKey}
+                onStatus={handlePaymentMethodsStatus}
+              />
+            </>
           )}
 
           {isTechnician && (
             <div>
-              <p className="text-gray-600 mb-2">
-                Connect your bank account to receive payouts when jobs are completed.
-              </p>
+              <SettingsSection
+                title="Payouts"
+                description="Connect your bank account to receive payouts when jobs are completed."
+              />
               {profile?.stripe_payout_ready ? (
                 <p className="text-green-700 font-medium mb-4">Payout-ready — charges and payouts are enabled.</p>
               ) : profile?.stripe_connected ? (
@@ -2655,10 +2673,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 {profile?.stripe_connected ? 'Update Bank Account' : 'Connect Bank Account'}
               </button>
             </div>
-          )}
-
-          {(isAdmin || (!isCompany && !isTechnician)) && (
-            <p className="text-gray-500">Payment settings are available for companies and technicians.</p>
           )}
 
           {!isAdmin && isCompany && (
@@ -2692,7 +2706,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
             {settingsTab === 'membership' && (isTechnician || isCompany) && (
               <div id="settings-panel-membership" role="tabpanel" aria-labelledby="settings-tab-membership" className="space-y-6">
                 <SettingsSection
-                  title="Membership and job access"
+                  title="Membership & Billing"
                   description="Your tier controls when jobs unlock for you and the platform commission rate."
                 />
                 <SettingsCard title="Current membership">
@@ -2833,13 +2847,13 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 className="space-y-6"
               >
                 <SettingsSection
-                  title="Notification center"
-                  description="Choose what we email you about. Security, password reset, payment receipts, and legal notices stay on."
+                  title="Notifications"
+                  description="Email, SMS, and in-app preferences. Security, password reset, payment receipts, and legal notices stay on."
                 />
 
                 {isTechnician && (
                   <SettingsCard
-                    title="Job alert filters"
+                    title="Preferences — job alert filters"
                     description="Pay floor, distance, duration, and channels for nearby jobs."
                     collapsible
                     defaultOpen={false}
@@ -3003,13 +3017,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                       />
                     }
                   />
-                </SettingsCard>
-
-                <SettingsCard title="Digest, quiet hours, and language" collapsible defaultOpen={false}>
-                  <p className="text-xs text-amber-900 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 mb-3">
-                    Not connected to the backend yet. TODO(backend): user notification_settings JSON for digest and quiet hours.
-                  </p>
-                  <p className="text-sm text-gray-600">UI placeholder for hourly/daily digests, time zone, and preferred language.</p>
                 </SettingsCard>
 
                 <div className="grid gap-4 md:grid-cols-2">
