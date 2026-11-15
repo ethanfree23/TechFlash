@@ -89,22 +89,34 @@ const pkg = JSON.parse(read('package.json'));
 assert.ok(pkg.dependencies['expo-location']);
 assert.ok(pkg.dependencies['expo-notifications']);
 
-// Credentials must not be committed as plaintext passwords.
-for (const rel of [
+// Credentials must not be committed as plaintext passwords in review docs/tasks.
+const credentialDocs = [
   'APP_STORE_REVIEW_NOTES.md',
   'techflash-mobile/docs/app-review-recording-readiness.md',
   'techflash-mobile/docs/app-store-review-package.md',
   'skilled_hub_api/lib/tasks/app_review.rake',
-  'skilled_hub_api/app/services/app_review/prepare_service.rb',
-]) {
+];
+for (const rel of credentialDocs) {
   const body = read(rel, repoRoot);
-  assert.doesNotMatch(body, /TfReview!2026/, `${rel} must not contain reviewer password`);
+  assert.match(body, /App Store Connect/, `${rel} should point passwords to App Store Connect`);
+  assert.doesNotMatch(
+    body,
+    /Password\s*\(both\):\s*`[^`]+`/i,
+    `${rel} must not embed reviewer passwords`
+  );
+  assert.doesNotMatch(
+    body,
+    /Password:\s*`[^`]+`/i,
+    `${rel} must not embed reviewer passwords in backticks`
+  );
+  assert.doesNotMatch(body, /APP_REVIEW_PASSWORD\s*=/, `${rel} must not default a password env literal`);
 }
+const prepareSrc = read('skilled_hub_api/app/services/app_review/prepare_service.rb', repoRoot);
+assert.doesNotMatch(prepareSrc, /password\s*[:=]/i, 'prepare_service must not handle passwords');
+assert.match(prepareSrc, /verify_claimable!/);
+assert.match(prepareSrc, /posted_under_funding_waiver: true/);
 
-const prepare = read('skilled_hub_api/app/services/app_review/prepare_service.rb', repoRoot);
-assert.match(prepare, /membership_fee_waived: true/);
-assert.match(prepare, /posted_under_funding_waiver: true/);
-assert.match(prepare, /verify_claimable!/);
-assert.match(prepare, /clear_mutual_blocks!/);
+assert.match(prepareSrc, /membership_fee_waived: true/);
+assert.match(prepareSrc, /clear_mutual_blocks!/);
 
 console.log('unitSmokeTest: PASS');
