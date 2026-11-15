@@ -168,7 +168,6 @@ module AppReview
         job_id: job.id,
         technician_profile_id: tech.id,
         company_profile_id: company.id,
-        inbox_category: "job",
         inbox_status: "open",
         priority: "normal"
       )
