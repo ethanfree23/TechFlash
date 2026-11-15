@@ -1,14 +1,18 @@
 # frozen_string_literal: true
 
 module Assessments
-  # Builds what one technician sees in their Skills Assessments section: every
-  # takeable assessment, their state on each, and whether they may start now.
+  # Builds what one technician sees in their Skills Assessments section: the
+  # takeable assessments for their trade(s), their state on each, and whether
+  # they may start now.
   #
-  # Recommendation is by trade. Once the HVAC / Plumbing / Electrical banks
-  # exist, an HVAC technician sees the HVAC assessment recommended first purely
-  # because Assessment#trade_type matches one of their trade labels — no
-  # per-trade code. Assessments for other trades stay visible but unrecommended,
-  # since technicians often work across trades.
+  # Visibility is by trade. Once the HVAC / Plumbing / Electrical banks exist,
+  # an electrician only sees the Electrical assessment because
+  # Assessment#trade_type matches one of their trade labels (primary trade,
+  # specialties, or trade qualifications) — no per-trade code. Assessments for
+  # other trades are hidden, not merely unrecommended.
+  #
+  # An in-progress attempt on a non-matching assessment stays visible so the
+  # technician can finish a sitting started before their trade profile changed.
   class TechnicianCatalog
     Entry = Struct.new(
       :assessment,
@@ -45,7 +49,7 @@ module Assessments
 
       entries = takeable_assessments.map { |assessment| build_entry(assessment) }
 
-      # Recommended trade assessments first, then the platform's configured order.
+      # Matching trade assessments first, then the platform's configured order.
       entries.sort_by.with_index do |entry, index|
         [entry.recommended? ? 0 : 1, entry.assessment.position, index]
       end
@@ -53,6 +57,12 @@ module Assessments
 
     def entry_for(assessment)
       build_entry(assessment)
+    end
+
+    # True when this assessment's trade matches the technician's profile trades.
+    # Used by start/show to keep deep links consistent with the catalog filter.
+    def eligible_for?(assessment)
+      trade_match?(assessment)
     end
 
     def recommended_trade_labels
@@ -68,7 +78,17 @@ module Assessments
         .active
         .includes(assessment_versions: :assessment_categories)
         .order(:position, :id)
-        .select(&:takeable?)
+        .select { |assessment| assessment.takeable? && visible_to_technician?(assessment) }
+    end
+
+    def visible_to_technician?(assessment)
+      trade_match?(assessment) || in_progress_assessment_ids.include?(assessment.id)
+    end
+
+    def trade_match?(assessment)
+      return false if assessment.blank? || assessment.trade_type.blank?
+
+      recommended_trade_labels.include?(assessment.trade_type.to_s.downcase)
     end
 
     def build_entry(assessment)
@@ -95,9 +115,7 @@ module Assessments
     end
 
     def recommended?(assessment)
-      return false if assessment.trade_type.blank?
-
-      recommended_trade_labels.include?(assessment.trade_type.to_s.downcase)
+      trade_match?(assessment)
     end
 
     def state_for(live_attempt, result)
@@ -118,6 +136,14 @@ module Assessments
                           .where(technician_profile_id: technician_profile.id)
                           .group(:assessment_id)
                           .count
+    end
+
+    def in_progress_assessment_ids
+      @in_progress_assessment_ids ||= AssessmentAttempt
+                                      .where(technician_profile_id: technician_profile.id)
+                                      .in_progress
+                                      .pluck(:assessment_id)
+                                      .to_set
     end
   end
 end

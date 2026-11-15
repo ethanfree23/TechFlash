@@ -27,14 +27,19 @@ module Api
 
       # GET /api/v1/assessments/:id
       # Accepts either the numeric id or the slug, so clients can deep-link to
-      # "hvac_knowledge" without first resolving an id.
+      # "hvac_knowledge" without first resolving an id. Assessments outside the
+      # technician's trade(s) are treated as not found so the catalog filter
+      # cannot be bypassed by URL.
       def show
         assessment = Assessments::Lookup.active(params[:id])
         return render json: { error: "Assessment not found" }, status: :not_found if assessment.blank?
 
-        entry = Assessments::TechnicianCatalog
-                .new(technician_profile: @technician_profile)
-                .entry_for(assessment)
+        catalog = Assessments::TechnicianCatalog.new(technician_profile: @technician_profile)
+        unless catalog.eligible_for?(assessment)
+          return render json: { error: "Assessment not found" }, status: :not_found
+        end
+
+        entry = catalog.entry_for(assessment)
 
         render json: catalog_payload(entry), status: :ok
       end

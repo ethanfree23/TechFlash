@@ -51,10 +51,15 @@ module Assessments
 
     private
 
-    # A technician's own trade assessment first, then highest score, so the
-    # profile headline is the most relevant result rather than an incidental one.
+    # Primary trade assessment first, then other matching trades, then highest
+    # score — so the profile headline is the most relevant result rather than
+    # an incidental specialty or higher off-trade score.
     def ordered_results
       @ordered_results ||= begin
+        primary_trade = TradeCatalog
+                        .normalized_label(technician_profile.trade_type)
+                        .to_s
+                        .downcase
         trade_labels = MembershipPolicy
                        .technician_trade_labels(technician_profile)
                        .map { |label| label.to_s.downcase }
@@ -64,10 +69,19 @@ module Assessments
           .includes(:assessment, :assessment_version)
           .to_a
           .sort_by do |result|
-            primary = trade_labels.include?(result.assessment.trade_type.to_s.downcase) ? 0 : 1
-            [primary, -result.score.to_i, result.assessment.position]
+            trade = result.assessment.trade_type.to_s.downcase
+            relevance =
+              if primary_trade.present? && trade == primary_trade
+                0
+              elsif trade_labels.include?(trade)
+                1
+              else
+                2
+              end
+            [relevance, -result.score.to_i, result.assessment.position]
           end
       end
     end
   end
 end
+
