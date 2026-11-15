@@ -144,9 +144,13 @@ module Api
         return {} if raw.blank?
 
         permitted = raw.permit(
-          *(JobTemplate::REUSABLE_FIELDS - %w[standard_work_days standard_day_shifts weekend_day_shifts potential_full_time_details]),
+          *(JobTemplate::REUSABLE_FIELDS - %w[
+            standard_work_days standard_day_shifts weekend_day_shifts potential_full_time_details
+            additional_contact_user_ids
+          ]),
           *JobTemplate::SCHEDULE_META_KEYS,
           standard_work_days: [],
+          additional_contact_user_ids: [],
           standard_day_shifts: {},
           weekend_day_shifts: {},
           potential_full_time_details: {}

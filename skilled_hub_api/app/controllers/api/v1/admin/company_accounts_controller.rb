@@ -252,7 +252,7 @@ module Api
         end
 
         def serialize_company_search_hit(cp)
-          users = company_login_users_for(cp)
+          users = cp.login_users
           primary = cp.user
           {
             id: cp.id,
@@ -269,19 +269,6 @@ module Api
               }
             end
           }
-        end
-
-        def company_login_users_for(cp)
-          by_id = {}
-          Array(cp.company_users).each do |u|
-            next unless u.company?
-
-            by_id[u.id] = u
-          end
-          if cp.user&.company?
-            by_id[cp.user.id] = cp.user
-          end
-          by_id.values.sort_by { |u| [u.first_name.to_s.downcase, u.last_name.to_s.downcase, u.email.to_s.downcase] }
         end
 
         def rank_company_matches(scope, query)
