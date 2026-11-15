@@ -65,6 +65,9 @@ export default function MobileNavPreviewPage() {
               'settings',
               'crm',
               'users',
+              'reviews',
+              'job_payments',
+              'trust_safety',
               'legal',
             ].map((page) => (
               <option key={page} value={page}>

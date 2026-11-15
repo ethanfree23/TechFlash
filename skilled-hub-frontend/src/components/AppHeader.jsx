@@ -1,17 +1,19 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   FaBars,
   FaBriefcase,
   FaBuilding,
   FaChevronDown,
+  FaClipboardCheck,
   FaClipboardList,
   FaCog,
   FaComments,
   FaHardHat,
   FaHome,
   FaBalanceScale,
+  FaMoneyCheckAlt,
   FaPaperPlane,
   FaSignOutAlt,
   FaTimes,
@@ -44,16 +46,15 @@ const NAV_ICONS = {
   users: FaUsers,
   technicians: FaHardHat,
   assessments: FaClipboardList,
-  admin_assessments: FaClipboardList,
+  admin_assessments: FaClipboardCheck,
   legal: FaBalanceScale,
   settings: FaCog,
   reviews: FaClipboardList,
-  job_payments: FaBriefcase,
+  job_payments: FaMoneyCheckAlt,
   trust_safety: FaUserShield,
   crm: FaBuilding,
   referral: FaPaperPlane,
   logout: FaSignOutAlt,
-  user_type: FaUserShield,
 };
 
 function SettingsNavMenu({ activePage }) {
@@ -122,32 +123,20 @@ function SettingsNavMenu({ activePage }) {
 
 function DrawerNavLink({ item, active, onNavigate }) {
   const Icon = NAV_ICONS[item.id] || FaCog;
+  const isLogout = item.action === 'logout';
   const className = `flex min-h-[44px] w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left text-[15px] font-medium transition-colors ${
     active
       ? 'bg-blue-50 text-blue-700'
-      : 'text-gray-800 hover:bg-gray-50 active:bg-gray-100'
+      : isLogout
+        ? 'text-red-600 hover:bg-red-50 active:bg-red-100'
+        : 'text-gray-800 hover:bg-gray-50 active:bg-gray-100'
   }`;
-
-  if (item.kind === 'info') {
-    return (
-      <div
-        className="flex min-h-[44px] w-full items-center gap-3 rounded-lg px-3 py-2.5 text-[15px] text-gray-600"
-        aria-label={`User type: ${item.label}`}
-      >
-        <Icon className="h-4 w-4 shrink-0 text-gray-400" aria-hidden />
-        <span className="flex-1">
-          <span className="block text-xs font-medium uppercase tracking-wide text-gray-400">User type</span>
-          <span className="font-semibold text-gray-800 capitalize">{item.label}</span>
-        </span>
-      </div>
-    );
-  }
 
   if (item.action === 'referral' || item.action === 'logout') {
     return (
       <button type="button" className={className} onClick={() => onNavigate(item)}>
-        <Icon className={`h-4 w-4 shrink-0 ${item.action === 'logout' ? 'text-red-500' : 'text-gray-500'}`} aria-hidden />
-        <span className={item.action === 'logout' ? 'text-red-600' : undefined}>{item.label}</span>
+        <Icon className={`h-4 w-4 shrink-0 ${isLogout ? 'text-red-500' : 'text-gray-500'}`} aria-hidden />
+        <span>{item.label}</span>
       </button>
     );
   }
@@ -166,11 +155,34 @@ function DrawerNavLink({ item, active, onNavigate }) {
   );
 }
 
+function DrawerSection({ label, items, activePage, onNavigate, className = '' }) {
+  if (!items?.length) return null;
+  return (
+    <div className={className}>
+      <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+        {label}
+      </p>
+      <div className="space-y-0.5">
+        {items.map((item) => (
+          <DrawerNavLink
+            key={item.id}
+            item={item}
+            active={item.page ? activePage === item.page : false}
+            onNavigate={onNavigate}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function MobileNavDrawer({
   open,
   onClose,
   primary,
-  secondary,
+  management,
+  account,
+  accountSectionLabel,
   activePage,
   onNavigate,
   titleId,
@@ -274,33 +286,34 @@ function MobileNavDrawer({
         </div>
 
         <nav className="flex min-h-0 flex-1 flex-col" aria-label="Mobile navigation">
-          <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto overscroll-contain px-3 py-3">
-            <p className="px-3 pb-2 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-              Primary
-            </p>
-            {primary.map((item) => (
-              <DrawerNavLink
-                key={item.id}
-                item={item}
-                active={activePage === item.page}
-                onNavigate={onNavigate}
-              />
-            ))}
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 py-3">
+            <DrawerSection
+              label="Primary"
+              items={primary}
+              activePage={activePage}
+              onNavigate={onNavigate}
+            />
+            {management?.length > 0 && (
+              <>
+                <div className="my-3 border-t border-gray-200" role="separator" />
+                <DrawerSection
+                  label="Management"
+                  items={management}
+                  activePage={activePage}
+                  onNavigate={onNavigate}
+                />
+              </>
+            )}
           </div>
 
           <div className="shrink-0 border-t border-gray-200 bg-gray-50/90 px-3 pb-3 pt-2">
-            <p className="px-3 pb-2 pt-1 text-[11px] font-semibold uppercase tracking-wide text-gray-400">
-              Account
-            </p>
-            <div className="max-h-[45vh] space-y-0.5 overflow-y-auto overscroll-contain">
-              {secondary.map((item) => (
-                <DrawerNavLink
-                  key={item.id}
-                  item={item}
-                  active={item.page ? activePage === item.page : false}
-                  onNavigate={onNavigate}
-                />
-              ))}
+            <div className="max-h-[min(45vh,320px)] overflow-y-auto overscroll-contain">
+              <DrawerSection
+                label={accountSectionLabel || 'Account'}
+                items={account}
+                activePage={activePage}
+                onNavigate={onNavigate}
+              />
             </div>
           </div>
         </nav>
@@ -326,7 +339,15 @@ export default function AppHeader({
   emailVariant = 'none',
 }) {
   const activePage = activePageProp ?? currentPage;
-  const { primary, secondary, showCrm, canRefer } = getAppNavItems(user, navPreset);
+  const location = useLocation();
+  const {
+    primary,
+    management,
+    account,
+    showCrm,
+    canRefer,
+    accountSectionLabel,
+  } = getAppNavItems(user, navPreset);
   const [showReferralModal, setShowReferralModal] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const menuButtonRef = useRef(null);
@@ -336,6 +357,11 @@ export default function AppHeader({
     setDrawerOpen(false);
     window.setTimeout(() => menuButtonRef.current?.focus(), 0);
   };
+
+  // Close drawer after in-app navigation and browser back/forward.
+  useEffect(() => {
+    setDrawerOpen(false);
+  }, [location.pathname, location.search]);
 
   const handleDrawerNavigate = (item) => {
     if (item.action === 'referral') {
@@ -523,7 +549,9 @@ export default function AppHeader({
         open={drawerOpen}
         onClose={closeDrawer}
         primary={primary}
-        secondary={secondary}
+        management={management}
+        account={account}
+        accountSectionLabel={accountSectionLabel}
         activePage={activePage}
         onNavigate={handleDrawerNavigate}
         titleId={drawerTitleId}

@@ -27,70 +27,75 @@ export function getAppNavItems(user, navPreset = 'full') {
     { id: 'jobs', page: 'jobs', to: '/jobs', label: 'Jobs', demo: 'jobs-tab' },
   ];
 
+  /** @type {Array<{ id: string, page: string, to: string, label: string }>} */
+  const management = [];
+
+  /** @type {Array<{ id: string, page?: string, to?: string, label: string, action?: 'referral'|'logout' }>} */
+  const account = [];
+
   if (navPreset === 'full' && showCrm) {
     primary.push(
       { id: 'messages', page: 'messages', to: '/messages', label: 'Messages' },
       { id: 'users', page: 'users', to: '/admin/users', label: 'Users' }
     );
-  }
 
-  if (navPreset === 'full' && !showCrm) {
-    if (isCompany || isAdmin) {
+    // Management: operational admin tools (not account Settings).
+    management.push(
+      { id: 'job_payments', page: 'job_payments', to: '/admin/job-payments', label: 'Payments' },
+      { id: 'reviews', page: 'reviews', to: '/admin/reviews', label: 'Reviews' },
+      { id: 'trust_safety', page: 'trust_safety', to: '/admin/trust-safety', label: 'Trust & Safety' },
+      // Existing admin Assessments stays under Management (not listed in ACCOUNT).
+      { id: 'admin_assessments', page: 'assessments', to: '/admin/assessments', label: 'Assessments' }
+    );
+
+    account.push(
+      { id: 'crm', page: 'crm', to: '/crm', label: 'CRM' },
+      { id: 'settings', page: 'settings', to: '/settings', label: 'Settings' },
+      { id: 'logout', action: 'logout', label: 'Log Out' }
+    );
+  } else if (navPreset === 'full') {
+    if (isCompany) {
       primary.push({ id: 'technicians', page: 'technicians', to: '/technicians', label: 'Technicians' });
     }
+    primary.push({ id: 'messages', page: 'messages', to: '/messages', label: 'Messages' });
+    // Assessments is technician-only; companies view results on technician profiles, not via this nav item.
     if (isTechnician) {
       primary.push({ id: 'assessments', page: 'assessments', to: '/assessments', label: 'Assessments' });
     }
-    primary.push(
-      { id: 'messages', page: 'messages', to: '/messages', label: 'Messages' },
-      { id: 'legal', page: 'legal', to: '/legal', label: 'Legal' }
+
+    if (canRefer) {
+      account.push({ id: 'referral', action: 'referral', label: 'Send Referral' });
+    }
+    account.push(
+      { id: 'legal', page: 'legal', to: '/legal', label: 'Legal' },
+      { id: 'settings', page: 'settings', to: '/settings', label: 'Settings' },
+      { id: 'logout', action: 'logout', label: 'Log Out' }
+    );
+  } else {
+    // minimal: Dashboard, Jobs, then account tools (Legal / Settings / Log Out).
+    if (canRefer) {
+      account.push({ id: 'referral', action: 'referral', label: 'Send Referral' });
+    }
+    account.push(
+      { id: 'legal', page: 'legal', to: '/legal', label: 'Legal' },
+      { id: 'settings', page: 'settings', to: '/settings', label: 'Settings' },
+      { id: 'logout', action: 'logout', label: 'Log Out' }
     );
   }
-
-  if (navPreset === 'minimal') {
-    primary.push({ id: 'legal', page: 'legal', to: '/legal', label: 'Legal' });
-  }
-
-  /** @type {Array<{ id: string, page?: string, to?: string, label: string, action?: 'referral'|'logout', kind?: 'info' }>} */
-  const secondary = [];
-
-  secondary.push({ id: 'settings', page: 'settings', to: '/settings', label: 'Settings' });
-
-  if (showCrm) {
-    secondary.push(
-      { id: 'reviews', page: 'reviews', to: '/admin/reviews', label: 'Reviews' },
-      { id: 'job_payments', page: 'job_payments', to: '/admin/job-payments', label: 'Payments' },
-      { id: 'trust_safety', page: 'trust_safety', to: '/admin/trust-safety', label: 'Trust & Safety' },
-      { id: 'admin_assessments', page: 'assessments', to: '/admin/assessments', label: 'Assessments' }
-    );
-  }
-
-  secondary.push({
-    id: 'user_type',
-    kind: 'info',
-    label: ROLE_LABELS[role] || (role ? String(role) : 'Account'),
-    page: 'user_type',
-  });
-
-  if (canRefer) {
-    secondary.push({ id: 'referral', action: 'referral', label: 'Send Referral' });
-  }
-
-  if (showCrm) {
-    secondary.push({ id: 'crm', page: 'crm', to: '/crm', label: 'CRM' });
-  }
-
-  secondary.push({ id: 'logout', action: 'logout', label: 'Log Out' });
 
   return {
     primary,
-    secondary,
+    management,
+    account,
+    /** @deprecated Use `account` — kept for callers that still expect `secondary`. */
+    secondary: account,
     showCrm,
     canRefer,
     roleLabel: ROLE_LABELS[role] || role || '',
     isAdmin,
     isCompany,
     isTechnician,
+    accountSectionLabel: showCrm ? 'Account & Tools' : 'Account',
   };
 }
 
