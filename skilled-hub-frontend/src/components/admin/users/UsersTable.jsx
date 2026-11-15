@@ -1,6 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { FaChevronRight, FaSort, FaSortDown, FaSortUp } from 'react-icons/fa';
+import { FaChevronRight, FaRegStar, FaSort, FaSortDown, FaSortUp, FaStar } from 'react-icons/fa';
 import UserTypeBadge from './UserTypeBadge';
 import UserStatusBadge from './UserStatusBadge';
 import UserRiskBadge from './UserRiskBadge';
@@ -195,8 +195,46 @@ function UserCell({ row }) {
   );
 }
 
+function AdminStarButton({ row, onToggle, busy }) {
+  if (row.role !== 'technician') {
+    return <span className="inline-block w-7" aria-hidden />;
+  }
+
+  const starred = !!row.adminStarred;
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle?.(row, !starred);
+      }}
+      disabled={busy}
+      title={starred ? 'Remove from my focus' : 'Add to my focus — spoken with and worth helping'}
+      aria-label={starred ? `Remove ${row.displayName} from focus` : `Star ${row.displayName} as focus`}
+      aria-pressed={starred}
+      className={`inline-flex h-7 w-7 items-center justify-center rounded-md transition-colors disabled:opacity-50 ${
+        starred
+          ? 'text-amber-500 hover:bg-amber-50 hover:text-amber-600'
+          : 'text-slate-300 hover:bg-slate-100 hover:text-amber-500'
+      }`}
+    >
+      {starred ? <FaStar className="h-3.5 w-3.5" aria-hidden /> : <FaRegStar className="h-3.5 w-3.5" aria-hidden />}
+    </button>
+  );
+}
+
 function renderCell(col, row, handlers = {}) {
   switch (col.key) {
+    case 'admin_star':
+      return (
+        <div className="flex justify-center" onClick={(e) => e.stopPropagation()}>
+          <AdminStarButton
+            row={row}
+            onToggle={handlers.onToggleAdminStar}
+            busy={handlers.adminStarBusyId === row.id}
+          />
+        </div>
+      );
     case 'user':
       return <UserCell row={row} />;
     case 'type':
@@ -398,7 +436,18 @@ function TablePaginationBar({ pageInfo, pageSize, onPageSizeChange, onPageChange
   );
 }
 
-function UserMobileCard({ row, selected, onSelect, onRowClick, onViewProfile, menu, onSendSms, onViewDocument }) {
+function UserMobileCard({
+  row,
+  selected,
+  onSelect,
+  onRowClick,
+  onViewProfile,
+  menu,
+  onSendSms,
+  onViewDocument,
+  onToggleAdminStar,
+  adminStarBusyId,
+}) {
   return (
     <div
       className="rounded-lg border border-slate-200/90 bg-white p-3 shadow-sm active:bg-slate-50/50 transition-colors"
@@ -415,6 +464,13 @@ function UserMobileCard({ row, selected, onSelect, onRowClick, onViewProfile, me
           className="mt-2 rounded border-slate-300 shrink-0"
           aria-label={`Select ${row.displayName}`}
         />
+        <div className="mt-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+          <AdminStarButton
+            row={row}
+            onToggle={onToggleAdminStar}
+            busy={adminStarBusyId === row.id}
+          />
+        </div>
         <div className="flex-1 min-w-0">
           <UserCell row={row} />
           <div className="mt-2 flex flex-wrap items-center gap-1">
@@ -485,6 +541,8 @@ export default function UsersTable({
   onSort,
   onColumnWidthChange,
   onResetColumnWidth,
+  onToggleAdminStar,
+  adminStarBusyId,
 }) {
   const [pageSize, setPageSize] = useState(readStoredPageSize);
   const [page, setPage] = useState(1);
@@ -586,6 +644,7 @@ export default function UsersTable({
     copy.sort((a, b) => {
       const getVal = (row, key) => {
         switch (key) {
+          case 'admin_star': return row.adminStarred ? 1 : 0;
           case 'user': return row.displayName?.toLowerCase() || '';
           case 'type': return row.role || '';
           case 'status': return row.accountStatus || '';
@@ -669,7 +728,7 @@ export default function UsersTable({
     );
   }
 
-  const cellHandlers = { onSendSms, onViewDocument };
+  const cellHandlers = { onSendSms, onViewDocument, onToggleAdminStar, adminStarBusyId };
 
   const rowActions = (row, compact = false) => (
     <UserRowActionsMenu
@@ -699,6 +758,8 @@ export default function UsersTable({
             menu={rowActions(row, true)}
             onSendSms={onSendSms}
             onViewDocument={onViewDocument}
+            onToggleAdminStar={onToggleAdminStar}
+            adminStarBusyId={adminStarBusyId}
           />
         ))}
       </div>

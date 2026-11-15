@@ -15,6 +15,7 @@ export interface AdminUserListItem {
   company_name?: string | null;
   technician_profile_id?: number | null;
   company_profile_id?: number | null;
+  admin_starred?: boolean;
 }
 
 export async function listAdminUsers(query = '', role: AdminRoleFilter = 'all') {
@@ -77,6 +78,13 @@ export async function setAdminCompanyMembership(id: number, companyProfileId: nu
   return apiRequest<{ message?: string }>(`/admin/users/${id}/company_membership`, {
     method: 'PATCH',
     body: JSON.stringify({ company_profile_id: companyProfileId }),
+  });
+}
+
+export async function setAdminUserStarred(id: number, adminStarred: boolean) {
+  return apiRequest<{ message?: string; user?: AdminUserListItem }>(`/admin/users/${id}/admin_star`, {
+    method: 'PATCH',
+    body: JSON.stringify({ admin_starred: !!adminStarred }),
   });
 }
 

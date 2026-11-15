@@ -6,6 +6,7 @@ import { usStateAbbreviation } from './crmUsState.js';
 export const USER_TABS = [
   { id: 'all', label: 'All users', apiRole: 'all' },
   { id: 'technicians', label: 'Technicians', apiRole: 'technician' },
+  { id: 'focus', label: 'My focus', apiRole: 'technician' },
   { id: 'company', label: 'Company users', apiRole: 'company' },
   { id: 'admins', label: 'Admins', apiRole: null },
   { id: 'pending', label: 'Pending', apiRole: 'all' },
@@ -29,6 +30,7 @@ export const TRADE_LEVEL_RANK = {
 };
 
 export const DEFAULT_TABLE_COLUMNS = [
+  { key: 'admin_star', label: 'Focus', visible: true, width: 52 },
   { key: 'user', label: 'User', visible: true, width: 200 },
   { key: 'type', label: 'Type', visible: true, width: 96 },
   { key: 'status', label: 'Status', visible: true, width: 80 },
@@ -83,6 +85,7 @@ export function formatExperienceYears(years) {
 
 export const SAVED_VIEW_PRESETS = [
   { id: 'all', label: 'All users', tab: 'all', filters: {} },
+  { id: 'my_focus', label: 'My focus technicians', tab: 'focus', filters: {} },
   { id: 'new_this_week', label: 'New this week', tab: 'all', filters: { joinedPreset: 'week' } },
   { id: 'pending_verification', label: 'Pending verification', tab: 'pending', filters: {} },
   { id: 'inactive_technicians', label: 'Inactive technicians', tab: 'technicians', filters: { loginActivity: 'inactive_30d' } },
@@ -263,6 +266,7 @@ export function enrichUserRow(row, detail = null) {
     // TODO(admin-users): wire real suspended state when backend adds account status
     isSuspended: false,
     isRecentlyActive: logins30d > 0,
+    adminStarred: row.role === 'technician' && !!(row.admin_starred ?? detail?.user?.admin_starred),
     companyTradeLabel: companyTrade,
     cityLabel: place.city,
     stateLabel: place.state,
@@ -411,6 +415,7 @@ export function computeTabCounts(enriched) {
   return {
     all: enriched.length,
     technicians: enriched.filter((u) => u.role === 'technician').length,
+    focus: enriched.filter((u) => u.role === 'technician' && u.adminStarred).length,
     company: enriched.filter((u) => u.role === 'company').length,
     admins: 0,
     pending: enriched.filter((u) => u.isPendingVerification).length,
@@ -423,7 +428,9 @@ export function computeTabCounts(enriched) {
 export function getApiRoleForTab(tabId) {
   const tab = USER_TABS.find((t) => t.id === tabId);
   if (!tab || tab.id === 'admins') return tab?.apiRole ?? 'all';
-  if (['pending', 'flagged', 'suspended', 'recently_active'].includes(tabId)) return 'all';
+  if (['pending', 'flagged', 'suspended', 'recently_active', 'focus'].includes(tabId)) {
+    return tabId === 'focus' ? 'technician' : 'all';
+  }
   return tab.apiRole || 'all';
 }
 
@@ -431,6 +438,8 @@ export function applyTabFilter(enriched, tabId) {
   switch (tabId) {
     case 'technicians':
       return enriched.filter((u) => u.role === 'technician');
+    case 'focus':
+      return enriched.filter((u) => u.role === 'technician' && u.adminStarred);
     case 'company':
       return enriched.filter((u) => u.role === 'company');
     case 'admins':
@@ -700,6 +709,7 @@ export function resolveEmptyVariant({ loadError, hasSearch, hasFilters, activeTa
   if (hasSearch) return 'search';
   if (hasFilters) return 'filtered';
   if (activeTab === 'technicians') return 'technicians';
+  if (activeTab === 'focus') return 'focus';
   if (activeTab === 'pending') return 'pending';
   if (activeTab === 'flagged') return 'flagged';
   if (activeTab === 'admins') return 'admins';

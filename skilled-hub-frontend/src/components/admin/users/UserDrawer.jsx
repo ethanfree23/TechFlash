@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { FaTimes, FaEnvelope, FaExternalLinkAlt } from 'react-icons/fa';
+import { FaTimes, FaEnvelope, FaExternalLinkAlt, FaRegStar, FaStar } from 'react-icons/fa';
 import { adminUsersAPI } from '../../../api/api';
 import UserTypeBadge from './UserTypeBadge';
 import UserStatusBadge from './UserStatusBadge';
@@ -145,6 +145,8 @@ export default function UserDrawer({
   onPlaceholderAction,
   masqueradeBusyId,
   onProfileSaved,
+  onToggleAdminStar,
+  adminStarBusyId,
 }) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -307,7 +309,32 @@ export default function UserDrawer({
                     );
                   })()}
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-base font-semibold text-slate-900 leading-tight truncate">{row.displayName}</h3>
+                    <div className="flex items-start gap-2">
+                      <h3 className="text-base font-semibold text-slate-900 leading-tight truncate min-w-0 flex-1">
+                        {row.displayName}
+                      </h3>
+                      {isTechnician && (
+                        <button
+                          type="button"
+                          onClick={() => onToggleAdminStar?.(row, !row.adminStarred)}
+                          disabled={adminStarBusyId === row.id}
+                          title={row.adminStarred ? 'Remove from my focus' : 'Add to my focus — spoken with and worth helping'}
+                          aria-label={row.adminStarred ? `Remove ${row.displayName} from focus` : `Star ${row.displayName} as focus`}
+                          aria-pressed={!!row.adminStarred}
+                          className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors disabled:opacity-50 ${
+                            row.adminStarred
+                              ? 'text-amber-500 hover:bg-amber-50 hover:text-amber-600'
+                              : 'text-slate-300 hover:bg-slate-100 hover:text-amber-500'
+                          }`}
+                        >
+                          {row.adminStarred ? (
+                            <FaStar className="h-4 w-4" aria-hidden />
+                          ) : (
+                            <FaRegStar className="h-4 w-4" aria-hidden />
+                          )}
+                        </button>
+                      )}
+                    </div>
                     <p className="text-xs text-slate-500 truncate mt-0.5">{row.email}</p>
                     {row.phone && <p className="text-xs text-slate-400 mt-0.5">{row.phone}</p>}
                     {row.locationLabel && row.locationLabel !== 'Not provided' && (

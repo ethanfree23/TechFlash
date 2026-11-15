@@ -9,7 +9,9 @@ export const TABLE_COL_MAX_WIDTH = 480;
 export const TABLE_COL_USER_MIN_WIDTH = 140;
 
 export function minWidthForColumnKey(key) {
-  return key === 'user' ? TABLE_COL_USER_MIN_WIDTH : TABLE_COL_MIN_WIDTH;
+  if (key === 'user') return TABLE_COL_USER_MIN_WIDTH;
+  if (key === 'admin_star') return 44;
+  return TABLE_COL_MIN_WIDTH;
 }
 
 export function clampTableColumnWidth(width, { min = TABLE_COL_MIN_WIDTH, max = TABLE_COL_MAX_WIDTH } = {}) {
@@ -52,7 +54,7 @@ function migrateLegacyAdminUserColumns(parsed, defaultMap) {
 /** Admin Users tabs each get their own saved column layout. */
 export function adminUsersTableId(roleTab) {
   const safe = [
-    'all', 'technicians', 'company', 'admins', 'pending', 'flagged', 'suspended', 'recently_active',
+    'all', 'technicians', 'focus', 'company', 'admins', 'pending', 'flagged', 'suspended', 'recently_active',
     // legacy tab ids
     'technician',
   ].includes(roleTab) ? roleTab : 'all';
@@ -75,12 +77,23 @@ export function columnsFromSavedArray(parsed, defaultColumns) {
       };
     })
     .filter(Boolean);
-  const withZip = insertMissingColumnAfter(fromSaved, defaultMap, 'zip', 'state');
+  const withStar = insertMissingColumnBefore(fromSaved, defaultMap, 'admin_star', 'user');
+  const withZip = insertMissingColumnAfter(withStar, defaultMap, 'zip', 'state');
   const withLicense = insertMissingColumnAfter(withZip, defaultMap, 'trade_license', 'status');
   const withRefs = insertMissingColumnAfter(withLicense, defaultMap, 'references', 'trade_license');
   const withBg = insertMissingColumnAfter(withRefs, defaultMap, 'background_check', 'references');
   const missing = defaultColumns.filter((c) => !withBg.some((x) => x.key === c.key));
   return [...withBg, ...missing];
+}
+
+function insertMissingColumnBefore(cols, defaultMap, key, beforeKey) {
+  if (!defaultMap.has(key) || cols.some((c) => c.key === key)) return cols;
+  const def = defaultMap.get(key);
+  const idx = cols.findIndex((c) => c.key === beforeKey);
+  if (idx === -1) return [{ ...def }, ...cols];
+  const next = [...cols];
+  next.splice(idx, 0, { ...def });
+  return next;
 }
 
 function insertMissingColumnAfter(cols, defaultMap, key, afterKey) {

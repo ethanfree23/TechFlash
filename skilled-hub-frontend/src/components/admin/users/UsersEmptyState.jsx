@@ -1,5 +1,5 @@
 import React from 'react';
-import { FaExclamationCircle, FaRedo, FaSearch, FaUserCheck, FaUserClock, FaUsers } from 'react-icons/fa';
+import { FaExclamationCircle, FaRedo, FaSearch, FaStar, FaUserCheck, FaUserClock, FaUsers } from 'react-icons/fa';
 
 const VARIANTS = {
   default: {
@@ -37,6 +37,12 @@ const VARIANTS = {
     title: 'No technicians yet',
     description: 'Technician accounts will appear here once they sign up or are created.',
     actionLabel: 'Create technician',
+  },
+  focus: {
+    icon: FaStar,
+    title: 'No focus technicians yet',
+    description: 'Star technicians you have spoken with to keep them in your personal onboarding focus list.',
+    actionLabel: 'View technicians',
   },
   pending: {
     icon: FaUserClock,

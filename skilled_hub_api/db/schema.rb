@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_13_162000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_15_100000) do
   create_table "ach_feature_audits", force: :cascade do |t|
     t.string "scope", null: false
     t.integer "company_profile_id"
@@ -1424,8 +1424,10 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_13_162000) do
     t.string "ghl_conversation_id"
     t.datetime "ghl_onboarded_at"
     t.string "phone_normalized"
-    t.text "ghl_intake_contact_info"
-    t.text "ghl_intake_references"
+    t.text "ghl_upsert_contact_info"
+    t.text "ghl_upsert_references"
+    t.boolean "admin_starred", default: false, null: false
+    t.index ["admin_starred"], name: "index_users_on_admin_starred"
     t.index ["company_profile_id"], name: "index_users_on_company_profile_id"
     t.index ["ghl_contact_id"], name: "index_users_on_ghl_contact_id", unique: true
     t.index ["password_reset_token"], name: "index_users_on_password_reset_token", unique: true

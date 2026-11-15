@@ -127,8 +127,48 @@ function testCompanyColumnLabelFollowsTab() {
   assert.ok(zipCol && zipCol.label === 'ZIP');
   assert.strictEqual(zipCol.visible, false);
   assert.ok(allCols.some((c) => c.key === 'membership_tier' && c.label === 'Tier'));
+  assert.ok(allCols.some((c) => c.key === 'admin_star' && c.label === 'Focus'));
+  assert.strictEqual(allCols[0].key, 'admin_star');
   assert.ok(!allCols.some((c) => c.key === 'subscription'));
   assert.ok(!allCols.some((c) => c.key === 'location'));
+}
+
+function testAdminFocusStarTabAndEnrichment() {
+  const starred = enrichUserRow({
+    id: 101,
+    email: 'star@example.com',
+    first_name: 'Star',
+    last_name: 'Tech',
+    role: 'technician',
+    label: 'Electrician',
+    admin_starred: true,
+  });
+  const plain = enrichUserRow({
+    id: 102,
+    email: 'plain@example.com',
+    first_name: 'Plain',
+    last_name: 'Tech',
+    role: 'technician',
+    label: 'Plumber',
+    admin_starred: false,
+  });
+  const company = enrichUserRow({
+    id: 103,
+    email: 'co@example.com',
+    first_name: 'Co',
+    last_name: 'User',
+    role: 'company',
+    company_name: 'Acme',
+    admin_starred: true,
+  });
+
+  assert.strictEqual(starred.adminStarred, true);
+  assert.strictEqual(plain.adminStarred, false);
+  assert.strictEqual(company.adminStarred, false);
+
+  const rows = [starred, plain, company];
+  assert.deepStrictEqual(applyTabFilter(rows, 'focus').map((u) => u.id), [101]);
+  assert.strictEqual(computeTabCounts(rows).focus, 1);
 }
 
 function testLocationUsesZipCityAndCompanyLocation() {
@@ -377,4 +417,5 @@ function testZipProximityOrdersAndLimitsTechnicians() {
 testKpisStayOnFullCensusWhenTabFilters();
 testAvatarUrlFromListAndDetail();
 testZipProximityOrdersAndLimitsTechnicians();
+testAdminFocusStarTabAndEnrichment();
 console.log('adminUsersSearch tests passed');
