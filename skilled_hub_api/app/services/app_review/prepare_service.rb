@@ -118,6 +118,7 @@ module AppReview
       end
 
       # update_columns bypasses callbacks that would rewrite go_live_at to Time.current.
+      # job_amount_cents / company_charge_cents / tech_payout_cents are derived methods, not columns.
       job.update_columns(
         status: Job.statuses[:open],
         go_live_at: 3.days.ago,
@@ -125,9 +126,8 @@ module AppReview
         posted_under_funding_waiver: true,
         price_cents: nil,
         hourly_rate_cents: nil,
-        job_amount_cents: 0,
-        company_charge_cents: 0,
-        tech_payout_cents: 0,
+        agreed_hourly_rate_cents: nil,
+        agreed_labor_cents: nil,
         require_background_check: false,
         require_identity_verification: false,
         minimum_verified_references: 0,
