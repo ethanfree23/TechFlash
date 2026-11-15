@@ -317,14 +317,14 @@ export default function UserDrawer({
                         <button
                           type="button"
                           onClick={() => onToggleAdminStar?.(row, !row.adminStarred)}
-                          disabled={adminStarBusyId === row.id}
+                          disabled={adminStarBusyId === row.id || !onToggleAdminStar}
                           title={row.adminStarred ? 'Remove from my focus' : 'Add to my focus — spoken with and worth helping'}
                           aria-label={row.adminStarred ? `Remove ${row.displayName} from focus` : `Star ${row.displayName} as focus`}
                           aria-pressed={!!row.adminStarred}
-                          className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md transition-colors disabled:opacity-50 ${
+                          className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors disabled:opacity-50 ${
                             row.adminStarred
-                              ? 'text-amber-500 hover:bg-amber-50 hover:text-amber-600'
-                              : 'text-slate-300 hover:bg-slate-100 hover:text-amber-500'
+                              ? 'border-amber-300 bg-amber-50 text-amber-500 hover:bg-amber-100 hover:text-amber-600'
+                              : 'border-slate-200 bg-white text-slate-400 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-500'
                           }`}
                         >
                           {row.adminStarred ? (
@@ -374,6 +374,27 @@ export default function UserDrawer({
                 </div>
 
                 <div className="flex flex-wrap gap-1.5 mt-3">
+                  {isTechnician && (
+                    <button
+                      type="button"
+                      onClick={() => onToggleAdminStar?.(row, !row.adminStarred)}
+                      disabled={adminStarBusyId === row.id || !onToggleAdminStar}
+                      title={row.adminStarred ? 'Remove from my focus' : 'Mark as focus — spoken with and worth helping'}
+                      aria-pressed={!!row.adminStarred}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border transition-colors disabled:opacity-50 ${
+                        row.adminStarred
+                          ? 'border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                          : 'border-slate-200 bg-white text-slate-700 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700'
+                      }`}
+                    >
+                      {row.adminStarred ? (
+                        <FaStar className="h-3 w-3 text-amber-500" aria-hidden />
+                      ) : (
+                        <FaRegStar className="h-3 w-3" aria-hidden />
+                      )}
+                      {row.adminStarred ? 'In my focus' : 'Mark focus'}
+                    </button>
+                  )}
                   <Link
                     to={`/admin/users/${row.id}`}
                     className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-tf-blue text-white text-xs font-semibold hover:bg-tf-blue-dark"
