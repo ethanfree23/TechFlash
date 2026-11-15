@@ -1,18 +1,15 @@
-# TechFlash iOS App Review — Physical Device Recording Readiness
+# TechFlash iOS — Exact App Review Recording Script
 
-**Expo project path:** `techflash-mobile/`  
+**Expo app:** `techflash-mobile/`  
 **Bundle ID:** `com.techflash.app`  
-**Production API:** `https://skilledhub-production.up.railway.app/api/v1`
-
-This document is the single runbook for Apple’s required **physical iPhone** screen recording.
+**API:** `https://skilledhub-production.up.railway.app/api/v1`  
+**PR:** #43
 
 ---
 
-## Pre-flight (must complete before pressing Record)
+## 0) Owner prep (once, before picking up the phone)
 
-### 1. Seed review-safe production data
-
-On the production Rails host:
+### A. Production sample data
 
 ```bash
 cd skilled_hub_api
@@ -20,168 +17,145 @@ bundle exec rails app_review:prepare
 bundle exec rails app_review:status
 ```
 
-This task:
+Expect `claimable: true`, a demo job id, and a conversation id.  
+Safe to re-run before every rehearsal (idempotent; only touches reviewer demo data).
 
-- Ensures reviewer company/technician accounts exist
-- Sets company `job_funding_waived`
-- Sets technician trade/class + **premium + fee waived** (so early-access delay does not block claim)
-- Creates/refreshes an **unpriced** open `App Review Demo Job` with `go_live_at` in the past
-- Ensures a sample conversation with messages
+### B. TestFlight build
 
-**Do not** create priced jobs for the walkthrough (Stripe charge risk).  
-**Do not** claim real customer jobs.
-
-### 2. Build / install native iOS app
-
-From `techflash-mobile/`:
-
-```bash
-npm ci
-npm run typecheck
-npm test
-npx expo config --type public
-npm run eas:build:prod:ios   # requires Expo auth / EXPO_TOKEN
-```
-
-Install the resulting build via **TestFlight** on a physical iPhone running the latest iOS.
-
-Simulator smoke tests are useful but **do not** satisfy Apple’s physical-device recording requirement.
-
-### 3. Clean permission state
-
-iOS shows Location / Notification dialogs only while undecided.
-
-Before recording:
-
-1. Delete TechFlash from the iPhone, **or**
-2. Settings → TechFlash → reset Location + Notifications to Ask/Off, **or**
-3. Settings → General → Transfer or Reset iPhone → Reset → Reset Location & Privacy (broader)
-
-Fresh install is the most reliable path.
-
-### 4. Credentials (do not type passwords into the recording if avoidable)
-
-| Role | Email | Password |
-|------|-------|----------|
-| Company reviewer | `review.company.20260804173342@techflash.app` | See `APP_STORE_REVIEW_NOTES.md` |
-| Technician reviewer | `review.tech.20260804173342@techflash.app` | Same |
-| Disposable registration | Create live in-app during recording | Choose a throwaway `@techflash.app` or similar |
-
-Passwords are documented in `APP_STORE_REVIEW_NOTES.md` / App Store Connect notes — **not** embedded in app source.
-
----
-
-## Exact recording script (recommended order)
-
-> Order differs slightly from a naive list because **permissions onboarding runs after first login/register**, company posting is safest **unpriced**, and technician **job report** only works after claim/accept. Conversation report/block is the primary safety demo.
-
-1. Start **Control Center → Screen Recording** from the iPhone home screen.
-2. Launch **TechFlash** from its real home-screen icon (not Safari).
-3. Tap **Create account**. Register a disposable technician with trade + class + city.
-4. Complete **permissions onboarding**:
-   - Continue → allow **Location** in the system dialog (or Don’t Allow once to prove fallback).
-   - Continue → allow **Notifications** in the system dialog (or Don’t Allow).
-   - Tap **Enter TechFlash**.
-5. Open **Account → Log out**.
-6. Log in as **technician reviewer**.
-7. If permissions onboarding appears again on this device/install, complete or skip quickly (flag is per-install AsyncStorage).
-8. Open **Jobs** → browse open jobs → open **App Review Demo Job**.
-9. Confirm pay/location/schedule/company fields render. Tap **Claim**.
-10. Open **Messages** → open the sample conversation → send a short message.
-11. Scroll to **Safety** → report the conversation → confirm success.
-12. Tap **Block this user** → confirm. Verify messaging is disabled afterward.
-13. (Optional) Settings → Account → Blocked users → Unblock so the company path remains usable.
-14. Log out.
-15. Log in as **company reviewer**.
-16. Open **Jobs → Create job**. Fill title/description/class/location/schedule. **Leave Hourly rate blank** (review-safe unpriced post). Submit.
-17. Open **Account** → Privacy Policy, Terms of Service, Support (mailto). Confirm pages load / mail opens; return to app.
-18. Log out. Log in as the **disposable** account from step 3.
-19. Account → Open settings → Account → **Delete account permanently** → confirm. App should sign out.
-20. Stop screen recording.
-
-### Why this order
-
-| Naive step | Adjustment |
-|------------|------------|
-| Permissions before register | Native prompts are tied to real features; app shows an explanation screen then triggers OS dialogs after auth. |
-| Company create → message immediately | Backend requires an accepted claim or technician profile id; use seeded conversation / claim first. |
-| Report open job as technician | API forbids until accepted; use conversation report instead. |
-| Priced company post | Mobile has no Stripe SCA completion; unpriced or funding-waived only. |
-
----
-
-## Pass / fail matrix (pre-recording verification)
-
-| Walkthrough action | Status | Evidence notes |
-|--------------------|--------|----------------|
-| App launches (native) | UNVERIFIED | Requires physical/TestFlight build |
-| Registration fields complete | PASS | Code + live API: trade/skill required; fixed in this PR |
-| Registration succeeds | PASS | Verified API create with trade+skill; deleted disposable |
-| Keyboard / password UX | PASS | Client validation + keyboardVerticalOffset added |
-| Location permission prompt | PASS (code) / UNVERIFIED (device) | `PermissionsOnboardingScreen` + `expo-location`; usage string set |
-| Location Allow works | PASS (code) / UNVERIFIED (device) | Dashboard GPS when granted |
-| Location Don’t Allow fallback | PASS (code) | City/address registration + profile geocode fallback |
-| Notification permission prompt | PASS (code) / UNVERIFIED (device) | Onboarding + Settings toggle; `expo-notifications` plugin |
-| Notification denial non-blocking | PASS (code) | Skip / deny continues into app |
-| Push delivery end-to-end | NOT APPLICABLE / UNVERIFIED | Token stored locally only; no backend push registration |
-| Logout clears session | PASS (code) | AuthContext clears SecureStore session |
-| Login reviewer accounts | PASS | Live API 200 for both review accounts (2026-11-14) |
-| Auth persists / resume | UNVERIFIED | Needs device background/resume |
-| Tech browse jobs | FAIL → fix via rake | Before prepare: 0 open jobs visible (48h basic delay). After `app_review:prepare`: claimable |
-| Open job detail | PASS (code) / conditional data | Detail screen renders; visibility gated by membership window |
-| Claim review-safe job | FAIL until rake | Live claim returned tier early-access 403; rake sets premium + past `go_live_at` |
-| Messages send | PASS | Live API message create on conversation #18 |
-| Report conversation | PASS | Live API feedback 201 |
-| Block user | PASS (code + API) | Blocks suppress DMs with 403; UI confirms |
-| Company create unpriced job | PASS | Live API created job #40 open+funded without card |
-| Company priced job on iOS | NOT APPLICABLE | No mobile Stripe confirm path — do not demo priced post |
-| Privacy / Terms / Support | PASS | `www.techflash.app` pages 200; mailto support |
-| Account deletion | PASS (code + API) | `DELETE /users/me` 204 verified on disposable |
-| App icon / splash | PASS | 1024 RGBA assets; configured in app.json |
-| iPhone-only | PASS | `supportsTablet: false`, `UIRequiresFullScreen: true` |
-| Production API URL | PASS | eas.json production + config.ts default |
-
----
-
-## Permission implementation status
-
-### Location
-
-- Module: `expo-location`
-- Prompt: `PermissionsOnboardingScreen` (first launch after auth) and Dashboard if still undetermined
-- Info.plist: `NSLocationWhenInUseUsageDescription`
-- Plugin: `expo-location` in `app.json`
-- Background location: **not** requested
-- Denial: city/address profile fallback; no crash
-
-### Notifications
-
-- Module: `expo-notifications`
-- Prompt: onboarding + Settings → Notifications toggle
-- Handler configured at app start
-- Expo push token stored locally when granted
-- Backend device-token registration: **not implemented** — do not claim remote push delivery in review notes
-- Denial: does not block registration or core app use
-
----
-
-## EAS / TestFlight
+Use the **production** EAS profile (not preview/dev):
 
 ```bash
 cd techflash-mobile
-npm ci
+npm ci && npm run typecheck && npm test
 npm run eas:build:prod:ios
-npm run eas:submit:prod:ios   # only after explicit owner authorization
 ```
 
-Production profile env: `EXPO_PUBLIC_API_BASE_URL=https://skilledhub-production.up.railway.app/api/v1`
+Install that build from TestFlight. Confirm the home-screen name is **TechFlash** and the icon is the TechFlash mark (not a blank Expo placeholder).
+
+### C. Credentials
+
+| When | Account |
+|------|---------|
+| Steps 3–5 (register + permissions + delete later) | New disposable technician created live |
+| Steps 7–14 | Technician reviewer `review.tech.20260804173342@techflash.app` |
+| Steps 16–18 | Company reviewer `review.company.20260804173342@techflash.app` |
+
+Passwords: **App Store Connect / password manager only** — never paste into the recording, chat, or git.
 
 ---
 
-## Remaining physical iPhone steps
+## 1) Make iOS show real permission dialogs
 
-1. Authenticated EAS iOS production build + TestFlight install
-2. Fresh install permission dialogs (Allow and Don’t Allow takes)
-3. Full recording pass with seeded data
-4. Confirm reviewer accounts still authenticate the day of upload
-5. Re-run `rails app_review:prepare` if sample job was claimed/finished during rehearsal
+iOS shows Location / Notification dialogs only while the permission is **undetermined**.
+
+**Do not assume delete+reinstall always resets every permission on every iOS version.**
+
+Reliable prep (pick one):
+
+1. **Preferred:** Settings → TechFlash  
+   - Location → **Ask Next Time** (or equivalent Ask option)  
+   - Notifications → Off (so onboarding can request again)
+2. **Broader:** Settings → General → Transfer or Reset iPhone → Reset → **Reset Location & Privacy**  
+   (resets permission decisions for all apps)
+3. Then delete TechFlash and reinstall from TestFlight so onboarding AsyncStorage is also cleared.
+
+Before recording, confirm TechFlash is not already listed as Allowed/Denied for Location if you need the system sheet on camera.
+
+---
+
+## 2) Exact tap script (start recording from the Home Screen)
+
+**Tip:** Have passwords in a password manager; paste once if needed, or cut away from password fields when possible.
+
+1. Control Center → **Screen Recording** → start.
+2. Tap the **TechFlash** icon.
+3. Welcome → **Create account**.
+4. Register a disposable **Technician**:
+   - Role: Technician  
+   - Email / password / confirm / name / phone  
+   - City, State, ZIP  
+   - Trade (e.g. Electrician) + Class (Journeyman)  
+   - Tap **Create account**
+5. Permissions onboarding:
+   - **Continue** → iOS Location sheet → **Allow While Using App** (or Don’t Allow once if demonstrating denial; app must still proceed)
+   - **Continue** → iOS Notifications sheet → **Allow** (or Don’t Allow)
+   - **Enter TechFlash**
+6. Account tab → **Log out**.
+7. **Log in** as technician reviewer.
+8. If permissions onboarding appears again, tap through quickly (Already decided = no second OS sheet).
+9. **Jobs** → open **App Review Demo Job**.
+10. Confirm location / schedule / company render → tap **Claim** → success notice.
+11. **Messages** → open the App Review conversation (Job #… / seeded thread).
+12. Send a short message (e.g. `Review walkthrough message`).
+13. Safety → enter report text → **Report this conversation** → confirm → see success.
+14. **Block this user** → confirm → composer hidden / messaging unavailable notice.
+15. Account → Open settings → Account → **Blocked users** → **Unblock** (required so company login messaging isn’t stuck for later rehearsals).
+16. **Log out**.
+17. **Log in** as company reviewer.
+18. Jobs → **Create job** (or Create from Jobs UI):
+    - Title / description / class / city / schedule  
+    - **Leave Hourly rate blank**  
+    - Submit → lands on job detail without Stripe
+19. Account → **Privacy Policy**, **Terms of Service**, **Contact Support** (confirm pages/mail open; return to app).
+20. **Log out** → log in as the **disposable** account from step 4.
+21. Account → Open settings → **Delete account permanently** → confirm → signed out.
+22. Stop screen recording.
+
+---
+
+## 3) If a step fails
+
+| Failure | Fix |
+|---------|-----|
+| No OS permission sheet | Permission already decided — use §1 reset, reinstall, retry from step 2 |
+| Registration error about trade/class | Select trade + Apprentice/Journeyman/Master |
+| No open jobs / claim 403 | Re-run `rails app_review:prepare` on production |
+| Claim succeeded earlier, job gone | Re-run `app_review:prepare` (reopens demo job) |
+| Messaging blocked before demo | Settings → Blocked users → Unblock, or re-run prepare |
+| Create job asks for payment | Clear Hourly rate and resubmit |
+| Legal link blank | Use `www.techflash.app` URLs; check network |
+| Wrong API / empty data | Confirm TestFlight build used **production** EAS profile |
+
+---
+
+## 4) Implementation status (honest)
+
+| Area | Status |
+|------|--------|
+| Registration / login / logout / deletion | Verified via code + live API |
+| Permission onboarding wiring + Info.plist / plugins | Verified via Expo config + code |
+| OS permission sheets on device | **Requires physical iPhone** |
+| Reviewer login | Live API verified |
+| Claimable demo job | Requires production `app_review:prepare` (claim currently blocked until that runs) |
+| Messaging / report / block | Live API + code verified |
+| Unpriced company post | Live API verified |
+| Legal links | HTTP 200 verified |
+| Full Home-Screen recording | **Physical device only** |
+
+Remote push delivery is **not** claimed (token stored locally only).
+
+---
+
+## 5) Claude / agent: generate TestFlight build
+
+```text
+In ethanfree23/TechFlash on branch from merged PR #43 (or the PR branch if building pre-merge):
+1. cd techflash-mobile
+2. Ensure EXPO_TOKEN / eas login is available
+3. npm ci && npm run typecheck && npm test
+4. npm run eas:build:prod:ios
+5. Wait for EAS success; share TestFlight / build URL with Ethan
+6. Do NOT submit to App Store Connect unless Ethan explicitly authorizes npm run eas:submit:prod:ios
+7. Reminder: Ethan must run `bundle exec rails app_review:prepare` on production before recording
+```
+
+---
+
+## 6) Ethan: record walkthrough
+
+1. Rotate reviewer passwords if they were ever in git; put new password only in App Store Connect.
+2. Run `app_review:prepare` on production; confirm `claimable: true`.
+3. Install the production TestFlight build from §5.
+4. Reset permission state (§1).
+5. Follow §2 exactly once.
+6. Upload the recording in App Store Connect.

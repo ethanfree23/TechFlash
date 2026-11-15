@@ -16,7 +16,7 @@
 Verified active reviewer accounts (Production API):
 - Company: `review.company.20260804173342@techflash.app`
 - Technician: `review.tech.20260804173342@techflash.app`
-- Password (both): `TfReview!2026`
+- Password: deliver via App Store Connect only (not stored in git)
 
 Validation result:
 - Demo credentials (`demo.company@techflash.app`, `demo.tech@techflash.app`) return `401` in production and are not usable for App Review.
@@ -25,7 +25,7 @@ Validation result:
 
 ### Technician reviewer account
 - Username: `review.tech.20260804173342@techflash.app`
-- Password: `TfReview!2026`
+- Password: App Store Connect only
 - Must be active during review window
 - Must have a completed profile with realistic fictional data
 - Must be able to access at least one open job and one message thread
@@ -33,7 +33,7 @@ Validation result:
 
 ### Company reviewer account
 - Username: `review.company.20260804173342@techflash.app`
-- Password: `TfReview!2026`
+- Password: App Store Connect only
 - Must be active during review window
 - Must have realistic fictional company profile data
 - Must be able to open sample jobs, view job detail, and open message flow
@@ -189,8 +189,8 @@ Expected App Store Connect handling:
 TechFlash is a marketplace app for real-world skilled-trade job coordination between companies and technicians.
 
 Reviewer personas:
-- Technician: `review.tech.20260804173342@techflash.app` / `TfReview!2026`
-- Company: `review.company.20260804173342@techflash.app` / `TfReview!2026`
+- Technician: `review.tech.20260804173342@techflash.app` (password in App Store Connect only)
+- Company: `review.company.20260804173342@techflash.app` (password in App Store Connect only)
 
 Suggested review path:
 1. Sign in as company and review Jobs, Job Detail, and Messages flows.
@@ -211,8 +211,8 @@ Support contact placeholders:
 
 Sign-In Information (required field):
 - Username: `review.company.20260804173342@techflash.app`
-- Password: `TfReview!2026`
+- Password: App Store Connect only
 
 App Review Notes (add secondary role account):
-- Secondary technician login: `review.tech.20260804173342@techflash.app` / `TfReview!2026`
+- Secondary technician login: `review.tech.20260804173342@techflash.app` (password in App Store Connect only)
 - What to test: company job list/detail + messages, then technician dashboard/jobs + messages, then trust/safety report/block actions and settings.

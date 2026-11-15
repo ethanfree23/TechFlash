@@ -16,7 +16,7 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.techflash.app",
-      "buildNumber": "1",
+      "buildNumber": "2",
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "TechFlash uses your location to show nearby jobs and improve matching by distance.",
         "NSUserNotificationUsageDescription": "TechFlash uses notifications for job updates, new messages, and account alerts.",

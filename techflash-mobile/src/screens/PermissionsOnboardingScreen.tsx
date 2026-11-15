@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as Location from 'expo-location';
+import * as Notifications from 'expo-notifications';
 import { colors } from '../theme';
 import { markPermissionsOnboardingComplete } from '../onboarding/permissionsOnboarding';
 import { requestExpoPushPermissions, setPushOptIn } from '../notifications/pushPrefs';
@@ -33,12 +34,18 @@ export default function PermissionsOnboardingScreen({ onFinished }: { onFinished
       if (status === 'undetermined') {
         const asked = await Location.requestForegroundPermissionsAsync();
         status = asked.status;
+        setStatusLine(
+          status === 'granted'
+            ? 'Location allowed. Nearby jobs can use your device location.'
+            : 'Location not allowed. You can still use a city or address in your profile.'
+        );
+      } else {
+        setStatusLine(
+          status === 'granted'
+            ? 'Location already allowed on this iPhone.'
+            : 'Location was already decided on this iPhone, so iOS will not show the system dialog again. To re-show it: Settings → TechFlash → Location → Ask Next Time, or Reset Location & Privacy, then reinstall.'
+        );
       }
-      setStatusLine(
-        status === 'granted'
-          ? 'Location allowed. Nearby jobs can use your device location.'
-          : 'Location not allowed. You can still use a city or address in your profile.'
-      );
       setStep('notifications');
     } catch {
       setStatusLine('Location request unavailable. Continue with a manual city or address.');
@@ -57,14 +64,24 @@ export default function PermissionsOnboardingScreen({ onFinished }: { onFinished
     setBusy(true);
     setStatusLine('');
     try {
+      const existing = await Notifications.getPermissionsAsync();
+      const alreadyDecided = existing.status !== 'undetermined';
       const status = await requestExpoPushPermissions();
       const role = user?.role === 'company' || user?.role === 'technician' ? user.role : 'technician';
       if (status === 'granted') {
         await setPushOptIn(role, true);
-        setStatusLine('Notifications allowed on this device.');
+        setStatusLine(
+          alreadyDecided
+            ? 'Notifications already allowed on this iPhone.'
+            : 'Notifications allowed on this device.'
+        );
       } else {
         await setPushOptIn(role, false);
-        setStatusLine('Notifications not allowed. Email preferences still work in Settings.');
+        setStatusLine(
+          alreadyDecided
+            ? 'Notifications were already decided on this iPhone, so iOS may not show the system dialog again. To re-show it: Settings → TechFlash → Notifications, or Reset Location & Privacy, then reinstall. Email preferences still work.'
+            : 'Notifications not allowed. Email preferences still work in Settings.'
+        );
       }
       setStep('done');
     } catch {
@@ -143,8 +160,9 @@ export default function PermissionsOnboardingScreen({ onFinished }: { onFinished
         ) : null}
 
         <Text style={styles.foot}>
-          iOS shows each system permission dialog only while undecided. For a clean recording, delete
-          and reinstall the app (or reset Location/Notifications for TechFlash in iOS Settings).
+          iOS shows each system permission dialog only while undecided. Delete+reinstall alone is not
+          always enough. Prefer Settings → TechFlash → Location → Ask Next Time, and Notifications off,
+          or Reset Location & Privacy, then reinstall from TestFlight.
         </Text>
       </View>
     </SafeAreaView>

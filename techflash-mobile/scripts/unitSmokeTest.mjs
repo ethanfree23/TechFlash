@@ -3,19 +3,18 @@
  * Run: node scripts/unitSmokeTest.mjs
  */
 import assert from 'node:assert/strict';
-import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
+const repoRoot = path.resolve(root, '..');
 
-function read(rel) {
-  return fs.readFileSync(path.join(root, rel), 'utf8');
+function read(rel, base = root) {
+  return fs.readFileSync(path.join(base, rel), 'utf8');
 }
 
-// --- passwordRules (inline mirror of TS logic for node without transpile) ---
 const PASSWORD_MIN_LENGTH = 6;
 function validatePassword(password) {
   if (!password || password.length < PASSWORD_MIN_LENGTH) {
@@ -35,18 +34,21 @@ assert.equal(validatePassword('123456'), null);
 assert.equal(validatePasswordConfirmation('abcdef', 'abcdef'), null);
 assert.equal(validatePasswordConfirmation('abcdef', 'abcdeg'), 'Password confirmation does not match.');
 
-// --- Config / registration contract checks ---
 const appJson = JSON.parse(read('app.json'));
 assert.equal(appJson.expo.ios.supportsTablet, false, 'iPhone-only: supportsTablet must be false');
 assert.equal(appJson.expo.ios.bundleIdentifier, 'com.techflash.app');
+assert.equal(appJson.expo.name, 'TechFlash');
+assert.ok(appJson.expo.ios.infoPlist.NSLocationWhenInUseUsageDescription);
 assert.ok(
-  appJson.expo.ios.infoPlist.NSLocationWhenInUseUsageDescription,
-  'NSLocationWhenInUseUsageDescription required'
+  (appJson.expo.plugins || []).some((p) => p === 'expo-location' || (Array.isArray(p) && p[0] === 'expo-location'))
 );
-assert.ok(
-  (appJson.expo.plugins || []).some((p) => p === 'expo-location' || (Array.isArray(p) && p[0] === 'expo-location')),
-  'expo-location plugin required'
+
+const eas = JSON.parse(read('eas.json'));
+assert.equal(
+  eas.build.production.env.EXPO_PUBLIC_API_BASE_URL,
+  'https://skilledhub-production.up.railway.app/api/v1'
 );
+assert.equal(eas.build.production.autoIncrement, true);
 
 const registerSrc = read('src/screens/RegisterScreen.tsx');
 assert.match(registerSrc, /trade_type/);
@@ -69,6 +71,7 @@ assert.match(nav, /PermissionsOnboardingScreen/);
 const perms = read('src/screens/PermissionsOnboardingScreen.tsx');
 assert.match(perms, /requestForegroundPermissionsAsync/);
 assert.match(perms, /requestExpoPushPermissions/);
+assert.match(perms, /Ask Next Time/);
 
 const conv = read('src/screens/ConversationScreen.tsx');
 assert.match(conv, /Block this user/);
@@ -85,5 +88,23 @@ assert.match(more, /https:\/\/www\.techflash\.app\/terms-of-service/);
 const pkg = JSON.parse(read('package.json'));
 assert.ok(pkg.dependencies['expo-location']);
 assert.ok(pkg.dependencies['expo-notifications']);
+
+// Credentials must not be committed as plaintext passwords.
+for (const rel of [
+  'APP_STORE_REVIEW_NOTES.md',
+  'techflash-mobile/docs/app-review-recording-readiness.md',
+  'techflash-mobile/docs/app-store-review-package.md',
+  'skilled_hub_api/lib/tasks/app_review.rake',
+  'skilled_hub_api/app/services/app_review/prepare_service.rb',
+]) {
+  const body = read(rel, repoRoot);
+  assert.doesNotMatch(body, /TfReview!2026/, `${rel} must not contain reviewer password`);
+}
+
+const prepare = read('skilled_hub_api/app/services/app_review/prepare_service.rb', repoRoot);
+assert.match(prepare, /membership_fee_waived: true/);
+assert.match(prepare, /posted_under_funding_waiver: true/);
+assert.match(prepare, /verify_claimable!/);
+assert.match(prepare, /clear_mutual_blocks!/);
 
 console.log('unitSmokeTest: PASS');
