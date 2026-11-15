@@ -211,6 +211,7 @@ Rails.application.routes.draw do
             patch :company_membership
             patch :membership_pricing
             patch :profile, action: :update_profile
+            patch :admin_star
           end
           resource :ai_sms_session, only: %i[show create], controller: "ai_sms_sessions" do
             post :pause

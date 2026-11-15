@@ -68,6 +68,7 @@ class AdminUserDetail
       phone: user.phone,
       role: user.role,
       created_at: user.created_at&.iso8601,
+      admin_starred: user.technician? ? !!user.admin_starred : false,
       password_status: password_status_payload(user),
       profile: profile_payload(user),
       verification: TechnicianVerificationInventory.call(user),

@@ -208,6 +208,29 @@ module Api
           end
         end
 
+        # PATCH /api/v1/admin/users/:id/admin_star
+        # Marks a technician as a personal admin focus (spoken with / worth helping).
+        def admin_star
+          user = User.find_by(id: params[:id])
+          return render json: { error: "User not found" }, status: :not_found unless user
+          return render json: { errors: ["Only technician accounts can be starred"] }, status: :unprocessable_entity unless user.technician?
+
+          starred =
+            if params.key?(:admin_starred)
+              ActiveModel::Type::Boolean.new.cast(params[:admin_starred])
+            else
+              !user.admin_starred?
+            end
+
+          user.update!(admin_starred: starred)
+          render json: {
+            message: starred ? "Technician starred" : "Star removed",
+            user: list_item(user.reload)
+          }, status: :ok
+        rescue ActiveRecord::RecordInvalid => e
+          render json: { errors: e.record.errors.full_messages }, status: :unprocessable_entity
+        end
+
         # PATCH /api/v1/admin/users/:id/company_membership
         # Links a company contact account to an existing company profile.
         def company_membership
@@ -577,6 +600,7 @@ module Api
             membership_status: membership_profile&.membership_status,
             skill_class: tech_profile&.skill_class,
             experience_years: tech_profile&.experience_years,
+            admin_starred: user.technician? ? !!user.admin_starred : false,
             avatar_url: profile_avatar_url(user.technician? ? tech_profile : company_profile),
             avatar_updated_at: (user.technician? ? tech_profile : company_profile)&.updated_at&.iso8601
           }

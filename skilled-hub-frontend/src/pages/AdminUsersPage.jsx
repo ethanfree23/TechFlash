@@ -64,6 +64,7 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
   const [sortKey, setSortKey] = useState('user');
   const [sortDir, setSortDir] = useState('asc');
   const [masqueradeBusyId, setMasqueradeBusyId] = useState(null);
+  const [adminStarBusyId, setAdminStarBusyId] = useState(null);
   const [techInsights, setTechInsights] = useState(null);
   const [draggingColumnKey, setDraggingColumnKey] = useState(null);
   const [placeholderAction, setPlaceholderAction] = useState(null);
@@ -249,9 +250,41 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
       setFilters({});
       setSelectedIds(new Set());
     }
+    else if (emptyVariant === 'focus') {
+      setActiveTab('technicians');
+      setActiveViewId('all');
+    }
     else {
       setActiveTab('all');
       setActiveViewId('all');
+    }
+  };
+
+  const handleToggleAdminStar = async (row, starred) => {
+    if (!row?.id || row.role !== 'technician') return;
+    const previous = !!(row.admin_starred ?? row.adminStarred);
+    setAdminStarBusyId(row.id);
+    setList((prev) =>
+      prev.map((u) => (u.id === row.id ? { ...u, admin_starred: !!starred } : u))
+    );
+    try {
+      const res = await adminUsersAPI.setAdminStarred(row.id, starred);
+      const nextStarred = res?.user?.admin_starred ?? !!starred;
+      setList((prev) =>
+        prev.map((u) => (u.id === row.id ? { ...u, admin_starred: nextStarred } : u))
+      );
+    } catch (e) {
+      setList((prev) =>
+        prev.map((u) => (u.id === row.id ? { ...u, admin_starred: previous } : u))
+      );
+      setAlertModal({
+        isOpen: true,
+        title: 'Could not update focus star',
+        message: e.message || 'Please try again.',
+        variant: 'error',
+      });
+    } finally {
+      setAdminStarBusyId(null);
     }
   };
 
@@ -400,7 +433,8 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
     if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
     else {
       setSortKey(key);
-      setSortDir('asc');
+      // Starred first when sorting by focus.
+      setSortDir(key === 'admin_star' ? 'desc' : 'asc');
     }
   };
 
@@ -483,6 +517,8 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
               onSort={handleSort}
               onColumnWidthChange={setColumnWidth}
               onResetColumnWidth={resetColumnWidth}
+              onToggleAdminStar={handleToggleAdminStar}
+              adminStarBusyId={adminStarBusyId}
             />
           </div>
         </main>
@@ -539,6 +575,8 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
           onPlaceholderAction={setPlaceholderAction}
           masqueradeBusyId={masqueradeBusyId}
           onProfileSaved={() => loadUsers()}
+          onToggleAdminStar={handleToggleAdminStar}
+          adminStarBusyId={adminStarBusyId}
         />
       )}
 

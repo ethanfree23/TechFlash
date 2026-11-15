@@ -392,6 +392,11 @@ export const adminUsersAPI = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
+  setAdminStarred: (id, adminStarred) =>
+    apiRequest(`/admin/users/${id}/admin_star`, {
+      method: 'PATCH',
+      body: JSON.stringify({ admin_starred: !!adminStarred }),
+    }),
   create: (data) => {
     if (data instanceof FormData) {
       return apiRequest('/admin/users', {

@@ -2,6 +2,7 @@ import { formatDistanceMiles, getFullName } from './adminUsersDisplayAdapter';
 
 const EXPORT_COLUMNS = [
   { key: 'id', header: 'ID' },
+  { key: 'adminStarred', header: 'Focus' },
   { key: 'displayName', header: 'Name' },
   { key: 'email', header: 'Email' },
   { key: 'phone', header: 'Phone' },
@@ -32,6 +33,7 @@ export function exportUsersToCsv(rows, filename = 'techflash-users.csv') {
   const enriched = rows.map((r) => ({
     ...r,
     displayName: r.displayName || getFullName(r),
+    adminStarred: r.adminStarred ? 'Yes' : '',
     role: r.role === 'technician' ? 'Technician' : r.role === 'company' ? 'Company' : r.role,
     created_at: r.created_at ? new Date(r.created_at).toISOString() : '',
     tradeLicense: r.verification?.trade_license?.state || '',
