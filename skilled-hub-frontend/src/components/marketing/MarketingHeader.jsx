@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { TECHFLASH_LOGO_NAV } from '../../constants/branding';
+import { TECHFLASH_LOGO_ICON, TECHFLASH_LOGO_NAV } from '../../constants/branding';
 import { FaBars, FaTimes } from 'react-icons/fa';
 
 const baseNav =
@@ -42,8 +42,23 @@ export function MarketingHeader() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-gray-200/80 bg-white/90 backdrop-blur-md shadow-sm">
-      <div className="mx-auto flex h-16 max-w-7xl min-w-0 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
-        <Link to="/" className="flex shrink-0 items-center gap-2 group" onClick={close}>
+      <div className="relative mx-auto flex h-16 max-w-7xl min-w-0 items-center justify-between gap-3 px-4 sm:px-6 lg:px-8">
+        {/* Mobile: logo-only, centered, larger */}
+        <Link
+          to="/"
+          className="absolute left-1/2 top-1/2 z-0 flex -translate-x-1/2 -translate-y-1/2 items-center lg:hidden"
+          onClick={close}
+          aria-label="TechFlash"
+        >
+          <img
+            src={TECHFLASH_LOGO_ICON}
+            alt=""
+            className="h-14 w-auto object-contain"
+          />
+        </Link>
+
+        {/* Desktop: logo + wordmark */}
+        <Link to="/" className="group hidden shrink-0 items-center gap-2 lg:flex" onClick={close}>
           <img
             src={TECHFLASH_LOGO_NAV}
             alt="TechFlash"
@@ -79,26 +94,7 @@ export function MarketingHeader() {
           </Link>
         </div>
 
-        <div className="flex min-w-0 items-center gap-2 sm:gap-3 lg:hidden">
-          <Link
-            to="/download"
-            className={`hidden sm:inline ${navClass(false)}`}
-            onClick={close}
-          >
-            Get the app
-          </Link>
-          <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
-            <Link to="/login" className={navClass(false)} onClick={close}>
-              Sign In
-            </Link>
-            <Link
-              to="/login?tab=signup"
-              className="shrink-0 rounded-xl bg-tf-orange px-3 py-2 text-xs font-semibold text-white sm:text-sm"
-              onClick={close}
-            >
-              Get Started
-            </Link>
-          </div>
+        <div className="relative z-10 ml-auto flex items-center lg:hidden">
           <button
             type="button"
             className="rounded-lg p-2 text-tf-navy hover:bg-gray-100"
@@ -165,6 +161,22 @@ export function MarketingHeader() {
             <Link to="/download" className="rounded-lg px-3 py-2.5 text-sm font-semibold text-tf-navy hover:bg-gray-50" onClick={close}>
               Get the app
             </Link>
+            <div className="mt-2 flex flex-col gap-2 border-t border-gray-100 pt-3">
+              <Link
+                to="/login"
+                className="rounded-lg px-3 py-2.5 text-center text-sm font-semibold text-tf-navy hover:bg-gray-50"
+                onClick={close}
+              >
+                Sign In
+              </Link>
+              <Link
+                to="/login?tab=signup"
+                className="rounded-xl bg-tf-orange px-3 py-2.5 text-center text-sm font-semibold text-white"
+                onClick={close}
+              >
+                Get Started
+              </Link>
+            </div>
           </div>
         </div>
       )}
