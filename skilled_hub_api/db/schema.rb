@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_15_100000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_17_220000) do
   create_table "ach_feature_audits", force: :cascade do |t|
     t.string "scope", null: false
     t.integer "company_profile_id"
@@ -288,6 +288,21 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_15_100000) do
     t.index ["scope", "bucket", "window_starts_at"], name: "index_auth_rate_limits_on_scope_bucket_window"
   end
 
+  create_table "background_check_acknowledgements", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.string "acknowledgement_type", null: false
+    t.string "document_version", null: false
+    t.boolean "accepted", default: false, null: false
+    t.datetime "accepted_at"
+    t.integer "actor_user_id", null: false
+    t.string "ip_address"
+    t.string "user_agent"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["actor_user_id"], name: "index_background_check_acknowledgements_on_actor_user_id"
+    t.index ["user_id", "acknowledgement_type"], name: "idx_bg_ack_on_user_and_type", unique: true
+  end
+
   create_table "background_checks", force: :cascade do |t|
     t.integer "user_id", null: false
     t.string "provider", default: "checkr", null: false
@@ -348,22 +363,6 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_15_100000) do
     t.index ["stripe_checkout_session_id"], name: "index_background_checks_on_stripe_checkout_session_id"
     t.index ["stripe_payment_intent_id"], name: "index_background_checks_on_stripe_payment_intent_id"
     t.index ["user_id"], name: "index_background_checks_on_user_id"
-  end
-
-  create_table "background_check_acknowledgements", force: :cascade do |t|
-    t.integer "user_id", null: false
-    t.string "acknowledgement_type", null: false
-    t.string "document_version", null: false
-    t.boolean "accepted", default: false, null: false
-    t.datetime "accepted_at"
-    t.integer "actor_user_id", null: false
-    t.string "ip_address"
-    t.string "user_agent"
-    t.datetime "created_at", null: false
-    t.datetime "updated_at", null: false
-    t.index ["actor_user_id"], name: "index_background_check_acknowledgements_on_actor_user_id"
-    t.index ["user_id", "acknowledgement_type"], name: "idx_bg_ack_on_user_and_type", unique: true
-    t.index ["user_id"], name: "index_background_check_acknowledgements_on_user_id"
   end
 
   create_table "checkr_webhook_events", force: :cascade do |t|
@@ -929,9 +928,9 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_15_100000) do
     t.json "potential_full_time_details", default: {}, null: false
     t.integer "schedule_flexibility", default: 0, null: false
     t.datetime "terminated_at"
-    t.boolean "posted_under_funding_waiver", default: false, null: false
     t.integer "primary_contact_user_id"
     t.json "additional_contact_user_ids", default: [], null: false
+    t.boolean "posted_under_funding_waiver", default: false, null: false
     t.index ["company_membership_tier_config_id"], name: "index_jobs_on_company_membership_tier_config_id"
     t.index ["company_profile_id"], name: "index_jobs_on_company_profile_id"
     t.index ["funding_status"], name: "index_jobs_on_funding_status"
@@ -1231,6 +1230,27 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_15_100000) do
     t.index ["stripe_event_id"], name: "index_stripe_webhook_events_on_stripe_event_id", unique: true
   end
 
+  create_table "technician_activations", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.string "status", default: "new", null: false
+    t.datetime "last_contacted_at"
+    t.string "last_interaction_type"
+    t.string "last_call_outcome"
+    t.datetime "next_follow_up_at"
+    t.string "current_availability", default: "unknown", null: false
+    t.datetime "status_updated_at"
+    t.integer "status_updated_by_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["current_availability"], name: "index_technician_activations_on_current_availability"
+    t.index ["last_call_outcome"], name: "index_technician_activations_on_last_call_outcome"
+    t.index ["last_contacted_at"], name: "index_technician_activations_on_last_contacted_at"
+    t.index ["next_follow_up_at"], name: "index_technician_activations_on_next_follow_up_at"
+    t.index ["status"], name: "index_technician_activations_on_status"
+    t.index ["status_updated_by_id"], name: "index_technician_activations_on_status_updated_by_id"
+    t.index ["user_id"], name: "index_technician_activations_on_user_id", unique: true
+  end
+
   create_table "technician_assessment_results", force: :cascade do |t|
     t.integer "technician_profile_id", null: false
     t.integer "assessment_id", null: false
@@ -1257,6 +1277,46 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_15_100000) do
     t.index ["score_band_slug"], name: "index_technician_assessment_results_on_score_band_slug"
     t.index ["technician_profile_id", "assessment_id"], name: "index_technician_assessment_results_on_tech_and_assessment", unique: true
     t.index ["technician_profile_id"], name: "index_technician_assessment_results_on_technician_profile_id"
+  end
+
+  create_table "technician_follow_ups", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.integer "assigned_admin_id", null: false
+    t.integer "created_by_id", null: false
+    t.datetime "due_at", null: false
+    t.string "status", default: "open", null: false
+    t.text "description"
+    t.datetime "completed_at"
+    t.integer "technician_interaction_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["assigned_admin_id", "status"], name: "index_technician_follow_ups_on_assigned_admin_id_and_status"
+    t.index ["assigned_admin_id"], name: "index_technician_follow_ups_on_assigned_admin_id"
+    t.index ["created_by_id"], name: "index_technician_follow_ups_on_created_by_id"
+    t.index ["status", "due_at"], name: "index_technician_follow_ups_on_status_and_due_at"
+    t.index ["technician_interaction_id"], name: "index_technician_follow_ups_on_technician_interaction_id"
+    t.index ["user_id", "status"], name: "index_technician_follow_ups_on_user_id_and_status"
+    t.index ["user_id"], name: "index_technician_follow_ups_on_user_id"
+  end
+
+  create_table "technician_interactions", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.integer "author_id", null: false
+    t.string "interaction_type", default: "note", null: false
+    t.string "outcome"
+    t.text "body"
+    t.datetime "follow_up_at"
+    t.datetime "occurred_at", null: false
+    t.string "client_key"
+    t.json "metadata", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["author_id"], name: "index_technician_interactions_on_author_id"
+    t.index ["interaction_type"], name: "index_technician_interactions_on_interaction_type"
+    t.index ["outcome"], name: "index_technician_interactions_on_outcome"
+    t.index ["user_id", "client_key"], name: "index_technician_interactions_on_user_and_client_key", unique: true
+    t.index ["user_id", "occurred_at"], name: "index_technician_interactions_on_user_and_occurred_at"
+    t.index ["user_id"], name: "index_technician_interactions_on_user_id"
   end
 
   create_table "technician_profiles", force: :cascade do |t|
@@ -1615,10 +1675,18 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_15_100000) do
   add_foreign_key "saved_job_searches", "technician_profiles"
   add_foreign_key "sms_delivery_logs", "users"
   add_foreign_key "stripe_setup_records", "users"
+  add_foreign_key "technician_activations", "users"
+  add_foreign_key "technician_activations", "users", column: "status_updated_by_id"
   add_foreign_key "technician_assessment_results", "assessment_attempts"
   add_foreign_key "technician_assessment_results", "assessment_versions"
   add_foreign_key "technician_assessment_results", "assessments"
   add_foreign_key "technician_assessment_results", "technician_profiles"
+  add_foreign_key "technician_follow_ups", "technician_interactions"
+  add_foreign_key "technician_follow_ups", "users"
+  add_foreign_key "technician_follow_ups", "users", column: "assigned_admin_id"
+  add_foreign_key "technician_follow_ups", "users", column: "created_by_id"
+  add_foreign_key "technician_interactions", "users"
+  add_foreign_key "technician_interactions", "users", column: "author_id"
   add_foreign_key "technician_profiles", "users"
   add_foreign_key "time_entries", "jobs"
   add_foreign_key "time_entries", "technician_profiles"

@@ -13,12 +13,14 @@ module Api
         # role: all | technician | company (default all)
         def index
           scope = User.where(role: %i[technician company]).includes(
+            :technician_activation,
             technician_profile: { avatar_attachment: :blob },
             company_profile: { avatar_attachment: :blob },
             shared_company_profile: { avatar_attachment: :blob }
           ).order(:email)
           scope = filter_by_role(scope)
           scope = filter_by_search(scope)
+          scope = filter_by_activation_pipeline(scope)
 
           users = scope.to_a
           ids = users.map(&:id)
@@ -31,6 +33,14 @@ module Api
               .count
           last_logins = login_scope.group(:user_id).maximum(:created_at)
           inventories = TechnicianVerificationInventory.preload_for(users)
+          activations = users.each_with_object({}) do |user, hash|
+            hash[user.id] = user.technician_activation if user.technician?
+          end
+          onboardings = TechnicianOnboardingReadiness.preload_for(
+            users.select(&:technician?),
+            inventories: inventories,
+            activations: activations
+          )
           sessions = AiSmsSession.live.where(user_id: ids).order(created_at: :desc, id: :desc)
           session_by_user = {}
           sessions.each { |session| session_by_user[session.user_id] ||= session }
@@ -39,10 +49,14 @@ module Api
               logins_last_30_days: counts[user.id].to_i,
               last_login_at: last_logins[user.id]&.iso8601,
               verification: inventories[user.id],
+              activation: activation_list_payload(user, activations[user.id], onboardings[user.id]),
               ai_sms_session: session_by_user[user.id]&.as_admin_json
             )
           end
-          render json: { users: payload }, status: :ok
+          render json: {
+            users: payload,
+            activation_pipeline_counts: TechnicianActivationPipeline.counts
+          }, status: :ok
         end
 
         # GET /api/v1/admin/users/:id?period=7d
@@ -602,8 +616,35 @@ module Api
             experience_years: tech_profile&.experience_years,
             admin_starred: user.technician? ? !!user.admin_starred : false,
             avatar_url: profile_avatar_url(user.technician? ? tech_profile : company_profile),
-            avatar_updated_at: (user.technician? ? tech_profile : company_profile)&.updated_at&.iso8601
+            avatar_updated_at: (user.technician? ? tech_profile : company_profile)&.updated_at&.iso8601,
+            profile_availability: tech_profile&.availability
           }
+        end
+
+        def activation_list_payload(user, activation, onboarding)
+          return nil unless user.technician?
+
+          {
+            status: activation&.status || "new",
+            last_contacted_at: activation&.last_contacted_at&.iso8601,
+            last_interaction_type: activation&.last_interaction_type,
+            last_call_outcome: activation&.last_call_outcome,
+            next_follow_up_at: activation&.next_follow_up_at&.iso8601,
+            current_availability: activation&.current_availability || "unknown",
+            onboarding_complete: onboarding ? !!onboarding[:complete] : nil,
+            onboarding_blockers: onboarding ? Array(onboarding[:blocker_labels]) : [],
+            onboarding_blocker_keys: onboarding ? Array(onboarding[:blocker_keys]) : [],
+            onboarding_percent: onboarding&.dig(:percent)
+          }
+        end
+
+        def filter_by_activation_pipeline(scope)
+          pipeline = params[:activation_pipeline].to_s.strip
+          return scope if pipeline.blank?
+          return scope unless TechnicianActivationPipeline::SCOPES.include?(pipeline)
+
+          ids = TechnicianActivationPipeline.user_ids_for(pipeline)
+          scope.where(id: ids)
         end
 
         def membership_payload(user:, profile:)

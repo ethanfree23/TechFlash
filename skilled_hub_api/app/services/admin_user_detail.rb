@@ -72,8 +72,27 @@ class AdminUserDetail
       password_status: password_status_payload(user),
       profile: profile_payload(user),
       verification: TechnicianVerificationInventory.call(user),
+      activation: activation_payload(user),
       ai_sms_session: AiSmsSession.current_for(user)&.as_admin_json,
       company_context: company_context_payload(user, company_profile)
+    }
+  end
+
+  def activation_payload(user)
+    return nil unless user.technician?
+
+    activation = TechnicianActivation.ensure_for!(user)
+    onboarding = TechnicianOnboardingReadiness.call(user, activation: activation)
+    follow_ups = TechnicianFollowUp.open_for(user.id).order(:due_at).limit(10)
+    recent = TechnicianInteraction.for_user(user.id).newest_first.limit(25).includes(:author)
+
+    {
+      **TechnicianActivationSerializer.activation_payload(activation, onboarding: onboarding),
+      follow_ups: follow_ups.map { |fu| TechnicianActivationSerializer.follow_up_payload(fu) },
+      interactions: recent.map { |i| TechnicianActivationSerializer.interaction_payload(i) },
+      statuses: TechnicianActivation::STATUSES,
+      availabilities: TechnicianActivation::AVAILABILITIES,
+      call_outcomes: TechnicianInteraction::CALL_OUTCOMES
     }
   end
 

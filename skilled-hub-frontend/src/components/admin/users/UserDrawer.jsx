@@ -1,13 +1,17 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { FaTimes, FaEnvelope, FaExternalLinkAlt, FaRegStar, FaStar } from 'react-icons/fa';
+import { FaTimes, FaPhone, FaRegStar, FaStar } from 'react-icons/fa';
 import { adminUsersAPI } from '../../../api/api';
 import UserTypeBadge from './UserTypeBadge';
 import UserStatusBadge from './UserStatusBadge';
 import { TradeLicenseCell, ReferencesCell, BackgroundCheckCell } from './VerificationInventoryCells';
 import UserRowActionsMenu from './UserRowActionsMenu';
 import EditTechnicianProfileModal from './EditTechnicianProfileModal';
+import LogCallPanel from './LogCallPanel';
+import ActivationStatusControls from './ActivationStatusControls';
+import OnboardingReadinessChecklist from './OnboardingReadinessChecklist';
+import InteractionTimeline from './InteractionTimeline';
 import { DrawerSkeleton } from './UsersSkeleton';
 import { mediaUrlWithCacheBust } from '../../../utils/mediaUrl';
 import {
@@ -17,20 +21,13 @@ import {
   formatRelativeTime,
   displayOrFallback,
 } from '../../../utils/adminUsersDisplayAdapter';
-
-const NOTES_KEY_PREFIX = 'admin_user_notes_';
-
-function loadNotes(userId) {
-  try {
-    return JSON.parse(localStorage.getItem(`${NOTES_KEY_PREFIX}${userId}`) || '[]');
-  } catch {
-    return [];
-  }
-}
-
-function saveNotes(userId, notes) {
-  localStorage.setItem(`${NOTES_KEY_PREFIX}${userId}`, JSON.stringify(notes));
-}
+import {
+  clearLocalNotes,
+  defaultFollowUpLocalValue,
+  loadLocalNotes,
+  localNotesAlreadyMigrated,
+  newClientKey,
+} from '../../../utils/technicianActivation';
 
 function StatCard({ label, value, muted }) {
   return (
@@ -87,10 +84,10 @@ function OverviewCards({ detail, row }) {
   return null;
 }
 
-function DrawerSection({ title, children, className = '' }) {
+function DrawerSection({ title, children, className = '', accent = false }) {
   return (
-    <section className={`rounded-lg border border-slate-200/80 bg-white p-3 ${className}`}>
-      <h4 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-2">{title}</h4>
+    <section className={`rounded-lg border p-3 ${accent ? 'border-tf-blue/30 bg-sky-50/40' : 'border-slate-200/80 bg-white'} ${className}`}>
+      <h4 className="mb-2 text-[10px] font-bold uppercase tracking-wider text-slate-400">{title}</h4>
       {children}
     </section>
   );
@@ -132,6 +129,23 @@ function AvatarLightbox({ src, name, onClose }) {
   );
 }
 
+function mergeActivationIntoDetail(detail, activationPayload) {
+  if (!detail?.user || !activationPayload) return detail;
+  const existing = detail.user.activation || {};
+  return {
+    ...detail,
+    user: {
+      ...detail.user,
+      activation: {
+        ...existing,
+        ...activationPayload,
+        interactions: existing.interactions,
+        follow_ups: activationPayload.follow_ups || existing.follow_ups,
+      },
+    },
+  };
+}
+
 export default function UserDrawer({
   userId,
   listRow,
@@ -147,22 +161,35 @@ export default function UserDrawer({
   onProfileSaved,
   onToggleAdminStar,
   adminStarBusyId,
+  onActivationUpdated,
+  onOpenNext,
 }) {
   const [detail, setDetail] = useState(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(false);
-  const [notes, setNotes] = useState([]);
   const [noteText, setNoteText] = useState('');
+  const [followUpAt, setFollowUpAt] = useState('');
+  const [followUpNote, setFollowUpNote] = useState('');
   const [editProfileOpen, setEditProfileOpen] = useState(false);
   const [avatarOpen, setAvatarOpen] = useState(false);
+  const [crmBusy, setCrmBusy] = useState(false);
+  const [crmError, setCrmError] = useState(null);
+  const [migrateNotice, setMigrateNotice] = useState(null);
+  const [showLogCall, setShowLogCall] = useState(true);
+  const [interactions, setInteractions] = useState([]);
+  const [followUps, setFollowUps] = useState([]);
 
   const loadDetail = useCallback(async () => {
     if (!userId) return;
     setLoading(true);
     setLoadError(false);
+    setCrmError(null);
     try {
       const res = await adminUsersAPI.get(userId, '30d');
       setDetail(res);
+      const activation = res?.user?.activation;
+      setInteractions(Array.isArray(activation?.interactions) ? activation.interactions : []);
+      setFollowUps(Array.isArray(activation?.follow_ups) ? activation.follow_ups : []);
     } catch {
       setDetail(null);
       setLoadError(true);
@@ -173,11 +200,60 @@ export default function UserDrawer({
 
   useEffect(() => {
     if (userId) {
-      setNotes(loadNotes(userId));
       setAvatarOpen(false);
+      setNoteText('');
+      setFollowUpNote('');
+      setFollowUpAt('');
+      setShowLogCall(true);
+      setMigrateNotice(null);
       loadDetail();
     }
   }, [userId, loadDetail]);
+
+  useEffect(() => {
+    if (!userId || loading || loadError) return;
+    if (detail?.user?.role !== 'technician') return;
+    if (localNotesAlreadyMigrated(userId)) return;
+    const local = loadLocalNotes(userId);
+    if (!local.length) {
+      clearLocalNotes(userId);
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await adminUsersAPI.importLocalNotes(
+          userId,
+          local.map((n) => ({
+            id: n.id,
+            local_id: n.id,
+            body: n.body,
+            at: n.at,
+            admin: n.admin,
+          }))
+        );
+        if (cancelled) return;
+        clearLocalNotes(userId);
+        setMigrateNotice(
+          `Migrated ${res.imported_count || 0} local note${res.imported_count === 1 ? '' : 's'} to the server.`
+        );
+        if (res.activation) {
+          setDetail((prev) => mergeActivationIntoDetail(prev, res.activation));
+        }
+        const list = await adminUsersAPI.listInteractions(userId, { perPage: 25 });
+        if (!cancelled) setInteractions(list.interactions || []);
+      } catch {
+        if (!cancelled) {
+          setMigrateNotice('Local notes are still on this device — server migration failed. They were not discarded.');
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userId, loading, loadError, detail?.user?.role]);
 
   useEffect(() => {
     const prev = document.body.style.overflow;
@@ -207,6 +283,7 @@ export default function UserDrawer({
               email: detailUser.email,
               phone: detailUser.phone,
               label: detailUser.profile?.trade_type || listRow.label,
+              activation: detailUser.activation || listRow.activation,
             }
           : {}),
       }, detail)
@@ -217,18 +294,122 @@ export default function UserDrawer({
   const completeness = row ? computeProfileCompleteness(row, detail) : null;
   const timeline = detail ? buildActivityTimeline(detail) : [];
   const lastEmail = detail?.email_deliveries?.recent?.[0];
+  const isTechnician = row?.role === 'technician';
+  const activation = row?.activation || detailUser?.activation || null;
+  const onboarding = activation?.onboarding || null;
+  const phone = row?.phone || detailUser?.phone || detailUser?.profile?.phone;
+  const nextOpenFollowUp = (followUps || []).find((fu) => fu.status === 'open');
 
-  const addNote = () => {
-    if (!noteText.trim()) return;
-    // TODO(admin-users): persist admin notes via backend API
-    const note = { id: Date.now(), body: noteText.trim(), at: new Date().toISOString(), admin: 'Admin' };
-    const next = [note, ...notes];
-    setNotes(next);
-    saveNotes(userId, next);
-    setNoteText('');
+  const applyCrmResult = (res) => {
+    if (res?.activation) {
+      setDetail((prev) => mergeActivationIntoDetail(prev, res.activation));
+      onActivationUpdated?.(userId, res.activation);
+    }
+    if (res?.interaction) {
+      setInteractions((prev) => [res.interaction, ...prev.filter((i) => i.id !== res.interaction.id)]);
+    }
+    if (res?.follow_up) {
+      setFollowUps((prev) => [res.follow_up, ...prev.filter((f) => f.id !== res.follow_up.id)]);
+    }
   };
 
-  const isTechnician = row?.role === 'technician';
+  const handleLogCall = async (payload) => {
+    setCrmBusy(true);
+    setCrmError(null);
+    try {
+      const res = await adminUsersAPI.logCall(userId, payload);
+      applyCrmResult(res);
+    } catch (err) {
+      setCrmError(err?.message || 'Could not log call');
+      throw err;
+    } finally {
+      setCrmBusy(false);
+    }
+  };
+
+  const handleAddNote = async () => {
+    if (!noteText.trim() || crmBusy) return;
+    setCrmBusy(true);
+    setCrmError(null);
+    try {
+      const res = await adminUsersAPI.createInteraction(userId, {
+        interaction_type: 'note',
+        body: noteText.trim(),
+        client_key: newClientKey('note'),
+      });
+      applyCrmResult(res);
+      setNoteText('');
+    } catch (err) {
+      setCrmError(err?.message || 'Could not save note');
+    } finally {
+      setCrmBusy(false);
+    }
+  };
+
+  const handleScheduleFollowUp = async () => {
+    if (!followUpAt || crmBusy) return;
+    setCrmBusy(true);
+    setCrmError(null);
+    try {
+      const res = await adminUsersAPI.createFollowUp(userId, {
+        due_at: new Date(followUpAt).toISOString(),
+        description: followUpNote.trim() || undefined,
+      });
+      applyCrmResult(res);
+      setFollowUpAt('');
+      setFollowUpNote('');
+    } catch (err) {
+      setCrmError(err?.message || 'Could not schedule follow-up');
+    } finally {
+      setCrmBusy(false);
+    }
+  };
+
+  const handleStatusChange = async (status) => {
+    setCrmBusy(true);
+    setCrmError(null);
+    try {
+      const res = await adminUsersAPI.updateActivation(userId, { status });
+      applyCrmResult(res);
+      const list = await adminUsersAPI.listInteractions(userId, { perPage: 25 });
+      setInteractions(list.interactions || []);
+    } catch (err) {
+      setCrmError(err?.message || 'Could not update status');
+    } finally {
+      setCrmBusy(false);
+    }
+  };
+
+  const handleAvailabilityChange = async (current_availability) => {
+    setCrmBusy(true);
+    setCrmError(null);
+    try {
+      const res = await adminUsersAPI.updateActivation(userId, { current_availability });
+      applyCrmResult(res);
+    } catch (err) {
+      setCrmError(err?.message || 'Could not update availability');
+    } finally {
+      setCrmBusy(false);
+    }
+  };
+
+  const completeFollowUp = async (followUpId) => {
+    setCrmBusy(true);
+    try {
+      const res = await adminUsersAPI.updateFollowUp(followUpId, { status: 'completed' });
+      setFollowUps((prev) => prev.map((fu) => (fu.id === followUpId ? res.follow_up : fu)));
+      if (res.follow_up) {
+        onActivationUpdated?.(userId, {
+          ...(activation || {}),
+          next_follow_up_at: null,
+        });
+      }
+    } catch (err) {
+      setCrmError(err?.message || 'Could not complete follow-up');
+    } finally {
+      setCrmBusy(false);
+    }
+  };
 
   return (
     <>
@@ -259,17 +440,27 @@ export default function UserDrawer({
       )}
       <button type="button" className="fixed inset-0 z-40 bg-slate-900/25 backdrop-blur-[2px]" aria-label="Close" onClick={onClose} />
       <aside
-        className="fixed inset-0 sm:inset-y-0 sm:left-auto sm:right-0 z-50 w-full sm:max-w-md bg-white sm:border-l border-slate-200 shadow-2xl flex flex-col"
+        className="fixed inset-0 z-50 flex w-full flex-col border-slate-200 bg-white shadow-2xl sm:inset-y-0 sm:left-auto sm:right-0 sm:max-w-md sm:border-l"
         role="dialog"
         aria-modal="true"
         aria-label="User snapshot"
       >
-        {/* Header bar */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100 shrink-0 bg-white">
+        <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-white px-4 py-2.5">
           <span className="text-xs font-medium text-slate-500">User snapshot</span>
-          <button type="button" onClick={onClose} className="p-1.5 -mr-1 rounded-md text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close">
-            <FaTimes className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-1">
+            {isTechnician && onOpenNext && (
+              <button
+                type="button"
+                onClick={onOpenNext}
+                className="rounded-md px-2 py-1 text-[11px] font-semibold text-tf-blue hover:bg-sky-50"
+              >
+                Next tech
+              </button>
+            )}
+            <button type="button" onClick={onClose} className="-mr-1 rounded-md p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700" aria-label="Close">
+              <FaTimes className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto overscroll-contain">
@@ -278,15 +469,15 @@ export default function UserDrawer({
           ) : loadError || !row ? (
             <div className="p-6 text-center">
               <p className="text-sm font-medium text-slate-900">Could not load user</p>
-              <p className="text-xs text-slate-500 mt-1">Try again or open the full profile page.</p>
+              <p className="mt-1 text-xs text-slate-500">Try again or open the full profile page.</p>
               <button type="button" onClick={loadDetail} className="mt-3 text-xs font-semibold text-tf-blue hover:underline">
                 Retry
               </button>
             </div>
           ) : (
-            <div className="p-4 space-y-3">
-              {/* Identity header */}
-              <div className="pb-3 border-b border-slate-100">
+            <div className="space-y-3 p-4">
+              {/* 1. Identity and phone/contact actions */}
+              <div className="border-b border-slate-100 pb-3">
                 <div className="flex items-start gap-3">
                   {(() => {
                     const avatarUrl = row.avatarUrl || detail?.user?.profile?.avatar_url;
@@ -303,14 +494,14 @@ export default function UserDrawer({
                         <img src={resolved} alt="" className="h-full w-full object-cover" />
                       </button>
                     ) : (
-                      <div className="h-11 w-11 shrink-0 rounded-full bg-gradient-to-br from-slate-100 to-slate-50 border border-slate-200 flex items-center justify-center text-sm font-bold text-slate-600">
+                      <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-slate-200 bg-gradient-to-br from-slate-100 to-slate-50 text-sm font-bold text-slate-600">
                         {row.initials}
                       </div>
                     );
                   })()}
                   <div className="min-w-0 flex-1">
                     <div className="flex items-start gap-2">
-                      <h3 className="text-base font-semibold text-slate-900 leading-tight truncate min-w-0 flex-1">
+                      <h3 className="min-w-0 flex-1 truncate text-base font-semibold leading-tight text-slate-900">
                         {row.displayName}
                       </h3>
                       {isTechnician && (
@@ -318,29 +509,29 @@ export default function UserDrawer({
                           type="button"
                           onClick={() => onToggleAdminStar?.(row, !row.adminStarred)}
                           disabled={adminStarBusyId === row.id || !onToggleAdminStar}
-                          title={row.adminStarred ? 'Remove from my focus' : 'Add to my focus — spoken with and worth helping'}
-                          aria-label={row.adminStarred ? `Remove ${row.displayName} from focus` : `Star ${row.displayName} as focus`}
+                          title={row.adminStarred ? 'Remove from my focus' : 'Add to my focus'}
                           aria-pressed={!!row.adminStarred}
                           className={`mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border transition-colors disabled:opacity-50 ${
                             row.adminStarred
-                              ? 'border-amber-300 bg-amber-50 text-amber-500 hover:bg-amber-100 hover:text-amber-600'
-                              : 'border-slate-200 bg-white text-slate-400 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-500'
+                              ? 'border-amber-300 bg-amber-50 text-amber-500'
+                              : 'border-slate-200 bg-white text-slate-400 hover:border-amber-300 hover:bg-amber-50'
                           }`}
                         >
-                          {row.adminStarred ? (
-                            <FaStar className="h-4 w-4" aria-hidden />
-                          ) : (
-                            <FaRegStar className="h-4 w-4" aria-hidden />
-                          )}
+                          {row.adminStarred ? <FaStar className="h-4 w-4" /> : <FaRegStar className="h-4 w-4" />}
                         </button>
                       )}
                     </div>
-                    <p className="text-xs text-slate-500 truncate mt-0.5">{row.email}</p>
-                    {row.phone && <p className="text-xs text-slate-400 mt-0.5">{row.phone}</p>}
-                    {row.locationLabel && row.locationLabel !== 'Not provided' && (
-                      <p className="text-xs text-slate-400 mt-0.5">{row.locationLabel}</p>
+                    <p className="mt-0.5 truncate text-xs text-slate-500">{row.email}</p>
+                    {phone && (
+                      <a href={`tel:${phone}`} className="mt-0.5 inline-flex items-center gap-1 text-xs font-semibold text-tf-blue hover:underline">
+                        <FaPhone className="h-2.5 w-2.5" />
+                        {phone}
+                      </a>
                     )}
-                    <div className="flex flex-wrap items-center gap-1 mt-2">
+                    {row.locationLabel && row.locationLabel !== 'Not provided' && (
+                      <p className="mt-0.5 text-xs text-slate-400">{row.locationLabel}</p>
+                    )}
+                    <div className="mt-2 flex flex-wrap items-center gap-1">
                       <UserTypeBadge role={row.role} />
                       <UserStatusBadge status={row.accountStatus} />
                       {row.role === 'technician' && row.verification ? (
@@ -361,7 +552,7 @@ export default function UserDrawer({
                         </>
                       ) : null}
                     </div>
-                    <p className="text-[10px] text-slate-400 mt-2 tabular-nums">
+                    <p className="mt-2 text-[10px] tabular-nums text-slate-400">
                       ID #{row.id}
                       {row.created_at && (
                         <> · Joined {new Date(row.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</>
@@ -373,39 +564,27 @@ export default function UserDrawer({
                   </div>
                 </div>
 
-                <div className="flex flex-wrap gap-1.5 mt-3">
-                  {isTechnician && (
-                    <button
-                      type="button"
-                      onClick={() => onToggleAdminStar?.(row, !row.adminStarred)}
-                      disabled={adminStarBusyId === row.id || !onToggleAdminStar}
-                      title={row.adminStarred ? 'Remove from my focus' : 'Mark as focus — spoken with and worth helping'}
-                      aria-pressed={!!row.adminStarred}
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold border transition-colors disabled:opacity-50 ${
-                        row.adminStarred
-                          ? 'border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                          : 'border-slate-200 bg-white text-slate-700 hover:border-amber-300 hover:bg-amber-50 hover:text-amber-700'
-                      }`}
+                <div className="mt-3 flex flex-wrap gap-1.5">
+                  {phone && (
+                    <a
+                      href={`tel:${phone}`}
+                      className="inline-flex items-center gap-1 rounded-md bg-tf-blue px-2.5 py-1 text-xs font-semibold text-white hover:bg-tf-blue-dark"
                     >
-                      {row.adminStarred ? (
-                        <FaStar className="h-3 w-3 text-amber-500" aria-hidden />
-                      ) : (
-                        <FaRegStar className="h-3 w-3" aria-hidden />
-                      )}
-                      {row.adminStarred ? 'In my focus' : 'Mark focus'}
-                    </button>
+                      <FaPhone className="h-3 w-3" />
+                      Call
+                    </a>
                   )}
                   <Link
                     to={`/admin/users/${row.id}`}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-tf-blue text-white text-xs font-semibold hover:bg-tf-blue-dark"
+                    className="inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50"
                   >
                     View profile
                   </Link>
-                  {row.role === 'technician' && (
+                  {isTechnician && (
                     <button
                       type="button"
                       onClick={() => setEditProfileOpen(true)}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700"
+                      className="inline-flex items-center gap-1 rounded-md bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-emerald-700"
                     >
                       Edit profile
                     </button>
@@ -415,7 +594,7 @@ export default function UserDrawer({
                       type="button"
                       onClick={() => onMasquerade?.(row.id)}
                       disabled={masqueradeBusyId === row.id}
-                      className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md bg-amber-500 text-white text-xs font-semibold hover:bg-amber-600 disabled:opacity-50"
+                      className="inline-flex items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-50"
                     >
                       {masqueradeBusyId === row.id ? 'Starting…' : 'Impersonate'}
                     </button>
@@ -434,138 +613,258 @@ export default function UserDrawer({
                 </div>
               </div>
 
+              {migrateNotice && (
+                <p className="rounded-md border border-sky-100 bg-sky-50 px-2.5 py-1.5 text-[11px] text-sky-800">
+                  {migrateNotice}
+                </p>
+              )}
+              {crmError && (
+                <p className="rounded-md border border-rose-100 bg-rose-50 px-2.5 py-1.5 text-[11px] text-rose-700">
+                  {crmError}
+                </p>
+              )}
+
               {row.isFlagged && (
                 <DrawerSection title="Flagged — needs resolution">
-                  <p className="text-xs text-slate-700 mb-2">
+                  <p className="mb-2 text-xs text-slate-700">
                     This account is in the review queue for a specific reason, not a generic risk score.
                   </p>
                   {row.flagReasons?.length > 0 ? (
-                    <ul className="space-y-1 mb-3">
+                    <ul className="mb-3 space-y-1">
                       {row.flagReasons.map((reason) => (
-                        <li key={reason} className="text-[11px] text-red-800 pl-2 border-l-2 border-red-200">
+                        <li key={reason} className="border-l-2 border-red-200 pl-2 text-[11px] text-red-800">
                           {reason}
                         </li>
                       ))}
                     </ul>
                   ) : (
-                    <p className="text-[11px] text-slate-500 mb-3">No reason recorded yet.</p>
-                  )}
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Path to resolution</p>
-                  {row.flagResolution?.length > 0 ? (
-                    <ol className="list-decimal list-inside space-y-1">
-                      {row.flagResolution.map((step) => (
-                        <li key={step} className="text-[11px] text-slate-700">{step}</li>
-                      ))}
-                    </ol>
-                  ) : (
-                    <p className="text-[11px] text-slate-500">
-                      Open the full profile, fix the listed issue, then clear the flag from this queue.
-                    </p>
+                    <p className="mb-3 text-[11px] text-slate-500">No reason recorded yet.</p>
                   )}
                 </DrawerSection>
               )}
 
-              <DrawerSection title="Quick stats">
-                <OverviewCards detail={detail} row={row} />
-              </DrawerSection>
-
-              {completeness && (
-                <DrawerSection title="Profile completeness">
-                  <div className="flex items-center justify-between mb-1.5">
-                    <span className="text-xs text-slate-600">{completeness.percent}% complete</span>
-                    <span className="text-[10px] text-slate-400">{completeness.missing.length} missing</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                    <div
-                      className="h-full rounded-full bg-emerald-500 transition-all duration-300"
-                      style={{ width: `${completeness.percent}%` }}
+              {isTechnician ? (
+                <>
+                  {/* 2. Activation status and availability */}
+                  <DrawerSection title="Activation status">
+                    <ActivationStatusControls
+                      status={activation?.status || 'new'}
+                      availability={activation?.current_availability || 'unknown'}
+                      onStatusChange={handleStatusChange}
+                      onAvailabilityChange={handleAvailabilityChange}
+                      busy={crmBusy}
                     />
-                  </div>
-                  {completeness.missing.length > 0 && (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {completeness.missing.slice(0, 6).map((m) => (
-                        <span key={m} className="text-[10px] px-1.5 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-100">
-                          {m}
-                        </span>
-                      ))}
+                  </DrawerSection>
+
+                  {/* 3. Log Call / Add Note / Schedule Follow-up */}
+                  <DrawerSection title="Log call" accent>
+                    <div className="mb-2 flex items-center justify-between">
+                      <p className="text-[11px] text-slate-500">One-click outcome. Does not place a call.</p>
+                      <button
+                        type="button"
+                        className="text-[10px] font-semibold text-slate-500 hover:text-slate-700"
+                        onClick={() => setShowLogCall((v) => !v)}
+                      >
+                        {showLogCall ? 'Hide' : 'Show'}
+                      </button>
                     </div>
+                    {showLogCall && <LogCallPanel onSubmit={handleLogCall} busy={crmBusy} />}
+                  </DrawerSection>
+
+                  <DrawerSection title="Add note">
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={noteText}
+                        onChange={(e) => setNoteText(e.target.value)}
+                        placeholder="Add internal note..."
+                        className="flex-1 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-tf-blue/20"
+                        onKeyDown={(e) => e.key === 'Enter' && handleAddNote()}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddNote}
+                        disabled={crmBusy || !noteText.trim()}
+                        className="shrink-0 rounded-md bg-slate-800 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-slate-700 disabled:opacity-50"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </DrawerSection>
+
+                  <DrawerSection title="Schedule follow-up">
+                    <div className="space-y-1.5">
+                      <input
+                        type="datetime-local"
+                        value={followUpAt}
+                        onChange={(e) => setFollowUpAt(e.target.value)}
+                        className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-tf-blue/20"
+                      />
+                      <input
+                        type="text"
+                        value={followUpNote}
+                        onChange={(e) => setFollowUpNote(e.target.value)}
+                        placeholder="Optional description"
+                        className="w-full rounded-md border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-tf-blue/20"
+                      />
+                      <div className="flex gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setFollowUpAt(defaultFollowUpLocalValue(24))}
+                          className="rounded-md border border-slate-200 px-2 py-1 text-[10px] font-semibold text-slate-600 hover:bg-slate-50"
+                        >
+                          +1 day
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleScheduleFollowUp}
+                          disabled={crmBusy || !followUpAt}
+                          className="rounded-md bg-tf-blue px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-tf-blue-dark disabled:opacity-50"
+                        >
+                          Schedule
+                        </button>
+                      </div>
+                    </div>
+                  </DrawerSection>
+
+                  {/* 4. Next action and onboarding blockers */}
+                  <DrawerSection title="Next action">
+                    {nextOpenFollowUp ? (
+                      <div className="rounded-md border border-amber-100 bg-amber-50/70 px-2.5 py-2">
+                        <p className="text-[11px] font-semibold text-amber-900">
+                          Follow-up {formatRelativeTime(nextOpenFollowUp.due_at) || 'scheduled'}
+                        </p>
+                        <p className="mt-0.5 text-[11px] text-slate-700">
+                          {nextOpenFollowUp.description || 'No description'}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => completeFollowUp(nextOpenFollowUp.id)}
+                          disabled={crmBusy}
+                          className="mt-1.5 text-[10px] font-semibold text-tf-blue hover:underline disabled:opacity-50"
+                        >
+                          Mark completed
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="text-[11px] text-slate-500">
+                        {activation?.last_contacted_at
+                          ? `Last contacted ${formatRelativeTime(activation.last_contacted_at)}. No open follow-up.`
+                          : 'Never contacted — log a call to start activation.'}
+                      </p>
+                    )}
+                  </DrawerSection>
+
+                  <DrawerSection title="Onboarding blockers">
+                    <OnboardingReadinessChecklist
+                      onboarding={onboarding}
+                      onEditProfile={() => setEditProfileOpen(true)}
+                    />
+                  </DrawerSection>
+
+                  {/* 5. Interaction timeline */}
+                  <DrawerSection title="Interaction timeline">
+                    <InteractionTimeline interactions={interactions} platformEvents={timeline} />
+                  </DrawerSection>
+
+                  {/* 6. Quick stats and platform history */}
+                  <DrawerSection title="Quick stats">
+                    <OverviewCards detail={detail} row={row} />
+                  </DrawerSection>
+
+                  <DrawerSection title="Communication">
+                    <dl className="space-y-1 text-[11px]">
+                      <div className="flex justify-between gap-2">
+                        <dt className="text-slate-500">Last email</dt>
+                        <dd className="tabular-nums text-slate-700">
+                          {lastEmail ? formatRelativeTime(lastEmail.sent_at || lastEmail.at) : 'None yet'}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between gap-2">
+                        <dt className="text-slate-500">Last contacted</dt>
+                        <dd className="tabular-nums text-slate-700">
+                          {activation?.last_contacted_at
+                            ? formatRelativeTime(activation.last_contacted_at)
+                            : 'Never'}
+                        </dd>
+                      </div>
+                    </dl>
+                    <div className="mt-2 flex gap-3 text-[11px]">
+                      <button type="button" onClick={() => onSendEmail?.(row)} className="font-semibold text-tf-blue hover:underline">
+                        Send email
+                      </button>
+                      <button type="button" onClick={() => onSendSms?.(row, row.verification?.suggested_sms?.next_gap || '')} className="font-semibold text-slate-500 hover:text-slate-700 hover:underline">
+                        Send SMS
+                      </button>
+                    </div>
+                  </DrawerSection>
+                </>
+              ) : (
+                <>
+                  <DrawerSection title="Quick stats">
+                    <OverviewCards detail={detail} row={row} />
+                  </DrawerSection>
+
+                  {completeness && (
+                    <DrawerSection title="Profile completeness">
+                      <div className="mb-1.5 flex items-center justify-between">
+                        <span className="text-xs text-slate-600">{completeness.percent}% complete</span>
+                        <span className="text-[10px] text-slate-400">{completeness.missing.length} missing</span>
+                      </div>
+                      <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
+                        <div
+                          className="h-full rounded-full bg-emerald-500 transition-all duration-300"
+                          style={{ width: `${completeness.percent}%` }}
+                        />
+                      </div>
+                      {completeness.missing.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-1">
+                          {completeness.missing.slice(0, 6).map((m) => (
+                            <span key={m} className="rounded border border-amber-100 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-800">
+                              {m}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </DrawerSection>
                   )}
-                </DrawerSection>
+
+                  <DrawerSection title="Recent activity">
+                    {timeline.length === 0 ? (
+                      <p className="text-[11px] text-slate-400">No activity yet in the last 30 days.</p>
+                    ) : (
+                      <ul className="space-y-1.5">
+                        {timeline.map((ev, i) => (
+                          <li key={i} className="flex gap-2 text-[11px] leading-snug">
+                            <span className="w-12 shrink-0 tabular-nums text-slate-400">{formatRelativeTime(ev.iso) || '—'}</span>
+                            <span className="text-slate-700">{ev.label}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </DrawerSection>
+
+                  <DrawerSection title="Communication">
+                    <dl className="space-y-1 text-[11px]">
+                      <div className="flex justify-between gap-2">
+                        <dt className="text-slate-500">Last email</dt>
+                        <dd className="tabular-nums text-slate-700">
+                          {lastEmail ? formatRelativeTime(lastEmail.sent_at || lastEmail.at) : 'None yet'}
+                        </dd>
+                      </div>
+                    </dl>
+                    <div className="mt-2 flex gap-3 text-[11px]">
+                      <button type="button" onClick={() => onSendEmail?.(row)} className="font-semibold text-tf-blue hover:underline">
+                        Send email
+                      </button>
+                      <button type="button" onClick={() => onSendSms?.(row, '')} className="font-semibold text-slate-500 hover:underline">
+                        Send SMS
+                      </button>
+                      <Link to="/crm" className="font-semibold text-tf-blue hover:underline">CRM</Link>
+                    </div>
+                  </DrawerSection>
+                </>
               )}
-
-              <DrawerSection title="Admin notes">
-                <p className="text-[10px] text-slate-400 mb-2">Local only until backend notes API exists.</p>
-                <div className="flex gap-1.5 mb-2">
-                  <input
-                    type="text"
-                    value={noteText}
-                    onChange={(e) => setNoteText(e.target.value)}
-                    placeholder="Add internal note..."
-                    className="flex-1 rounded-md border border-slate-200 px-2.5 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-tf-blue/20"
-                    onKeyDown={(e) => e.key === 'Enter' && addNote()}
-                  />
-                  <button type="button" onClick={addNote} className="px-2.5 py-1.5 rounded-md bg-slate-800 text-white text-xs font-medium hover:bg-slate-700 shrink-0">
-                    Add
-                  </button>
-                </div>
-                <ul className="space-y-1.5 max-h-28 overflow-y-auto">
-                  {notes.length === 0 ? (
-                    <li className="text-[11px] text-slate-400 italic">No notes yet.</li>
-                  ) : (
-                    notes.map((n) => (
-                      <li key={n.id} className="text-[11px] pl-2 border-l-2 border-slate-200">
-                        <p className="text-slate-700">{n.body}</p>
-                        <p className="text-slate-400 mt-0.5">{new Date(n.at).toLocaleString()}</p>
-                      </li>
-                    ))
-                  )}
-                </ul>
-              </DrawerSection>
-
-              <DrawerSection title="Recent activity">
-                {timeline.length === 0 ? (
-                  <p className="text-[11px] text-slate-400">No activity yet in the last 30 days.</p>
-                ) : (
-                  <ul className="space-y-1.5">
-                    {timeline.map((ev, i) => (
-                      <li key={i} className="flex gap-2 text-[11px] leading-snug">
-                        <span className="text-slate-400 shrink-0 w-12 tabular-nums">{formatRelativeTime(ev.iso) || '—'}</span>
-                        <span className="text-slate-700">{ev.label}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </DrawerSection>
-
-              <DrawerSection title="Communication">
-                <dl className="text-[11px] space-y-1">
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-slate-500">Last email</dt>
-                    <dd className="text-slate-700 tabular-nums">
-                      {lastEmail ? formatRelativeTime(lastEmail.sent_at || lastEmail.at) : 'None yet'}
-                    </dd>
-                  </div>
-                  <div className="flex justify-between gap-2">
-                    <dt className="text-slate-500">Last SMS</dt>
-                    <dd className="text-slate-400">Not available</dd>
-                  </div>
-                </dl>
-                <div className="mt-2 flex gap-3 text-[11px]">
-                  <button type="button" onClick={() => onSendEmail?.(row)} className="font-semibold text-tf-blue hover:underline">
-                    Send email
-                  </button>
-                  <button type="button" onClick={() => onSendSms?.(row, row.verification?.suggested_sms?.next_gap || '')} className="font-semibold text-slate-500 hover:text-slate-700 hover:underline">
-                    Send SMS
-                  </button>
-                  {row.ai_sms_session?.live && (
-                    <span className="font-semibold text-sky-700">AI SMS: Active</span>
-                  )}
-                  {row.ai_sms_session?.status === 'needs_human' && (
-                    <span className="font-semibold text-amber-700">AI SMS: Needs human</span>
-                  )}
-                  <Link to="/crm" className="font-semibold text-tf-blue hover:underline">CRM</Link>
-                </div>
-              </DrawerSection>
             </div>
           )}
         </div>

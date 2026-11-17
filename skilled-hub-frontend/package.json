@@ -25,6 +25,7 @@
     "test:datetime-picker": "node scripts/dateTimePicker.test.mjs",
     "test:technician-map": "node scripts/technicianMap.test.mjs",
     "test:parse-address": "node scripts/parseUsAddressPaste.test.mjs",
+    "test:technician-activation": "node scripts/technicianActivation.test.mjs",
     "test": "node scripts/runFrontendTests.mjs",
     "build:capacitor": "vite build --mode capacitor",
     "cap:sync": "npm run build:capacitor && npx cap sync",

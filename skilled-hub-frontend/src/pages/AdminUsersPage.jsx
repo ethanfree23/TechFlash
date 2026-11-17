@@ -37,7 +37,7 @@ import LicenseDocumentModal from '../components/settings/LicenseDocumentModal';
 import { presentLicenseCard } from '../utils/licenseCredentials';
 import { withDemoPath } from '../utils/demoMode';
 
-const COLUMN_STORAGE_KEY = 'admin-users-table-columns-v5';
+const COLUMN_STORAGE_KEY = 'admin-users-table-columns-v6';
 
 function columnsWithDistance(columns, active) {
   if (!active) return columns;
@@ -577,6 +577,34 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
           onProfileSaved={() => loadUsers()}
           onToggleAdminStar={handleToggleAdminStar}
           adminStarBusyId={adminStarBusyId}
+          onActivationUpdated={(id, activation) => {
+            setList((prev) =>
+              prev.map((u) =>
+                u.id === id
+                  ? {
+                      ...u,
+                      activation: {
+                        ...(u.activation || {}),
+                        ...activation,
+                        onboarding_blockers: activation?.onboarding?.blocker_labels || u.activation?.onboarding_blockers,
+                        onboarding_blocker_keys: activation?.onboarding?.blocker_keys || u.activation?.onboarding_blocker_keys,
+                        onboarding_complete: activation?.onboarding
+                          ? !!activation.onboarding.complete
+                          : u.activation?.onboarding_complete,
+                        onboarding_percent: activation?.onboarding?.percent ?? u.activation?.onboarding_percent,
+                      },
+                    }
+                  : u
+              )
+            );
+          }}
+          onOpenNext={() => {
+            const techs = filteredRows.filter((u) => u.role === 'technician');
+            if (!techs.length) return;
+            const idx = techs.findIndex((u) => u.id === drawerUserId);
+            const next = techs[(idx + 1) % techs.length];
+            if (next && next.id !== drawerUserId) setDrawerUserId(next.id);
+          }}
         />
       )}
 

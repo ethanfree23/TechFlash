@@ -38,6 +38,9 @@ class User < ApplicationRecord
   end
 
   has_one :technician_profile, dependent: :destroy
+  has_one :technician_activation, dependent: :destroy
+  has_many :technician_interactions, dependent: :destroy
+  has_many :technician_follow_ups, dependent: :destroy
   has_one :company_profile, foreign_key: :user_id, inverse_of: :user, dependent: :destroy
   has_one :verification_profile, dependent: :destroy
   has_many :background_checks, dependent: :destroy
