@@ -1,8 +1,20 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 import StatusBadge from '../command-center/StatusBadge';
 import VerificationCellPopover from './VerificationCellPopover';
 import { formatLicenseUploadedDate, licenseStatusLabel } from '../../../utils/licenseCredentials';
 import { formatPhoneInput } from '../../../utils/phone';
+import { buildWorkspaceSearch } from '../../../utils/trustSafety';
+
+function referenceNoteLink(userId, referenceId) {
+  if (!userId || !referenceId) return null;
+  return `/admin/trust-safety${buildWorkspaceSearch({
+    tab: 'references',
+    filters: { status: 'all' },
+    technician: userId,
+    item: `reference:${referenceId}`,
+  })}`;
+}
 
 const LICENSE_VARIANT = {
   yes: 'success',
@@ -113,7 +125,7 @@ export function TradeLicenseCell({ inventory, onSendSms, onViewDocument }) {
   );
 }
 
-export function ReferencesCell({ inventory, onSendSms }) {
+export function ReferencesCell({ inventory, onSendSms, userId }) {
   const refs = inventory?.professional_references;
   if (!refs) return <span className="text-[10px] text-slate-400">—</span>;
 
@@ -132,15 +144,27 @@ export function ReferencesCell({ inventory, onSendSms }) {
         <p className="mt-2 text-[11px] text-slate-500">No professional references stored.</p>
       ) : (
         <div className="mt-2 space-y-2">
-          {refs.references.map((ref) => (
-            <div key={ref.id} className="rounded-md border border-slate-100 bg-slate-50/80 p-2 space-y-0.5">
-              <Field label="Name" value={ref.full_name} />
-              <Field label="Company" value={ref.company_name} />
-              <Field label="Phone" value={ref.phone ? formatPhoneInput(ref.phone) : ''} />
-              <Field label="Email" value={ref.email} />
-              <Field label="Status" value={ref.status} />
-            </div>
-          ))}
+          {refs.references.map((ref) => {
+            const noteHref = referenceNoteLink(userId, ref.id);
+            return (
+              <div key={ref.id} className="rounded-md border border-slate-100 bg-slate-50/80 p-2 space-y-0.5">
+                <Field label="Name" value={ref.full_name} />
+                <Field label="Company" value={ref.company_name} />
+                <Field label="Phone" value={ref.phone ? formatPhoneInput(ref.phone) : ''} />
+                <Field label="Email" value={ref.email} />
+                <Field label="Status" value={ref.status} />
+                {noteHref && (
+                  <Link
+                    to={noteHref}
+                    onClick={(e) => e.stopPropagation()}
+                    className="mt-1.5 inline-flex text-[11px] font-semibold text-tf-blue hover:underline"
+                  >
+                    Add note / log contact
+                  </Link>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
       <SendSmsButton onSendSms={onSendSms} suggestion={inventory?.suggested_sms?.professional_references} />

@@ -543,6 +543,7 @@ export default function UserDrawer({
                           />
                           <ReferencesCell
                             inventory={row.verification}
+                            userId={row.id}
                             onSendSms={(message) => onSendSms?.(row, message)}
                           />
                           <BackgroundCheckCell

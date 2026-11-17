@@ -126,12 +126,21 @@ module TrustSafety
         "not_started" => "No references"
       }[status]
       reviewed = references.select(&:reviewed_at).max_by(&:reviewed_at)
+      open_target = references.find(&:responded?) || references.find(&:requested?) || references.first
+      next_action =
+        case status
+        when "needs_review" then "Review the responded reference(s)."
+        when "pending" then "Open a reference to log a phone/email contact attempt or add an internal note after outreach."
+        when "verified" then nil
+        else "Waiting on the technician to add references."
+        end
       row("references", "Professional references", status, label,
           detail: "#{references.size} submitted · #{approved} verified · #{REFERENCES_REQUIRED_FOR_BADGE} verified required for the references badge · #{TechnicianVerificationInventory::COMPLETE_REFERENCE_COUNT} required for a complete profile.",
           updated_at: references.map(&:updated_at).compact.max,
           reviewer: ItemSerializer.user_summary(reviewed&.reviewed_by_user),
-          next_action: status == "needs_review" ? "Review the responded reference(s)." : (status == "verified" ? nil : "Waiting on technician or reference."),
-          item_ref: references.find(&:responded?) && ItemSerializer.item_key("reference", references.find(&:responded?).id),
+          next_action: next_action,
+          item_ref: open_target && ItemSerializer.item_key("reference", open_target.id),
+          references: references.map { |r| ItemSerializer.reference(r, identity: identity) },
           recorded_status: verification&.references_status,
           extra: { badge_status: badge&.status, counts: { approved: approved, responded: responded, requested: requested, rejected: references.count(&:rejected?) } })
     end
@@ -224,7 +233,7 @@ module TrustSafety
       target && ItemSerializer.item_key("document", target.id)
     end
 
-    def row(key, label, status, status_label, detail:, recorded_status:, updated_at: nil, reviewer: nil, next_action: nil, item_ref: nil, documents: [], extra: {}, optional: false)
+    def row(key, label, status, status_label, detail:, recorded_status:, updated_at: nil, reviewer: nil, next_action: nil, item_ref: nil, documents: [], references: [], extra: {}, optional: false)
       {
         key: key,
         label: label,
@@ -237,6 +246,7 @@ module TrustSafety
         next_action: next_action,
         item_ref: item_ref,
         documents: documents,
+        references: references,
         recorded_status: recorded_status,
         optional: optional
       }.merge(extra)
