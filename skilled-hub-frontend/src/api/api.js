@@ -431,6 +431,51 @@ export const adminUsersAPI = {
     apiRequest(`/admin/users/${id}/ai_sms_session/end_session`, {
       method: 'POST',
     }),
+  getActivation: (id) => apiRequest(`/admin/users/${id}/technician_activation`),
+  updateActivation: (id, payload) =>
+    apiRequest(`/admin/users/${id}/technician_activation`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  logCall: (id, payload) =>
+    apiRequest(`/admin/users/${id}/log_call`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  listInteractions: (id, { page = 1, perPage = 25 } = {}) => {
+    const qs = new URLSearchParams({ page: String(page), per_page: String(perPage) });
+    return apiRequest(`/admin/users/${id}/technician_interactions?${qs}`);
+  },
+  createInteraction: (id, payload) =>
+    apiRequest(`/admin/users/${id}/technician_interactions`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  importLocalNotes: (id, notes) =>
+    apiRequest(`/admin/users/${id}/technician_interactions/import_local`, {
+      method: 'POST',
+      body: JSON.stringify({ notes }),
+    }),
+  listFollowUpsForUser: (id) => apiRequest(`/admin/users/${id}/technician_follow_ups`),
+  createFollowUp: (id, payload) =>
+    apiRequest(`/admin/users/${id}/technician_follow_ups`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  listFollowUps: (params = {}) => {
+    const qs = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => {
+      if (v != null && String(v).trim() !== '') qs.set(k, String(v));
+    });
+    const q = qs.toString();
+    return apiRequest(`/admin/technician_follow_ups${q ? `?${q}` : ''}`);
+  },
+  updateFollowUp: (followUpId, payload) =>
+    apiRequest(`/admin/technician_follow_ups/${followUpId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  pipelineCounts: () => apiRequest('/admin/technician_activation/pipeline_counts'),
 };
 
 /** Admin: global membership tier pricing (technician vs company audiences) */

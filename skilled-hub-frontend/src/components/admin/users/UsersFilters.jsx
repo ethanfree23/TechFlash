@@ -12,6 +12,24 @@ import {
 const FILTER_FIELDS = [
   { key: 'userType', label: 'User type', type: 'select', options: ['', 'technician', 'company'] },
   { key: 'status', label: 'Status', type: 'select', options: ['', 'Active', 'Invited', 'Incomplete profile'] },
+  {
+    key: 'activationStatus',
+    label: 'Activation status',
+    type: 'select',
+    options: [
+      '',
+      'new',
+      'contacting',
+      'engaged',
+      'onboarding',
+      'ready',
+      'available',
+      'placed',
+      'nurture',
+      'unresponsive',
+      'disqualified',
+    ],
+  },
   { key: 'verificationStatus', label: 'Verification', type: 'select', options: ['', 'Verified', 'Pending'] },
   { key: 'riskLevel', label: 'Risk level', type: 'select', options: ['', 'Low', 'Medium', 'High'] },
   { key: 'loginActivity', label: 'Login activity', type: 'select', options: ['', 'active_30d', 'inactive_30d'] },
@@ -32,6 +50,8 @@ function columnKeysForFilter(key, activeTab, columns) {
       return ['type'];
     case 'status':
       return ['status'];
+    case 'activationStatus':
+      return ['activation_status'];
     case 'verificationStatus':
       return ['trade_license', 'references', 'background_check'];
     case 'riskLevel':

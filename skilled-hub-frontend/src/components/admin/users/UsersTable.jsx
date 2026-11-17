@@ -249,6 +249,66 @@ function renderCell(col, row, handlers = {}) {
           <UserStatusBadge status={row.accountStatus} />
         </div>
       );
+    case 'activation_status':
+      return row.role === 'technician' ? (
+        <CellText className="text-xs font-medium text-slate-700" title={row.activation?.statusLabel}>
+          {row.activation?.statusLabel || 'New'}
+        </CellText>
+      ) : (
+        <Muted>—</Muted>
+      );
+    case 'last_contacted':
+      return row.role === 'technician' ? (
+        <CellText
+          className={`text-xs tabular-nums ${row.activation?.last_contacted_at ? 'text-slate-600' : 'text-slate-400'}`}
+          title={row.activation?.lastContactedDisplay}
+        >
+          {row.activation?.lastContactedDisplay || 'Never'}
+        </CellText>
+      ) : (
+        <Muted>—</Muted>
+      );
+    case 'last_call_outcome':
+      return row.role === 'technician' && row.activation?.last_call_outcome ? (
+        <CellText className="text-xs text-slate-700" title={row.activation.lastCallOutcomeLabel}>
+          {row.activation.lastCallOutcomeLabel}
+        </CellText>
+      ) : (
+        <Muted>—</Muted>
+      );
+    case 'next_follow_up':
+      return row.role === 'technician' && row.activation?.next_follow_up_at ? (
+        <CellText
+          className={`text-xs tabular-nums ${
+            new Date(row.activation.next_follow_up_at).getTime() < Date.now() ? 'text-rose-700' : 'text-slate-600'
+          }`}
+          title={row.activation.nextFollowUpDisplay}
+        >
+          {row.activation.nextFollowUpDisplay}
+        </CellText>
+      ) : (
+        <Muted>—</Muted>
+      );
+    case 'onboarding_blockers':
+      return row.role === 'technician' ? (
+        row.activation?.blockersLabel ? (
+          <CellText className="text-[11px] text-amber-800" title={row.activation.blockersLabel}>
+            {row.activation.blockersLabel}
+          </CellText>
+        ) : (
+          <CellText className="text-[11px] text-emerald-700">Ready</CellText>
+        )
+      ) : (
+        <Muted>—</Muted>
+      );
+    case 'crm_availability':
+      return row.role === 'technician' ? (
+        <CellText className="text-xs text-slate-600" title={row.activation?.availabilityLabel}>
+          {row.activation?.availabilityLabel || 'Unknown'}
+        </CellText>
+      ) : (
+        <Muted>—</Muted>
+      );
     case 'trade_license':
       return (
         <div className="min-w-0 overflow-visible" onClick={(e) => e.stopPropagation()}>
@@ -648,6 +708,12 @@ export default function UsersTable({
           case 'user': return row.displayName?.toLowerCase() || '';
           case 'type': return row.role || '';
           case 'status': return row.accountStatus || '';
+          case 'activation_status': return row.activation?.status || '';
+          case 'last_contacted': return row.activation?.last_contacted_at ? new Date(row.activation.last_contacted_at).getTime() : 0;
+          case 'last_call_outcome': return row.activation?.last_call_outcome || '';
+          case 'next_follow_up': return row.activation?.next_follow_up_at ? new Date(row.activation.next_follow_up_at).getTime() : 0;
+          case 'onboarding_blockers': return (row.activation?.onboarding_blockers || []).length;
+          case 'crm_availability': return row.activation?.current_availability || '';
           case 'trade_license': return row.verification?.trade_license?.state || '';
           case 'references': return Number(row.verification?.professional_references?.count || 0);
           case 'background_check': return row.verification?.background_check?.label || '';

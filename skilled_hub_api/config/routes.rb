@@ -212,12 +212,22 @@ Rails.application.routes.draw do
             patch :membership_pricing
             patch :profile, action: :update_profile
             patch :admin_star
+            post :log_call, to: "technician_activations#log_call"
           end
+          resource :technician_activation, only: %i[show update], controller: "technician_activations"
+          resources :technician_interactions, only: %i[index create], controller: "technician_interactions" do
+            collection do
+              post :import_local
+            end
+          end
+          resources :technician_follow_ups, only: %i[index create], controller: "technician_follow_ups"
           resource :ai_sms_session, only: %i[show create], controller: "ai_sms_sessions" do
             post :pause
             post :end_session
           end
         end
+        get "technician_activation/pipeline_counts", to: "technician_activations#pipeline_counts"
+        resources :technician_follow_ups, only: %i[index update], controller: "technician_follow_ups"
         resources :crm_leads, only: %i[index show create update destroy] do
           member do
             post :merge

@@ -1,5 +1,13 @@
 import { parseCityState, stripCountryFromAddress, usZip5 } from './usAddress.js';
 import { usStateAbbreviation } from './crmUsState.js';
+import {
+  ACTIVATION_PIPELINE_TABS,
+  activationStatusLabel,
+  applyActivationPipelineFilter,
+  availabilityLabel,
+  blockersSummary,
+  callOutcomeLabel,
+} from './technicianActivation.js';
 
 /** Derived display fields, KPIs, tabs, and filters for Admin Users command center. */
 
@@ -7,6 +15,13 @@ export const USER_TABS = [
   { id: 'all', label: 'All users', apiRole: 'all' },
   { id: 'technicians', label: 'Technicians', apiRole: 'technician' },
   { id: 'focus', label: 'My focus', apiRole: 'technician' },
+  { id: 'never_contacted', label: 'Never contacted', apiRole: 'technician' },
+  { id: 'due_today', label: 'Follow-ups today', apiRole: 'technician' },
+  { id: 'overdue', label: 'Overdue', apiRole: 'technician' },
+  { id: 'awaiting_response', label: 'Awaiting response', apiRole: 'technician' },
+  { id: 'onboarding_incomplete', label: 'Onboarding incomplete', apiRole: 'technician' },
+  { id: 'ready_available', label: 'Ready / available', apiRole: 'technician' },
+  { id: 'unresponsive', label: 'Unresponsive', apiRole: 'technician' },
   { id: 'company', label: 'Company users', apiRole: 'company' },
   { id: 'admins', label: 'Admins', apiRole: null },
   { id: 'pending', label: 'Pending', apiRole: 'all' },
@@ -14,6 +29,8 @@ export const USER_TABS = [
   { id: 'suspended', label: 'Suspended', apiRole: 'all' },
   { id: 'recently_active', label: 'Recently active', apiRole: 'all' },
 ];
+
+export { ACTIVATION_PIPELINE_TABS };
 
 export const TRADE_LEVEL_SLUGS = ['helper', 'apprentice', 'journeyman', 'master'];
 export const TRADE_LEVEL_LABELS = {
@@ -34,6 +51,12 @@ export const DEFAULT_TABLE_COLUMNS = [
   { key: 'user', label: 'User', visible: true, width: 200 },
   { key: 'type', label: 'Type', visible: true, width: 96 },
   { key: 'status', label: 'Status', visible: true, width: 80 },
+  { key: 'activation_status', label: 'Activation', visible: true, width: 104 },
+  { key: 'last_contacted', label: 'Last contacted', visible: true, width: 104 },
+  { key: 'last_call_outcome', label: 'Last call', visible: true, width: 104 },
+  { key: 'next_follow_up', label: 'Next follow-up', visible: true, width: 110 },
+  { key: 'onboarding_blockers', label: 'Blockers', visible: true, width: 140 },
+  { key: 'crm_availability', label: 'Availability', visible: true, width: 100 },
   { key: 'trade_license', label: 'Trade license', visible: true, width: 88 },
   { key: 'references', label: 'References', visible: true, width: 72 },
   { key: 'background_check', label: 'Background check', visible: true, width: 112 },
@@ -51,10 +74,25 @@ export const DEFAULT_TABLE_COLUMNS = [
   { key: 'risk', label: 'Risk', visible: true, width: 64 },
 ];
 
+const TECH_PIPELINE_TABS = new Set(ACTIVATION_PIPELINE_TABS.map((t) => t.id));
+
 export function defaultColumnsForTab(tab) {
+  const techOriented = tab === 'technicians' || tab === 'focus' || TECH_PIPELINE_TABS.has(tab);
   return DEFAULT_TABLE_COLUMNS.map((col) => {
     if (col.key === 'company_trade') {
-      return { ...col, label: tab === 'technicians' ? 'Trade' : 'Company' };
+      return { ...col, label: techOriented ? 'Trade' : 'Company' };
+    }
+    if (
+      [
+        'activation_status',
+        'last_contacted',
+        'last_call_outcome',
+        'next_follow_up',
+        'onboarding_blockers',
+        'crm_availability',
+      ].includes(col.key)
+    ) {
+      return { ...col, visible: techOriented ? col.visible : false };
     }
     return { ...col };
   });
@@ -275,6 +313,30 @@ export function enrichUserRow(row, detail = null) {
     profileCompleteness: computeProfileCompleteness(row, detail),
     jobsSummary: detail ? buildJobsSummary(row, detail) : null,
     activityLabel: buildActivityLabel(logins30d, lastLoginAt),
+    activation: deriveActivation(row, detail),
+  };
+}
+
+function deriveActivation(row, detail) {
+  if (row.role !== 'technician') return null;
+  const fromDetail = detail?.user?.activation || null;
+  const fromRow = row.activation || null;
+  const merged = {
+    status: 'new',
+    current_availability: 'unknown',
+    ...(fromRow || {}),
+    ...(fromDetail || {}),
+  };
+  return {
+    ...merged,
+    statusLabel: activationStatusLabel(merged.status),
+    lastContactedDisplay: merged.last_contacted_at ? formatRelativeTime(merged.last_contacted_at) : 'Never',
+    lastCallOutcomeLabel: callOutcomeLabel(merged.last_call_outcome),
+    nextFollowUpDisplay: merged.next_follow_up_at ? formatRelativeTime(merged.next_follow_up_at) : '—',
+    nextFollowUpAt: merged.next_follow_up_at || null,
+    availabilityLabel: availabilityLabel(merged.current_availability),
+    blockersLabel: blockersSummary(merged),
+    onboarding: merged.onboarding || null,
   };
 }
 
@@ -412,7 +474,7 @@ export function computeKpis(enriched, techInsights = null) {
 }
 
 export function computeTabCounts(enriched) {
-  return {
+  const counts = {
     all: enriched.length,
     technicians: enriched.filter((u) => u.role === 'technician').length,
     focus: enriched.filter((u) => u.role === 'technician' && u.adminStarred).length,
@@ -423,6 +485,10 @@ export function computeTabCounts(enriched) {
     suspended: enriched.filter((u) => u.isSuspended).length,
     recently_active: enriched.filter((u) => u.isRecentlyActive).length,
   };
+  ACTIVATION_PIPELINE_TABS.forEach((tab) => {
+    counts[tab.id] = applyActivationPipelineFilter(enriched, tab.id).length;
+  });
+  return counts;
 }
 
 export function getApiRoleForTab(tabId) {
@@ -431,6 +497,7 @@ export function getApiRoleForTab(tabId) {
   if (['pending', 'flagged', 'suspended', 'recently_active', 'focus'].includes(tabId)) {
     return tabId === 'focus' ? 'technician' : 'all';
   }
+  if (TECH_PIPELINE_TABS.has(tabId)) return 'technician';
   return tab.apiRole || 'all';
 }
 
@@ -440,6 +507,14 @@ export function applyTabFilter(enriched, tabId) {
       return enriched.filter((u) => u.role === 'technician');
     case 'focus':
       return enriched.filter((u) => u.role === 'technician' && u.adminStarred);
+    case 'never_contacted':
+    case 'due_today':
+    case 'overdue':
+    case 'awaiting_response':
+    case 'onboarding_incomplete':
+    case 'ready_available':
+    case 'unresponsive':
+      return applyActivationPipelineFilter(enriched, tabId);
     case 'company':
       return enriched.filter((u) => u.role === 'company');
     case 'admins':
@@ -465,6 +540,11 @@ export function applyAdvancedFilters(rows, filters = {}, proximity = null) {
   }
   if (filters.status) {
     result = result.filter((u) => u.accountStatus === filters.status);
+  }
+  if (filters.activationStatus) {
+    result = result.filter(
+      (u) => u.role === 'technician' && (u.activation?.status || 'new') === filters.activationStatus
+    );
   }
   if (filters.verificationStatus) {
     result = result.filter((u) => u.verificationStatus === filters.verificationStatus);
@@ -654,6 +734,7 @@ export function getFilterChips(filters) {
 
   if (filters.userType) add('userType', filters.userType === 'technician' ? 'Technician' : filters.userType === 'company' ? 'Company' : 'Admin');
   if (filters.status) add('status', filters.status);
+  if (filters.activationStatus) add('activationStatus', activationStatusLabel(filters.activationStatus));
   if (filters.verificationStatus) add('verificationStatus', filters.verificationStatus);
   if (filters.riskLevel) add('riskLevel', `${filters.riskLevel} risk`);
   if (filters.company) add('company', filters.company);
