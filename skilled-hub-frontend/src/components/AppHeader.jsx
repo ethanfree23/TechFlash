@@ -18,7 +18,7 @@ import {
   FaUserShield,
   FaUsers,
 } from 'react-icons/fa';
-import { TECHFLASH_LOGO_NAV } from '../constants/branding';
+import { TECHFLASH_LOGO_ICON, TECHFLASH_LOGO_NAV } from '../constants/branding';
 import ReferralModal from './ReferralModal';
 import { getAppNavItems } from '../utils/appNavItems';
 
@@ -362,11 +362,11 @@ export default function AppHeader({
 
   return (
     <header className="bg-white shadow-sm border-b border-gray-200">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-2 sm:gap-4 h-16 min-w-0 w-full pt-[env(safe-area-inset-top)]">
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-center gap-2 sm:gap-4 h-16 min-w-0 w-full pt-[env(safe-area-inset-top)]">
         <button
           ref={menuButtonRef}
           type="button"
-          className="md:hidden inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100"
+          className="relative z-10 md:hidden inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-lg text-gray-700 hover:bg-gray-100"
           aria-label="Open navigation menu"
           aria-expanded={drawerOpen}
           aria-haspopup="dialog"
@@ -376,7 +376,17 @@ export default function AppHeader({
           <FaBars className="h-5 w-5" aria-hidden />
         </button>
 
-        <Link to="/dashboard" className="shrink-0 flex items-center">
+        {/* Mobile: logo-only, centered, larger */}
+        <Link
+          to="/dashboard"
+          className="absolute left-1/2 top-1/2 z-0 flex -translate-x-1/2 -translate-y-1/2 items-center md:hidden"
+          aria-label="TechFlash"
+        >
+          <img src={TECHFLASH_LOGO_ICON} alt="" className="h-14 w-auto object-contain" />
+        </Link>
+
+        {/* Desktop: logo left-aligned (unchanged) */}
+        <Link to="/dashboard" className="hidden shrink-0 items-center md:flex">
           <img src={TECHFLASH_LOGO_NAV} alt="TechFlash" className="h-9 object-contain" />
         </Link>
 
@@ -473,17 +483,12 @@ export default function AppHeader({
             </Link>
           )}
           {!profileAvatar && emailVariant === 'welcome' && (
-            <>
-              <span className="hidden md:inline text-sm text-gray-600">
-                Welcome, <span className="font-medium">{user?.email}</span>
-                <span className="ml-2 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full capitalize">
-                  {user?.role}
-                </span>
-              </span>
-              <span className="md:hidden px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full capitalize">
+            <span className="hidden md:inline text-sm text-gray-600">
+              Welcome, <span className="font-medium">{user?.email}</span>
+              <span className="ml-2 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full capitalize">
                 {user?.role}
               </span>
-            </>
+            </span>
           )}
           {!profileAvatar && emailVariant === 'simple' && (
             <span
@@ -494,17 +499,12 @@ export default function AppHeader({
             </span>
           )}
           {!profileAvatar && emailVariant === 'crm' && (
-            <>
-              <span className="hidden sm:inline text-sm text-gray-600">
-                <span className="font-medium">{user?.email}</span>
-                <span className="ml-2 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full capitalize">
-                  {user?.role}
-                </span>
-              </span>
-              <span className="sm:hidden px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full capitalize">
+            <span className="hidden sm:inline text-sm text-gray-600">
+              <span className="font-medium">{user?.email}</span>
+              <span className="ml-2 px-2 py-1 text-xs bg-gray-100 text-gray-600 rounded-full capitalize">
                 {user?.role}
               </span>
-            </>
+            </span>
           )}
           {profileAvatar && (
             <span className="hidden md:inline text-xs text-gray-500 capitalize">{user?.role}</span>

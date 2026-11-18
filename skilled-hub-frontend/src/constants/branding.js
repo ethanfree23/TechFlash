@@ -4,6 +4,8 @@
  */
 export const TECHFLASH_LOGO_NAV = '/techflash-logo.png?v=3';
 export const TECHFLASH_LOGO_LOGIN = '/techflash-logo-login.png?v=3';
+/** Gear/bolt mark only (no wordmark or tagline). Prefer this for compact mobile headers. */
+export const TECHFLASH_LOGO_ICON = '/techflash-icon.png?v=1';
 
 /** Company "Talk to Sales" — override with `VITE_TECHFLASH_SALES_HREF` (mailto: or https:). */
 export const TECHFLASH_SALES_HREF =
