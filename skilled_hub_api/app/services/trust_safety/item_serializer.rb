@@ -43,6 +43,17 @@ module TrustSafety
             eligible_for_verified_badge: check.eligible_for_background_gate?,
             profile_flag_background_verified: identity&.dig(:background_verified) == true
           },
+          lifecycle_summary: {
+            started_at: check.started_at&.iso8601,
+            completed_at: check.completed_at&.iso8601,
+            created_at: check.created_at&.iso8601
+          },
+          checkr_summary: {
+            dashboard_url: check.dashboard_url.presence || check.report_url.presence,
+            adjudication: check.provider_adjudication.presence,
+            result: check.result.presence,
+            assess_status: check.provider_assess_status.presence
+          },
           reviewer_decision: {
             override_status: check.admin_override_status.to_s == "none" ? nil : check.admin_override_status,
             notes: check.admin_notes.to_s.start_with?("INVITATION_OUTCOME_UNKNOWN:") ? nil : check.admin_notes.presence
@@ -168,6 +179,10 @@ module TrustSafety
           has_file: has_file,
           sensitive: DocumentPolicy.sensitive?(doc),
           verification_note: "Uploaded by the technician. Reviewer approval confirms the document looks valid; it is not an issuing-authority verification.",
+          issuer: doc.issuer.to_s.strip.presence,
+          document_number: DocumentPolicy.document_number(doc),
+          issued_on: doc.issued_on&.iso8601,
+          metadata: safe_metadata(doc.metadata),
           reviewer_decision: {
             status: doc.status,
             reviewed_at: doc.reviewed_at&.iso8601,
@@ -177,7 +192,8 @@ module TrustSafety
         }
         if detail
           payload[:details] = {
-            issuer: DocumentPolicy.title(doc),
+            title: DocumentPolicy.title(doc),
+            issuer: doc.issuer.to_s.strip.presence,
             document_number: DocumentPolicy.document_number(doc),
             issued_on: doc.issued_on&.iso8601,
             valid_until: doc.valid_until&.iso8601,
@@ -216,13 +232,17 @@ module TrustSafety
       def safe_metadata(metadata)
         return {} unless metadata.is_a?(Hash)
 
-        metadata.slice("identity_document_type", "title", "state", "issuing_state", "class", "ocr_confidence").compact
+        metadata.stringify_keys.slice(
+          "identity_document_type", "title", "credential_name", "trade", "state", "issuing_state",
+          "class", "ocr_confidence", "verification_method", "admin_notes"
+        ).compact
       end
 
       # --- References ----------------------------------------------------------------------
 
       def reference(ref, identity:, detail: false)
         display = ReferencePolicy.display_status(ref)
+        contact = admin_contact_summary(ref)
         payload = {
           key: item_key("reference", ref.id),
           item_type: "reference",
@@ -240,6 +260,12 @@ module TrustSafety
           action_reason: ReferencePolicy.action_reason(ref),
           priority: age_priority(ref.responded_at || ref.created_at, pending: ref.responded?),
           actions: ReferencePolicy.actions(ref),
+          contact: contact,
+          full_name: ref.full_name,
+          relationship: ref.relationship,
+          company_name: ref.company_name.presence,
+          email: ref.email.presence,
+          phone: ref.phone.presence,
           reviewer_decision: {
             status: ref.status,
             reviewed_at: ref.reviewed_at&.iso8601,
@@ -256,10 +282,28 @@ module TrustSafety
             phone: ref.phone.presence,
             requested_at: ref.requested_at&.iso8601,
             responded_at: ref.responded_at&.iso8601,
-            answers: ref.answers.is_a?(Hash) ? ref.answers : {}
+            answers: ref.answers.is_a?(Hash) ? ref.answers : {},
+            contact: contact
           }
         end
         payload
+      end
+
+      def admin_contact_summary(ref)
+        answers = ref.answers.is_a?(Hash) ? ref.answers.stringify_keys : {}
+        contact = answers["admin_contact"]
+        return nil unless contact.is_a?(Hash)
+
+        contact = contact.stringify_keys
+        {
+          last_outcome: contact["last_outcome"],
+          last_method: contact["last_method"],
+          last_note: contact["last_note"],
+          last_contacted_at: contact["last_contacted_at"],
+          last_contacted_by_user_id: contact["last_contacted_by_user_id"],
+          last_contacted_by_name: contact["last_contacted_by_name"],
+          successful: contact["last_outcome"].to_s == "reached"
+        }.compact
       end
 
       # --- Shared ----------------------------------------------------------------------------

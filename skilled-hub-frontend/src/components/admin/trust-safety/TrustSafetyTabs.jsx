@@ -3,7 +3,7 @@ import { TRUST_SAFETY_TABS } from '../../../utils/trustSafety';
 
 export default function TrustSafetyTabs({ activeTab, counts = {}, onChange }) {
   return (
-    <div className="-mx-1 px-1 overflow-x-auto scrollbar-thin" role="tablist" aria-label="Trust & Safety sections">
+    <div className="-mx-1 px-1 overflow-x-auto scrollbar-thin" role="tablist" aria-label="Verification sections">
       <div className="inline-flex gap-0.5 p-0.5 rounded-lg bg-slate-100/90 border border-slate-200/80 min-w-min">
         {TRUST_SAFETY_TABS.map((tab) => {
           const selected = activeTab === tab.id;

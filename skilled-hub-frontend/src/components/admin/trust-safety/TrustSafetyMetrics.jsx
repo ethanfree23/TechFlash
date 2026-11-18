@@ -20,7 +20,7 @@ const TONE = {
 
 export default function TrustSafetyMetrics({ summary, loading, activeKey, onSelect }) {
   return (
-    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2.5" role="group" aria-label="Trust & Safety metrics">
+    <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7 gap-2.5" role="group" aria-label="Verification metrics">
       {METRICS.map((metric) => {
         const data = summary?.[metric.key];
         const tone = TONE[metric.tone];

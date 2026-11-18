@@ -19,6 +19,11 @@ module TrustSafety
       "reference_rereviewed" => "Reference decision overridden",
       "reference_info_requested" => "More information requested (reference)",
       "reference_contact_attempt" => "Reference contact attempt recorded",
+      "reference_admin_created" => "Reference added by admin",
+      "reference_admin_updated" => "Reference updated by admin",
+      "reference_admin_destroyed" => "Reference removed by admin",
+      "document_admin_created" => "Credential added by admin",
+      "document_admin_updated" => "Credential updated by admin",
       "reviewer_note" => "Reviewer note"
     }.freeze
 

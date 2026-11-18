@@ -1308,6 +1308,31 @@ export const adminTrustSafetyAPI = {
       method: 'PATCH',
       body: JSON.stringify(payload),
     }),
+  createReference: (userId, payload) =>
+    apiRequest(`/admin/trust_safety/technicians/${userId}/references`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    }),
+  updateReference: (id, payload) =>
+    apiRequest(`/admin/trust_safety/references/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }),
+  destroyReference: (id, payload = {}) =>
+    apiRequest(`/admin/trust_safety/references/${id}`, {
+      method: 'DELETE',
+      body: JSON.stringify(payload),
+    }),
+  createCredential: (userId, formData) =>
+    apiRequest(`/admin/trust_safety/technicians/${userId}/credentials`, {
+      method: 'POST',
+      body: formData,
+    }),
+  updateCredential: (id, formData) =>
+    apiRequest(`/admin/trust_safety/documents/${id}`, {
+      method: 'PATCH',
+      body: formData,
+    }),
 };
 
 // Technician skills assessments.

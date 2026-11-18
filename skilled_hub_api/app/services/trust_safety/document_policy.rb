@@ -43,10 +43,19 @@ module TrustSafety
     end
 
     def title(doc)
+      meta_title = metadata_value(doc, "title").presence || metadata_value(doc, "credential_name").presence
+      return meta_title if meta_title.present?
+
       raw = doc.issuer.to_s.strip
       return nil if raw.blank? || PLACEHOLDER_TITLES.include?(raw.downcase)
 
       raw
+    end
+
+    def metadata_value(doc, key)
+      return nil unless doc.metadata.is_a?(Hash)
+
+      doc.metadata[key].to_s.strip.presence || doc.metadata[key.to_sym].to_s.strip.presence
     end
 
     def document_number(doc)

@@ -5,7 +5,7 @@ module TrustSafety
   module ReferencePolicy
     module_function
 
-    CONTACT_OUTCOMES = %w[reached voicemail no_answer wrong_number declined email_bounced].freeze
+    CONTACT_OUTCOMES = %w[reached voicemail text_sent no_answer wrong_number declined email_bounced].freeze
 
     def display_status(ref)
       case ref.status.to_s

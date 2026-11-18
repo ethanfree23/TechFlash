@@ -151,9 +151,13 @@ module Api
           assert_equal "verified", rows["background_check"]["status"]
           assert_equal "background_check:#{check.id}", rows["background_check"]["item_ref"]
           assert_equal "needs_review", rows["trade_license"]["status"]
-          assert_equal "not_started", rows["identity"]["status"]
+          assert_nil rows["identity"], "identity is no longer part of the verification checklist"
+          assert_nil rows["insurance"], "insurance is no longer part of the verification checklist"
           assert_equal "not_started", rows["references"]["status"]
+          assert_includes rows.keys, "contact"
+          assert_equal 4, profile.dig("summary", "total")
           assert_equal 1, profile.dig("summary", "verified_count")
+          assert_equal false, profile.dig("summary", "complete")
 
           get "/api/v1/admin/trust_safety/technicians/#{@admin.id}", headers: auth_header_for(@admin)
           assert_response :unprocessable_entity
@@ -436,8 +440,16 @@ module Api
           patch "/api/v1/admin/trust_safety/references/#{ref.id}/contact_attempt", params: { outcome: "voicemail", method: "phone", note: "Left message" }, headers: auth_header_for(@admin), as: :json
           assert_response :ok
           assert ref.reload.responded?
+          assert_equal "voicemail", ref.answers.dig("admin_contact", "last_outcome")
+          assert_equal "phone", ref.answers.dig("admin_contact", "last_method")
+          assert_equal @admin.id, ref.answers.dig("admin_contact", "last_contacted_by_user_id")
           log = VerificationAuditLog.where(entity_type: "VerificationReference", entity_id: ref.id, action: "reference_contact_attempt").last
           assert_equal "voicemail", log.details["outcome"]
+
+          patch "/api/v1/admin/trust_safety/references/#{ref.id}/contact_attempt", params: { outcome: "text_sent", method: "sms", note: "Follow-up text" }, headers: auth_header_for(@admin), as: :json
+          assert_response :ok
+          assert_equal "text_sent", ref.reload.answers.dig("admin_contact", "last_outcome")
+          assert_equal 2, ref.answers["contact_attempts"].size
 
           assert_difference -> { AppNotification.where(user_id: @tech.id).count }, 1 do
             patch "/api/v1/admin/trust_safety/references/#{ref.id}/request_info", params: { reason: "Please confirm the reference's current phone number." }, headers: auth_header_for(@admin), as: :json
@@ -526,6 +538,86 @@ module Api
           end
           assert_response :ok
           assert_equal "item_detail", VerificationAuditLog.where(action: "document_accessed").last.details["source"]
+        end
+
+        test "admin can create edit verify and remove references without auto-verifying" do
+          post "/api/v1/admin/trust_safety/technicians/#{@tech.id}/references",
+               params: { full_name: "Jordan Boss", phone: "5125550199", company_name: "Acme", relationship: "Former supervisor" },
+               headers: auth_header_for(@admin), as: :json
+          assert_response :created
+          body = JSON.parse(response.body)
+          ref_id = body.dig("item", "id")
+          assert_equal "Awaiting Response", body.dig("item", "status", "label")
+          assert_equal "requested", VerificationReference.find(ref_id).status
+          assert_includes body.dig("trust_profile", "checklist").map { |r| r["key"] }, "references"
+          refute body.dig("trust_profile", "checklist").any? { |r| r["key"] == "identity" }
+
+          patch "/api/v1/admin/trust_safety/references/#{ref_id}",
+                params: { company_name: "Acme Electric", email: "jordan@example.com" },
+                headers: auth_header_for(@admin), as: :json
+          assert_response :ok
+          assert_equal "Acme Electric", VerificationReference.find(ref_id).company_name
+
+          patch "/api/v1/admin/trust_safety/references/#{ref_id}/review",
+                params: { status: "approved", reason: "Verified by phone on site visit", override: true, expected_updated_at: expected_at(VerificationReference.find(ref_id)) },
+                headers: auth_header_for(@admin), as: :json
+          assert_response :ok
+          assert VerificationReference.find(ref_id).approved?
+          assert_equal @admin.id, VerificationReference.find(ref_id).reviewed_by_user_id
+
+          delete "/api/v1/admin/trust_safety/references/#{ref_id}",
+                 params: { confirm: true },
+                 headers: auth_header_for(@admin), as: :json
+          assert_response :ok
+          assert_nil VerificationReference.find_by(id: ref_id)
+          assert VerificationAuditLog.where(action: "reference_admin_destroyed").exists?
+
+          post "/api/v1/admin/trust_safety/technicians/#{@tech.id}/references",
+               params: { full_name: "No Contact" },
+               headers: auth_header_for(@admin), as: :json
+          assert_response :unprocessable_entity
+
+          post "/api/v1/admin/trust_safety/technicians/#{@tech.id}/references",
+               params: { full_name: "Blocked", phone: "5125550111" },
+               headers: auth_header_for(@tech), as: :json
+          assert_response :forbidden
+        end
+
+        test "admin can create and update credentials without auto-approving" do
+          post "/api/v1/admin/trust_safety/technicians/#{@tech.id}/credentials",
+               params: {
+                 doc_type: "license",
+                 title: "Texas Electrical License",
+                 trade: "Electrician",
+                 issuer: "Texas TDLR",
+                 document_number: "EL-999",
+                 state: "TX",
+                 verification_method: "document_review"
+               },
+               headers: auth_header_for(@admin), as: :json
+          assert_response :created
+          body = JSON.parse(response.body)
+          doc_id = body.dig("item", "id")
+          doc = Document.find(doc_id)
+          assert doc.pending_review?
+          assert_equal "Texas TDLR", doc.issuer
+          assert_equal "Texas Electrical License", doc.metadata["title"]
+          assert_equal "TX", doc.metadata["state"]
+
+          patch "/api/v1/admin/trust_safety/documents/#{doc_id}",
+                params: { document_number: "EL-1000", admin_notes: "Checked TDLR portal" },
+                headers: auth_header_for(@admin), as: :json
+          assert_response :ok
+          doc.reload
+          assert_equal "EL-1000", doc.document_number
+          assert_equal "Checked TDLR portal", doc.metadata["admin_notes"]
+          assert doc.pending_review?
+
+          patch "/api/v1/admin/trust_safety/documents/#{doc_id}/review",
+                params: { status: "approved", expected_updated_at: expected_at(doc) },
+                headers: auth_header_for(@admin), as: :json
+          assert_response :ok
+          assert doc.reload.approved?
         end
 
         private

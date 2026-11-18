@@ -20,6 +20,8 @@ import { TRADE_OPTIONS, COMPANY_INDUSTRY_OPTIONS } from '../constants/trades';
 import { CANONICAL_INDUSTRIES } from '../components/admin/adminUserIndustries';
 import { withDemoPath } from '../utils/demoMode';
 import TrustProfileChecklist from '../components/admin/trust-safety/TrustProfileChecklist';
+import { getFullName } from '../utils/adminUsersDisplayAdapter';
+import { formatPhoneDisplay } from '../utils/crmDisplayAdapter';
 
 const PERIODS = [
   { id: '24h', label: '24h' },
@@ -197,11 +199,39 @@ export default function AdminUserDetailPage({ user, onLogout }) {
       { id: 'profile', label: 'Profile' },
       { id: 'activity', label: 'Activity' },
       { id: 'work', label: 'Work and billing' },
-      ...(isTech ? [{ id: 'trust_safety', label: 'Trust & Safety' }] : []),
+      ...(isTech ? [{ id: 'trust_safety', label: 'Verification' }] : []),
       { id: 'access', label: 'Access and danger' },
     ],
     [isTech]
   );
+
+  const displayName = useMemo(() => {
+    if (!u) return 'User';
+    const fromUser = [u.first_name, u.last_name].map((s) => String(s || '').trim()).filter(Boolean).join(' ');
+    if (fromUser) return fromUser;
+    const fromProfile = [profile?.first_name, profile?.last_name].map((s) => String(s || '').trim()).filter(Boolean).join(' ');
+    if (fromProfile) return fromProfile;
+    if (profile?.full_name?.trim()) return profile.full_name.trim();
+    return getFullName(u);
+  }, [u, profile]);
+
+  const contactPhone = useMemo(() => {
+    return String(u?.phone || profile?.phone || '').trim();
+  }, [u, profile]);
+
+  const roleLine = useMemo(() => {
+    const parts = [];
+    if (profile?.trade_type) parts.push(profile.trade_type);
+    if (u?.role) parts.push(String(u.role).replace(/_/g, ' '));
+    if (profile?.company_name) parts.push(profile.company_name);
+    return parts.join(' · ');
+  }, [u, profile]);
+
+  const phoneTelHref = useMemo(() => {
+    const digits = contactPhone.replace(/\D/g, '');
+    if (!digits) return null;
+    return `tel:+${digits.startsWith('1') ? digits : `1${digits}`}`;
+  }, [contactPhone]);
 
   useEffect(() => {
     const audience = isCompany ? 'company' : isTech ? 'technician' : null;
@@ -627,12 +657,23 @@ export default function AdminUserDetailPage({ user, onLogout }) {
           </div>
 
           <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
-            <div>
-              <h1 className="text-2xl font-semibold text-gray-900">{u?.email || 'User'}</h1>
-              <p className="text-sm text-gray-500 mt-1 capitalize">
-                {u?.role}
-                {profile?.company_name && ` · ${profile.company_name}`}
-                {profile?.trade_type && ` · ${profile.trade_type}`}
+            <div className="min-w-0">
+              <h1 className="text-2xl font-semibold text-gray-900 break-words">{displayName}</h1>
+              {roleLine ? (
+                <p className="text-sm text-gray-500 mt-1 capitalize">{roleLine}</p>
+              ) : null}
+              <p className="text-sm text-gray-600 mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                {u?.email ? (
+                  <a href={`mailto:${u.email}`} className="text-blue-700 hover:underline break-all">
+                    {u.email}
+                  </a>
+                ) : null}
+                {u?.email && contactPhone ? <span className="text-gray-300" aria-hidden="true">·</span> : null}
+                {contactPhone && phoneTelHref ? (
+                  <a href={phoneTelHref} className="text-blue-700 hover:underline">
+                    {formatPhoneDisplay(contactPhone) || contactPhone}
+                  </a>
+                ) : null}
               </p>
               <AdminUserDetailProfileCardControls />
             </div>
@@ -758,8 +799,31 @@ export default function AdminUserDetailPage({ user, onLogout }) {
                   {isTech && profile && (
                     <>
                       <div>
+                        <dt className="text-gray-500">First name</dt>
+                        <dd className="font-medium text-gray-900">{u?.first_name || '—'}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-gray-500">Last name</dt>
+                        <dd className="font-medium text-gray-900">{u?.last_name || '—'}</dd>
+                      </div>
+                      <div>
                         <dt className="text-gray-500">Profile phone</dt>
-                        <dd className="font-medium text-gray-900">{profile.phone || '—'}</dd>
+                        <dd className="font-medium text-gray-900">
+                          {profile.phone ? (
+                            <a
+                              href={(() => {
+                                const digits = String(profile.phone).replace(/\D/g, '');
+                                if (!digits) return undefined;
+                                return `tel:+${digits.startsWith('1') ? digits : `1${digits}`}`;
+                              })()}
+                              className="text-blue-700 hover:underline"
+                            >
+                              {formatPhoneDisplay(profile.phone) || profile.phone}
+                            </a>
+                          ) : (
+                            '—'
+                          )}
+                        </dd>
                       </div>
                       <div>
                         <dt className="text-gray-500">Trade</dt>
@@ -1775,8 +1839,8 @@ export default function AdminUserDetailPage({ user, onLogout }) {
 
             {detailTab === 'trust_safety' && isTech && u?.id && (
               <AdminCollapsibleCard
-                title="Trust & Safety"
-                description="Verification checklist for this technician. Each row reflects the current records and business rules; open an item to review it in the Trust & Safety workspace."
+                title="Verification"
+                description="Manage background checks, professional references, and trade credentials for this technician. Most actions can be completed here; open the Verification Workspace for the full review queue."
                 defaultOpen
                 persistKey={`admin-user-trust-safety:${userId}`}
               >
