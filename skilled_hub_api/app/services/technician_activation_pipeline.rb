@@ -8,6 +8,7 @@ class TechnicianActivationPipeline
     awaiting_response
     onboarding_incomplete
     ready_available
+    has_a_job
     unresponsive
   ].freeze
 
@@ -31,6 +32,7 @@ class TechnicianActivationPipeline
       awaiting_response: awaiting_response_scope.count,
       onboarding_incomplete: onboarding_incomplete_user_ids.size,
       ready_available: TechnicianActivation.where(status: %w[ready available]).count,
+      has_a_job: TechnicianActivation.where(current_availability: "has_a_job").count,
       unresponsive: TechnicianActivation.where(status: "unresponsive").count,
       by_status: TechnicianActivation.group(:status).count
     }
@@ -50,6 +52,8 @@ class TechnicianActivationPipeline
       onboarding_incomplete_user_ids
     when "ready_available"
       TechnicianActivation.where(status: %w[ready available]).pluck(:user_id)
+    when "has_a_job"
+      TechnicianActivation.where(current_availability: "has_a_job").pluck(:user_id)
     when "unresponsive"
       TechnicianActivation.where(status: "unresponsive").pluck(:user_id)
     else

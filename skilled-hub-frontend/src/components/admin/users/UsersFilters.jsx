@@ -8,6 +8,7 @@ import {
   clampTableColumnWidth,
   minWidthForColumnKey,
 } from '../../../utils/tableColumnPrefs';
+import { AVAILABILITIES, AVAILABILITY_LABELS, ACTIVATION_STATUS_LABELS } from '../../../utils/technicianActivation';
 
 const FILTER_FIELDS = [
   { key: 'userType', label: 'User type', type: 'select', options: ['', 'technician', 'company'] },
@@ -29,6 +30,12 @@ const FILTER_FIELDS = [
       'unresponsive',
       'disqualified',
     ],
+  },
+  {
+    key: 'availability',
+    label: 'Availability',
+    type: 'select',
+    options: ['', ...AVAILABILITIES.map((a) => a.id)],
   },
   { key: 'verificationStatus', label: 'Verification', type: 'select', options: ['', 'Verified', 'Pending'] },
   { key: 'riskLevel', label: 'Risk level', type: 'select', options: ['', 'Low', 'Medium', 'High'] },
@@ -52,6 +59,8 @@ function columnKeysForFilter(key, activeTab, columns) {
       return ['status'];
     case 'activationStatus':
       return ['activation_status'];
+    case 'availability':
+      return ['crm_availability'];
     case 'verificationStatus':
       return ['trade_license', 'references', 'background_check'];
     case 'riskLevel':
@@ -169,6 +178,8 @@ function optionLabel(opt) {
     8: '8+ years',
     10: '10+ years',
     15: '15+ years',
+    ...ACTIVATION_STATUS_LABELS,
+    ...AVAILABILITY_LABELS,
   };
   return map[opt] ?? opt;
 }

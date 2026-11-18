@@ -21,6 +21,7 @@ export const USER_TABS = [
   { id: 'awaiting_response', label: 'Awaiting response', apiRole: 'technician' },
   { id: 'onboarding_incomplete', label: 'Onboarding incomplete', apiRole: 'technician' },
   { id: 'ready_available', label: 'Ready / available', apiRole: 'technician' },
+  { id: 'has_a_job', label: 'Has a job', apiRole: 'technician' },
   { id: 'unresponsive', label: 'Unresponsive', apiRole: 'technician' },
   { id: 'company', label: 'Company users', apiRole: 'company' },
   { id: 'admins', label: 'Admins', apiRole: null },
@@ -513,6 +514,7 @@ export function applyTabFilter(enriched, tabId) {
     case 'awaiting_response':
     case 'onboarding_incomplete':
     case 'ready_available':
+    case 'has_a_job':
     case 'unresponsive':
       return applyActivationPipelineFilter(enriched, tabId);
     case 'company':
@@ -544,6 +546,13 @@ export function applyAdvancedFilters(rows, filters = {}, proximity = null) {
   if (filters.activationStatus) {
     result = result.filter(
       (u) => u.role === 'technician' && (u.activation?.status || 'new') === filters.activationStatus
+    );
+  }
+  if (filters.availability) {
+    result = result.filter(
+      (u) =>
+        u.role === 'technician' &&
+        (u.activation?.current_availability || 'unknown') === filters.availability
     );
   }
   if (filters.verificationStatus) {
@@ -735,6 +744,7 @@ export function getFilterChips(filters) {
   if (filters.userType) add('userType', filters.userType === 'technician' ? 'Technician' : filters.userType === 'company' ? 'Company' : 'Admin');
   if (filters.status) add('status', filters.status);
   if (filters.activationStatus) add('activationStatus', activationStatusLabel(filters.activationStatus));
+  if (filters.availability) add('availability', availabilityLabel(filters.availability));
   if (filters.verificationStatus) add('verificationStatus', filters.verificationStatus);
   if (filters.riskLevel) add('riskLevel', `${filters.riskLevel} risk`);
   if (filters.company) add('company', filters.company);

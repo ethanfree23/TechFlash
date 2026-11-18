@@ -41,7 +41,7 @@ export const ACTIVATION_STATUS_COLORS = {
 
 export const CALL_OUTCOMES = [
   { id: 'connected', label: 'Connected' },
-  { id: 'left_voicemail', label: 'Left voicemail' },
+  { id: 'left_voicemail', label: 'vm / texted' },
   { id: 'no_answer', label: 'No answer' },
   { id: 'requested_callback', label: 'Requested callback' },
   { id: 'wrong_number', label: 'Wrong/disconnected' },
@@ -55,6 +55,7 @@ export const AVAILABILITIES = [
   { id: 'available_now', label: 'Available now' },
   { id: 'available_soon', label: 'Available soon' },
   { id: 'not_available', label: 'Not available' },
+  { id: 'has_a_job', label: 'Has a job' },
 ];
 
 export const AVAILABILITY_LABELS = Object.fromEntries(AVAILABILITIES.map((a) => [a.id, a.label]));
@@ -66,6 +67,7 @@ export const ACTIVATION_PIPELINE_TABS = [
   { id: 'awaiting_response', label: 'Awaiting response', scope: 'awaiting_response' },
   { id: 'onboarding_incomplete', label: 'Onboarding incomplete', scope: 'onboarding_incomplete' },
   { id: 'ready_available', label: 'Ready / available', scope: 'ready_available' },
+  { id: 'has_a_job', label: 'Has a job', scope: 'has_a_job' },
   { id: 'unresponsive', label: 'Unresponsive', scope: 'unresponsive' },
 ];
 
@@ -175,6 +177,8 @@ export function applyActivationPipelineFilter(enriched, pipelineId) {
       );
     case 'ready_available':
       return techs.filter((u) => ['ready', 'available'].includes(u.activation?.status));
+    case 'has_a_job':
+      return techs.filter((u) => u.activation?.current_availability === 'has_a_job');
     case 'unresponsive':
       return techs.filter((u) => u.activation?.status === 'unresponsive');
     default:

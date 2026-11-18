@@ -19,6 +19,7 @@ class TechnicianActivation < ApplicationRecord
     available_now
     available_soon
     not_available
+    has_a_job
   ].freeze
 
   # Soft guidance for admins. All transitions among STATUSES are allowed;
