@@ -59,10 +59,35 @@ module Assessments
       build_entry(assessment)
     end
 
-    # True when this assessment's trade matches the technician's profile trades.
-    # Used by start/show to keep deep links consistent with the catalog filter.
+    # True when this assessment belongs in the technician's catalog: matching
+    # trade, or an in-progress attempt they still need to finish after a trade
+    # profile change. Used by show so deep links match the catalog filter.
     def eligible_for?(assessment)
+      visible_to_technician?(assessment)
+    end
+
+    # Strict trade match for starting a *new* attempt (resume bypasses this).
+    def trade_matches?(assessment)
       trade_match?(assessment)
+    end
+
+    # Cheap nav gate: does this technician have any assessment they should see?
+    # Avoids building the full catalog on every /users/me serialize.
+    def self.offered_to?(technician_profile)
+      return false if technician_profile.blank?
+
+      new(technician_profile: technician_profile).offered?
+    end
+
+    def offered?
+      return true if in_progress_assessment_ids.any?
+      return false if recommended_trade_labels.empty?
+
+      Assessment
+        .active
+        .where.not(trade_type: [nil, ""])
+        .includes(assessment_versions: :assessment_categories)
+        .any? { |assessment| assessment.takeable? && trade_match?(assessment) }
     end
 
     def recommended_trade_labels

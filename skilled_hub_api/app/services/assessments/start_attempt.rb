@@ -154,7 +154,7 @@ module Assessments
     def trade_eligible?
       TechnicianCatalog
         .new(technician_profile: technician_profile)
-        .eligible_for?(assessment)
+        .trade_matches?(assessment)
     end
 
     def failure(code, message, decision: nil)

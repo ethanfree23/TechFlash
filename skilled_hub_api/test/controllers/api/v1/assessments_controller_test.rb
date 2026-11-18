@@ -96,6 +96,22 @@ module Api
         assert_response :not_found
       end
 
+      test "a technician outside plumbing electrical and hvac sees no assessments" do
+        create_published_assessment!(slug: "none_hvac", title: "HVAC", trade_type: "HVAC Technician")
+        create_published_assessment!(slug: "none_plumbing", title: "Plumbing", trade_type: "Plumber")
+        create_published_assessment!(slug: "none_electrical", title: "Electrical", trade_type: "Electrician")
+        user, = create_technician!(trade_type: "Roofer")
+
+        get "/api/v1/assessments", headers: auth_header_for(user)
+
+        assert_response :ok
+        assert_equal [], JSON.parse(response.body)["assessments"]
+        payload = UserSerializer.new(user.reload).as_json
+        available = payload["skills_assessments_available"]
+        available = payload[:skills_assessments_available] if available.nil?
+        assert_equal false, available
+      end
+
       test "catalog state reflects an in-progress attempt" do
         assessment = create_published_assessment!(
           slug: "catalog_in_progress",

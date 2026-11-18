@@ -409,7 +409,7 @@ export default function AppHeader({
                     Technicians
                   </NavLink>
                 )}
-                {user?.role === 'technician' && (
+                {user?.role === 'technician' && user?.skills_assessments_available !== false && (
                   <NavLink page="assessments" to="/assessments">
                     Assessments
                   </NavLink>
