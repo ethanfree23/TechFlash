@@ -1588,17 +1588,60 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
+  const buildLinkedAwareMergeDefaults = (currentLead, targetLead) => {
+    const fallback = {
+      direction: 'into_current',
+      fieldSources: Object.fromEntries(CRM_MERGE_FIELDS.map((field) => [field.key, 'current'])),
+    };
+    const isLinked = (lead) => Boolean(lead?.linked_user_id || lead?.linked_company_profile_id);
+    const fieldBlank = (lead, key) => {
+      const value = lead?.[key];
+      if (value == null) return true;
+      if (typeof value === 'string') return value.trim() === '';
+      return false;
+    };
+    if (!currentLead || !targetLead || isLinked(currentLead) === isLinked(targetLead)) return fallback;
+
+    // Unlinked + linked duplicate: keep the TechFlash-linked customer and fill blanks from the unlinked lead.
+    const keepCurrent = isLinked(currentLead);
+    const survivorSide = keepCurrent ? 'current' : 'selected';
+    const donorSide = keepCurrent ? 'selected' : 'current';
+    const survivor = keepCurrent ? currentLead : targetLead;
+    const donor = keepCurrent ? targetLead : currentLead;
+    return {
+      direction: keepCurrent ? 'into_current' : 'into_target',
+      fieldSources: Object.fromEntries(
+        CRM_MERGE_FIELDS.map((field) => {
+          if (field.key === 'linked_user_id' || field.key === 'linked_company_profile_id' || field.key === 'status') {
+            return [field.key, survivorSide];
+          }
+          if (fieldBlank(survivor, field.key) && !fieldBlank(donor, field.key)) {
+            return [field.key, donorSide];
+          }
+          return [field.key, survivorSide];
+        }),
+      ),
+    };
+  };
+
+  const applyMergeTargetSelection = (targetIdRaw) => {
+    const targetId = targetIdRaw != null && targetIdRaw !== '' ? String(targetIdRaw) : '';
+    const currentLead = leads.find((lead) => Number(lead.id) === Number(selectedId)) || c || null;
+    const targetLead = targetId ? leads.find((lead) => Number(lead.id) === Number(targetId)) : null;
+    const { direction, fieldSources } = buildLinkedAwareMergeDefaults(currentLead, targetLead);
+    setMergeFieldSources(fieldSources);
+    setMergeDirection(direction);
+    setMergeTargetId(targetId);
+  };
+
   const openMergeModal = (preselectedTargetLeadId) => {
-    const defaults = Object.fromEntries(CRM_MERGE_FIELDS.map((field) => [field.key, 'current']));
-    setMergeFieldSources(defaults);
     setMergeOptions({
       combine_contacts: true,
       combine_company_types: true,
       combine_notes: true,
       combine_timeline_notes: true,
     });
-    setMergeDirection('into_current');
-    setMergeTargetId(
+    applyMergeTargetSelection(
       preselectedTargetLeadId != null && preselectedTargetLeadId !== '' ? String(preselectedTargetLeadId) : '',
     );
     setMergeModalOpen(true);
@@ -6291,7 +6334,7 @@ const CrmPage = ({ user, onLogout, onUserUpdate }) => {
                     <select
                       className="mt-1 w-full border border-gray-300 rounded-lg px-3 py-2 text-sm"
                       value={mergeTargetId}
-                      onChange={(e) => setMergeTargetId(e.target.value)}
+                      onChange={(e) => applyMergeTargetSelection(e.target.value)}
                     >
                       <option value="">Select CRM record</option>
                       {leads.filter((lead) => Number(lead.id) !== Number(selectedId)).map((lead) => (

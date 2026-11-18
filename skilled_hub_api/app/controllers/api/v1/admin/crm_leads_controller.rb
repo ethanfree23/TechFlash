@@ -174,44 +174,33 @@ module Api
         def merge
           current = CrmLead.find(params[:id])
           selected = CrmLead.find(params[:target_crm_lead_id])
-          if current.id == selected.id
-            return render json: { error: "Target must be different from source" }, status: :unprocessable_entity
-          end
-
           keep_current = params[:merge_direction].to_s == "into_current"
-          source = keep_current ? selected : current
-          target = keep_current ? current : selected
-          field_sources = permitted_merge_field_sources.to_h
-          combine_contacts = cast_boolean_param(params[:combine_contacts], true)
-          combine_company_types = cast_boolean_param(params[:combine_company_types], true)
-          combine_notes = cast_boolean_param(params[:combine_notes], true)
-          combine_timeline_notes = cast_boolean_param(params[:combine_timeline_notes], true)
 
-          ActiveRecord::Base.transaction do
-            apply_merge_fields!(
-              target,
-              current,
-              selected,
-              field_sources,
-              combine_contacts: combine_contacts,
-              combine_company_types: combine_company_types,
-              combine_notes: combine_notes
-            )
-            move_source_notes_to_target!(source, target) if combine_timeline_notes
-            source.destroy!
-          end
+          result = CrmLeadMerger.call(
+            current: current,
+            selected: selected,
+            merge_direction: params[:merge_direction],
+            field_sources: permitted_merge_field_sources.to_h,
+            combine_contacts: cast_boolean_param(params[:combine_contacts], true),
+            combine_company_types: cast_boolean_param(params[:combine_company_types], true),
+            combine_notes: cast_boolean_param(params[:combine_notes], true),
+            combine_timeline_notes: cast_boolean_param(params[:combine_timeline_notes], true)
+          )
+          target = result.crm_lead
 
           payload = { crm_lead: lead_json(target) }
           append_linked_payload(payload, target)
           payload[:crm_notes] = crm_notes_payload(target)
           payload[:merged] = {
-            source_crm_lead_id: source.id,
-            target_crm_lead_id: target.id,
+            source_crm_lead_id: result.source_id,
+            target_crm_lead_id: result.target_id,
             merge_direction: keep_current ? "into_current" : "into_target"
           }
           render json: payload, status: :ok
         rescue ActiveRecord::RecordNotFound
           render json: { error: "CRM record not found" }, status: :not_found
+        rescue CrmLeadMerger::Error => e
+          render json: { error: e.message }, status: :unprocessable_entity
         rescue ActiveRecord::RecordInvalid => e
           render json: { error: e.record.errors.full_messages.to_sentence }, status: :unprocessable_entity
         end
@@ -306,153 +295,8 @@ module Api
           ActiveModel::Type::Boolean.new.cast(value)
         end
 
-        def mergeable_fields
-          %i[
-            name
-            contact_name
-            email
-            phone
-            company_email
-            company_phone
-            bio
-            website
-            street_address
-            city
-            state
-            zip
-            instagram_url
-            facebook_url
-            linkedin_url
-            status
-            linked_user_id
-            linked_company_profile_id
-          ]
-        end
-
-        def pick_merge_value(field, current, selected, field_sources, target)
-          selected_source = field_sources[field.to_s].to_s
-          picked =
-            case selected_source
-            when "selected"
-              selected.public_send(field)
-            when "current"
-              current.public_send(field)
-            else
-              target.public_send(field)
-            end
-          field.to_sym.in?([:linked_user_id, :linked_company_profile_id]) ? picked.presence : picked
-        end
-
-        def apply_merge_fields!(target, current, selected, field_sources, combine_contacts:, combine_company_types:, combine_notes:)
-          attrs = {}
-          mergeable_fields.each do |field|
-            attrs[field] = pick_merge_value(field, current, selected, field_sources, target)
-          end
-
-          attrs[:company_types] =
-            if combine_company_types
-              (Array(current.company_types) | Array(selected.company_types))
-            else
-              chosen = pick_merge_value(:company_types, current, selected, field_sources, target)
-              Array(chosen)
-            end
-
-          attrs[:contacts] =
-            if combine_contacts
-              merge_contacts_for(current, selected, field_sources)
-            else
-              chosen = pick_merge_value(:contacts, current, selected, field_sources, target)
-              Array(chosen)
-            end
-
-          attrs[:notes] =
-            if combine_notes
-              merge_text_notes(current.notes, selected.notes)
-            else
-              pick_merge_value(:notes, current, selected, field_sources, target)
-            end
-
-          primary = Array(attrs[:contacts]).first || {}
-          attrs[:contact_name] = primary[:name].presence || primary["name"].presence || attrs[:contact_name]
-          attrs[:email] = primary[:email].presence || primary["email"].presence || attrs[:email]
-          attrs[:phone] = primary[:phone].presence || primary["phone"].presence || attrs[:phone]
-
-          target.update!(attrs)
-        end
-
-        def merge_contacts_for(current, selected, field_sources)
-          preferred = field_sources["contacts"].to_s == "selected" ? selected : current
-          secondary = preferred == current ? selected : current
-          contacts = Array(preferred.contacts) + Array(secondary.contacts)
-          dedupe_contacts(contacts)
-        end
-
         def compact_contact_entry(entry)
-          h = entry.respond_to?(:to_h) ? entry.to_h : {}
-          name = h["name"].to_s.strip.presence || h[:name].to_s.strip.presence
-          email = h["email"].to_s.strip.presence || h[:email].to_s.strip.presence
-          phone = h["phone"].to_s.strip.presence || h[:phone].to_s.strip.presence
-          return nil if name.blank? && email.blank? && phone.blank?
-
-          out = { "name" => name, "email" => email, "phone" => phone }
-          %w[job_title extension instagram_url facebook_url linkedin_url].each do |k|
-            v = h[k].to_s.strip.presence || h[k.to_sym].to_s.strip.presence
-            out[k] = v if v.present?
-          end
-          sac_raw = h["same_as_company"] || h[:same_as_company]
-          if sac_raw.is_a?(Hash)
-            sac = {}
-            %w[email phone socials].each do |k|
-              val = sac_raw[k] || sac_raw[k.to_sym]
-              next if val.nil?
-
-              sac[k] = ActiveModel::Type::Boolean.new.cast(val)
-            end
-            out["same_as_company"] = sac if sac.any? { |_, v| v }
-          end
-
-          lid_raw = h["linked_user_id"] || h[:linked_user_id]
-          if lid_raw.present?
-            lid = lid_raw.to_i
-            out["linked_user_id"] = lid if lid.positive?
-          end
-
-          out
-        end
-
-        def dedupe_contacts(contacts)
-          by_key = {}
-          contacts.each do |entry|
-            compact = compact_contact_entry(entry)
-            next unless compact
-
-            name = compact["name"].to_s.strip.presence
-            email = compact["email"].to_s.strip.presence
-            phone_digits = compact["phone"].to_s.gsub(/\D/, "")
-            phone_digits = phone_digits[-10, 10] if phone_digits.present?
-            key = [name.to_s.downcase, email.to_s.downcase, phone_digits.to_s].join("|")
-            prev = by_key[key]
-            if prev.nil?
-              by_key[key] = compact
-            else
-              prev_lid = prev["linked_user_id"].present?
-              new_lid = compact["linked_user_id"].present?
-              by_key[key] = compact if new_lid && !prev_lid
-            end
-          end
-          by_key.values
-        end
-
-        def merge_text_notes(current_notes, selected_notes)
-          texts = [current_notes, selected_notes].map { |value| value.to_s.strip }.reject(&:blank?).uniq
-          texts.join("\n\n---\n\n")
-        end
-
-        def move_source_notes_to_target!(source, target)
-          return if source.id == target.id
-
-          now = Time.current
-          CrmNote.where(crm_lead_id: source.id).update_all(crm_lead_id: target.id, updated_at: now)
+          CrmLeadMerger.compact_contact_entry(entry)
         end
 
         def platform_company_users_payload(lead)
