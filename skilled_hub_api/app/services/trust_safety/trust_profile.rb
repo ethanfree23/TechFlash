@@ -27,22 +27,25 @@ module TrustSafety
       references = VerificationReference.where(technician_user_id: @user.id).includes(:reviewed_by_user).order(:created_at).to_a
       badges = VerificationBadge.where(user_id: @user.id).to_a
 
+      # Identity and insurance documents remain in items for historical review, but are no
+      # longer required verification checklist rows (Checkr covers screening; TechFlash covers insurance).
       checklist = [
         background_row(checks, identity, verification, badges),
         references_row(references, identity, verification, badges),
         trade_license_row(documents, identity, inventory, verification),
-        identity_row(documents, identity, verification),
-        insurance_row(documents, identity, verification),
         contact_row(verification)
       ]
 
+      required_rows = checklist.reject { |row| row[:optional] }
+      satisfied = required_rows.count { |row| row_satisfied?(row) }
       {
         technician: identity,
         checklist: checklist,
         summary: {
-          verified_count: checklist.count { |row| row[:status] == "verified" },
-          total: checklist.size,
+          verified_count: satisfied,
+          total: required_rows.size,
           needs_review_count: checklist.count { |row| row[:status] == "needs_review" },
+          complete: required_rows.any? && required_rows.all? { |row| row_satisfied?(row) },
           background_verified: @profile.background_verified == true,
           verification_profile: verification && {
             identity_status: verification.identity_status,
@@ -59,6 +62,7 @@ module TrustSafety
         items: {
           background_checks: checks.map { |c| ItemSerializer.background_check(c, identity: identity) },
           documents: documents.map { |d| ItemSerializer.document(d, identity: identity) },
+          credentials: documents.select { |d| DocumentPolicy.category(d) == "credential" }.map { |d| ItemSerializer.document(d, identity: identity) },
           references: references.map { |r| ItemSerializer.reference(r, identity: identity) }
         },
         badges: badges.map { |b| { badge_type: b.badge_type, status: b.status, earned_at: b.earned_at&.iso8601, expires_at: b.expires_at&.iso8601 } }
@@ -130,9 +134,9 @@ module TrustSafety
       next_action =
         case status
         when "needs_review" then "Review the responded reference(s)."
-        when "pending" then "Open a reference to log a phone/email contact attempt or add an internal note after outreach."
+        when "pending" then "Contact references and mark verified after successful outreach, or log a contact attempt / note."
         when "verified" then nil
-        else "Waiting on the technician to add references."
+        else "Add professional references and verify them after contact."
         end
       row("references", "Professional references", status, label,
           detail: "#{references.size} submitted · #{approved} verified · #{REFERENCES_REQUIRED_FOR_BADGE} verified required for the references badge · #{TechnicianVerificationInventory::COMPLETE_REFERENCE_COUNT} required for a complete profile.",
@@ -157,33 +161,6 @@ module TrustSafety
           item_ref: first_item_ref(docs),
           documents: docs.map { |d| ItemSerializer.document(d, identity: identity) },
           recorded_status: verification&.licenses_status)
-    end
-
-    def identity_row(documents, identity, verification)
-      docs = documents.select { |d| DocumentPolicy.category(d) == "identity" }
-      status = document_group_status(docs, claimed: nil, inventory_state: nil)
-      row("identity", "Identity verification", status[:key], status[:label],
-          detail: docs.empty? ? "No identity document uploaded. Identity is not verified by the background check alone." : status[:detail],
-          updated_at: docs.map(&:updated_at).compact.max,
-          reviewer: latest_reviewer(docs),
-          next_action: status[:next_action],
-          item_ref: first_item_ref(docs),
-          documents: docs.map { |d| ItemSerializer.document(d, identity: identity) },
-          recorded_status: verification&.identity_status)
-    end
-
-    def insurance_row(documents, identity, verification)
-      docs = documents.select { |d| DocumentPolicy.category(d) == "insurance" }
-      status = document_group_status(docs, claimed: nil, inventory_state: nil)
-      row("insurance", "Insurance", status[:key], status[:label],
-          detail: docs.empty? ? "No insurance certificate uploaded (optional unless required by a job)." : status[:detail],
-          updated_at: docs.map(&:updated_at).compact.max,
-          reviewer: latest_reviewer(docs),
-          next_action: status[:next_action],
-          item_ref: first_item_ref(docs),
-          documents: docs.map { |d| ItemSerializer.document(d, identity: identity) },
-          recorded_status: verification&.insurance_status,
-          optional: true)
     end
 
     def contact_row(verification)
@@ -261,6 +238,12 @@ module TrustSafety
       when "expired", "incomplete" then "warning"
       else "neutral"
       end
+    end
+
+    # not_applicable (e.g. no trade credential claimed) counts as satisfied for overall completion.
+    def row_satisfied?(row)
+      status = row[:status].to_s
+      status == "verified" || status == "not_applicable"
     end
   end
 end

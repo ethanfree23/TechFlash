@@ -39,6 +39,7 @@ const testFiles = [
   'dateTimePicker.test.mjs',
   'appNavItems.test.mjs',
   'trustSafety.test.mjs',
+  'adminVerificationWorkspace.test.mjs',
 ];
 
 let successful = 0;

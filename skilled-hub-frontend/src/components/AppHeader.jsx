@@ -33,7 +33,7 @@ const ADMIN_SETTINGS_ITEMS = [
   { page: 'settings', to: '/settings', label: 'Settings' },
   { page: 'reviews', to: '/admin/reviews', label: 'Reviews' },
   { page: 'job_payments', to: '/admin/job-payments', label: 'Payments' },
-  { page: 'trust_safety', to: '/admin/trust-safety', label: 'Trust & Safety' },
+  { page: 'trust_safety', to: '/admin/trust-safety', label: 'Verification' },
   { page: 'assessments', to: '/admin/assessments', label: 'Assessments' },
 ];
 

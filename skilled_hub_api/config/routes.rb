@@ -183,6 +183,11 @@ Rails.application.routes.draw do
         patch "trust_safety/documents/:id/request_info", to: "trust_safety#request_document_info"
         patch "trust_safety/references/:id/request_info", to: "trust_safety#request_reference_info"
         patch "trust_safety/references/:id/contact_attempt", to: "trust_safety#record_reference_contact_attempt"
+        post "trust_safety/technicians/:user_id/references", to: "trust_safety#create_reference"
+        patch "trust_safety/references/:id", to: "trust_safety#update_reference"
+        delete "trust_safety/references/:id", to: "trust_safety#destroy_reference"
+        post "trust_safety/technicians/:user_id/credentials", to: "trust_safety#create_credential"
+        patch "trust_safety/documents/:id", to: "trust_safety#update_credential"
         get "trust_safety/audit", to: "trust_safety#audit"
         patch "review_flags/:id", to: "reviews#update_flag"
         resources :membership_tier_configs, only: %i[index create update destroy] do

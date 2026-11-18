@@ -603,15 +603,6 @@ module Api
         active_badge_types = badges.map(&:badge_type)
         [
           {
-            key: "identity",
-            title: "Identity Verification",
-            status: profile.identity_status,
-            cta: profile.identity_status.to_s == "verified" ? nil : "Start verification",
-            why_it_matters: "Companies use identity verification to reduce onsite risk.",
-            badge_preview: "ID Verified",
-            last_updated_at: profile.updated_at
-          },
-          {
             key: "background_check",
             title: "Background Check",
             status: (background_check&.normalized_status_value || "not_started"),

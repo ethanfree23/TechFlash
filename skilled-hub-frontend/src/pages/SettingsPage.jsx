@@ -341,19 +341,17 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   );
   const verificationChecklistStatus = useMemo(() => {
     const sections = verificationCenter?.sections || [];
-    const identityStatus = findVerificationSection(sections, 'identity')?.status;
     const backgroundStatus = findVerificationSection(sections, 'background')?.status;
 
     return {
-      identityComplete: identityStatus
-        ? isVerificationCompleteStatus(identityStatus)
-        : Boolean(profile?.identity_verified),
+      // Identity is covered by Checkr screening and is no longer a separate verification requirement.
+      identityComplete: true,
       backgroundComplete: backgroundStatus
         ? isVerificationCompleteStatus(backgroundStatus)
         : Boolean(profile?.background_verified),
       referencesComplete: completedReferenceCount >= 3,
     };
-  }, [verificationCenter?.sections, completedReferenceCount, profile?.identity_verified, profile?.background_verified]);
+  }, [verificationCenter?.sections, completedReferenceCount, profile?.background_verified]);
 
   const licensesStatusChip = useMemo(
     () => licenseProgressChip(certificates.length),
@@ -464,7 +462,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         'Class',
         'Bio',
         'ZIP for maps',
-        'Identity verification',
         'Background check',
         'References'
       );
@@ -473,7 +470,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       if (!isTechnicianClass(primaryTrade.skill_class)) missing.push('Class');
       if (!(form.bio || '').trim()) missing.push('Bio');
       if (needsMapSetup) missing.push('ZIP for maps');
-      if (!verificationChecklistStatus.identityComplete) missing.push('Identity verification');
       if (!verificationChecklistStatus.backgroundComplete) missing.push('Background check');
       if (!verificationChecklistStatus.referencesComplete) missing.push('References');
     }
@@ -485,8 +481,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
   const verificationCompletion = useMemo(() => {
     if (!isTechnician) return { allComplete: true };
-    const allComplete = verificationChecklistStatus.identityComplete
-      && verificationChecklistStatus.backgroundComplete
+    const allComplete = verificationChecklistStatus.backgroundComplete
       && verificationChecklistStatus.referencesComplete;
     return { allComplete };
   }, [isTechnician, verificationChecklistStatus]);
@@ -1992,32 +1987,12 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       return <p className="text-sm text-gray-500">Loading background check...</p>;
     }
 
-    const identityStatus = findVerificationSection(verificationCenter?.sections, 'identity')?.status
-      || (profile?.identity_verified ? 'verified' : 'not_started');
-    const identityChip = verificationProgressChip(identityStatus);
-    const canUploadIdentityDoc = !isVerificationCompleteStatus(identityStatus);
     const backgroundCheck = verificationCenter?.background_check;
     const checkrLink = backgroundCheck?.dashboard_url || backgroundCheck?.report_url;
     const invitationUrl = backgroundCheck?.invitation_url;
 
     return (
       <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2">
-            <p className="text-sm font-medium text-gray-900">Identity document</p>
-            <SettingsBadge variant={identityChip.variant}>{identityChip.label}</SettingsBadge>
-          </div>
-          {canUploadIdentityDoc && (
-            <button
-              type="button"
-              onClick={handleOpenIdentityUploadModal}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50"
-            >
-              Upload document
-            </button>
-          )}
-        </div>
-
         {loadingBackgroundCheckOptions ? (
           <p className="text-xs text-gray-500">Loading background check options...</p>
         ) : (backgroundCheckOptionsError && !effectiveCheckrDemoBypass) ? (
@@ -2151,7 +2126,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   };
 
   const renderProfileCompletionCard = () => {
-    const verificationGaps = new Set(['Identity verification', 'Background check', 'References']);
+    const verificationGaps = new Set(['Background check', 'References']);
     return (
       <SettingsCard
         title="Profile completion"

@@ -126,14 +126,134 @@ module Api
             return render json: { error: "outcome must be one of #{TrustSafety::ReferencePolicy::CONTACT_OUTCOMES.join(', ')}" }, status: :unprocessable_entity
           end
 
-          ref.touch
+          method = params[:method].to_s.presence
+          note = params[:note].to_s.strip.presence
+          actor_name = [@current_user.first_name, @current_user.last_name].map(&:presence).compact.join(" ").presence || @current_user.email
+          answers = ref.answers.is_a?(Hash) ? ref.answers.deep_dup.stringify_keys : {}
+          attempt = {
+            "outcome" => outcome,
+            "method" => method,
+            "note" => note,
+            "contacted_at" => Time.current.iso8601,
+            "contacted_by_user_id" => @current_user.id,
+            "contacted_by_name" => actor_name
+          }
+          attempts = Array(answers["contact_attempts"]).map { |row| row.is_a?(Hash) ? row.stringify_keys : row }
+          attempts << attempt
+          answers["contact_attempts"] = attempts.last(25)
+          answers["admin_contact"] = {
+            "last_outcome" => outcome,
+            "last_method" => method,
+            "last_note" => note,
+            "last_contacted_at" => attempt["contacted_at"],
+            "last_contacted_by_user_id" => @current_user.id,
+            "last_contacted_by_name" => actor_name
+          }
+          ref.update!(answers: answers)
           VerificationAuditLog.record!(
             user: ref.technician_user, actor_user: @current_user, entity: ref, action: "reference_contact_attempt",
-            details: { outcome: outcome, method: params[:method].to_s.presence, note: params[:note].to_s.strip.presence, reference_name: ref.full_name }
+            details: { outcome: outcome, method: method, note: note, reference_name: ref.full_name }
           )
-          render json: { message: "Contact attempt recorded.", item: serialize_item(ref, detail: true) }, status: :ok
+          render json: { message: "Contact attempt recorded.", item: serialize_item(ref.reload, detail: true) }, status: :ok
         rescue ActiveRecord::RecordNotFound
           render json: { error: "Reference not found" }, status: :not_found
+        end
+
+        # ------------------------------------------------------------------------------
+        # Admin create / update / destroy from the technician Verification workspace
+        # ------------------------------------------------------------------------------
+
+        def create_reference
+          tech = find_technician_user!(params[:user_id])
+          result = TrustSafety::AdminVerificationRecords.create_reference(
+            technician_user: tech,
+            attrs: reference_write_params,
+            actor: @current_user
+          )
+          return render json: { error: result.errors.to_sentence, errors: result.errors }, status: :unprocessable_entity unless result.ok
+
+          render json: {
+            message: "Reference added. It is not verified until you explicitly mark it verified.",
+            item: serialize_item(result.record, detail: true),
+            trust_profile: result.trust_profile
+          }, status: :created
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Technician not found" }, status: :not_found
+        end
+
+        def update_reference
+          ref = VerificationReference.find(params[:id])
+          result = TrustSafety::AdminVerificationRecords.update_reference(
+            reference: ref,
+            attrs: reference_write_params,
+            actor: @current_user
+          )
+          return render json: { error: result.errors.to_sentence, errors: result.errors }, status: :unprocessable_entity unless result.ok
+
+          render json: {
+            message: "Reference updated.",
+            item: serialize_item(result.record, detail: true),
+            trust_profile: result.trust_profile
+          }, status: :ok
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Reference not found" }, status: :not_found
+        end
+
+        def destroy_reference
+          ref = VerificationReference.find(params[:id])
+          confirm = ActiveModel::Type::Boolean.new.cast(params[:confirm])
+          result = TrustSafety::AdminVerificationRecords.destroy_reference(
+            reference: ref,
+            actor: @current_user,
+            confirm: confirm
+          )
+          return render json: { error: result.errors.to_sentence, errors: result.errors }, status: :unprocessable_entity unless result.ok
+
+          render json: { message: "Reference removed.", trust_profile: result.trust_profile }, status: :ok
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Reference not found" }, status: :not_found
+        end
+
+        def create_credential
+          tech = find_technician_user!(params[:user_id])
+          result = TrustSafety::AdminVerificationRecords.create_credential(
+            technician_user: tech,
+            attrs: credential_write_params,
+            file: params[:file],
+            actor: @current_user
+          )
+          return render json: { error: result.errors.to_sentence, errors: result.errors }, status: :unprocessable_entity unless result.ok
+
+          render json: {
+            message: "Credential added. It remains pending until you approve it.",
+            item: serialize_item(result.record, detail: true),
+            trust_profile: result.trust_profile
+          }, status: :created
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Technician not found" }, status: :not_found
+        end
+
+        def update_credential
+          doc = Document.find(params[:id])
+          unless reviewable_document?(doc) && TrustSafety::DocumentPolicy.category(doc) == "credential"
+            return render json: { error: "Document is not a technician trade credential" }, status: :forbidden
+          end
+
+          result = TrustSafety::AdminVerificationRecords.update_credential(
+            document: doc,
+            attrs: credential_write_params,
+            file: params[:file],
+            actor: @current_user
+          )
+          return render json: { error: result.errors.to_sentence, errors: result.errors }, status: :unprocessable_entity unless result.ok
+
+          render json: {
+            message: "Credential updated.",
+            item: serialize_item(result.record.reload, detail: true),
+            trust_profile: result.trust_profile
+          }, status: :ok
+        rescue ActiveRecord::RecordNotFound
+          render json: { error: "Document not found" }, status: :not_found
         end
 
         # ------------------------------------------------------------------------------
@@ -475,8 +595,27 @@ module Api
         def verification_completion_rate
           total = TechnicianProfile.count
           return 0.0 if total.zero?
-          completed = VerificationProfile.where(background_status: :verified).or(VerificationProfile.where(identity_status: :verified)).count
+
+          completed = VerificationProfile.where(background_status: :verified).count
           ((completed.to_f / total) * 100).round(1)
+        end
+
+        def find_technician_user!(user_id)
+          user = User.find(user_id)
+          raise ActiveRecord::RecordNotFound, "Technician not found" unless user.technician? && user.technician_profile.present?
+
+          user
+        end
+
+        def reference_write_params
+          params.permit(:full_name, :email, :phone, :company_name, :relationship).to_h
+        end
+
+        def credential_write_params
+          params.permit(
+            :doc_type, :title, :credential_name, :trade, :issuer, :document_number,
+            :state, :issuing_state, :issued_on, :valid_until, :verification_method, :admin_notes
+          ).to_h
         end
 
         def sync_reference_verification!(technician_user)

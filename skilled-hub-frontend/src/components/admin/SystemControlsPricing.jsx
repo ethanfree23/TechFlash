@@ -666,7 +666,7 @@ export default function SystemControlsPricing({ systemSubTab: controlledSubTab, 
           {subTabBtn('marketplace_rules', 'Marketplace rules')}
           {subTabBtn('feature_flags', 'Feature flags')}
           {subTabBtn('referral_settings', 'Referral settings')}
-          {subTabBtn('trust_safety', 'Trust and safety')}
+          {subTabBtn('trust_safety', 'Verification')}
         </div>
       </div>
 

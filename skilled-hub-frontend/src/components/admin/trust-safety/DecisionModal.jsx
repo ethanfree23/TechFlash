@@ -12,6 +12,7 @@ const TONE_BUTTON = {
 const CONTACT_OUTCOMES = [
   { value: 'reached', label: 'Reached — spoke with reference' },
   { value: 'voicemail', label: 'Left voicemail' },
+  { value: 'text_sent', label: 'Sent text message' },
   { value: 'no_answer', label: 'No answer' },
   { value: 'wrong_number', label: 'Wrong number' },
   { value: 'email_bounced', label: 'Email bounced' },

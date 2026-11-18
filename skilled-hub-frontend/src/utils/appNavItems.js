@@ -60,7 +60,7 @@ export function getAppNavItems(user, navPreset = 'full') {
     secondary.push(
       { id: 'reviews', page: 'reviews', to: '/admin/reviews', label: 'Reviews' },
       { id: 'job_payments', page: 'job_payments', to: '/admin/job-payments', label: 'Payments' },
-      { id: 'trust_safety', page: 'trust_safety', to: '/admin/trust-safety', label: 'Trust & Safety' },
+      { id: 'trust_safety', page: 'trust_safety', to: '/admin/trust-safety', label: 'Verification' },
       { id: 'admin_assessments', page: 'assessments', to: '/admin/assessments', label: 'Assessments' }
     );
   }

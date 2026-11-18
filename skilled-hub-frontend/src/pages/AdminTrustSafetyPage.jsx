@@ -261,7 +261,7 @@ export default function AdminTrustSafetyPage({ user, onLogout }) {
               <FaShieldAlt className="h-4 w-4" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Trust &amp; Safety</h1>
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900">Verification</h1>
               <p className="text-sm text-slate-600 mt-0.5">Review technician credentials, background checks, references, and verification activity.</p>
             </div>
           </div>
@@ -402,7 +402,7 @@ export default function AdminTrustSafetyPage({ user, onLogout }) {
 
         {isQueueTab(tab) && technicianId && (
           <section className="rounded-xl border border-slate-200 bg-white shadow-sm p-4">
-            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Account trust profile</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500 mb-3">Account verification</h2>
             <TrustProfileChecklist userId={technicianId} />
           </section>
         )}
