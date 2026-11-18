@@ -64,10 +64,16 @@ module Api
 
         get "/api/v1/verification", headers: auth_header_for(user), as: :json
         assert_response :ok
-        acks = JSON.parse(response.body).fetch("background_check_acknowledgements")
+        body = JSON.parse(response.body)
+        acks = body.fetch("background_check_acknowledgements")
         notice = acks.find { |row| row["acknowledgement_type"] == "platform_notice" }
         assert_equal true, notice["accepted"]
         assert notice["accepted_at"].present?
+        trust = body.fetch("trust_profile")
+        assert trust["checklist"].is_a?(Array)
+        assert trust["checklist"].any? { |row| row["key"] == "background_check" }
+        assert trust["checklist"].any? { |row| row["key"] == "contact" && row["label"] == "Profile & contact" }
+        assert trust["summary"].key?("background_verified")
       end
 
       test "start background check blocked without acknowledgements" do

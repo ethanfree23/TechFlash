@@ -11,6 +11,7 @@ module Api
         references = VerificationReference.where(technician_user_id: @current_user.id).order(created_at: :desc)
         approved_references_count = references.where(status: :approved).count
         acknowledgements = BackgroundCheckAcknowledgement.payload_for(@current_user)
+        trust_profile = TrustSafety::TechnicianFacingProfile.call(@current_user)
 
         render json: {
           verification_profile: profile,
@@ -22,7 +23,8 @@ module Api
             total_count: references.count,
             approved_count: approved_references_count,
             pending_count: references.where(status: %i[requested responded]).count
-          }
+          },
+          trust_profile: trust_profile
         }, status: :ok
       end
 
