@@ -47,6 +47,7 @@ import SettingsBadge from '../components/settings/SettingsBadge';
 import NotificationPreferenceCard from '../components/settings/NotificationPreferenceCard';
 import NotificationAdvancedModal from '../components/settings/NotificationAdvancedModal';
 import LicenseCredentialsSection from '../components/settings/LicenseCredentialsSection';
+import TechnicianVerificationChecklist from '../components/settings/TechnicianVerificationChecklist';
 import {
   extractDocumentsList,
   isTechnicianCertificateDocument,
@@ -162,33 +163,6 @@ const findVerificationSection = (sections, keyword) => (
     const title = String(section?.title || '').toLowerCase();
     return key.includes(keyword) || title.includes(keyword);
   })
-);
-
-const verificationProgressChip = (status) => {
-  const key = normalizeVerificationStatus(status);
-  if (isVerificationCompleteStatus(key)) {
-    return { variant: 'success', label: 'Complete' };
-  }
-  if (['pending', 'invitation_sent', 'invited', 'processing', 'consider', 'report_pending', 'in_progress'].includes(key)) {
-    return { variant: 'warning', label: 'In progress' };
-  }
-  if (['rejected', 'failed', 'denied'].includes(key)) {
-    return { variant: 'danger', label: 'Needs review' };
-  }
-  return { variant: 'danger', label: 'Incomplete' };
-};
-
-const referenceProgressChip = (count) => {
-  if (count >= 3) return { variant: 'success', label: 'Complete' };
-  if (count === 2) return { variant: 'warning', label: '2 of 3' };
-  if (count === 1) return { variant: 'orange', label: '1 of 3' };
-  return { variant: 'danger', label: 'Incomplete' };
-};
-
-const licenseProgressChip = (count) => (
-  count > 0
-    ? { variant: 'success', label: `${count} on file` }
-    : { variant: 'danger', label: 'Incomplete' }
 );
 
 const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
@@ -342,32 +316,26 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
   const verificationChecklistStatus = useMemo(() => {
     const sections = verificationCenter?.sections || [];
     const backgroundStatus = findVerificationSection(sections, 'background')?.status;
+    const trustBg = (verificationCenter?.trust_profile?.checklist || []).find((row) => row.key === 'background_check');
+    const backgroundComplete = Boolean(
+      (backgroundStatus && isVerificationCompleteStatus(backgroundStatus))
+      || trustBg?.status === 'verified'
+      || profile?.background_verified
+      || verificationCenter?.trust_profile?.summary?.background_verified
+    );
 
     return {
       // Identity is covered by Checkr screening and is no longer a separate verification requirement.
       identityComplete: true,
-      backgroundComplete: backgroundStatus
-        ? isVerificationCompleteStatus(backgroundStatus)
-        : Boolean(profile?.background_verified),
+      backgroundComplete,
       referencesComplete: completedReferenceCount >= 3,
     };
-  }, [verificationCenter?.sections, completedReferenceCount, profile?.background_verified]);
-
-  const licensesStatusChip = useMemo(
-    () => licenseProgressChip(certificates.length),
-    [certificates.length]
-  );
-  const referencesStatusChip = useMemo(
-    () => referenceProgressChip(verificationReferences.length),
-    [verificationReferences.length]
-  );
-  const backgroundStatusChip = useMemo(() => {
-    const sectionStatus = findVerificationSection(verificationCenter?.sections, 'background')?.status;
-    if (sectionStatus) return verificationProgressChip(sectionStatus);
-    if (profile?.background_verified) return verificationProgressChip('verified');
-    if (hasInProgressBackgroundCheck(verificationCenter?.background_check)) return verificationProgressChip('pending');
-    return verificationProgressChip('not_started');
-  }, [verificationCenter?.sections, verificationCenter?.background_check, profile?.background_verified]);
+  }, [
+    verificationCenter?.sections,
+    verificationCenter?.trust_profile,
+    completedReferenceCount,
+    profile?.background_verified,
+  ]);
 
   const profileAvatarUrl = useMemo(() => {
     if (avatarPreview) return avatarPreview;
@@ -1082,9 +1050,16 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
       if (title) fd.append('issuer', title);
       if (reference) fd.append('document_number', reference);
       await documentsAPI.upload(fd);
-      const docsPayload = await documentsAPI.getAll();
+      const [docsPayload, latestCenter] = await Promise.all([
+        documentsAPI.getAll(),
+        verificationAPI.getCenter().catch(() => null),
+      ]);
       setCertificates(extractDocumentsList(docsPayload).filter((d) => isTechnicianCertificateDocument(d, profile.id)));
       setCertificatePreviewErrors({});
+      if (latestCenter) {
+        setVerificationCenter(latestCenter);
+        hydrateBackgroundAcknowledgements(latestCenter?.background_check_acknowledgements);
+      }
       setAlertModal({
         isOpen: true,
         title: 'License saved',
@@ -1828,8 +1803,15 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
         ...newReference,
         relationship: String(newReference.relationship || '').trim() || DEFAULT_REFERENCE_RELATIONSHIP,
       });
-      const rows = await verificationReferencesAPI.list();
+      const [rows, latestCenter] = await Promise.all([
+        verificationReferencesAPI.list(),
+        verificationAPI.getCenter().catch(() => null),
+      ]);
       setVerificationReferences(Array.isArray(rows) ? rows : []);
+      if (latestCenter) {
+        setVerificationCenter(latestCenter);
+        hydrateBackgroundAcknowledgements(latestCenter?.background_check_acknowledgements);
+      }
       resetReferenceForm();
       setAlertModal({
         isOpen: true,
@@ -1849,44 +1831,78 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
     }
   };
 
+  const referenceStatusBadge = (status) => {
+    const key = String(status || '').toLowerCase();
+    if (key === 'approved') return { variant: 'success', label: 'Verified' };
+    if (key === 'responded') return { variant: 'warning', label: 'Awaiting review' };
+    if (key === 'requested') return { variant: 'muted', label: 'Awaiting response' };
+    if (key === 'rejected') return { variant: 'danger', label: 'Rejected' };
+    return { variant: 'muted', label: referenceStatusLabel(status) };
+  };
+
   const renderReferencesContent = () => {
     if (loadingReferences) {
       return <p className="text-sm text-gray-500">Loading references...</p>;
     }
     return (
       <>
-        <div className="space-y-1 mb-3">
-          {verificationReferences.length === 0 ? (
-            <p className="text-sm text-gray-500">No references added yet.</p>
-          ) : (
-            verificationReferences.slice(0, 5).map((ref) => {
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <p className="text-xs text-slate-600">
+            Add three professional references. TechFlash verifies them after they respond or after outreach.
+          </p>
+          {!referenceFormOpen && (
+            <button
+              type="button"
+              onClick={() => setReferenceFormOpen(true)}
+              className="inline-flex items-center gap-1.5 h-8 rounded-md bg-tf-blue px-3 text-xs font-semibold text-white hover:bg-tf-blue/90"
+            >
+              + Add Reference
+            </button>
+          )}
+        </div>
+        {verificationReferences.length === 0 ? (
+          <p className="text-xs text-slate-500 rounded-lg border border-dashed border-slate-200 px-3 py-4 text-center mb-3">
+            No professional references on file yet.
+          </p>
+        ) : (
+          <ul className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white mb-3">
+            {verificationReferences.map((ref) => {
               const isExpanded = Boolean(expandedReferenceRows[ref.id]);
+              const badge = referenceStatusBadge(ref.status);
+              const subtitle = [ref.relationship, ref.company_name].filter(Boolean).join(' · ');
               return (
-                <div key={ref.id} className="rounded-lg border border-gray-200 bg-white px-2 py-1.5">
-                  <div className="text-xs text-gray-700 flex items-center justify-between gap-3">
-                    <span>{ref.full_name}{ref.relationship ? ` (${ref.relationship})` : ''}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="font-semibold text-gray-500">
-                        {referenceStatusLabel(ref.status)}
-                        {ref.responded_at ? ` (${new Date(ref.responded_at).toLocaleDateString()})` : ''}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => toggleReferenceDetails(ref.id)}
-                        className="px-2 py-0.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
-                      >
-                        More info
-                      </button>
+                <li key={ref.id} className="p-3 space-y-2">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm font-semibold text-slate-900">{ref.full_name}</p>
+                        <SettingsBadge variant={badge.variant}>{badge.label}</SettingsBadge>
+                      </div>
+                      {subtitle && <p className="text-xs text-slate-600 mt-0.5">{subtitle}</p>}
+                      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
+                        {ref.phone && <span>{ref.phone}</span>}
+                        {ref.email && <span>{ref.email}</span>}
+                        {ref.responded_at && (
+                          <span>Responded {new Date(ref.responded_at).toLocaleDateString()}</span>
+                        )}
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={() => toggleReferenceDetails(ref.id)}
+                      className="h-7 rounded-md border border-slate-200 px-2 text-[11px] font-medium text-slate-700 hover:bg-slate-50"
+                    >
+                      {isExpanded ? 'Hide details' : 'More info'}
+                    </button>
                   </div>
                   {isExpanded && (
-                    <div className="mt-2 border-t border-gray-200 pt-2 text-xs text-gray-600 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
-                      <p><span className="font-semibold text-gray-800">Email:</span> {ref.email || 'Not provided'}</p>
-                      <p><span className="font-semibold text-gray-800">Phone:</span> {ref.phone || 'Not provided'}</p>
-                      <p><span className="font-semibold text-gray-800">Company:</span> {ref.company_name || 'Not provided'}</p>
-                      <p><span className="font-semibold text-gray-800">Relationship:</span> {ref.relationship || DEFAULT_REFERENCE_RELATIONSHIP}</p>
+                    <div className="border-t border-slate-100 pt-2 text-xs text-slate-600 grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1">
+                      <p><span className="font-semibold text-slate-800">Email:</span> {ref.email || 'Not provided'}</p>
+                      <p><span className="font-semibold text-slate-800">Phone:</span> {ref.phone || 'Not provided'}</p>
+                      <p><span className="font-semibold text-slate-800">Company:</span> {ref.company_name || 'Not provided'}</p>
+                      <p><span className="font-semibold text-slate-800">Relationship:</span> {ref.relationship || DEFAULT_REFERENCE_RELATIONSHIP}</p>
                       <p>
-                        <span className="font-semibold text-gray-800">Requested date:</span>{' '}
+                        <span className="font-semibold text-slate-800">Requested:</span>{' '}
                         {ref.requested_at
                           ? new Date(ref.requested_at).toLocaleDateString()
                           : ref.created_at
@@ -1894,23 +1910,20 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                             : 'Not available'}
                       </p>
                       <p>
-                        <span className="font-semibold text-gray-800">Responded date:</span>{' '}
+                        <span className="font-semibold text-slate-800">Responded:</span>{' '}
                         {ref.responded_at ? new Date(ref.responded_at).toLocaleDateString() : 'Not yet'}
-                      </p>
-                      <p className="sm:col-span-2">
-                        <span className="font-semibold text-gray-800">Current status:</span> {referenceStatusLabel(ref.status)}
                       </p>
                     </div>
                   )}
-                </div>
+                </li>
               );
-            })
-          )}
-        </div>
-        {referenceFormOpen ? (
-          <form onSubmit={handleAddReference} className="rounded-2xl border border-gray-200 p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            })}
+          </ul>
+        )}
+        {referenceFormOpen && (
+          <form onSubmit={handleAddReference} className="rounded-lg border border-slate-200 bg-slate-50/70 p-3 grid grid-cols-1 sm:grid-cols-2 gap-2">
             <input
-              className="border rounded px-2 py-1 text-xs"
+              className="w-full h-9 rounded-md border border-slate-200 bg-white px-2.5 text-sm"
               name="full_name"
               placeholder="Full name"
               value={newReference.full_name}
@@ -1918,14 +1931,14 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               required
             />
             <input
-              className="border rounded px-2 py-1 text-xs"
+              className="w-full h-9 rounded-md border border-slate-200 bg-white px-2.5 text-sm"
               name="relationship"
               placeholder="Relationship (optional)"
               value={newReference.relationship}
               onChange={handleReferenceFieldChange}
             />
             <input
-              className="border rounded px-2 py-1 text-xs"
+              className="w-full h-9 rounded-md border border-slate-200 bg-white px-2.5 text-sm"
               name="email"
               type="email"
               placeholder="Email"
@@ -1934,18 +1947,18 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               required={!String(newReference.phone || '').trim()}
             />
             <input
-              className="border rounded px-2 py-1 text-xs"
+              className="w-full h-9 rounded-md border border-slate-200 bg-white px-2.5 text-sm"
               name="phone"
               placeholder="Phone"
               value={newReference.phone}
               onChange={handleReferenceFieldChange}
               required={!String(newReference.email || '').trim()}
             />
-            <p className="sm:col-span-2 text-[11px] text-gray-500">
+            <p className="sm:col-span-2 text-[11px] text-slate-500">
               Email or phone is required (at least one).
             </p>
             <input
-              className="border rounded px-2 py-1 text-xs sm:col-span-2"
+              className="w-full h-9 rounded-md border border-slate-200 bg-white px-2.5 text-sm sm:col-span-2"
               name="company_name"
               placeholder="Company (optional)"
               value={newReference.company_name}
@@ -1955,7 +1968,7 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
               <button
                 type="submit"
                 disabled={submittingReference}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg bg-gray-900 text-white hover:bg-gray-800 disabled:opacity-50"
+                className="h-8 rounded-md bg-slate-900 px-3 text-xs font-semibold text-white disabled:opacity-50"
               >
                 {submittingReference ? 'Saving...' : 'Save reference'}
               </button>
@@ -1963,32 +1976,23 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
                 type="button"
                 onClick={resetReferenceForm}
                 disabled={submittingReference}
-                className="px-3 py-1.5 text-xs font-medium rounded-lg border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                className="h-8 rounded-md border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 disabled:opacity-50"
               >
                 Cancel
               </button>
             </div>
           </form>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setReferenceFormOpen(true)}
-            className="inline-flex items-center rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-800 hover:bg-gray-50"
-          >
-            + Add reference
-          </button>
         )}
       </>
     );
   };
 
-  const renderBackgroundCheckContent = () => {
+  const renderBackgroundCheckStartContent = () => {
     if (loadingVerificationCenter) {
       return <p className="text-sm text-gray-500">Loading background check...</p>;
     }
 
     const backgroundCheck = verificationCenter?.background_check;
-    const checkrLink = backgroundCheck?.dashboard_url || backgroundCheck?.report_url;
     const invitationUrl = backgroundCheck?.invitation_url;
 
     return (
@@ -2099,16 +2103,6 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
             >
               {resettingDemoBackgroundCheck ? 'Undoing...' : 'Undo demo attempt'}
             </button>
-          )}
-          {checkrLink && (
-            <a
-              href={checkrLink}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex text-xs font-medium text-blue-700 hover:text-blue-800"
-            >
-              Open Checkr report
-            </a>
           )}
           {invitationUrl && (
             <a
@@ -2535,27 +2529,49 @@ const SettingsPage = ({ user, onLogout, onUserUpdate }) => {
 
             {isTechnician && settingsTab === 'verification' && (
               <div id="settings-panel-verification" role="tabpanel" aria-labelledby="settings-tab-verification" className="space-y-6">
-                <SettingsCard
-                  title="Licenses and certificates"
-                  description="Upload license and certification images so companies can match you to jobs."
-                  headerRight={<SettingsBadge variant={licensesStatusChip.variant}>{licensesStatusChip.label}</SettingsBadge>}
-                >
-                  {renderLicensesAndCertificates()}
-                </SettingsCard>
-                <SettingsCard
-                  title="Professional references"
-                  description="Add three professional references."
-                  headerRight={<SettingsBadge variant={referencesStatusChip.variant}>{referencesStatusChip.label}</SettingsBadge>}
-                >
-                  {renderReferencesContent()}
-                </SettingsCard>
-                <SettingsCard
-                  title="Background check"
-                  description="Authorize the check, then start or continue the Checkr flow."
-                  headerRight={<SettingsBadge variant={backgroundStatusChip.variant}>{backgroundStatusChip.label}</SettingsBadge>}
-                >
-                  {renderBackgroundCheckContent()}
-                </SettingsCard>
+                {loadingVerificationCenter || verificationCenter?.trust_profile ? (
+                  <TechnicianVerificationChecklist
+                    trustProfile={verificationCenter?.trust_profile}
+                    loading={loadingVerificationCenter}
+                    backgroundCheck={verificationCenter?.background_check}
+                    backgroundComplete={verificationChecklistStatus.backgroundComplete}
+                    backgroundStartContent={
+                      verificationChecklistStatus.backgroundComplete
+                        ? null
+                        : renderBackgroundCheckStartContent()
+                    }
+                    referencesContent={renderReferencesContent()}
+                    credentialsContent={renderLicensesAndCertificates()}
+                    onGoToProfile={() => setSettingsTab('profile')}
+                  />
+                ) : (
+                  <>
+                    <SettingsCard
+                      title="Licenses and certificates"
+                      description="Upload license and certification images so companies can match you to jobs."
+                    >
+                      {renderLicensesAndCertificates()}
+                    </SettingsCard>
+                    <SettingsCard
+                      title="Professional references"
+                      description="Add three professional references."
+                    >
+                      {renderReferencesContent()}
+                    </SettingsCard>
+                    <SettingsCard
+                      title="Background check"
+                      description="Authorize the check, then start or continue the Checkr flow."
+                    >
+                      {verificationChecklistStatus.backgroundComplete ? (
+                        <p className="text-sm text-emerald-800">
+                          Status: {verificationCenter?.background_check?.technician_status_label || 'Completed — Clear'}
+                        </p>
+                      ) : (
+                        renderBackgroundCheckStartContent()
+                      )}
+                    </SettingsCard>
+                  </>
+                )}
               </div>
             )}
 
