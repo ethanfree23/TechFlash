@@ -14,7 +14,11 @@ module TrustSafety
         last_name: "Thompson",
         phone: "3463458013"
       )
-      @profile = TechnicianProfile.create!(user: @user, trade_type: "electrician")
+      @profile = TechnicianProfile.create!(
+        user: @user,
+        trade_type: "electrician",
+        phone: "3463458013"
+      )
       @user.reload
     end
 
@@ -44,7 +48,7 @@ module TrustSafety
         dashboard_url: "https://dashboard.checkr.com/reports/secret",
         admin_notes: "internal override note"
       )
-      @profile.update!(background_verified: true)
+      @profile.update_columns(background_verified: true)
 
       payload = TechnicianFacingProfile.call(@user.reload)
       assert payload
