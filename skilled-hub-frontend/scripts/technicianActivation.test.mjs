@@ -14,7 +14,7 @@ function testConstants() {
   assert.ok(ACTIVATION_STATUSES.includes('disqualified'));
   assert.equal(CALL_OUTCOMES.length, 6);
   assert.equal(activationStatusLabel('onboarding'), 'Onboarding');
-  assert.equal(callOutcomeLabel('left_voicemail'), 'Left voicemail');
+  assert.equal(callOutcomeLabel('left_voicemail'), 'vm / texted');
 }
 
 function testBlockersSummary() {
@@ -33,11 +33,12 @@ function testPipelineFilters() {
     { id: 3, role: 'technician', activation: { status: 'ready', onboarding_complete: true, last_contacted_at: '2026-11-10T00:00:00Z' } },
     { id: 4, role: 'technician', activation: { status: 'unresponsive', last_contacted_at: '2026-10-01T00:00:00Z' } },
     { id: 5, role: 'company', activation: null },
+    { id: 6, role: 'technician', activation: { status: 'nurture', current_availability: 'has_a_job' } },
   ];
 
   assert.deepEqual(
     applyActivationPipelineFilter(rows, 'never_contacted').map((r) => r.id),
-    [1],
+    [1, 6],
   );
   assert.deepEqual(
     applyActivationPipelineFilter(rows, 'awaiting_response').map((r) => r.id),
@@ -46,6 +47,10 @@ function testPipelineFilters() {
   assert.deepEqual(
     applyActivationPipelineFilter(rows, 'ready_available').map((r) => r.id),
     [3],
+  );
+  assert.deepEqual(
+    applyActivationPipelineFilter(rows, 'has_a_job').map((r) => r.id),
+    [6],
   );
   assert.deepEqual(
     applyActivationPipelineFilter(rows, 'unresponsive').map((r) => r.id),
