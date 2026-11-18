@@ -97,28 +97,28 @@ module Assessments
       assert steps.none? { |entry| entry[:optional] && entry[:key] == "skills_assessment" }
     end
 
-    test "the contribution summarises the technician's strongest result" do
+    test "the contribution summarises the technician's own-trade result" do
       hvac = create_published_assessment!(
         slug: "contribution_hvac", title: "HVAC Knowledge Assessment", trade_type: "HVAC Technician",
         categories: { "safety" => { name: "Safety", blueprint: 4, bank: 8 } }
       )
-      plumbing = create_published_assessment!(
+      create_published_assessment!(
         slug: "contribution_plumbing", title: "Plumbing Knowledge Assessment", trade_type: "Plumber",
         categories: { "fixtures" => { name: "Fixtures", blueprint: 4, bank: 8 } }
       )
       _user, profile = create_technician!(trade_type: "HVAC Technician")
 
-      complete_attempt!(technician_profile: profile, assessment: plumbing, correct_count: 4)
       complete_attempt!(technician_profile: profile, assessment: hvac, correct_count: 2)
 
       contribution = ProfileContribution.call(technician_profile: profile).as_json
 
       assert_equal "completed", contribution["state"]
       assert_equal "HVAC Knowledge Assessment", contribution["assessment_title"],
-                   "the technician's own trade result is the one worth surfacing"
+                   "only the technician's own-trade assessment is offered"
       assert_equal 50, contribution["score"]
       assert_equal false, contribution["counts_toward_job_access"]
       assert_equal 15, contribution["earned_strength_percent"]
+      assert_equal "contribution_hvac", contribution["recommended_assessment_slug"]
     end
 
     test "an in-progress attempt is reported as in progress with no score" do

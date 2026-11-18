@@ -38,7 +38,7 @@ export function getAppNavItems(user, navPreset = 'full') {
     if (isCompany || isAdmin) {
       primary.push({ id: 'technicians', page: 'technicians', to: '/technicians', label: 'Technicians' });
     }
-    if (isTechnician) {
+    if (isTechnician && user?.skills_assessments_available !== false) {
       primary.push({ id: 'assessments', page: 'assessments', to: '/assessments', label: 'Assessments' });
     }
     primary.push(

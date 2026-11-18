@@ -139,7 +139,7 @@ export default function SkillsAssessmentsScreen() {
       ) : null}
 
       {assessments.length === 0 ? (
-        <EmptyState label="No assessments are available yet. Check back soon." />
+        <EmptyState label="No assessments for your trade are available yet. Check back soon." />
       ) : null}
 
       {assessments.map((assessment) => {

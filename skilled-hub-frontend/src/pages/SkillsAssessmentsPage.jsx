@@ -102,7 +102,7 @@ export default function SkillsAssessmentsPage({ user, onLogout }) {
 
       {!loading && assessments.length === 0 && (
         <div className="rounded-lg border border-gray-200 bg-white p-8 text-center text-gray-500">
-          No assessments are available yet. Check back soon.
+          No assessments for your trade are available yet. Check back soon.
         </div>
       )}
 

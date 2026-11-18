@@ -17,7 +17,7 @@ module Assessments
           "slug" => "Required. Stable identifier; re-importing the same slug updates that assessment.",
           "title" => "Required. Shown to technicians and companies.",
           "description" => "Optional blurb for the assessment card.",
-          "trade_type" => "Optional trade from the trade catalog. Drives which technicians see it recommended.",
+          "trade_type" => "Optional trade from the trade catalog. Determines which technicians see and can start it.",
           "company_disclaimer" => "Optional override for the score disclaimer shown to companies.",
           "active" => "Optional, defaults true. Inactive assessments disappear from the catalog.",
           "position" => "Optional sort order in the catalog.",

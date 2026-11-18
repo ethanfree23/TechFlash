@@ -49,6 +49,7 @@ module Assessments
         return Result.new(success: true, attempt: decision.resumable_attempt, resumed: true, decision: decision)
       end
       return failure(decision.reason, decision.message, decision: decision) unless decision.allowed?
+      return failure("trade_mismatch", "This assessment is for a different trade than yours.") unless trade_eligible?
 
       create_attempt(version)
     rescue QuestionSelector::InsufficientQuestions => e
@@ -150,6 +151,12 @@ module Assessments
         .first
     end
 
+    def trade_eligible?
+      TechnicianCatalog
+        .new(technician_profile: technician_profile)
+        .trade_matches?(assessment)
+    end
+
     def failure(code, message, decision: nil)
       Result.new(
         success: false, attempt: nil, resumed: false, decision: decision,
@@ -158,3 +165,4 @@ module Assessments
     end
   end
 end
+

@@ -7,6 +7,7 @@ class UserSerializer < ActiveModel::Serializer
              :role,
              :company_profile_id,
              :membership_level,
+             :skills_assessments_available,
              :email_notifications_enabled,
              :email_notification_preferences,
              :job_alert_notifications_enabled,
@@ -17,6 +18,14 @@ class UserSerializer < ActiveModel::Serializer
 
   def company_profile_id
     object.company_profile&.id
+  end
+
+  # Technician nav gate: hide Assessments when no plumbing/electrical/HVAC
+  # (or other trade-matched) assessment applies to this profile.
+  def skills_assessments_available
+    return false unless object.technician?
+
+    Assessments::TechnicianCatalog.offered_to?(object.technician_profile)
   end
 
   def membership_level

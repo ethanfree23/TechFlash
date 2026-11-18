@@ -139,7 +139,8 @@ module Assessments
     test "results are tracked independently per assessment" do
       hvac = ten_question_assessment("multi_hvac", trade_type: "HVAC Technician")
       plumbing = ten_question_assessment("multi_plumbing", trade_type: "Plumber")
-      _user, profile = create_technician!
+      _user, profile = create_technician!(trade_type: "HVAC Technician")
+      profile.update!(specialties: ["Plumber"])
 
       complete_attempt!(technician_profile: profile, assessment: hvac, correct_count: 8)
       complete_attempt!(technician_profile: profile, assessment: plumbing, correct_count: 5)

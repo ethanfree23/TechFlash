@@ -7,7 +7,7 @@ function ids(items) {
 
 function testTechnicianPrimaryAndSecondary() {
   const { primary, secondary, showCrm, canRefer, roleLabel } = getAppNavItems(
-    { role: 'technician', email: 'tech@example.com' },
+    { role: 'technician', email: 'tech@example.com', skills_assessments_available: true },
     'full'
   );
 
@@ -23,6 +23,15 @@ function testTechnicianPrimaryAndSecondary() {
     secondary.find((item) => item.id === 'user_type')?.label,
     ROLE_LABELS.technician
   );
+}
+
+function testTechnicianWithoutAssessmentTradeHidesAssessments() {
+  const { primary } = getAppNavItems(
+    { role: 'technician', email: 'roofer@example.com', skills_assessments_available: false },
+    'full'
+  );
+  assert.deepEqual(ids(primary), ['dashboard', 'jobs', 'messages', 'legal']);
+  assert.ok(!ids(primary).includes('assessments'));
 }
 
 function testCompanyNav() {
@@ -89,6 +98,7 @@ function testJobsDemoAnchorPreserved() {
 }
 
 testTechnicianPrimaryAndSecondary();
+testTechnicianWithoutAssessmentTradeHidesAssessments();
 testCompanyNav();
 testAdminNavIncludesCrmAndAdminTools();
 testMinimalPreset();
