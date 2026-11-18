@@ -15,7 +15,7 @@ module TrustSafety
         phone: "3463458013"
       )
       @profile = TechnicianProfile.create!(user: @user, trade_type: "electrician")
-      @user.update_column(:technician_profile_id, @profile.id)
+      @user.reload
     end
 
     test "returns nil for non-technician users" do
