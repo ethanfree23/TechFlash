@@ -324,6 +324,7 @@ function renderCell(col, row, handlers = {}) {
         <div className="min-w-0 overflow-visible" onClick={(e) => e.stopPropagation()}>
           <ReferencesCell
             inventory={row.verification}
+            userId={row.id}
             onSendSms={(message) => handlers.onSendSms?.(row, message)}
           />
         </div>
@@ -539,7 +540,7 @@ function UserMobileCard({
             {row.role === 'technician' && row.verification ? (
               <>
                 <TradeLicenseCell inventory={row.verification} onSendSms={(message) => onSendSms?.(row, message)} onViewDocument={onViewDocument} />
-                <ReferencesCell inventory={row.verification} onSendSms={(message) => onSendSms?.(row, message)} />
+                <ReferencesCell inventory={row.verification} userId={row.id} onSendSms={(message) => onSendSms?.(row, message)} />
                 <BackgroundCheckCell inventory={row.verification} onSendSms={(message) => onSendSms?.(row, message)} />
               </>
             ) : null}

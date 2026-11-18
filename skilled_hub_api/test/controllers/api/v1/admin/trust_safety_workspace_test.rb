@@ -161,6 +161,39 @@ module Api
           assert_response :not_found
         end
 
+        test "trust profile lists each reference so admins can open notes and contact attempts" do
+          requested = VerificationReference.create!(
+            technician_user: @tech,
+            full_name: "Dana Ref",
+            email: "dana@example.com",
+            relationship: "Supervisor",
+            status: :requested,
+            requested_at: 1.day.ago
+          )
+
+          get "/api/v1/admin/trust_safety/technicians/#{@tech.id}", headers: auth_header_for(@admin)
+          assert_response :ok
+          refs_row = JSON.parse(response.body).dig("trust_profile", "checklist").find { |r| r["key"] == "references" }
+          assert_equal "pending", refs_row["status"]
+          assert_equal "reference:#{requested.id}", refs_row["item_ref"]
+          assert_equal 1, refs_row["references"].size
+          assert_equal "Dana Ref", refs_row["references"].first["title"]
+          assert_match(/contact attempt|internal note/i, refs_row["next_action"])
+
+          get "/api/v1/admin/trust_safety/items/reference/#{requested.id}", headers: auth_header_for(@admin)
+          assert_response :ok
+          actions = JSON.parse(response.body).dig("item", "actions").map { |a| a["key"] }
+          assert_includes actions, "note"
+          assert_includes actions, "contact_attempt"
+
+          post "/api/v1/admin/trust_safety/items/reference/#{requested.id}/notes",
+               params: { note: "Spoke with Dana by phone; confirmed employment 2019-2023." },
+               headers: auth_header_for(@admin),
+               as: :json
+          assert_response :created
+          assert_equal "reviewer_note", JSON.parse(response.body).dig("event", "action")
+        end
+
         # --- Documents -------------------------------------------------------------------------
 
         test "document detail returns short-lived file access and item detail" do

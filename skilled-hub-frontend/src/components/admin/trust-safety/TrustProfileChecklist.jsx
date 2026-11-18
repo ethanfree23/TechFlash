@@ -17,13 +17,21 @@ const STATUS_DOT = {
   not_applicable: 'bg-slate-200',
 };
 
-function reviewLink(userId, itemRef) {
-  return `/admin/trust-safety${buildWorkspaceSearch({ tab: 'queue', filters: { status: 'all' }, technician: userId, item: itemRef || null })}`;
+function reviewLink(userId, itemRef, { tab = 'queue' } = {}) {
+  return `/admin/trust-safety${buildWorkspaceSearch({
+    tab,
+    filters: { status: 'all' },
+    technician: userId,
+    item: itemRef || null,
+  })}`;
 }
 
 function ChecklistRow({ row, userId }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(row.key === 'references' && (row.references?.length || 0) > 0);
   const hasDocs = row.documents?.length > 0;
+  const hasRefs = row.references?.length > 0;
+  const childCount = hasDocs ? row.documents.length : hasRefs ? row.references.length : 0;
+  const childNoun = hasDocs ? 'document' : 'reference';
   return (
     <li className="px-4 py-3">
       <div className="flex items-start gap-3">
@@ -58,9 +66,10 @@ function ChecklistRow({ row, userId }) {
               <span className="font-semibold text-slate-500">Next:</span> {row.next_action}
             </p>
           )}
-          {hasDocs && (
+          {(hasDocs || hasRefs) && (
             <button type="button" onClick={() => setOpen((v) => !v)} className="mt-1.5 text-[11px] font-medium text-tf-blue hover:underline">
-              {open ? 'Hide' : 'Show'} {row.documents.length} document{row.documents.length === 1 ? '' : 's'}
+              {open ? 'Hide' : 'Show'} {childCount} {childNoun}
+              {childCount === 1 ? '' : 's'}
             </button>
           )}
           {open && hasDocs && (
@@ -86,13 +95,35 @@ function ChecklistRow({ row, userId }) {
               ))}
             </ul>
           )}
+          {open && hasRefs && (
+            <ul className="mt-2 divide-y divide-slate-100 rounded-lg border border-slate-200 bg-slate-50/60">
+              {row.references.map((ref) => (
+                <li key={ref.key} className="flex items-center justify-between gap-2 px-3 py-2">
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-slate-800 truncate">{ref.title}</p>
+                    <p className="text-[11px] text-slate-500 truncate">{ref.subtitle || 'Professional reference'}</p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <ItemStatusBadge status={ref.status} />
+                    <Link
+                      to={reviewLink(userId, ref.key, { tab: 'references' })}
+                      className="text-[11px] font-medium text-tf-blue hover:underline"
+                      title="Open to add notes or record a contact attempt"
+                    >
+                      Add note
+                    </Link>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
         {row.item_ref && (
           <Link
-            to={reviewLink(userId, row.item_ref)}
+            to={reviewLink(userId, row.item_ref, { tab: row.key === 'references' ? 'references' : 'queue' })}
             className="shrink-0 inline-flex items-center gap-1 h-8 rounded-md border border-slate-200 bg-white px-2.5 text-xs font-medium text-slate-700 hover:bg-slate-50"
           >
-            Review <FaExternalLinkAlt className="h-2.5 w-2.5" />
+            {row.key === 'references' ? 'Open' : 'Review'} <FaExternalLinkAlt className="h-2.5 w-2.5" />
           </Link>
         )}
       </div>

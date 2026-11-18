@@ -284,7 +284,9 @@ export function ReferencePanel({ item }) {
       <Section title="Reference response" hint={answers.length ? `${answers.length} answers` : null}>
         {answers.length === 0 ? (
           <Callout tone="info">
-            <p>The reference has not submitted a response. There is no evidence to review yet — record contact attempts or request more information rather than approving.</p>
+            <p>
+              The reference has not submitted a response online. Use <strong>Record contact attempt</strong> after you call or email them, or <strong>Add note</strong> to save what you learned. Prefer that over approving until you have verified them directly.
+            </p>
           </Callout>
         ) : (
           <dl className="space-y-2">
