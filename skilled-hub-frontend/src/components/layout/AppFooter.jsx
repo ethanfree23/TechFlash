@@ -33,10 +33,6 @@ export default function AppFooter() {
           <span className="mx-2 text-gray-300" aria-hidden>
             ·
           </span>
-          8012 Ravenswood Rd, Granbury, TX 76049 USA
-          <span className="mx-2 text-gray-300" aria-hidden>
-            ·
-          </span>
           <a href="mailto:admin@techflash.app" className="hover:text-[#3A7CA5]">
             admin@techflash.app
           </a>
