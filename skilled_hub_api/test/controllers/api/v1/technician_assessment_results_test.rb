@@ -111,6 +111,8 @@ module Api
           categories: { "fixtures" => { name: "Fixtures", blueprint: 2, bank: 4 } }
         )
         _user, profile = create_technician!(trade_type: "Plumber")
+        # Specialty lets them take the HVAC bank too; primary trade still headlines.
+        profile.update!(specialties: ["HVAC Technician"])
         complete_attempt!(technician_profile: profile, assessment: @assessment, correct_count: 4)
         complete_attempt!(technician_profile: profile, assessment: plumbing, correct_count: 1)
 

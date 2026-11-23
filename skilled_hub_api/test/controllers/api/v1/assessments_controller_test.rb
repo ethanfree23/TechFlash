@@ -48,7 +48,7 @@ module Api
         assert_not_includes response.body, "prompt?"
       end
 
-      test "the recommended assessment follows the technician's primary trade" do
+      test "the catalog only includes assessments for the technician's trade" do
         create_published_assessment!(slug: "rec_hvac", title: "HVAC", trade_type: "HVAC Technician")
         create_published_assessment!(slug: "rec_plumbing", title: "Plumbing", trade_type: "Plumber")
         create_published_assessment!(slug: "rec_electrical", title: "Electrical", trade_type: "Electrician")
@@ -64,13 +64,52 @@ module Api
 
           assert_response :ok
           entries = JSON.parse(response.body)["assessments"]
-          recommended = entries.select { |entry| entry["recommended"] }
 
-          assert_equal [expected_slug], recommended.map { |entry| entry["slug"] },
-                       "#{trade} should be recommended #{expected_slug}"
-          assert_equal expected_slug, entries.first["slug"], "recommended assessment should sort first"
-          assert_equal 3, entries.size, "other trades stay visible but unrecommended"
+          assert_equal [expected_slug], entries.map { |entry| entry["slug"] },
+                       "#{trade} should only see #{expected_slug}"
+          assert_equal true, entries.first["recommended"]
         end
+      end
+
+      test "a technician with multiple trades sees each matching assessment" do
+        create_published_assessment!(slug: "multi_hvac", title: "HVAC", trade_type: "HVAC Technician")
+        create_published_assessment!(slug: "multi_plumbing", title: "Plumbing", trade_type: "Plumber")
+        create_published_assessment!(slug: "multi_electrical", title: "Electrical", trade_type: "Electrician")
+
+        user, profile = create_technician!(trade_type: "Electrician")
+        profile.update!(specialties: ["Plumber"])
+
+        get "/api/v1/assessments", headers: auth_header_for(user)
+
+        assert_response :ok
+        slugs = JSON.parse(response.body)["assessments"].map { |entry| entry["slug"] }
+        assert_equal %w[multi_plumbing multi_electrical].sort, slugs.sort
+        assert_not_includes slugs, "multi_hvac"
+      end
+
+      test "show hides assessments outside the technician's trade" do
+        create_published_assessment!(slug: "hidden_plumbing", title: "Plumbing", trade_type: "Plumber")
+        user, = create_technician!(trade_type: "Electrician")
+
+        get "/api/v1/assessments/hidden_plumbing", headers: auth_header_for(user)
+
+        assert_response :not_found
+      end
+
+      test "a technician outside plumbing electrical and hvac sees no assessments" do
+        create_published_assessment!(slug: "none_hvac", title: "HVAC", trade_type: "HVAC Technician")
+        create_published_assessment!(slug: "none_plumbing", title: "Plumbing", trade_type: "Plumber")
+        create_published_assessment!(slug: "none_electrical", title: "Electrical", trade_type: "Electrician")
+        user, = create_technician!(trade_type: "Roofer")
+
+        get "/api/v1/assessments", headers: auth_header_for(user)
+
+        assert_response :ok
+        assert_equal [], JSON.parse(response.body)["assessments"]
+        payload = UserSerializer.new(user.reload).as_json
+        available = payload["skills_assessments_available"]
+        available = payload[:skills_assessments_available] if available.nil?
+        assert_equal false, available
       end
 
       test "catalog state reflects an in-progress attempt" do

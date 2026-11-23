@@ -310,7 +310,7 @@ skipped by `import_seeds`. The same contract is served by
 | Field | Notes |
 | --- | --- |
 | `slug` | Lowercase letters, numbers, underscores. Stable identity — the import key. |
-| `trade_type` | Must be a `TradeCatalog::OPTIONS` label (e.g. `"HVAC Technician"`, `"Plumber"`, `"Electrician"`). Drives trade-based recommendation. |
+| `trade_type` | Must be a `TradeCatalog::OPTIONS` label (e.g. `"HVAC Technician"`, `"Plumber"`, `"Electrician"`). Determines which technicians see and can start the assessment. |
 | `company_disclaimer` | Optional override of the default company-facing wording. |
 | `public_result_rule` | `best_valid` or `latest_valid`. |
 | `position` | Display order in the technician catalog. |
@@ -364,7 +364,7 @@ skipped by `import_seeds`. The same contract is served by
 ### Checklist for adding the HVAC / Plumbing / Electrical banks
 
 1. One file per assessment in `db/assessment_seeds/` (e.g. `hvac_knowledge.json`).
-2. Set `trade_type` to the matching `TradeCatalog` label so recommendation works.
+2. Set `trade_type` to the matching `TradeCatalog` label so only technicians in that trade see it.
 3. Define each assessment's own categories — they need not match across trades.
 4. Blueprint `question_count` per category summing to ~40; supply a larger bank
    (e.g. ~100 questions) so randomization is meaningful.
@@ -397,7 +397,7 @@ review, or re-import with `"publish": true` when you intend to serve them.
 
 | Method | Path | Purpose |
 | --- | --- | --- |
-| `GET` | `/api/v1/assessments` | Catalog with per-assessment state, recommendation and eligibility |
+| `GET` | `/api/v1/assessments` | Catalog filtered to the technician's trade(s), with state and eligibility |
 | `GET` | `/api/v1/assessments/:id_or_slug` | One assessment's detail |
 | `POST` | `/api/v1/assessments/:assessment_id/attempts` | Start or resume (idempotent) |
 | `GET` | `/api/v1/assessment_attempts` | Own attempt history |

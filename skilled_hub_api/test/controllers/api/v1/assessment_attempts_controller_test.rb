@@ -300,7 +300,8 @@ module Api
       test "attempt history can be filtered to one assessment" do
         hvac = create_published_assessment!(slug: "history_hvac", trade_type: "HVAC Technician")
         plumbing = create_published_assessment!(slug: "history_plumbing", trade_type: "Plumber")
-        user, profile = create_technician!
+        user, profile = create_technician!(trade_type: "HVAC Technician")
+        profile.update!(specialties: ["Plumber"])
         complete_attempt!(technician_profile: profile, assessment: hvac, correct_count: 2)
         complete_attempt!(technician_profile: profile, assessment: plumbing, correct_count: 1)
 
@@ -422,6 +423,22 @@ module Api
 
         assert_response :unprocessable_entity
         assert_equal "assessment_unavailable", JSON.parse(response.body)["code"]
+      end
+
+      test "starting an assessment for a different trade is rejected" do
+        create_published_assessment!(
+          slug: "wrong_trade_start",
+          trade_type: "Plumber",
+          categories: { "fixtures" => { name: "Fixtures", blueprint: 2, bank: 4 } }
+        )
+        user, = create_technician!(trade_type: "Electrician")
+
+        post "/api/v1/assessments/wrong_trade_start/attempts", headers: auth_header_for(user)
+
+        assert_response :unprocessable_entity
+        body = JSON.parse(response.body)
+        assert_equal "trade_mismatch", body["code"]
+        assert_match(/different trade/, body["error"])
       end
 
       test "an unknown attempt returns not found" do
