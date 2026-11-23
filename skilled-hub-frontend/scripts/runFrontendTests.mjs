@@ -31,6 +31,7 @@ const testFiles = [
   'adminUsersCompleteness.test.mjs',
   'adminUsersSearch.test.mjs',
   'adminUsersPagination.test.mjs',
+  'adminUsersSort.test.mjs',
   'technicianActivation.test.mjs',
   'tableColumnPrefs.test.mjs',
   'usAddress.test.mjs',

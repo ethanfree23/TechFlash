@@ -21,6 +21,7 @@ import {
 import { lookupUsZip } from '../utils/zipLookup';
 import { usZip5 } from '../utils/usAddress';
 import { exportUsersToCsv } from '../utils/adminUsersExport';
+import { nextTechnicianInList } from '../utils/adminUsersSort';
 import UsersHeader from '../components/admin/users/UsersHeader';
 import UsersKpiCards from '../components/admin/users/UsersKpiCards';
 import UsersSegmentedTabs from '../components/admin/users/UsersSegmentedTabs';
@@ -599,11 +600,8 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
             );
           }}
           onOpenNext={() => {
-            const techs = filteredRows.filter((u) => u.role === 'technician');
-            if (!techs.length) return;
-            const idx = techs.findIndex((u) => u.id === drawerUserId);
-            const next = techs[(idx + 1) % techs.length];
-            if (next && next.id !== drawerUserId) setDrawerUserId(next.id);
+            const next = nextTechnicianInList(filteredRows, drawerUserId, sortKey, sortDir);
+            if (next) setDrawerUserId(next.id);
           }}
         />
       )}

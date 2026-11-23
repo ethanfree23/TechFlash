@@ -8,7 +8,7 @@ import UserRowActionsMenu from './UserRowActionsMenu';
 import { TradeLicenseCell, ReferencesCell, BackgroundCheckCell } from './VerificationInventoryCells';
 import UsersEmptyState from './UsersEmptyState';
 import { TableRowsSkeleton } from './UsersSkeleton';
-import { displayOrFallback, formatDistanceMiles, TRADE_LEVEL_RANK } from '../../../utils/adminUsersDisplayAdapter';
+import { displayOrFallback, formatDistanceMiles } from '../../../utils/adminUsersDisplayAdapter';
 import { mediaUrlWithCacheBust } from '../../../utils/mediaUrl';
 import {
   ADMIN_USERS_PAGE_SIZES,
@@ -16,6 +16,7 @@ import {
   persistPageSize,
   readStoredPageSize,
 } from '../../../utils/adminUsersPagination';
+import { sortAdminUserRows } from '../../../utils/adminUsersSort';
 import {
   clampTableColumnWidth,
   minWidthForColumnKey,
@@ -699,56 +700,10 @@ export default function UsersTable({
     onResetColumnWidth?.(key);
   };
 
-  const sortedRows = useMemo(() => {
-    const copy = [...rows];
-    const dir = sortDir === 'asc' ? 1 : -1;
-    copy.sort((a, b) => {
-      const getVal = (row, key) => {
-        switch (key) {
-          case 'admin_star': return row.adminStarred ? 1 : 0;
-          case 'user': return row.displayName?.toLowerCase() || '';
-          case 'type': return row.role || '';
-          case 'status': return row.accountStatus || '';
-          case 'activation_status': return row.activation?.status || '';
-          case 'last_contacted': return row.activation?.last_contacted_at ? new Date(row.activation.last_contacted_at).getTime() : 0;
-          case 'last_call_outcome': return row.activation?.last_call_outcome || '';
-          case 'next_follow_up': return row.activation?.next_follow_up_at ? new Date(row.activation.next_follow_up_at).getTime() : 0;
-          case 'onboarding_blockers': return (row.activation?.onboarding_blockers || []).length;
-          case 'crm_availability': return row.activation?.current_availability || '';
-          case 'trade_license': return row.verification?.trade_license?.state || '';
-          case 'references': return Number(row.verification?.professional_references?.count || 0);
-          case 'background_check': return row.verification?.background_check?.label || '';
-          case 'company_trade': return row.companyTradeLabel || '';
-          case 'trade_level': return TRADE_LEVEL_RANK[row.tradeLevelSlug] || 0;
-          case 'experience_years': return row.experienceYears ?? -1;
-          case 'location': return row.locationLabel || '';
-          case 'city': return row.cityLabel || '';
-          case 'state': return row.stateLabel || '';
-          case 'zip': return row.zipLabel || '';
-          case 'membership_tier': return row.membershipTier || '';
-          case 'activity': return row.logins30d ?? 0;
-          case 'jobs': return row.jobsSummary?.accepted ?? row.jobsSummary?.posted ?? 0;
-          case 'joined': return row.created_at ? new Date(row.created_at).getTime() : 0;
-          case 'last_login': return row.lastLoginAt ? new Date(row.lastLoginAt).getTime() : 0;
-          case 'risk': return row.riskLevel || '';
-          default: return '';
-        }
-      };
-      if (sortKey === 'distance') {
-        const aMissing = a.distanceMiles == null || !Number.isFinite(a.distanceMiles);
-        const bMissing = b.distanceMiles == null || !Number.isFinite(b.distanceMiles);
-        if (aMissing && bMissing) return 0;
-        if (aMissing) return 1;
-        if (bMissing) return -1;
-        return (a.distanceMiles - b.distanceMiles) * dir;
-      }
-      const av = getVal(a, sortKey);
-      const bv = getVal(b, sortKey);
-      if (typeof av === 'number' && typeof bv === 'number') return (av - bv) * dir;
-      return String(av).localeCompare(String(bv), undefined, { sensitivity: 'base' }) * dir;
-    });
-    return copy;
-  }, [rows, sortKey, sortDir]);
+  const sortedRows = useMemo(
+    () => sortAdminUserRows(rows, sortKey, sortDir),
+    [rows, sortKey, sortDir]
+  );
 
   const pageInfo = useMemo(
     () => paginateItems(sortedRows, page, pageSize),
