@@ -20,6 +20,7 @@ import { TRADE_OPTIONS, COMPANY_INDUSTRY_OPTIONS } from '../constants/trades';
 import { CANONICAL_INDUSTRIES } from '../components/admin/adminUserIndustries';
 import { withDemoPath } from '../utils/demoMode';
 import TrustProfileChecklist from '../components/admin/trust-safety/TrustProfileChecklist';
+import GuidedOnboardingPanel from '../components/admin/users/GuidedOnboardingPanel';
 import { getFullName } from '../utils/adminUsersDisplayAdapter';
 import { formatPhoneDisplay } from '../utils/crmDisplayAdapter';
 
@@ -701,6 +702,24 @@ export default function AdminUserDetailPage({ user, onLogout }) {
               />
               <div className="p-4 sm:p-6">
                 <div className="space-y-8">
+            {detailTab === 'profile' && isTech && (
+              <div className="mb-4">
+                <GuidedOnboardingPanel
+                  userId={u?.id}
+                  guidedOnboarding={u?.guided_onboarding}
+                  onUpdated={(next) => {
+                    setData((prev) =>
+                      prev
+                        ? {
+                            ...prev,
+                            user: { ...prev.user, guided_onboarding: next },
+                          }
+                        : prev
+                    );
+                  }}
+                />
+              </div>
+            )}
             {detailTab === 'profile' && (
             <AdminCollapsibleCard
               title="Profile"

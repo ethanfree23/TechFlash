@@ -10,7 +10,9 @@ import WelcomeScreen from '../screens/WelcomeScreen';
 import LoginScreen from '../screens/LoginScreen';
 import RegisterScreen from '../screens/RegisterScreen';
 import PermissionsOnboardingScreen from '../screens/PermissionsOnboardingScreen';
+import GuidedOnboardingGateScreen from '../screens/GuidedOnboardingGateScreen';
 import DashboardScreen from '../screens/DashboardScreen';
+import { fetchGuidedOnboarding, summaryFromUser } from '../onboarding/guidedOnboarding';
 import JobsScreen from '../screens/JobsScreen';
 import MessagesScreen from '../screens/MessagesScreen';
 import MoreScreen from '../screens/MoreScreen';
@@ -285,6 +287,8 @@ export default function RootNavigator() {
   const { user, ready } = useAuth();
   const [permissionsReady, setPermissionsReady] = useState(false);
   const [needsPermissions, setNeedsPermissions] = useState(false);
+  const [guidedReady, setGuidedReady] = useState(false);
+  const [needsGuidedOnboarding, setNeedsGuidedOnboarding] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -314,7 +318,42 @@ export default function RootNavigator() {
     };
   }, [user?.id]);
 
-  if (!ready || (user && !permissionsReady)) {
+  useEffect(() => {
+    let cancelled = false;
+    if (!user || user.role !== 'technician') {
+      setGuidedReady(true);
+      setNeedsGuidedOnboarding(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+    setGuidedReady(false);
+    const cached = summaryFromUser(user);
+    if (cached?.feature_enabled === false) {
+      setNeedsGuidedOnboarding(false);
+      setGuidedReady(true);
+      return () => {
+        cancelled = true;
+      };
+    }
+    fetchGuidedOnboarding()
+      .then((summary) => {
+        if (cancelled) return;
+        setNeedsGuidedOnboarding(!!(summary?.feature_enabled && summary?.required));
+        setGuidedReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setNeedsGuidedOnboarding(!!(cached?.feature_enabled && cached?.required));
+          setGuidedReady(true);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user?.id, user?.role]);
+
+  if (!ready || (user && !permissionsReady) || (user && !guidedReady)) {
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.bg }}>
         <ActivityIndicator size="large" color={colors.primaryOrange} />
@@ -328,6 +367,8 @@ export default function RootNavigator() {
         <AuthStackNavigator />
       ) : needsPermissions ? (
         <PermissionsOnboardingScreen onFinished={() => setNeedsPermissions(false)} />
+      ) : needsGuidedOnboarding ? (
+        <GuidedOnboardingGateScreen onFinished={() => setNeedsGuidedOnboarding(false)} />
       ) : (
         <AppStackNavigator />
       )}

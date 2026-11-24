@@ -128,8 +128,13 @@ module Api
         StripeConnectAccountService.sync!(profile)
 
         base_url = params[:base_url].presence || 'http://localhost:5173'
-        return_url = "#{base_url}/settings?connect=return"
-        refresh_url = "#{base_url}/settings?connect=refresh"
+        # Allow onboarding wizard (and other flows) to return to a specific path.
+        return_path = params[:return_path].presence || '/settings?connect=return'
+        refresh_path = params[:refresh_path].presence || '/settings?connect=refresh'
+        return_path = "/#{return_path}" unless return_path.start_with?('/')
+        refresh_path = "/#{refresh_path}" unless refresh_path.start_with?('/')
+        return_url = params[:return_url].presence || "#{base_url}#{return_path}"
+        refresh_url = params[:refresh_url].presence || "#{base_url}#{refresh_path}"
 
         link = Stripe::AccountLink.create(
           account: profile.stripe_account_id,

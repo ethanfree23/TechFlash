@@ -38,6 +38,12 @@ const FILTER_FIELDS = [
     options: ['', ...AVAILABILITIES.map((a) => a.id)],
   },
   { key: 'verificationStatus', label: 'Verification', type: 'select', options: ['', 'Verified', 'Pending'] },
+  {
+    key: 'guidedOnboarding',
+    label: 'Guided setup',
+    type: 'select',
+    options: ['', 'not_started', 'in_progress', 'completed'],
+  },
   { key: 'riskLevel', label: 'Risk level', type: 'select', options: ['', 'Low', 'Medium', 'High'] },
   { key: 'loginActivity', label: 'Login activity', type: 'select', options: ['', 'active_30d', 'inactive_30d'] },
   { key: 'company', label: 'Company', type: 'text' },

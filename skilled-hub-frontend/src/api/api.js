@@ -1007,10 +1007,16 @@ export const settingsAPI = {
     apiRequest(`/settings/payment_methods/${encodeURIComponent(paymentMethodId)}`, {
       method: 'DELETE',
     }),
-  createConnectAccountLink: (baseUrl) =>
+  createConnectAccountLink: (baseUrl, options = {}) =>
     apiRequest('/settings/create_connect_account_link', {
       method: 'POST',
-      body: JSON.stringify({ base_url: baseUrl || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173') }),
+      body: JSON.stringify({
+        base_url: baseUrl || (typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173'),
+        return_path: options.return_path,
+        refresh_path: options.refresh_path,
+        return_url: options.return_url,
+        refresh_url: options.refresh_url,
+      }),
     }),
   billingHistory: (params = {}) => {
     const qs = new URLSearchParams();

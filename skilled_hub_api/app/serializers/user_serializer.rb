@@ -13,6 +13,7 @@ class UserSerializer < ActiveModel::Serializer
              :job_alert_notifications_enabled,
              :job_alert_preference,
              :ui_preferences,
+             :guided_onboarding,
              :created_at,
              :updated_at
 
@@ -58,5 +59,17 @@ class UserSerializer < ActiveModel::Serializer
       sms_enabled: pref.sms_enabled,
       app_enabled: pref.app_enabled
     }
+  end
+
+  # Lightweight gate payload for post-login redirects. Full section detail lives
+  # on GET /api/v1/technician_onboarding.
+  def guided_onboarding
+    return { applicable: false, required: false, feature_enabled: TechnicianGuidedOnboarding.enabled? } unless object.technician?
+
+    summary = TechnicianOnboardingProgress.summary_for(object)
+    summary.merge(applicable: true, feature_enabled: TechnicianGuidedOnboarding.enabled?)
+  rescue StandardError => e
+    Rails.logger.warn("UserSerializer#guided_onboarding: #{e.class} #{e.message}")
+    { applicable: true, required: false, feature_enabled: TechnicianGuidedOnboarding.enabled?, error: true }
   end
 end 

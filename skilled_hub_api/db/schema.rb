@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2026_11_18_190000) do
+ActiveRecord::Schema[7.1].define(version: 2026_11_24_210000) do
   create_table "ach_feature_audits", force: :cascade do |t|
     t.string "scope", null: false
     t.integer "company_profile_id"
@@ -1319,6 +1319,33 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_18_190000) do
     t.index ["user_id"], name: "index_technician_interactions_on_user_id"
   end
 
+  create_table "technician_onboardings", force: :cascade do |t|
+    t.integer "user_id", null: false
+    t.string "status", default: "not_started", null: false
+    t.string "current_section"
+    t.string "current_substep"
+    t.json "completed_sections", default: [], null: false
+    t.json "section_statuses", default: {}, null: false
+    t.integer "onboarding_version", default: 1, null: false
+    t.datetime "started_at"
+    t.datetime "completed_at"
+    t.datetime "last_activity_at"
+    t.datetime "grandfathered_at"
+    t.string "grandfather_reason"
+    t.datetime "required_by_admin_at"
+    t.integer "required_by_admin_id"
+    t.datetime "assessment_prompt_sent_at"
+    t.datetime "assessment_reminder_sent_at"
+    t.boolean "welcome_banner_dismissed", default: false, null: false
+    t.json "metadata", default: {}, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["completed_at"], name: "index_technician_onboardings_on_completed_at"
+    t.index ["required_by_admin_at"], name: "index_technician_onboardings_on_required_by_admin_at"
+    t.index ["status"], name: "index_technician_onboardings_on_status"
+    t.index ["user_id"], name: "index_technician_onboardings_on_user_id", unique: true
+  end
+
   create_table "technician_profiles", force: :cascade do |t|
     t.integer "user_id", null: false
     t.string "trade_type"
@@ -1687,6 +1714,8 @@ ActiveRecord::Schema[7.1].define(version: 2026_11_18_190000) do
   add_foreign_key "technician_follow_ups", "users", column: "created_by_id"
   add_foreign_key "technician_interactions", "users"
   add_foreign_key "technician_interactions", "users", column: "author_id"
+  add_foreign_key "technician_onboardings", "users"
+  add_foreign_key "technician_onboardings", "users", column: "required_by_admin_id"
   add_foreign_key "technician_profiles", "users"
   add_foreign_key "time_entries", "jobs"
   add_foreign_key "time_entries", "technician_profiles"
