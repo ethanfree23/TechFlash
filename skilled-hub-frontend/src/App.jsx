@@ -39,10 +39,12 @@ import CreatePasswordPage from './pages/CreatePasswordPage';
 import PublicJobSharePage from './pages/PublicJobSharePage';
 import ReferenceResponsePage from './pages/ReferenceResponsePage';
 import DownloadAppPage from './pages/DownloadAppPage';
+import TechnicianOnboardingPage from './pages/TechnicianOnboardingPage';
 import FeedbackWidget from './components/FeedbackWidget';
 import MasqueradeBanner from './components/MasqueradeBanner';
 import DemoModeBanner from './components/DemoModeBanner';
 import AppPageLayout from './components/layout/AppPageLayout';
+import OnboardingGate from './components/onboarding/OnboardingGate';
 import { auth } from './auth';
 import { metaAPI, authAPI } from './api/api';
 import { setApiDemoMode, setDemoFlagshipJobId, setDemoReviewedJobId, getDemoBasePath, isDemoPath, isDemoRoleAutoLoginSearch, isDemoRoleAutoLoginLocation } from './utils/demoMode';
@@ -57,8 +59,9 @@ const MobileNavPreviewPage = import.meta.env.DEV
   : null;
 
 // Protected Route component
-const ProtectedRoute = ({ children, isAuthenticated }) => {
-  return isAuthenticated ? children : <Navigate to="/login" replace />;
+const ProtectedRoute = ({ children, isAuthenticated, user }) => {
+  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  return <OnboardingGate user={user}>{children}</OnboardingGate>;
 };
 
 // Public Route: stay on login when an explicit demo auto-login is requested so a stale
@@ -238,11 +241,25 @@ function App() {
             />
           ) : null}
           
+          {/* Mandatory technician onboarding wizard — no app chrome */}
+          <Route
+            path="/technician/onboarding"
+            element={
+              isAuthenticated && user?.role === 'technician' ? (
+                <TechnicianOnboardingPage user={user} onUserUpdate={handleUserUpdate} onLogout={handleLogout} />
+              ) : isAuthenticated ? (
+                <Navigate to="/dashboard" replace />
+              ) : (
+                <Navigate to="/login" replace />
+              )
+            }
+          />
+
           {/* Dashboard - both company and technician */}
           <Route
             path="/dashboard"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 <Dashboard user={user} onLogout={handleLogout} />
               </ProtectedRoute>
             }
@@ -252,7 +269,7 @@ function App() {
           <Route 
             path="/jobs" 
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 <JobsPage user={user} onLogout={handleLogout} />
               </ProtectedRoute>
             } 
@@ -261,7 +278,7 @@ function App() {
           <Route
             path="/jobs/create"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated && (user?.role === 'company' || user?.role === 'admin')}>
+              <ProtectedRoute isAuthenticated={isAuthenticated && (user?.role === 'company' || user?.role === 'admin')} user={user}>
                 <AppPageLayout user={user} onLogout={handleLogout} activePage="jobs" emailVariant="welcome" maxWidthClass="max-w-5xl">
                   <CreateJob />
                 </AppPageLayout>
@@ -272,7 +289,7 @@ function App() {
           <Route
             path="/jobs/:id"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 <AppPageLayout user={user} onLogout={handleLogout} activePage="jobs" emailVariant="welcome" maxWidthClass="max-w-6xl">
                   <JobDetail />
                 </AppPageLayout>
@@ -283,7 +300,7 @@ function App() {
           <Route
             path="/jobs/:id/edit"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated && (user?.role === 'company' || user?.role === 'admin')}>
+              <ProtectedRoute isAuthenticated={isAuthenticated && (user?.role === 'company' || user?.role === 'admin')} user={user}>
                 <AppPageLayout user={user} onLogout={handleLogout} activePage="jobs" emailVariant="welcome" maxWidthClass="max-w-5xl">
                   <EditJob />
                 </AppPageLayout>
@@ -294,7 +311,7 @@ function App() {
           <Route
             path="/technicians"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 {user?.role === 'company' || user?.role === 'admin' ? (
                   <TechnicianDirectoryPage user={user} onLogout={handleLogout} />
                 ) : (
@@ -307,7 +324,7 @@ function App() {
           <Route
             path="/technicians/:id"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 <TechnicianProfilePage user={user} onLogout={handleLogout} />
               </ProtectedRoute>
             }
@@ -316,7 +333,7 @@ function App() {
           <Route
             path="/companies/:id"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 <CompanyProfilePage user={user} onLogout={handleLogout} />
               </ProtectedRoute>
             }
@@ -325,7 +342,7 @@ function App() {
           <Route
             path="/settings"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 <SettingsPage user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
               </ProtectedRoute>
             }
@@ -334,7 +351,7 @@ function App() {
           <Route
             path="/messages"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 <MessagesPage user={user} onLogout={handleLogout} />
               </ProtectedRoute>
             }
@@ -343,7 +360,7 @@ function App() {
           <Route
             path="/crm"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 {user?.role === 'admin' ? (
                   <CrmPage user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
                 ) : (
@@ -356,7 +373,7 @@ function App() {
           <Route
             path="/admin/users/:userId"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 {user?.role === 'admin' ? (
                   <AdminUserDetailPage user={user} onLogout={handleLogout} />
                 ) : (
@@ -368,7 +385,7 @@ function App() {
           <Route
             path="/admin/users"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 {user?.role === 'admin' ? (
                   <AdminUsersPage user={user} onLogout={handleLogout} onUserUpdate={handleUserUpdate} />
                 ) : (
@@ -380,7 +397,7 @@ function App() {
           <Route
             path="/admin/reviews"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 {user?.role === 'admin' ? (
                   <AdminReviewsPage user={user} onLogout={handleLogout} />
                 ) : (
@@ -392,7 +409,7 @@ function App() {
           <Route
             path="/admin/trust-safety"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 {user?.role === 'admin' ? (
                   <AdminTrustSafetyPage user={user} onLogout={handleLogout} />
                 ) : (
@@ -404,7 +421,7 @@ function App() {
           <Route
             path="/admin/job-payments"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 {user?.role === 'admin' ? (
                   <AdminJobPaymentsPage user={user} onLogout={handleLogout} />
                 ) : (
@@ -416,7 +433,7 @@ function App() {
           <Route
             path="/assessments"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 {user?.role === 'technician' ? (
                   <SkillsAssessmentsPage user={user} onLogout={handleLogout} />
                 ) : user?.role === 'admin' ? (
@@ -430,7 +447,7 @@ function App() {
           <Route
             path="/assessments/attempts/:attemptId"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated && user?.role === 'technician'}>
+              <ProtectedRoute isAuthenticated={isAuthenticated && user?.role === 'technician'} user={user}>
                 <AssessmentAttemptPage user={user} onLogout={handleLogout} />
               </ProtectedRoute>
             }
@@ -438,7 +455,7 @@ function App() {
           <Route
             path="/assessments/results/:attemptId"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated && user?.role === 'technician'}>
+              <ProtectedRoute isAuthenticated={isAuthenticated && user?.role === 'technician'} user={user}>
                 <AssessmentResultPage user={user} onLogout={handleLogout} />
               </ProtectedRoute>
             }
@@ -446,7 +463,7 @@ function App() {
           <Route
             path="/assessments/:assessmentSlug/attempts"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated && user?.role === 'technician'}>
+              <ProtectedRoute isAuthenticated={isAuthenticated && user?.role === 'technician'} user={user}>
                 <AssessmentHistoryPage user={user} onLogout={handleLogout} />
               </ProtectedRoute>
             }
@@ -454,7 +471,7 @@ function App() {
           <Route
             path="/admin/assessments/:id"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 {user?.role === 'admin' ? (
                   <AdminAssessmentDetailPage user={user} onLogout={handleLogout} />
                 ) : (
@@ -466,7 +483,7 @@ function App() {
           <Route
             path="/admin/assessments"
             element={
-              <ProtectedRoute isAuthenticated={isAuthenticated}>
+              <ProtectedRoute isAuthenticated={isAuthenticated} user={user}>
                 {user?.role === 'admin' ? (
                   <AdminAssessmentsPage user={user} onLogout={handleLogout} />
                 ) : (

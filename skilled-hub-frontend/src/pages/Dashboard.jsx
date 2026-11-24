@@ -1193,6 +1193,7 @@ const TechnicianDashboardContent = ({
   const [nearbyPreviewError, setNearbyPreviewError] = useState(null);
   const [reviewedJobIds, setReviewedJobIds] = useState(new Set());
   const [assessmentCatalog, setAssessmentCatalog] = useState(null);
+  const [showOnboardingWelcome, setShowOnboardingWelcome] = useState(false);
   /** Incremented when the user explicitly focuses a job so the map pans/zooms (fitBounds alone is often invisible). */
   const [mapPanNonce, setMapPanNonce] = useState(0);
   const searchRadiusMiles = 100;
@@ -1253,8 +1254,21 @@ const TechnicianDashboardContent = ({
       assessmentsAPI.catalog()
         .then(setAssessmentCatalog)
         .catch(() => setAssessmentCatalog(null));
+      try {
+        if (sessionStorage.getItem('tf_onboarding_welcome') === '1') {
+          setShowOnboardingWelcome(true);
+          sessionStorage.removeItem('tf_onboarding_welcome');
+        }
+      } catch {
+        /* ignore */
+      }
     }
   }, [user?.role]);
+
+  const incompleteAssessments = useMemo(() => {
+    const list = assessmentCatalog?.assessments || [];
+    return list.filter((a) => a.state !== 'completed');
+  }, [assessmentCatalog]);
 
   const nearbyPreviewDistance = mapDisplayJobs.find((job) => job.id === nearbyJobPreviewId)?.distanceMiles;
   const needsPlacementPrompt = needsMapPlacement(technicianProfile);
@@ -1277,6 +1291,37 @@ const TechnicianDashboardContent = ({
         onClose={() => setNearbyJobPreviewId(null)}
         navigate={navigate}
       />
+      {showOnboardingWelcome && (
+        <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-4 text-emerald-950 shadow-sm">
+          <p className="font-semibold text-sm sm:text-base mb-1">Welcome to TechFlash — your account setup is complete</p>
+          <p className="text-sm text-emerald-900/80">
+            You can now browse jobs on the map. Complete your skills assessment when you&apos;re ready to showcase your qualifications.
+          </p>
+          <button
+            type="button"
+            className="mt-3 text-sm font-semibold text-emerald-800 underline"
+            onClick={() => setShowOnboardingWelcome(false)}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {incompleteAssessments.length > 0 && (
+        <div className="mb-6 rounded-2xl border border-orange-200 bg-orange-50 px-5 py-4 text-orange-950 shadow-sm">
+          <p className="font-semibold text-sm sm:text-base mb-1">Complete Your Skills Assessment</p>
+          <p className="text-sm text-orange-900/80">
+            Completing your assessment helps demonstrate your skills and qualifications and may improve access to matching job opportunities.
+          </p>
+          <Link
+            to="/assessments"
+            className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700"
+          >
+            Take assessment
+          </Link>
+        </div>
+      )}
+
       {needsPlacementPrompt && (
         <div className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 text-amber-950 shadow-sm">
           <p className="font-semibold text-sm sm:text-base mb-1">

@@ -144,6 +144,10 @@ Rails.application.routes.draw do
       post "verification_references/respond/:token", to: "verification_references#respond"
       post "coupons/redeem", to: "coupons#redeem"
       resource :job_alert_preference, only: %i[show update]
+      resource :technician_onboarding, only: %i[show update], controller: :technician_onboardings do
+        post :complete
+        post :start
+      end
       resources :app_notifications, only: %i[index] do
         member do
           patch :mark_read
@@ -207,6 +211,9 @@ Rails.application.routes.draw do
         get "company_accounts/search", to: "company_accounts#search"
         get "company_accounts/search_companies", to: "company_accounts#search_companies"
         get "platform_insights", to: "platform_insights#show"
+        get "technician_onboarding/settings", to: "technician_onboardings#settings"
+        patch "technician_onboarding/settings", to: "technician_onboardings#update_settings"
+        get "technician_onboarding/dry_run", to: "technician_onboardings#dry_run"
         resources :users, only: %i[index show create destroy] do
           member do
             post :password_setup
@@ -218,6 +225,9 @@ Rails.application.routes.draw do
             patch :profile, action: :update_profile
             patch :admin_star
             post :log_call, to: "technician_activations#log_call"
+          end
+          resource :technician_onboarding, only: %i[show], controller: "technician_onboardings" do
+            post :require_onboarding
           end
           resource :technician_activation, only: %i[show update], controller: "technician_activations"
           resources :technician_interactions, only: %i[index create], controller: "technician_interactions" do

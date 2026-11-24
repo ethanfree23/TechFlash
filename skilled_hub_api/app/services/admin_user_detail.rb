@@ -73,6 +73,7 @@ class AdminUserDetail
       profile: profile_payload(user),
       verification: TechnicianVerificationInventory.call(user),
       activation: activation_payload(user),
+      guided_onboarding: user.technician? ? TechnicianOnboardingProgress.for(user) : nil,
       ai_sms_session: AiSmsSession.current_for(user)&.as_admin_json,
       company_context: company_context_payload(user, company_profile)
     }

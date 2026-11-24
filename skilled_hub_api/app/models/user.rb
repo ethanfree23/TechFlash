@@ -38,6 +38,7 @@ class User < ApplicationRecord
   end
 
   has_one :technician_profile, dependent: :destroy
+  has_one :technician_onboarding, dependent: :destroy
   has_one :technician_activation, dependent: :destroy
   has_many :technician_interactions, dependent: :destroy
   has_many :technician_follow_ups, dependent: :destroy

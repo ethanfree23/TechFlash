@@ -20,6 +20,9 @@ export const USER_TABS = [
   { id: 'overdue', label: 'Overdue', apiRole: 'technician' },
   { id: 'awaiting_response', label: 'Awaiting response', apiRole: 'technician' },
   { id: 'onboarding_incomplete', label: 'Onboarding incomplete', apiRole: 'technician' },
+  { id: 'guided_not_started', label: 'Guided setup not started', apiRole: 'technician' },
+  { id: 'guided_in_progress', label: 'Guided setup in progress', apiRole: 'technician' },
+  { id: 'guided_completed', label: 'Guided setup complete', apiRole: 'technician' },
   { id: 'ready_available', label: 'Ready / available', apiRole: 'technician' },
   { id: 'has_a_job', label: 'Has a job', apiRole: 'technician' },
   { id: 'unresponsive', label: 'Unresponsive', apiRole: 'technician' },
@@ -78,7 +81,11 @@ export const DEFAULT_TABLE_COLUMNS = [
 const TECH_PIPELINE_TABS = new Set(ACTIVATION_PIPELINE_TABS.map((t) => t.id));
 
 export function defaultColumnsForTab(tab) {
-  const techOriented = tab === 'technicians' || tab === 'focus' || TECH_PIPELINE_TABS.has(tab);
+  const techOriented =
+    tab === 'technicians' ||
+    tab === 'focus' ||
+    TECH_PIPELINE_TABS.has(tab) ||
+    ['guided_not_started', 'guided_in_progress', 'guided_completed'].includes(tab);
   return DEFAULT_TABLE_COLUMNS.map((col) => {
     if (col.key === 'company_trade') {
       return { ...col, label: techOriented ? 'Trade' : 'Company' };
@@ -315,6 +322,7 @@ export function enrichUserRow(row, detail = null) {
     jobsSummary: detail ? buildJobsSummary(row, detail) : null,
     activityLabel: buildActivityLabel(logins30d, lastLoginAt),
     activation: deriveActivation(row, detail),
+    guidedOnboarding: row.guided_onboarding || detail?.user?.guided_onboarding || null,
   };
 }
 
@@ -489,6 +497,15 @@ export function computeTabCounts(enriched) {
   ACTIVATION_PIPELINE_TABS.forEach((tab) => {
     counts[tab.id] = applyActivationPipelineFilter(enriched, tab.id).length;
   });
+  counts.guided_not_started = enriched.filter(
+    (u) => u.role === 'technician' && (!u.guidedOnboarding?.status || u.guidedOnboarding.status === 'not_started')
+  ).length;
+  counts.guided_in_progress = enriched.filter(
+    (u) => u.role === 'technician' && u.guidedOnboarding?.status === 'in_progress'
+  ).length;
+  counts.guided_completed = enriched.filter(
+    (u) => u.role === 'technician' && u.guidedOnboarding?.status === 'completed'
+  ).length;
   return counts;
 }
 
@@ -498,7 +515,12 @@ export function getApiRoleForTab(tabId) {
   if (['pending', 'flagged', 'suspended', 'recently_active', 'focus'].includes(tabId)) {
     return tabId === 'focus' ? 'technician' : 'all';
   }
-  if (TECH_PIPELINE_TABS.has(tabId)) return 'technician';
+  if (
+    TECH_PIPELINE_TABS.has(tabId) ||
+    ['guided_not_started', 'guided_in_progress', 'guided_completed'].includes(tabId)
+  ) {
+    return 'technician';
+  }
   return tab.apiRole || 'all';
 }
 
@@ -517,6 +539,18 @@ export function applyTabFilter(enriched, tabId) {
     case 'has_a_job':
     case 'unresponsive':
       return applyActivationPipelineFilter(enriched, tabId);
+    case 'guided_not_started':
+      return enriched.filter(
+        (u) => u.role === 'technician' && (!u.guidedOnboarding?.status || u.guidedOnboarding.status === 'not_started')
+      );
+    case 'guided_in_progress':
+      return enriched.filter(
+        (u) => u.role === 'technician' && u.guidedOnboarding?.status === 'in_progress'
+      );
+    case 'guided_completed':
+      return enriched.filter(
+        (u) => u.role === 'technician' && u.guidedOnboarding?.status === 'completed'
+      );
     case 'company':
       return enriched.filter((u) => u.role === 'company');
     case 'admins':
@@ -542,6 +576,13 @@ export function applyAdvancedFilters(rows, filters = {}, proximity = null) {
   }
   if (filters.status) {
     result = result.filter((u) => u.accountStatus === filters.status);
+  }
+  if (filters.guidedOnboarding) {
+    result = result.filter((u) => {
+      if (u.role !== 'technician') return false;
+      const status = u.guidedOnboarding?.status || 'not_started';
+      return status === filters.guidedOnboarding;
+    });
   }
   if (filters.activationStatus) {
     result = result.filter(

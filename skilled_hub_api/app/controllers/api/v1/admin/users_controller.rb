@@ -14,6 +14,7 @@ module Api
         def index
           scope = User.where(role: %i[technician company]).includes(
             :technician_activation,
+            :technician_onboarding,
             technician_profile: { avatar_attachment: :blob },
             company_profile: { avatar_attachment: :blob },
             shared_company_profile: { avatar_attachment: :blob }
@@ -21,6 +22,7 @@ module Api
           scope = filter_by_role(scope)
           scope = filter_by_search(scope)
           scope = filter_by_activation_pipeline(scope)
+          scope = filter_by_guided_onboarding(scope)
 
           users = scope.to_a
           ids = users.map(&:id)
@@ -50,6 +52,7 @@ module Api
               last_login_at: last_logins[user.id]&.iso8601,
               verification: inventories[user.id],
               activation: activation_list_payload(user, activations[user.id], onboardings[user.id]),
+              guided_onboarding: guided_onboarding_list_payload(user),
               ai_sms_session: session_by_user[user.id]&.as_admin_json
             )
           end
@@ -638,6 +641,28 @@ module Api
           }
         end
 
+        def guided_onboarding_list_payload(user)
+          return nil unless user.technician?
+
+          record = user.technician_onboarding
+          summary = TechnicianOnboardingProgress.summary_for(user)
+          {
+            status: summary[:status],
+            required: summary[:required],
+            percent: summary[:percent],
+            current_section: summary[:current_section],
+            completed_at: summary[:completed_at],
+            last_activity_at: summary[:last_activity_at],
+            grandfathered: summary[:grandfathered],
+            required_by_admin: record&.required_by_admin_at.present?,
+            sections_complete: summary[:sections_complete],
+            sections_total: summary[:sections_total]
+          }
+        rescue StandardError => e
+          Rails.logger.warn("guided_onboarding_list_payload user=#{user.id}: #{e.class} #{e.message}")
+          nil
+        end
+
         def filter_by_activation_pipeline(scope)
           pipeline = params[:activation_pipeline].to_s.strip
           return scope if pipeline.blank?
@@ -645,6 +670,41 @@ module Api
 
           ids = TechnicianActivationPipeline.user_ids_for(pipeline)
           scope.where(id: ids)
+        end
+
+        def filter_by_guided_onboarding(scope)
+          filter = params[:guided_onboarding].to_s.strip
+          return scope if filter.blank?
+
+          case filter
+          when "not_started"
+            scope.technician.left_outer_joins(:technician_onboarding)
+              .where("technician_onboardings.id IS NULL OR technician_onboardings.status = ?", "not_started")
+          when "in_progress"
+            scope.technician.joins(:technician_onboarding).where(technician_onboardings: { status: "in_progress" })
+          when "completed"
+            scope.technician.joins(:technician_onboarding)
+              .where(technician_onboardings: { status: "completed" })
+              .where(technician_onboardings: { required_by_admin_at: nil })
+          when "awaiting_verification"
+            # Technicians with incomplete CRM verification readiness.
+            tech_ids = User.technician.pluck(:id)
+            inventories = TechnicianVerificationInventory.preload_for(User.where(id: tech_ids).includes(:technician_profile))
+            awaiting = inventories.select { |_id, inv| inv && (inv[:pending] || inv[:technician_actionable]) }.keys
+            scope.where(id: awaiting)
+          when "outstanding_assessments"
+            # Technicians who completed onboarding but still have incomplete assessments.
+            completed_ids = TechnicianOnboarding.where(status: "completed").where(required_by_admin_at: nil).pluck(:user_id)
+            outstanding = User.where(id: completed_ids).includes(technician_profile: :technician_assessment_results).select do |u|
+              next false unless u.technician_profile
+
+              progress = TechnicianOnboardingProgress.for(u)
+              progress.dig(:assessments, :incomplete_count).to_i.positive?
+            end.map(&:id)
+            scope.where(id: outstanding)
+          else
+            scope
+          end
         end
 
         def membership_payload(user:, profile:)
