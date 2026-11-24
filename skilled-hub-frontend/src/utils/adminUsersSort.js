@@ -85,17 +85,29 @@ export function sortAdminUserRows(rows, sortKey = 'user', sortDir = 'asc') {
 }
 
 /**
- * Next technician after `currentId` in the filtered+sorted list the admin sees.
- * Skips non-technicians; wraps to the first tech when at the end.
+ * Neighbor technician in the filtered+sorted list the admin sees.
+ * Skips non-technicians; wraps at either end. `delta` is +1 (next) or -1 (previous).
  */
-export function nextTechnicianInList(rows, currentId, sortKey = 'user', sortDir = 'asc') {
+function neighborTechnicianInList(rows, currentId, sortKey, sortDir, delta) {
   const sorted = sortAdminUserRows(rows, sortKey, sortDir);
   const techs = sorted.filter((u) => u.role === 'technician');
   if (!techs.length) return null;
 
   const currentKey = currentId == null ? null : String(currentId);
   const idx = techs.findIndex((u) => String(u.id) === currentKey);
-  const next = techs[(idx + 1) % techs.length];
-  if (!next || String(next.id) === currentKey) return null;
-  return next;
+  // Missing current: next lands on first tech, previous on last.
+  const from = idx === -1 ? (delta > 0 ? -1 : 0) : idx;
+  const neighbor = techs[(from + delta + techs.length) % techs.length];
+  if (!neighbor || String(neighbor.id) === currentKey) return null;
+  return neighbor;
+}
+
+/** Next technician after `currentId` (wraps to the first tech at the end). */
+export function nextTechnicianInList(rows, currentId, sortKey = 'user', sortDir = 'asc') {
+  return neighborTechnicianInList(rows, currentId, sortKey, sortDir, 1);
+}
+
+/** Previous technician before `currentId` (wraps to the last tech at the start). */
+export function previousTechnicianInList(rows, currentId, sortKey = 'user', sortDir = 'asc') {
+  return neighborTechnicianInList(rows, currentId, sortKey, sortDir, -1);
 }

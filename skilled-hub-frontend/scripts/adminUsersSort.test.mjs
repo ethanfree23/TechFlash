@@ -1,5 +1,9 @@
 import assert from 'assert';
-import { nextTechnicianInList, sortAdminUserRows } from '../src/utils/adminUsersSort.js';
+import {
+  nextTechnicianInList,
+  previousTechnicianInList,
+  sortAdminUserRows,
+} from '../src/utils/adminUsersSort.js';
 
 function tech(id, displayName, extras = {}) {
   return { id, role: 'technician', displayName, ...extras };
@@ -71,10 +75,37 @@ function testNextTechReturnsNullWhenAloneOrEmpty() {
   assert.strictEqual(nextTechnicianInList([company(9, 'Only Co')], 9, 'user', 'asc'), null);
 }
 
+function testPreviousTechFollowsSortedOrderAndWraps() {
+  // Sorted by name asc: Amy, Bea, Carl
+  const rows = [tech(1, 'Carl'), tech(2, 'Amy'), tech(3, 'Bea')];
+  assert.strictEqual(previousTechnicianInList(rows, 3, 'user', 'asc').id, 2); // Bea -> Amy
+  assert.strictEqual(previousTechnicianInList(rows, 2, 'user', 'asc').id, 1); // Amy wraps -> Carl
+  assert.strictEqual(previousTechnicianInList(rows, 1, 'user', 'asc').id, 3); // Carl -> Bea
+}
+
+function testPreviousTechSkipsCompanies() {
+  const rows = [
+    company(10, 'Acme'),
+    tech(2, 'Amy'),
+    company(11, 'Beta Co'),
+    tech(3, 'Bea'),
+  ];
+  assert.strictEqual(previousTechnicianInList(rows, 3, 'user', 'asc').id, 2);
+  assert.strictEqual(previousTechnicianInList(rows, 2, 'user', 'asc').id, 3);
+}
+
+function testPreviousTechReturnsNullWhenAloneOrEmpty() {
+  assert.strictEqual(previousTechnicianInList([], 1, 'user', 'asc'), null);
+  assert.strictEqual(previousTechnicianInList([tech(1, 'Only')], 1, 'user', 'asc'), null);
+}
+
 testSortByNameDesc();
 testSortByLastContactedAsc();
 testNextTechFollowsSortedOrderNotCensusOrder();
 testNextTechSkipsCompaniesAndWraps();
 testNextTechToleratesStringIds();
 testNextTechReturnsNullWhenAloneOrEmpty();
+testPreviousTechFollowsSortedOrderAndWraps();
+testPreviousTechSkipsCompanies();
+testPreviousTechReturnsNullWhenAloneOrEmpty();
 console.log('adminUsersSort.test.mjs: ok');
