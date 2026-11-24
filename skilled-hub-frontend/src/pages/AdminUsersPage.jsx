@@ -21,7 +21,7 @@ import {
 import { lookupUsZip } from '../utils/zipLookup';
 import { usZip5 } from '../utils/usAddress';
 import { exportUsersToCsv } from '../utils/adminUsersExport';
-import { nextTechnicianInList } from '../utils/adminUsersSort';
+import { nextTechnicianInList, previousTechnicianInList } from '../utils/adminUsersSort';
 import UsersHeader from '../components/admin/users/UsersHeader';
 import UsersKpiCards from '../components/admin/users/UsersKpiCards';
 import UsersSegmentedTabs from '../components/admin/users/UsersSegmentedTabs';
@@ -598,6 +598,10 @@ export default function AdminUsersPage({ user, onLogout, onUserUpdate }) {
                   : u
               )
             );
+          }}
+          onOpenPrevious={() => {
+            const prev = previousTechnicianInList(filteredRows, drawerUserId, sortKey, sortDir);
+            if (prev) setDrawerUserId(prev.id);
           }}
           onOpenNext={() => {
             const next = nextTechnicianInList(filteredRows, drawerUserId, sortKey, sortDir);

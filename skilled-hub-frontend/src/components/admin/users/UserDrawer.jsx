@@ -162,6 +162,7 @@ export default function UserDrawer({
   onToggleAdminStar,
   adminStarBusyId,
   onActivationUpdated,
+  onOpenPrevious,
   onOpenNext,
 }) {
   const [detail, setDetail] = useState(null);
@@ -448,6 +449,15 @@ export default function UserDrawer({
         <div className="flex shrink-0 items-center justify-between border-b border-slate-100 bg-white px-4 py-2.5">
           <span className="text-xs font-medium text-slate-500">User snapshot</span>
           <div className="flex items-center gap-1">
+            {isTechnician && onOpenPrevious && (
+              <button
+                type="button"
+                onClick={onOpenPrevious}
+                className="rounded-md px-2 py-1 text-[11px] font-semibold text-tf-blue hover:bg-sky-50"
+              >
+                Prev tech
+              </button>
+            )}
             {isTechnician && onOpenNext && (
               <button
                 type="button"
